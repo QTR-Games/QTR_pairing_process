@@ -162,9 +162,26 @@ def get_friendly_player_names():
     fNames = [grid_entries[row][0].get() for row in range(1, 6)]
     # messagebox.showinfo(title="Friendly Team Names", message=f"{fNames}")
     return fNames
+
+# Function to extract data from the grid into a nested dictionary
+def extract_ratings():
+    ratings = {}
+    fNames = get_friendly_player_names()
+    oNames = get_opponent_player_names()
+
+    for row in range(1, 6):
+        player = grid_entries[row][0].get()
+        ratings[player] = {}
+        for col in range(1, 6):
+            opponent = grid_entries[0][col].get()
+            rating = int(grid_entries[row][col].get())
+            ratings[player][opponent] = rating
+
+    messagebox.showinfo(title="Ratings", message=f"{ratings}")
+    return ratings
     
 # Function to generate combinations and populate Treeview
-def generate_combinations(fNames, oNames, treeview):
+def generate_combinations(fNames, oNames, ratings, treeview):
     def generate_nested_combinations(fNames, oNames, parent=""):
         if not fNames:
             return
@@ -176,13 +193,13 @@ def generate_combinations(fNames, oNames, treeview):
         combs_sorted = sorted(combs, key=lambda x: (x[0], x[1]))
 
         for comb in combs_sorted:
-            item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} OR {comb[1]}")
-            item_id = treeview.insert(parent, 'end', text=f"{comb[0]}")
-            item_id = treeview.insert(parent, 'end', text=f"{comb[1]}")
+            rating_1 = ratings[first_fName][comb[0]]
+            rating_2 = ratings[first_fName][comb[1]]
+            item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} OR {comb[1]} (Ratings: {rating_1}, {rating_2})")
             if remaining_fNames:
                 for opponent in comb:
                     nested_oNames = [name for name in oNames if name != opponent]
-                    # messagebox.showinfo(title="Current Loop: nested_oNames", message=f"{nested_oNames}")
+					# messagebox.showinfo(title="Current Loop: nested_oNames", message=f"{nested_oNames}")
                     generate_nested_combinations(remaining_fNames, nested_oNames, item_id)
 
     treeview.delete(*treeview.get_children())  # Clear the treeview
@@ -191,7 +208,7 @@ def generate_combinations(fNames, oNames, treeview):
     oNames_sorted = sorted(oNames, key=lambda x: x)
 
     generate_nested_combinations(fNames_sorted, oNames_sorted)
-
+    
 # BACKUP OF OLD TEXT BASED PRINT OUT    
 def generate_combinations_old(fNames, oNames, textbox_bottom):
     def generate_nested_combinations_old(fNames, oNames, depth=0):
@@ -319,7 +336,8 @@ def create_ui():
     
     # Add the buttons
     tk.Button(bottom_frame, text="Save").pack(side=tk.LEFT, padx=5)
-    tk.Button(bottom_frame, text="Generate", command=lambda: generate_combinations(get_friendly_player_names(), get_opponent_player_names(), treeview)).pack(side=tk.LEFT, padx=5)
+    # tk.Button(bottom_frame, text="Generate", command=lambda: generate_combinations(get_friendly_player_names(), get_opponent_player_names(), treeview)).pack(side=tk.LEFT, padx=5)
+    tk.Button(bottom_frame, text="Generate", command=lambda: generate_combinations(get_friendly_player_names(), get_opponent_player_names(), extract_ratings(), treeview)).pack(side=tk.LEFT, padx=5)
     tk.Button(bottom_frame, text="Clear Texbox", command=lambda: treeview.delete(*treeview.get_children())).pack(side=tk.LEFT, padx=5)
     
     # Automatically populate the grid with default entries for testing purposes.    
