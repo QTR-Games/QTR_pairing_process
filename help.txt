@@ -1,0 +1,15 @@
+Fill in the table at the top right with the names of the players (your team on the left) and the scores from 1 to 5. The lower your score, the better you think you are in the match.
+
+Check the box for the first player or not depending on which team starts, then click on generate to create the corresponding pairing tree.
+
+Here, you need to start thinking, and start from the principle that according to your pairings, the opponent will do the best possible thing for him and the worst for you.
+
+So, for example, if you are first (you start the pairing first) you need to choose the player with the lowest maximum score (assuming that the opponent will necessarily choose that score).
+
+Your opponent then puts in 2 players, you open the corresponding tree and choose from the 2 choices the one with the least weight (which is the one that suits you best). 
+
+Then you put 2 players on the remaining opponent, to choose them you look for the pair with the least possible weight as this is your best tree. 
+
+Continue like this until the end of the pairing.
+
+Click on a node to display all the info of the chosen matches before that node on the right.

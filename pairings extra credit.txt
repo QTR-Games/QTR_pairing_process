@@ -1,0 +1,13 @@
+pairings extra ideas beyond base program
+
+add in the concepts for the 'penalty for pairing at 5" whatever that means.
+
+# Create labels and entry fields for the "To avoid:" section
+    #avoid_frame = tk.Frame(root)
+    #avoid_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+
+    #for _ in range(3):
+        #row_frame = tk.Frame(avoid_frame)
+        #row_frame.pack(side=tk.TOP, fill=tk.X, pady=2)
+        #tk.Label(row_frame, text="To avoid:").pack(side=tk.TOP, anchor="w", padx=5)
+        #tk.Entry(row_frame).pack(side=tk.TOP, anchor="w", padx=5)

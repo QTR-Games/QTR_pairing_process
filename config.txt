@@ -1,0 +1,10 @@
+# CONFIG FILE FOR PAIRINGS.PY
+
+# Root directory for data files and configuration information
+# Default should be the same directory where the pairings.py file is stored
+root="C:\Users\Daniel.Raven\OneDrive - Vertex, Inc\Documents\myStuff\WM\Python Pairing Process"
+
+# Allows changing the pairing style used for the app. 
+# Accepted values are: classic | european; 
+# Default:classic
+pairingStyle=classic
