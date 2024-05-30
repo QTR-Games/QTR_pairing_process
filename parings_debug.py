@@ -177,7 +177,7 @@ def extract_ratings():
             rating = int(grid_entries[row][col].get())
             ratings[player][opponent] = rating
 
-    messagebox.showinfo(title="Ratings", message=f"{ratings}")
+    print(f"{ratings}")
     return ratings
     
 # Function to generate combinations and populate Treeview
@@ -188,16 +188,22 @@ def generate_combinations(fNames, oNames, ratings, treeview):
 
         first_fName = fNames[0]
         remaining_fNames = fNames[1:]
-
+        # print(f"first_fName = {fNames[0]} remaining_fNames = {fNames[1:]}")  # Debug statement
         combs = list(combinations(oNames, 2))
         combs_sorted = sorted(combs, key=lambda x: (x[0], x[1]))
 
         for comb in combs_sorted:
             rating_1 = ratings[first_fName][comb[0]]
             rating_2 = ratings[first_fName][comb[1]]
-            item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} OR {comb[1]} (Ratings: {rating_1}, {rating_2})")
+            curr_rating = [ratings[first_fName][comb[0]],ratings[first_fName][comb[1]]]
+            # item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} OR {comb[1]} (Ratings: {curr_rating[0]}, {curr_rating[1]})")
+            # item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} OR {comb[1]} (Ratings: {curr_rating[0]}, {curr_rating[1]})")
+            item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs...", values=({comb[0]},{curr_rating[0]},{comb[1]},{curr_rating[1]}))
+            # item_0 = treeview.insert(item_id, 0, text=f"{comb[0]} Rating {rating_1}")
+            # item_1 = treeview.insert(item_id, 1, text=f"{comb[1]} Rating {rating_2}")
             if remaining_fNames:
                 for opponent in comb:
+                    # treeview.insert(parent, 'end', text=f"{opponent}")
                     nested_oNames = [name for name in oNames if name != opponent]
 					# messagebox.showinfo(title="Current Loop: nested_oNames", message=f"{nested_oNames}")
                     generate_nested_combinations(remaining_fNames, nested_oNames, item_id)
@@ -208,37 +214,7 @@ def generate_combinations(fNames, oNames, ratings, treeview):
     oNames_sorted = sorted(oNames, key=lambda x: x)
 
     generate_nested_combinations(fNames_sorted, oNames_sorted)
-    
-# BACKUP OF OLD TEXT BASED PRINT OUT    
-def generate_combinations_old(fNames, oNames, textbox_bottom):
-    def generate_nested_combinations_old(fNames, oNames, depth=0):
-        if not fNames:
-            return ""
         
-        # Extract the first friendly player
-        first_fName = fNames[0]
-        remaining_fNames = fNames[1:]
-        
-        # Generate combinations for the first friendly player
-        combs = list(combinations(oNames, 2))
-        combs_sorted = sorted(combs, key=lambda x: (x[0], x[1]))
-        
-        result = ""
-        indent = "\t" * depth
-        
-        for comb in combs_sorted:
-            result += f"{indent}{first_fName} vs {comb[0]} OR {comb[1]}\n"
-            if remaining_fNames:
-                for opponent in comb:
-                    nested_oNames = [name for name in oNames if name != opponent]
-                    nested_result = generate_nested_combinations(remaining_fNames, nested_oNames, depth + 1)
-                    if nested_result:
-                        result += f"{indent}\tvs {opponent}\n"
-                        result += nested_result
-                        
-        return result
-
-    
 def create_ui():
     # Initialize the main window
     root = tk.Tk()
@@ -259,7 +235,7 @@ def create_ui():
 
     # Add a "Lists" button
     tk.Button(top_frame, text="UPDATE", command=lambda: select_directory_and_update_combobox(combobox1)).pack(side=tk.LEFT, padx=5)
-    tk.Button(top_frame, text="IMPORT", command=lambda: get_data_from_csv(combobox1,textbox)).pack(side=tk.LEFT, padx=5)
+    tk.Button(top_frame, text="IMPORT", command=lambda: get_data_from_csv(combobox1, textbox)).pack(side=tk.LEFT, padx=5)
 
     # Add a label and text widget for file format
     tk.Label(top_frame, text="REMINDER: CSV File format:").pack(side=tk.LEFT, padx=5)
@@ -275,12 +251,13 @@ def create_ui():
     textbox.config(state=tk.NORMAL)
     tk.Button(top_frame, text="Update Top Box", command=lambda: update_textbox(grid_entries, textbox)).pack(side=tk.BOTTOM, padx=5, pady=3)
     tk.Button(top_frame, text="Move to Grid", command=lambda: update_grid(textbox, grid_entries)).pack(side=tk.BOTTOM, padx=5, pady=3)
-    tk.Button(top_frame, text="Toggle Highlights", command=lambda: update_combobox_colors(grid_entries)).pack(side=tk.BOTTOM, padx=5, pady=3)
     tk.Button(top_frame, text="Clear Texbox", command=lambda: clear_textbox(textbox)).pack(side=tk.BOTTOM, padx=5, pady=3)
 
-    # Create a frame for the combobox grid
-    combo_grid_frame = tk.Frame(root)
-    combo_grid_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+    # Create a frame for the combobox grid combo_grid_frame
+    # combo_grid_frame = tk.Frame(root)
+    # combo_grid_frame.pack(side=tk.TOP, fill=tk.BOTH, padx=5, pady=5)
+    grid_frame = tk.Frame(root)
+    grid_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
     # Create a list to hold references to StringVars for each grid entry
     global grid_entries
@@ -290,10 +267,10 @@ def create_ui():
     for row in range(6):
         for col in range(6):
             if row == 0 or col == 0:
-                entry = ttk.Entry(combo_grid_frame, textvariable=grid_entries[row][col])
+                entry = tk.Entry(grid_frame, textvariable=grid_entries[row][col], width=24)
                 entry.grid(row=row, column=col, padx=5, pady=5)
                 continue
-            combobox = ttk.Combobox(combo_grid_frame, textvariable=grid_entries[row][col], values=[1, 2, 3, 4, 5])
+            combobox = ttk.Combobox(grid_frame, textvariable=grid_entries[row][col], values=[1, 2, 3, 4, 5], width=20)
             combobox.grid(row=row, column=col, padx=5, pady=5)
             # Add a trace to update the color whenever the value changes
             grid_entries[row][col].trace_add('write', lambda *args: update_combobox_colors(grid_entries))
@@ -325,19 +302,29 @@ def create_ui():
     
     # Create a frame for the bottom buttons
     bottom_frame = tk.Frame(root)
+    treeview_frame = tk.Frame(root)
+    treeview_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=5)
     
     # Create an area to display the results of the matchup grid.
-    tk.Label(bottom_frame, text="Matchup Planner").pack(side=tk.TOP, padx=5)    
+    tk.Label(treeview_frame, text="Matchup Planner").pack(side=tk.TOP, padx=5)    
     # Create Treeview widget
-    treeview = ttk.Treeview(bottom_frame)
+    treeview = ttk.Treeview(treeview_frame, columns=('Player1', 'Rating1', 'Player2', 'Rating2'), show='tree headings')
+    # treeview.heading("#0", text="Teammate")
+    # treeview.heading("Teammate", text="Teammate")
+    treeview.heading("Player1", text="Player 1")
+    treeview.heading("Rating1", text="Rating 1")
+    treeview.heading("Player2", text="Player 2")
+    treeview.heading("Rating2", text="Rating 2")
     treeview.pack(fill=tk.BOTH, expand=True)
+
+    
         
     bottom_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
     
     # Add the buttons
     tk.Button(bottom_frame, text="Save").pack(side=tk.LEFT, padx=5)
     # tk.Button(bottom_frame, text="Generate", command=lambda: generate_combinations(get_friendly_player_names(), get_opponent_player_names(), treeview)).pack(side=tk.LEFT, padx=5)
-    tk.Button(bottom_frame, text="Generate", command=lambda: generate_combinations(get_friendly_player_names(), get_opponent_player_names(), extract_ratings(), treeview)).pack(side=tk.LEFT, padx=5)
+    tk.Button(bottom_frame, text="Generate", command=lambda: generate_combinations(get_friendly_player_names(), get_opponent_player_names(), extract_ratings(), treeview)).pack(side=tk.BOTTOM, padx=5)
     tk.Button(bottom_frame, text="Clear Texbox", command=lambda: treeview.delete(*treeview.get_children())).pack(side=tk.LEFT, padx=5)
     
     # Automatically populate the grid with default entries for testing purposes.    
