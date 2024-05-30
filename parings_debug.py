@@ -46,10 +46,34 @@ def select_directory_and_update_combobox(combobox):
         else:
             combobox.set(csv_files[0])
             
-def get_data_from_csv():
-    # pull the data from the csv file in the dropdown and insert it into the top right text block
+def get_data_from_csv(combobox,textbox):
+    # Open a directory selection dialog
     directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
-    filename = "";
+    if directory:
+        # Update the combobox with .csv file names from the selected directory
+        csv_files = get_csv_files(directory)
+    # messagebox.showinfo(title="csv files", message=f"{csv_files}")
+    
+    # Get the selected CSV file name from the combobox
+    file_name = combobox.get()
+    file_path = directory+'/'+file_name+'.csv'
+    
+    # Clear the existing text in the textbox
+    textbox.config(state=tk.NORMAL)
+    textbox.delete(1.0, tk.END)
+    
+    try:
+        with open(file_path, newline='') as csvfile:
+            csvreader = csv.reader(csvfile)
+            for row in csvreader:
+                textbox.insert(tk.END, ','.join(row) + '\n')
+    except FileNotFoundError:
+        messagebox.showerror("File Not Found", f"The file named '{file_name}' does not exist in directory: {directory}")
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+    
+    messagebox.showinfo(title="Import Successful!", message=f"Matchup Data imported from {file_name}")
+    textbox.config(state=tk.NORMAL)
 
 def load_csv_to_grid(combobox, grid_entries):
     # Get the selected file name from the combobox
@@ -218,7 +242,7 @@ def create_ui():
 
     # Add a "Lists" button
     tk.Button(top_frame, text="UPDATE", command=lambda: select_directory_and_update_combobox(combobox1)).pack(side=tk.LEFT, padx=5)
-    tk.Button(top_frame, text="LOAD", command=lambda: get_data_from_csv()).pack(side=tk.LEFT, padx=5)
+    tk.Button(top_frame, text="IMPORT", command=lambda: get_data_from_csv(combobox1,textbox)).pack(side=tk.LEFT, padx=5)
 
     # Add a label and text widget for file format
     tk.Label(top_frame, text="REMINDER: CSV File format:").pack(side=tk.LEFT, padx=5)
