@@ -188,19 +188,20 @@ def generate_combinations(fNames, oNames, ratings, treeview):
 
         first_fName = fNames[0]
         remaining_fNames = fNames[1:]
+        # print(f"first_fName {first_fName}")
+        # print(f"remaining_fNames {remaining_fNames}")
         # print(f"first_fName = {fNames[0]} remaining_fNames = {fNames[1:]}")  # Debug statement
         combs = list(combinations(oNames, 2))
         combs_sorted = sorted(combs, key=lambda x: (x[0], x[1]))
 
         for comb in combs_sorted:
-            rating_1 = ratings[first_fName][comb[0]]
-            rating_2 = ratings[first_fName][comb[1]]
+            rating_0 = ratings[first_fName][comb[0]]
+            rating_1 = ratings[first_fName][comb[1]]
             curr_rating = [ratings[first_fName][comb[0]],ratings[first_fName][comb[1]]]
             # item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} OR {comb[1]} (Ratings: {curr_rating[0]}, {curr_rating[1]})")
             # item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} OR {comb[1]} (Ratings: {curr_rating[0]}, {curr_rating[1]})")
-            item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs...", values=({comb[0]},{curr_rating[0]},{comb[1]},{curr_rating[1]}))
-            # item_0 = treeview.insert(item_id, 0, text=f"{comb[0]} Rating {rating_1}")
-            # item_1 = treeview.insert(item_id, 1, text=f"{comb[1]} Rating {rating_2}")
+            item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
+            # item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs...", values=({comb[0]},{curr_rating[0]},{comb[1]},{curr_rating[1]}))
             if remaining_fNames:
                 for opponent in comb:
                     # treeview.insert(parent, 'end', text=f"{opponent}")
@@ -308,13 +309,13 @@ def create_ui():
     # Create an area to display the results of the matchup grid.
     tk.Label(treeview_frame, text="Matchup Planner").pack(side=tk.TOP, padx=5)    
     # Create Treeview widget
-    treeview = ttk.Treeview(treeview_frame, columns=('Player1', 'Rating1', 'Player2', 'Rating2'), show='tree headings')
+    treeview = ttk.Treeview(treeview_frame)
     # treeview.heading("#0", text="Teammate")
     # treeview.heading("Teammate", text="Teammate")
-    treeview.heading("Player1", text="Player 1")
-    treeview.heading("Rating1", text="Rating 1")
-    treeview.heading("Player2", text="Player 2")
-    treeview.heading("Rating2", text="Rating 2")
+    # treeview.heading("Player1", text="Player 1")
+    # treeview.heading("Rating1", text="Rating 1")
+    # treeview.heading("Player2", text="Player 2")
+    # treeview.heading("Rating2", text="Rating 2")
     treeview.pack(fill=tk.BOTH, expand=True)
 
     
