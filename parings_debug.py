@@ -102,6 +102,32 @@ def load_csv_to_grid(combobox, grid_entries):
                 if r < len(grid_entries) and c < len(grid_entries[r]):
                     grid_entries[r][c].set(value)
 
+def save_to_csv(textbox):
+    # Get the text from the textbox
+    text_content = textbox.get("1.0", tk.END).strip()
+    
+    if not text_content:
+        messagebox.showerror("Error", "Textbox is empty. Nothing to save.")
+        return
+    
+    # Prompt the user to select a save location and filename
+    save_location = filedialog.asksaveasfilename(
+        defaultextension=".csv",
+        filetypes=[("CSV files", "*.csv")],
+        initialdir=os.getcwd(),
+        title="Save As"
+    )
+    
+    # Check if the user selected a file
+    if save_location:
+        try:
+            with open(save_location, 'w') as file:
+                file.write(text_content)
+            messagebox.showinfo("Success", f"File saved successfully at {save_location}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save file: {str(e)}")
+
+
 def clear_textbox(textbox):
     textbox.config(state=tk.NORMAL)
     textbox.delete(1.0, tk.END)  # Clear the textbox
@@ -181,39 +207,56 @@ def extract_ratings():
     return ratings
     
 # Function to generate combinations and populate Treeview
-def generate_combinations(fNames, oNames, ratings, treeview):
+def generate_combinations(fNames, oNames, ratings, treeview, sort_alpha):
     def generate_nested_combinations(fNames, oNames, parent=""):
+        print(f"\n\nINSIDE generate_nested_combinations")
+        print(f"fNames: {fNames}, oNames: {oNames}\n")
+        breakpoint()
         if not fNames:
             return
 
         first_fName = fNames[0]
         remaining_fNames = fNames[1:]
-        # print(f"first_fName {first_fName}")
-        # print(f"remaining_fNames {remaining_fNames}")
-        # print(f"first_fName = {fNames[0]} remaining_fNames = {fNames[1:]}")  # Debug statement
+        # print(f"fNames[1:] value: {fNames[1:]}")
+        
         combs = list(combinations(oNames, 2))
-        combs_sorted = sorted(combs, key=lambda x: (x[0], x[1]))
-
+        # combs_sorted = sorted(combs, key=lambda x: (x[0], x[1]))
+        if sort_alpha:
+            combs_sorted = sorted(combs, key=lambda x: (x[0], x[1]))
+        else:
+            combs_sorted = combs
+        
+        print(f"len(combs) = {len(combs)}: {combs}")
+        print(f"first_fName = {first_fName}; remaining_fNames = {remaining_fNames}")
         for comb in combs_sorted:
             rating_0 = ratings[first_fName][comb[0]]
             rating_1 = ratings[first_fName][comb[1]]
             curr_rating = [ratings[first_fName][comb[0]],ratings[first_fName][comb[1]]]
-            # item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} OR {comb[1]} (Ratings: {curr_rating[0]}, {curr_rating[1]})")
-            # item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} OR {comb[1]} (Ratings: {curr_rating[0]}, {curr_rating[1]})")
             item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
-            # item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs...", values=({comb[0]},{curr_rating[0]},{comb[1]},{curr_rating[1]}))
+            print(f"\n\tITEM ID {item_id}: {first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
             if remaining_fNames:
                 for opponent in comb:
-                    # treeview.insert(parent, 'end', text=f"{opponent}")
+                    child_id = treeview.insert(item_id, 'end', text=f"{opponent}")
+                    print(f"\n\t\tCHILD ID {child_id}: UNDER {item_id} - 'end', {opponent}")
+                    print(opponent)
+                    breakpoint()
                     nested_oNames = [name for name in oNames if name != opponent]
 					# messagebox.showinfo(title="Current Loop: nested_oNames", message=f"{nested_oNames}")
                     generate_nested_combinations(remaining_fNames, nested_oNames, item_id)
 
-    treeview.delete(*treeview.get_children())  # Clear the treeview
+    print(f"treeview children?\n")
+    print(*treeview.get_children())
+    
+    # treeview.delete(*treeview.get_children())  # Clear the treeview
 
-    fNames_sorted = sorted(fNames, key=lambda x: x)
-    oNames_sorted = sorted(oNames, key=lambda x: x)
+    if sort_alpha:
+        fNames_sorted = sorted(fNames, key=lambda x: x)
+        oNames_sorted = sorted(oNames, key=lambda x: x)
+    else:
+        fNames_sorted = fNames
+        oNames_sorted = oNames
 
+    print(f"\n\nfNames_sorted: {fNames_sorted}, oNames_sorted: {oNames_sorted}\n")
     generate_nested_combinations(fNames_sorted, oNames_sorted)
         
 def create_ui():
@@ -252,7 +295,9 @@ def create_ui():
     textbox.config(state=tk.NORMAL)
     tk.Button(top_frame, text="Update Top Box", command=lambda: update_textbox(grid_entries, textbox)).pack(side=tk.BOTTOM, padx=5, pady=3)
     tk.Button(top_frame, text="Move to Grid", command=lambda: update_grid(textbox, grid_entries)).pack(side=tk.BOTTOM, padx=5, pady=3)
-    tk.Button(top_frame, text="Clear Texbox", command=lambda: clear_textbox(textbox)).pack(side=tk.BOTTOM, padx=5, pady=3)
+    tk.Button(top_frame, text="Clear Textbox", command=lambda: clear_textbox(textbox)).pack(side=tk.BOTTOM, padx=5, pady=3)
+    tk.Button(top_frame, text="Save", command=lambda: save_to_csv(textbox)).pack(side=tk.BOTTOM, padx=5, pady=3)
+
 
     # Create a frame for the combobox grid combo_grid_frame
     # combo_grid_frame = tk.Frame(root)
@@ -294,6 +339,9 @@ def create_ui():
     # Add a checkbox for "First team"
     check_var = tk.IntVar()
     tk.Checkbutton(root, text="First team", variable=check_var).pack(side=tk.TOP, pady=5)
+    # Add a checkbox for "Sort Alpha"
+    check_alpha = tk.IntVar()
+    tk.Checkbutton(root, text="Sort Pairings Alphabetically", variable=check_alpha).pack(side=tk.TOP, pady=5)
     
     # Add an entry and label for "Penalty pairing at 5"
     penalty_frame = tk.Frame(root)
@@ -323,10 +371,10 @@ def create_ui():
     bottom_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
     
     # Add the buttons
-    tk.Button(bottom_frame, text="Save").pack(side=tk.LEFT, padx=5)
+    
     # tk.Button(bottom_frame, text="Generate", command=lambda: generate_combinations(get_friendly_player_names(), get_opponent_player_names(), treeview)).pack(side=tk.LEFT, padx=5)
-    tk.Button(bottom_frame, text="Generate", command=lambda: generate_combinations(get_friendly_player_names(), get_opponent_player_names(), extract_ratings(), treeview)).pack(side=tk.BOTTOM, padx=5)
-    tk.Button(bottom_frame, text="Clear Texbox", command=lambda: treeview.delete(*treeview.get_children())).pack(side=tk.LEFT, padx=5)
+    tk.Button(bottom_frame, text="Generate", command=lambda: generate_combinations(get_friendly_player_names(), get_opponent_player_names(), extract_ratings(), treeview, check_alpha.get())).pack(side=tk.BOTTOM, padx=5, pady=3)
+    tk.Button(bottom_frame, text="Clear Textbox", command=lambda: treeview.delete(*treeview.get_children())).pack(side=tk.BOTTOM, padx=5, pady=3)
     
     # Automatically populate the grid with default entries for testing purposes.    
     update_grid(textbox, grid_entries)
