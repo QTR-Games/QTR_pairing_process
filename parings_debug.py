@@ -357,7 +357,7 @@ def create_ui():
     # Create an area to display the results of the matchup grid.
     tk.Label(treeview_frame, text="Matchup Planner").pack(side=tk.TOP, padx=5)    
     # Create Treeview widget
-    treeview = ttk.Treeview(treeview_frame)
+    treeview = ttk.Treeview(treeview_frame, height=20)
     # treeview.heading("#0", text="Teammate")
     # treeview.heading("Teammate", text="Teammate")
     # treeview.heading("Player1", text="Player 1")
