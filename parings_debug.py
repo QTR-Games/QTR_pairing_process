@@ -211,7 +211,7 @@ def generate_combinations(fNames, oNames, ratings, treeview, sort_alpha):
     def generate_nested_combinations(fNames, oNames, parent=""):
         print(f"\n\nINSIDE generate_nested_combinations")
         print(f"fNames: {fNames}, oNames: {oNames}\n")
-        breakpoint()
+        # breakpoint()
         if not fNames:
             return
 
@@ -239,7 +239,7 @@ def generate_combinations(fNames, oNames, ratings, treeview, sort_alpha):
                     child_id = treeview.insert(item_id, 'end', text=f"{opponent}")
                     print(f"\n\t\tCHILD ID {child_id}: UNDER {item_id} - 'end', {opponent}")
                     print(opponent)
-                    breakpoint()
+                    # breakpoint()
                     nested_oNames = [name for name in oNames if name != opponent]
 					# messagebox.showinfo(title="Current Loop: nested_oNames", message=f"{nested_oNames}")
                     generate_nested_combinations(remaining_fNames, nested_oNames, item_id)
@@ -247,7 +247,7 @@ def generate_combinations(fNames, oNames, ratings, treeview, sort_alpha):
     print(f"treeview children?\n")
     print(*treeview.get_children())
     
-    # treeview.delete(*treeview.get_children())  # Clear the treeview
+    treeview.delete(*treeview.get_children())  # Clear the treeview when the button is pressed to make room for the new pairings.
 
     if sort_alpha:
         fNames_sorted = sorted(fNames, key=lambda x: x)
@@ -308,18 +308,24 @@ def create_ui():
     # Create a list to hold references to StringVars for each grid entry
     global grid_entries
     grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
-    
-    # Add a grid of comboboxes
     for row in range(6):
         for col in range(6):
-            if row == 0 or col == 0:
-                entry = tk.Entry(grid_frame, textvariable=grid_entries[row][col], width=24)
-                entry.grid(row=row, column=col, padx=5, pady=5)
-                continue
-            combobox = ttk.Combobox(grid_frame, textvariable=grid_entries[row][col], values=[1, 2, 3, 4, 5], width=20)
-            combobox.grid(row=row, column=col, padx=5, pady=5)
-            # Add a trace to update the color whenever the value changes
-            grid_entries[row][col].trace_add('write', lambda *args: update_combobox_colors(grid_entries))
+            entry = tk.Entry(grid_frame, textvariable=grid_entries[row][col], width=12)
+            entry.grid(row=row, column=col, padx=2, pady=2)
+
+    grid_entries[0][0].set('My Team \\ Their Team')
+    
+    # Add a grid of comboboxes
+    # for row in range(6):
+    #    for col in range(6):
+    #        if row == 0 or col == 0:
+    #            entry = tk.Entry(grid_frame, textvariable=grid_entries[row][col], width=24)
+    #            entry.grid(row=row, column=col, padx=5, pady=5)
+    #            continue
+    #        combobox = ttk.Combobox(grid_frame, textvariable=grid_entries[row][col], values=[1, 2, 3, 4, 5], width=20)
+    #        combobox.grid(row=row, column=col, padx=5, pady=5)
+    #        # Add a trace to update the color whenever the value changes
+    #        grid_entries[row][col].trace_add('write', lambda *args: update_combobox_colors(grid_entries))
 
     # Add a "Help" label with tooltip
     help_text = (
