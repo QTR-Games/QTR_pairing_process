@@ -320,6 +320,11 @@ def create_ui():
     tk.Button(right_frame, text="Clear Text", command=lambda: clear_textbox(textbox)).pack(side=tk.LEFT, padx=5, pady=3)
     tk.Button(right_frame, text="Save", command=lambda: save_textbox_content(textbox)).pack(side=tk.LEFT, padx=5, pady=3)
     
+    team_b = tk.IntVar()
+    pairingLead = tk.Checkbutton(right_frame, text="Our team first", variable=team_b)
+    pairingLead.pack(side=tk.BOTTOM, padx=5, pady=3)
+    pairingLead.select()
+    
     # Treeview (bottom side)
     treeview = LazyTreeview(bottom_frame)
     treeview.pack(expand=1, fill='both')
