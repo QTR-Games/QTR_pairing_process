@@ -138,33 +138,42 @@ def save_textbox_content(textbox):
         for line in content.split('\n'):
             writer.writerow(line.split(','))
 
-def generate_combinations(fNames, oNames, ratings, treeview, sort_alpha):
-    def generate_nested_combinations(fNames, oNames, parent=""):
-        if not fNames:
-            return
+def generate_combinations(fNames, oNames, treeview, sort_alpha, first_team):
+    treeview.delete(*treeview.get_children()) # clear anything in the tree from a previous run.
+    # if sorting enabled, sort the names.
+    fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames #sorting
+    oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames #sorting
+    generate_nested_combinations(fNames_sorted, oNames_sorted) #loop
+    
+def generate_nested_combinations(fNames, oNames, parent=""):
+    if not fNames:
+        return
+    
+    extract_ratings(direction)
 
-        first_fName = fNames[0]
-        remaining_fNames = fNames[1:]
-        first_oName = oNames[0]
-        remaining_oNames = oNames[1:]
-        combs = list(combinations(oNames, 2))
-        combs_sorted = sorted(combs, key=lambda x: (x[0], x[1]))
-        
-        
-        for comb in combs_sorted:
-            rating_0 = ratings[first_fName].get(comb[0], 'N/A')
-            rating_1 = ratings[first_fName].get(comb[1], 'N/A')
-            item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
-            if remaining_fNames:
-                for opponent in comb:
-                    child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {ratings[first_fName].get(opponent)}", values=ratings[first_fName].get(opponent))
-                    nested_oNames = [name for name in oNames if name != opponent]
-                    generate_nested_combinations(remaining_fNames, nested_oNames, child_id)
-
-    treeview.delete(*treeview.get_children())
-    fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
-    oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
-    generate_nested_combinations(fNames_sorted, oNames_sorted)
+    first_fName = fNames[0]
+    remaining_fNames = fNames[1:]
+    #first_oName = oNames[0]
+    #remaining_oNames = oNames[1:]
+    combs = list(combinations(oNames, 2))
+    combs_sorted = sorted(combs, key=lambda x: (x[0], x[1]))
+    
+    extract_ratings_team_b()
+    
+    #print(f"direction {first_team.get()}")
+    print(f"direction is 1? - {direction}")
+    #print(f"GOING FIRST")
+    
+    
+    for comb in combs_sorted:
+        rating_0 = ratings[first_fName].get(comb[0], 'N/A')
+        rating_1 = ratings[first_fName].get(comb[1], 'N/A')
+        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
+        if remaining_fNames:
+            for opponent in comb:
+                child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {ratings[first_fName].get(opponent)}", values=ratings[first_fName].get(opponent))
+                nested_oNames = [name for name in oNames if name != opponent]
+                generate_nested_combinations(remaining_fNames, oNames, child_id)
 
 def update_grid_from_textbox(textbox, grid_entries):
     # validate_grid_data(grid_entries)
@@ -244,26 +253,45 @@ def get_opponent_player_names():
 def get_friendly_player_names():
     return [grid_entries[row][0].get() for row in range(1, 6)]
 
-def extract_ratings():
-    ratings = {}
+def extract_ratings_team_a():
+    ratings_a = {}
     fNames = get_friendly_player_names()
     oNames = get_opponent_player_names()
     for row in range(1, 6):
         player = grid_entries[row][0].get()
-        ratings[player] = {}
+        ratings_a[player] = {}
         for col in range(1, 6):
             opponent = grid_entries[0][col].get()
             rating = int(grid_entries[row][col].get())
-            ratings[player][opponent] = rating
-    # print(f"{ratings}")
-    return ratings
+            ratings_a[player][opponent] = rating
+    print(f"{ratings_a}")
+    return ratings_a
 
+def extract_ratings_team_b():
+    ratings_b = {}
+    fNames = get_friendly_player_names()
+    oNames = get_opponent_player_names()
+    for col in range(1, 6):
+        player = grid_entries[0][col].get()
+        ratings_b[player] = {}
+        for row in range(1, 6):
+            opponent = grid_entries[row][0].get()
+            rating = int(grid_entries[row][col].get())
+            ratings_b[player][opponent] = rating
+    print(f"{ratings_b}")
+    return ratings_b
 
+def extract_ratings(direction):
+    fNames = get_friendly_player_names()
+    oNames = get_opponent_player_names()
+    ratings_a = {fNames[i]: {oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
+    ratings_b = {oNames[i]: {fNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
 
 
 def create_ui():
-    global grid_entries, grid_widgets, print_ratings
+    global grid_entries, grid_widgets, print_ratings, direction, ratings
     print_ratings = True
+    # ratings = {}
     root = tk.Tk()
     root.geometry('+0+0')  # Set the window position to top-left corner
     root.title('Parings Debug')
@@ -320,10 +348,12 @@ def create_ui():
     tk.Button(right_frame, text="Clear Text", command=lambda: clear_textbox(textbox)).pack(side=tk.LEFT, padx=5, pady=3)
     tk.Button(right_frame, text="Save", command=lambda: save_textbox_content(textbox)).pack(side=tk.LEFT, padx=5, pady=3)
     
-    team_b = tk.IntVar()
-    pairingLead = tk.Checkbutton(right_frame, text="Our team first", variable=team_b)
+    first_team = tk.IntVar()
+    pairingLead = tk.Checkbutton(right_frame, text="First team", variable=first_team)
     pairingLead.pack(side=tk.BOTTOM, padx=5, pady=3)
     pairingLead.select()
+    direction = first_team.get()
+    print(f"first team direction {direction}")
     
     # Treeview (bottom side)
     treeview = LazyTreeview(bottom_frame)
@@ -333,13 +363,16 @@ def create_ui():
     tk.Checkbutton(bottom_frame, text="Sort Pairings Alphabetically", variable=sort_alpha).pack(pady=5)
 
     def on_generate_combinations():
+        validate_grid_data(grid_entries)
         fNames = [grid_entries[i][0].get() for i in range(1, 6)]
         oNames = [grid_entries[0][i].get() for i in range(1, 6)]
-        ratings = {fNames[i]: {oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
+        ratings_a = {fNames[i]: {oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
+        ratings_b = {oNames[i]: {fNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
+        # ratings_a = extract_ratings_team_a()
+        # ratings_b = extract_ratings_team_b()
         if print_ratings:
-            print(ratings)
-        validate_grid_data(grid_entries)
-        generate_combinations(fNames, oNames, ratings, treeview, sort_alpha=sort_alpha.get())
+            print(f"Ratings A {ratings_a} \n\nRatings B {ratings_b} \n\n")
+        generate_combinations(fNames, oNames, treeview, sort_alpha=sort_alpha.get(), first_team=first_team.get())
 
     tk.Button(bottom_frame, text="Generate Combinations", command=on_generate_combinations).pack(pady=10)
 
