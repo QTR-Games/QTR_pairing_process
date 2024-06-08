@@ -141,6 +141,18 @@ def save_textbox_content(textbox):
         for line in content.split('\n'):
             writer.writerow(line.split(','))
 
+def generate_combinations(fNames, oNames, fRatings,oRatings, treeview):
+
+    treeview.delete(*treeview.get_children())
+    # Modify generate_combinations to Remove Sorting Logic:
+    # fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
+    # oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
+    generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview)
+    print(f"fNames {fNames}")
+    # Cycle the list of friendly names after generating combinations
+    fNames[:] = cycle_list(fNames)
+    print(f"CYCLE {fNames}")
+
 def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,parent=""):
     if not fNames:
         return
@@ -162,19 +174,16 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,pa
                 child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=fRatings[first_fName].get(opponent))
                 nested_oNames = [name for name in oNames if name != opponent]
                 generate_nested_combinations(nested_oNames, remaining_fNames, oRatings, fRatings, treeview, child_id)
-
-def generate_combinations(fNames, oNames, fRatings,oRatings, treeview, sort_alpha):
-
-    treeview.delete(*treeview.get_children())
-    fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
-    oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
-    generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview)
-    print(f"fNames_sorted {fNames_sorted}")
-    cycle_list(fNames_sorted)
-    print(f"CYCLE {fNames_sorted}")
     
+def sort_names(fNames, oNames, check_alpha):
+    if check_alpha.get():
+        fNames_sorted = sorted(fNames, key=lambda x: x)
+        oNames_sorted = sorted(oNames, key=lambda x: x)
+    else:
+        fNames_sorted = fNames
+        oNames_sorted = oNames
+    return fNames_sorted, oNames_sorted
     
-
 def update_grid_from_textbox(textbox, grid_entries):
     # validate_grid_data(grid_entries)
     content = textbox.get(1.0, tk.END).strip()
@@ -369,20 +378,26 @@ def create_ui():
         # ctypes.windll.user32.MessageBoxW(0, u"Error", u"Error", 0)
         print(f"VALUE OF sort_alpha - {sort_alpha.get()}")
         
+        
         fNames = [grid_entries[i][0].get() for i in range(1, 6)]
         oNames = [grid_entries[0][i].get() for i in range(1, 6)]
+        # Update the Button Callback to Include Sorting
+        sorted_fNames, sorted_oNames = sort_names(fNames, oNames, sort_alpha)
         # fNames = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
         # oNames = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
         
-        fRatings = {fNames[i]: {oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
-        oRatings = {oNames[i]: {fNames[j]: grid_entries[j+1][i+1].get() for j in range(5)} for i in range(5)}
+        fRatings = {sorted_fNames[i]: {sorted_oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
+        oRatings = {sorted_oNames[i]: {sorted_fNames[j]: grid_entries[j+1][i+1].get() for j in range(5)} for i in range(5)}
 
         if print_ratings:
             print(fRatings)
         validate_grid_data(grid_entries)
-        generate_combinations(fNames, oNames, fRatings, oRatings, treeview, sort_alpha=sort_alpha.get())
+        # Remove sorting from the arguements for generate_combinations since we've already sorted above once.
+        # generate_combinations(sorted_fNames, sorted_oNames, fRatings, oRatings, treeview, sort_alpha=sort_alpha.get())
+        generate_combinations(sorted_fNames, sorted_oNames, fRatings, oRatings, treeview)
 
-    tk.Button(bottom_frame, text="Generate Combinations", command=on_generate_combinations).pack(pady=10)
+    generateButton = tk.Button(bottom_frame, text="Generate Combinations", command=on_generate_combinations)
+    generateButton.pack(pady=10)
 
     create_tooltip(combobox, "Select a CSV file to import")
     create_tooltip(textbox, "Enter CSV data here")
