@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import os
 import csv
+import ctypes
 from itertools import combinations
 class LazyTreeview(ttk.Treeview):
     def __init__(self, *args, **kwargs):
@@ -168,6 +169,11 @@ def generate_combinations(fNames, oNames, fRatings,oRatings, treeview, sort_alph
     fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
     oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
     generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview)
+    print(f"fNames_sorted {fNames_sorted}")
+    cycle_list(fNames_sorted)
+    print(f"CYCLE {fNames_sorted}")
+    
+    
 
 def update_grid_from_textbox(textbox, grid_entries):
     # validate_grid_data(grid_entries)
@@ -265,7 +271,8 @@ def cycle_list(lst):
     return lst[1:] + lst[:1]
 
 def create_ui():
-    global grid_entries, grid_widgets, print_ratings, color_map
+    global grid_entries, grid_widgets, print_ratings, color_map, iterations
+    iterations = 0 # grow up to 5 to print the lists out as if they had started with every player at the top level.
     print_ratings = True
     color_map = {
         '1': 'orangered',
@@ -274,6 +281,7 @@ def create_ui():
         '4': 'yellowgreen',
         '5': 'deepskyblue'
     }
+    
     
     #basic
     # 'b'- blue.
@@ -352,13 +360,20 @@ def create_ui():
     treeview.pack(expand=1, fill='both')
     
     sort_alpha = tk.IntVar()
-    tk.Checkbutton(bottom_frame, text="Sort Pairings Alphabetically", variable=sort_alpha).pack(pady=5)
-
+    alphaBox = tk.Checkbutton(bottom_frame, text="Sort Pairings Alphabetically", variable=sort_alpha)
+    alphaBox.pack(pady=5)
+    alphaBox.select()
+    
     def on_generate_combinations():
+        # tkMessageBox.showerror('error title', 'error message')
+        # ctypes.windll.user32.MessageBoxW(0, u"Error", u"Error", 0)
+        print(f"VALUE OF sort_alpha - {sort_alpha.get()}")
+        
         fNames = [grid_entries[i][0].get() for i in range(1, 6)]
         oNames = [grid_entries[0][i].get() for i in range(1, 6)]
-        # fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
-        # oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
+        # fNames = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
+        # oNames = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
+        
         fRatings = {fNames[i]: {oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
         oRatings = {oNames[i]: {fNames[j]: grid_entries[j+1][i+1].get() for j in range(5)} for i in range(5)}
 
