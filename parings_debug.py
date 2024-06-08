@@ -144,13 +144,16 @@ def save_textbox_content(textbox):
 def generate_combinations(fNames, oNames, fRatings,oRatings, treeview):
 
     treeview.delete(*treeview.get_children())
+    tree_top = treeview.insert("", 'end', text=f"Pairings")
     # Modify generate_combinations to Remove Sorting Logic:
     # fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
     # oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
-    generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview)
+    for name in fNames:
+        generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview)
+        fNames[:] = cycle_list(fNames)
     print(f"fNames {fNames}")
     # Cycle the list of friendly names after generating combinations
-    fNames[:] = cycle_list(fNames)
+    # fNames[:] = cycle_list(fNames)
     print(f"CYCLE {fNames}")
 
 def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,parent=""):
