@@ -49,8 +49,8 @@ def get_csv_files(directory):
 
 
 def select_directory_and_update_combobox(combobox):
-    # directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
-    directory = '.'
+    directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+    # directory = '.'
     if directory:
         csv_files = [f[:-4] for f in os.listdir(directory) if f.endswith('.csv')]
         combobox['values'] = csv_files
@@ -75,14 +75,14 @@ def update_textbox(grid_entries, textbox):
     textbox.config(state=tk.NORMAL)
 
 
-def update_combobox_colors(grid_entries):
-    color_map = {
-        '1': 'lightblue',
-        '2': 'lightgreen',
-        '3': 'yellow',
-        '4': 'orange',
-        '5': 'red'
-    }
+def update_combobox_colors(grid_entries, color_map):
+    # color_map = {
+        # '1': 'red',
+        # '2': 'orange',
+        # '3': 'yellow',
+        # '4': 'lightblue',
+        # '5': 'green'
+    # }
 
     for row in range(1, 6):
         for col in range(1, 6):
@@ -90,14 +90,14 @@ def update_combobox_colors(grid_entries):
             if value in color_map:
                 grid_widgets[row][col].config(bg=color_map[value])
                 
-def update_color_on_change(var, index, mode, row, col):
-    color_map = {
-        '1': 'lightblue',
-        '2': 'lightgreen',
-        '3': 'yellow',
-        '4': 'orange',
-        '5': 'red'
-    }
+def update_color_on_change(var, index, mode, row, col, color_map):
+    # color_map = {
+        # '1': 'lightblue',
+        # '2': 'lightgreen',
+        # '3': 'yellow',
+        # '4': 'orange',
+        # '5': 'red'
+    # }
     value = var.get()
     if value in color_map:
         grid_widgets[row][col].config(bg=color_map[value])
@@ -110,8 +110,8 @@ def get_data_from_csv(combobox, textbox):
         if not file_name:
             raise ValueError("No file selected")
 
-        # directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
-        directory = '.'
+        directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+        # directory = '.'
         file_path = os.path.join(directory, file_name + '.csv')
 
         if not os.path.exists(file_path):
@@ -127,8 +127,8 @@ def get_data_from_csv(combobox, textbox):
         messagebox.showerror("Error", str(e))
 
 def save_textbox_content(textbox):
-    # directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
-    directory = '.'
+    directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+    # directory = '.'
     file_path = filedialog.asksaveasfilename(initialdir=directory, defaultextension=".csv",
                                              filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
     if not file_path:
@@ -261,10 +261,31 @@ def extract_ratings():
     # print(f"{ratings}")
     return ratings
 
+def cycle_list(lst):
+    return lst[1:] + lst[:1]
 
 def create_ui():
-    global grid_entries, grid_widgets, print_ratings
+    global grid_entries, grid_widgets, print_ratings, color_map
     print_ratings = True
+    color_map = {
+        '1': 'orangered',
+        '2': 'orange',
+        '3': 'yellow',
+        '4': 'yellowgreen',
+        '5': 'deepskyblue'
+    }
+    
+    #basic
+    # 'b'- blue.
+    # 'c' - cyan.
+    # 'g' - green.
+    # 'k' - black.
+    # 'm' - magenta.
+    # 'r' - red.
+    # 'w' - white.
+    # 'y' - yellow.
+    
+    
     root = tk.Tk()
     root.geometry('+0+0')  # Set the window position to top-left corner
     root.title('Parings Debug')
@@ -292,7 +313,7 @@ def create_ui():
             entry = tk.Entry(left_frame, textvariable=grid_entries[r][c], width=10)
             entry.grid(row=r+2, column=c, padx=5, pady=5)
             grid_widgets[r][c] = entry
-            grid_entries[r][c].trace_add('write', lambda name, index, mode, var=grid_entries[r][c], row=r, col=c: update_color_on_change(var, index, mode, row, col))
+            grid_entries[r][c].trace_add('write', lambda name, index, mode, var=grid_entries[r][c], row=r, col=c: update_color_on_change(var, index, mode, row, col, color_map))
 
 
     # Combobox and buttons (left side)
@@ -306,7 +327,7 @@ def create_ui():
     # tk.Label(left_frame, text="Opponent Team").grid(row=2, column=0, padx=5, pady=5)
 
 
-    tk.Button(left_frame, text='UPDATE COLOR', command=lambda: update_combobox_colors(grid_entries)).grid(row=8, column=2, padx=5, pady=5, sticky=tk.W)
+    tk.Button(left_frame, text='UPDATE COLOR', command=lambda: update_combobox_colors(grid_entries,color_map)).grid(row=8, column=2, padx=5, pady=5, sticky=tk.W)
     tk.Button(left_frame, text="IMPORT", command=lambda: get_data_from_csv(combobox, textbox)).grid(row=8, column=3, padx=5, pady=5, sticky=tk.W)
     # Add buttons to save and load the grid state:
     tk.Button(left_frame, text="Load Grid", command=lambda: load_grid_state(grid_entries)).grid(row=8, column=4, padx=5, pady=5, sticky=tk.W)
@@ -336,6 +357,8 @@ def create_ui():
     def on_generate_combinations():
         fNames = [grid_entries[i][0].get() for i in range(1, 6)]
         oNames = [grid_entries[0][i].get() for i in range(1, 6)]
+        # fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
+        # oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
         fRatings = {fNames[i]: {oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
         oRatings = {oNames[i]: {fNames[j]: grid_entries[j+1][i+1].get() for j in range(5)} for i in range(5)}
 
@@ -352,7 +375,7 @@ def create_ui():
     
     get_data_from_csv(combobox, textbox)
     update_grid_from_textbox(textbox, grid_entries)
-    update_combobox_colors(grid_entries)
+    update_combobox_colors(grid_entries, color_map)
     root.mainloop()
 
 if __name__ == '__main__':
