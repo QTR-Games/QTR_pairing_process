@@ -49,8 +49,8 @@ def get_csv_files(directory):
     return files
 
 
-def select_directory_and_update_combobox(combobox):
-    directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+def select_directory_and_update_combobox(combobox, directory):
+    # directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
     # directory = '.'
     if directory:
         csv_files = [f[:-4] for f in os.listdir(directory) if f.endswith('.csv')]
@@ -105,13 +105,13 @@ def update_color_on_change(var, index, mode, row, col, color_map):
     else:
         grid_widgets[row][col].config(bg='white')  # Default to white if no matching value
 
-def get_data_from_csv(combobox, textbox):
+def get_data_from_csv(combobox, textbox, directory):
     try:
         file_name = combobox.get()
         if not file_name:
             raise ValueError("No file selected")
 
-        directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+        # directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
         # directory = '.'
         file_path = os.path.join(directory, file_name + '.csv')
 
@@ -145,18 +145,11 @@ def generate_combinations(fNames, oNames, fRatings,oRatings, treeview):
 
     treeview.delete(*treeview.get_children())
     tree_top = treeview.insert("", 'end', text=f"Pairings")
-    # Modify generate_combinations to Remove Sorting Logic:
-    # fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
-    # oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
     for name in fNames:
-        generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview)
+        generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,tree_top)
         fNames[:] = cycle_list(fNames)
-    print(f"fNames {fNames}")
-    # Cycle the list of friendly names after generating combinations
-    # fNames[:] = cycle_list(fNames)
-    print(f"CYCLE {fNames}")
 
-def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,parent=""):
+def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,parent):
     if not fNames:
         return
 
@@ -166,7 +159,6 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,pa
     remaining_oNames = oNames[1:]
     combs = list(combinations(oNames, 2))
     combs_sorted = sorted(combs, key=lambda x: (x[0], x[1]))
-    
     
     for comb in combs_sorted:
         rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
@@ -188,7 +180,6 @@ def sort_names(fNames, oNames, check_alpha):
     return fNames_sorted, oNames_sorted
     
 def update_grid_from_textbox(textbox, grid_entries):
-    # validate_grid_data(grid_entries)
     content = textbox.get(1.0, tk.END).strip()
     rows = content.split('\n')
     for r, row in enumerate(rows):
@@ -283,8 +274,7 @@ def cycle_list(lst):
     return lst[1:] + lst[:1]
 
 def create_ui():
-    global grid_entries, grid_widgets, print_ratings, color_map, iterations
-    iterations = 0 # grow up to 5 to print the lists out as if they had started with every player at the top level.
+    global grid_entries, grid_widgets, print_ratings, color_map, directory
     print_ratings = True
     color_map = {
         '1': 'orangered',
@@ -293,19 +283,8 @@ def create_ui():
         '4': 'yellowgreen',
         '5': 'deepskyblue'
     }
-    
-    
-    #basic
-    # 'b'- blue.
-    # 'c' - cyan.
-    # 'g' - green.
-    # 'k' - black.
-    # 'm' - magenta.
-    # 'r' - red.
-    # 'w' - white.
-    # 'y' - yellow.
-    
-    
+    directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+
     root = tk.Tk()
     root.geometry('+0+0')  # Set the window position to top-left corner
     root.title('Parings Debug')
@@ -324,8 +303,6 @@ def create_ui():
     bottom_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
     # Grid entries (left side)
-    #tk.Label(left_frame, text="Friendly Team").grid(row=0, column=1, padx=5, pady=5)
-    #tk.Label(left_frame, text="Opponent Team").grid(row=1, column=0, padx=5, pady=5)
     grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
     grid_widgets = [[None for _ in range(6)] for _ in range(6)]
     for r in range(6):
@@ -340,15 +317,10 @@ def create_ui():
     tk.Label(left_frame, text='Select File:').grid(row=8, column=0, padx=5, pady=5, sticky=tk.W)
     combobox = ttk.Combobox(left_frame, state='readonly', width=20)
     combobox.grid(row=8, column=1, padx=5, pady=5, sticky=tk.W)
-    select_directory_and_update_combobox(combobox)
+    select_directory_and_update_combobox(combobox, directory)
     
-    # Adding labels for grid entries
-    # tk.Label(left_frame, text="Friendly Team").grid(row=1, column=1, padx=5, pady=5)
-    # tk.Label(left_frame, text="Opponent Team").grid(row=2, column=0, padx=5, pady=5)
-
-
-    tk.Button(left_frame, text='UPDATE COLOR', command=lambda: update_combobox_colors(grid_entries,color_map)).grid(row=8, column=2, padx=5, pady=5, sticky=tk.W)
-    tk.Button(left_frame, text="IMPORT", command=lambda: get_data_from_csv(combobox, textbox)).grid(row=8, column=3, padx=5, pady=5, sticky=tk.W)
+    # tk.Button(left_frame, text='UPDATE COLOR', command=lambda: update_combobox_colors(grid_entries,color_map)).grid(row=8, column=2, padx=5, pady=5, sticky=tk.W)
+    tk.Button(left_frame, text="IMPORT CSV", command=lambda: get_data_from_csv(combobox, textbox, directory)).grid(row=8, column=3, padx=5, pady=5, sticky=tk.W)
     # Add buttons to save and load the grid state:
     tk.Button(left_frame, text="Load Grid", command=lambda: load_grid_state(grid_entries)).grid(row=8, column=4, padx=5, pady=5, sticky=tk.W)
     tk.Button(left_frame, text="Save Grid", command=lambda: save_grid_state(grid_entries)).grid(row=8, column=5, padx=5, pady=5, sticky=tk.W)
@@ -377,26 +349,19 @@ def create_ui():
     alphaBox.select()
     
     def on_generate_combinations():
-        # tkMessageBox.showerror('error title', 'error message')
-        # ctypes.windll.user32.MessageBoxW(0, u"Error", u"Error", 0)
-        print(f"VALUE OF sort_alpha - {sort_alpha.get()}")
-        
-        
         fNames = [grid_entries[i][0].get() for i in range(1, 6)]
         oNames = [grid_entries[0][i].get() for i in range(1, 6)]
         # Update the Button Callback to Include Sorting
-        sorted_fNames, sorted_oNames = sort_names(fNames, oNames, sort_alpha)
-        # fNames = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
-        # oNames = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
         
-        fRatings = {sorted_fNames[i]: {sorted_oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
-        oRatings = {sorted_oNames[i]: {sorted_fNames[j]: grid_entries[j+1][i+1].get() for j in range(5)} for i in range(5)}
+        
+        fRatings = {fNames[i]: {oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
+        oRatings = {oNames[i]: {fNames[j]: grid_entries[j+1][i+1].get() for j in range(5)} for i in range(5)}
+        
+        sorted_fNames, sorted_oNames = sort_names(fNames, oNames, sort_alpha)
 
         if print_ratings:
             print(fRatings)
         validate_grid_data(grid_entries)
-        # Remove sorting from the arguements for generate_combinations since we've already sorted above once.
-        # generate_combinations(sorted_fNames, sorted_oNames, fRatings, oRatings, treeview, sort_alpha=sort_alpha.get())
         generate_combinations(sorted_fNames, sorted_oNames, fRatings, oRatings, treeview)
 
     generateButton = tk.Button(bottom_frame, text="Generate Combinations", command=on_generate_combinations)
@@ -406,7 +371,7 @@ def create_ui():
     create_tooltip(textbox, "Enter CSV data here")
     create_tooltip(treeview, "Generated combinations will be displayed here")
     
-    get_data_from_csv(combobox, textbox)
+    get_data_from_csv(combobox, textbox, directory)
     update_grid_from_textbox(textbox, grid_entries)
     update_combobox_colors(grid_entries, color_map)
     root.mainloop()
