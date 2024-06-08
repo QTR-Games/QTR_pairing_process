@@ -77,14 +77,6 @@ def update_textbox(grid_entries, textbox):
 
 
 def update_combobox_colors(grid_entries, color_map):
-    # color_map = {
-        # '1': 'red',
-        # '2': 'orange',
-        # '3': 'yellow',
-        # '4': 'lightblue',
-        # '5': 'green'
-    # }
-
     for row in range(1, 6):
         for col in range(1, 6):
             value = grid_entries[row][col].get()
@@ -92,13 +84,6 @@ def update_combobox_colors(grid_entries, color_map):
                 grid_widgets[row][col].config(bg=color_map[value])
                 
 def update_color_on_change(var, index, mode, row, col, color_map):
-    # color_map = {
-        # '1': 'lightblue',
-        # '2': 'lightgreen',
-        # '3': 'yellow',
-        # '4': 'orange',
-        # '5': 'red'
-    # }
     value = var.get()
     if value in color_map:
         grid_widgets[row][col].config(bg=color_map[value])
@@ -164,11 +149,13 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,pa
         rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
         rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
         item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
+        
         if remaining_fNames:
             for opponent in comb:
                 child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=fRatings[first_fName].get(opponent))
                 nested_oNames = [name for name in oNames if name != opponent]
                 generate_nested_combinations(nested_oNames, remaining_fNames, oRatings, fRatings, treeview, child_id)
+    print(f"CURRENT LOOP VALUES:\nremaining_fNames={remaining_fNames}")
     
 def sort_names(fNames, oNames, check_alpha):
     if check_alpha.get():
@@ -351,18 +338,18 @@ def create_ui():
     def on_generate_combinations():
         fNames = [grid_entries[i][0].get() for i in range(1, 6)]
         oNames = [grid_entries[0][i].get() for i in range(1, 6)]
-        # Update the Button Callback to Include Sorting
-        
-        
         fRatings = {fNames[i]: {oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
         oRatings = {oNames[i]: {fNames[j]: grid_entries[j+1][i+1].get() for j in range(5)} for i in range(5)}
-        
         sorted_fNames, sorted_oNames = sort_names(fNames, oNames, sort_alpha)
 
         if print_ratings:
             print(fRatings)
         validate_grid_data(grid_entries)
-        generate_combinations(sorted_fNames, sorted_oNames, fRatings, oRatings, treeview)
+        # this uses the "OUR TEAM FIRST" checkbox to drive which team starts the pairing process.
+        if team_b.get():
+            generate_combinations(sorted_fNames, sorted_oNames, fRatings, oRatings, treeview)
+        else:
+            generate_combinations(sorted_oNames, sorted_fNames, oRatings, fRatings, treeview)
 
     generateButton = tk.Button(bottom_frame, text="Generate Combinations", command=on_generate_combinations)
     generateButton.pack(pady=10)
