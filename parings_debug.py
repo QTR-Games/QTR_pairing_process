@@ -96,8 +96,6 @@ def get_data_from_csv(combobox, textbox, directory):
         if not file_name:
             raise ValueError("No file selected")
 
-        # directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
-        # directory = '.'
         file_path = os.path.join(directory, file_name + '.csv')
 
         if not os.path.exists(file_path):
@@ -112,9 +110,7 @@ def get_data_from_csv(combobox, textbox, directory):
     except Exception as e:
         messagebox.showerror("Error", str(e))
 
-def save_textbox_content(textbox):
-    directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
-    # directory = '.'
+def save_textbox_content(textbox, directory):
     file_path = filedialog.asksaveasfilename(initialdir=directory, defaultextension=".csv",
                                              filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
     if not file_path:
@@ -155,7 +151,6 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,pa
                 child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=fRatings[first_fName].get(opponent))
                 nested_oNames = [name for name in oNames if name != opponent]
                 generate_nested_combinations(nested_oNames, remaining_fNames, oRatings, fRatings, treeview, child_id)
-    print(f"CURRENT LOOP VALUES:\nremaining_fNames={remaining_fNames}")
     
 def sort_names(fNames, oNames, check_alpha):
     if check_alpha.get():
@@ -319,7 +314,7 @@ def create_ui():
     tk.Button(right_frame, text="Update Grid", command=lambda: update_grid_from_textbox(textbox, grid_entries)).pack(side=tk.LEFT, padx=5, pady=3)
     tk.Button(right_frame, text="Update Text", command=lambda: update_textbox(grid_entries, textbox)).pack(side=tk.LEFT, padx=5, pady=3)
     tk.Button(right_frame, text="Clear Text", command=lambda: clear_textbox(textbox)).pack(side=tk.LEFT, padx=5, pady=3)
-    tk.Button(right_frame, text="Save", command=lambda: save_textbox_content(textbox)).pack(side=tk.LEFT, padx=5, pady=3)
+    tk.Button(right_frame, text="Save", command=lambda: save_textbox_content(textbox, directory)).pack(side=tk.LEFT, padx=5, pady=3)
     
     team_b = tk.IntVar()
     pairingLead = tk.Checkbutton(right_frame, text="Our team first", variable=team_b)
