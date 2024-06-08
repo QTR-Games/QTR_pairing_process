@@ -3,7 +3,6 @@ from tkinter import ttk, messagebox, filedialog
 import os
 import csv
 from itertools import combinations
-
 class LazyTreeview(ttk.Treeview):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -50,7 +49,8 @@ def get_csv_files(directory):
 
 
 def select_directory_and_update_combobox(combobox):
-    directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+    # directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+    directory = '.'
     if directory:
         csv_files = [f[:-4] for f in os.listdir(directory) if f.endswith('.csv')]
         combobox['values'] = csv_files
@@ -110,7 +110,8 @@ def get_data_from_csv(combobox, textbox):
         if not file_name:
             raise ValueError("No file selected")
 
-        directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+        # directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+        directory = '.'
         file_path = os.path.join(directory, file_name + '.csv')
 
         if not os.path.exists(file_path):
@@ -126,7 +127,8 @@ def get_data_from_csv(combobox, textbox):
         messagebox.showerror("Error", str(e))
 
 def save_textbox_content(textbox):
-    directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+    # directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+    directory = '.'
     file_path = filedialog.asksaveasfilename(initialdir=directory, defaultextension=".csv",
                                              filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
     if not file_path:
@@ -138,33 +140,34 @@ def save_textbox_content(textbox):
         for line in content.split('\n'):
             writer.writerow(line.split(','))
 
-def generate_combinations(fNames, oNames, ratings, treeview, sort_alpha):
-    def generate_nested_combinations(fNames, oNames, parent=""):
-        if not fNames:
-            return
+def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,parent=""):
+    if not fNames:
+        return
 
-        first_fName = fNames[0]
-        remaining_fNames = fNames[1:]
-        first_oName = oNames[0]
-        remaining_oNames = oNames[1:]
-        combs = list(combinations(oNames, 2))
-        combs_sorted = sorted(combs, key=lambda x: (x[0], x[1]))
-        
-        
-        for comb in combs_sorted:
-            rating_0 = ratings[first_fName].get(comb[0], 'N/A')
-            rating_1 = ratings[first_fName].get(comb[1], 'N/A')
-            item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
-            if remaining_fNames:
-                for opponent in comb:
-                    child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {ratings[first_fName].get(opponent)}", values=ratings[first_fName].get(opponent))
-                    nested_oNames = [name for name in oNames if name != opponent]
-                    generate_nested_combinations(remaining_fNames, nested_oNames, child_id)
+    first_fName = fNames[0]
+    remaining_fNames = fNames[1:]
+    first_oName = oNames[0]
+    remaining_oNames = oNames[1:]
+    combs = list(combinations(oNames, 2))
+    combs_sorted = sorted(combs, key=lambda x: (x[0], x[1]))
+    
+    
+    for comb in combs_sorted:
+        rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
+        rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
+        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
+        if remaining_fNames:
+            for opponent in comb:
+                child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=fRatings[first_fName].get(opponent))
+                nested_oNames = [name for name in oNames if name != opponent]
+                generate_nested_combinations(nested_oNames, remaining_fNames, oRatings, fRatings, treeview, child_id)
+
+def generate_combinations(fNames, oNames, fRatings,oRatings, treeview, sort_alpha):
 
     treeview.delete(*treeview.get_children())
     fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
     oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
-    generate_nested_combinations(fNames_sorted, oNames_sorted)
+    generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview)
 
 def update_grid_from_textbox(textbox, grid_entries):
     # validate_grid_data(grid_entries)
@@ -259,8 +262,6 @@ def extract_ratings():
     return ratings
 
 
-
-
 def create_ui():
     global grid_entries, grid_widgets, print_ratings
     print_ratings = True
@@ -335,11 +336,13 @@ def create_ui():
     def on_generate_combinations():
         fNames = [grid_entries[i][0].get() for i in range(1, 6)]
         oNames = [grid_entries[0][i].get() for i in range(1, 6)]
-        ratings = {fNames[i]: {oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
+        fRatings = {fNames[i]: {oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
+        oRatings = {oNames[i]: {fNames[j]: grid_entries[j+1][i+1].get() for j in range(5)} for i in range(5)}
+
         if print_ratings:
-            print(ratings)
+            print(fRatings)
         validate_grid_data(grid_entries)
-        generate_combinations(fNames, oNames, ratings, treeview, sort_alpha=sort_alpha.get())
+        generate_combinations(fNames, oNames, fRatings, oRatings, treeview, sort_alpha=sort_alpha.get())
 
     tk.Button(bottom_frame, text="Generate Combinations", command=on_generate_combinations).pack(pady=10)
 
