@@ -9,13 +9,24 @@ class LazyTreeview(ttk.Treeview):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.bind('<<TreeviewOpen>>', self.on_open)
+        self.bind('<<TreeviewSelect>>', self.on_select)
+        self.bind('<<TreeviewClose>>', self.on_close)
 
     def on_open(self, event):
         item = self.focus()
-        # print(item)
+        print(f"Opened {item}")
         if not self.get_children(item):
             self.populate_tree(item)
 
+    def on_select(self, event):
+        item = self.focus()
+        print(f"Selected {item}")
+                
+    def on_close(self, event):
+        item = self.focus()
+        print(f"Closed {item}")
+        
+    
     def populate_tree(self, parent=''):
         for i in range(5):
             node_id = self.insert(parent, 'end', text=f"Node {parent}-{i}")
@@ -25,7 +36,42 @@ class LazyTreeview(ttk.Treeview):
     def show_info(self):
         item = self.focus()
         messagebox.showerror("NODE INFO", item)
+        print(self.selection()[0])
         
+    def get_item(self):
+        item = self.selection()[0]
+        return item
+    
+    def get_item_details(self):
+        item = self.selection()[0]
+        # Get and display the text of the selected item.
+        text = self.item(item, option="text")
+        value = self.item(item, option="value")
+        details = {text,value[0]}
+        print(details)
+        return details
+        
+    def get_selected_value(self):
+        item = self.selection()[0]
+        # Get and display the text of the selected item.
+        value = self.item(item, option="value")
+        print(value[0])
+        return value
+        
+    def item_details(self):
+        item = self.selection()[0]
+        print(f"item id = {item}")
+        details = {item}
+        print(set(item))
+        
+    def show_selection(self):
+        item = self.selection()[0]
+        # Get and display the text of the selected item.
+        text = self.item(item, option="text")
+        messagebox.showinfo(message=text, title="Selection")
+        messagebox.showinfo(message=self.set(item), title="details")
+        
+
 class ToolTip:
     def __init__(self, widget, text):
         self.widget = widget
@@ -152,11 +198,12 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,pa
         recommend = f"{comb[1]} @ {rating_1}"
         if rating_0 > rating_1:
             recommend = f"{comb[0]} @ {rating_0}"
-        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=(recommend))
+        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=(f"{recommend}"))
         
         if remaining_fNames:
             for opponent in comb:
-                child_id = treeview.insert(item_id, 'end', text=f"CHILD OF {item_id} -- {opponent} rating {fRatings[first_fName].get(opponent)}", values=fRatings[first_fName].get(opponent))
+                child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=fRatings[first_fName].get(opponent))
+                
                 nested_oNames = [name for name in oNames if name != opponent]
                 
                 # fNode = treeview.insert(child_id,'end',text=f"name is {name}",values=child_id)
@@ -265,8 +312,9 @@ def extract_ratings():
 def cycle_list(lst):
     return lst[1:] + lst[:1]
 
+
 def create_ui():
-    global grid_entries, grid_widgets, print_ratings, color_map, directory, tree_top
+    global grid_entries, grid_widgets, print_ratings, color_map, directory
     print_ratings = True
     color_map = {
         '1': 'orangered',
@@ -332,7 +380,7 @@ def create_ui():
     pairingLead.select()
     
     # Treeview (bottom side)
-    treeview = LazyTreeview(bottom_frame, columns=("Pairing"))
+    treeview = LazyTreeview(bottom_frame, columns=("Rating"))
     # treeview = ttk.Treeview(bottom_frame, columns=("Rating"))
     # treeview.heading("#0", text="Pairing")
     # treeview.heading("Rating", text="Rating & Node_Id")
@@ -364,8 +412,12 @@ def create_ui():
 
     generateButton = tk.Button(bottom_frame, text="Generate Combinations", command=on_generate_combinations)
     generateButton.pack(pady=10)
-    button = tk.Button(text="Show Info", command=treeview.show_info)
-    button.pack()
+    show_info_button = tk.Button(text="Show Info", command=treeview.item_details)
+    show_info_button.pack()
+    show_selection_button = tk.Button(text="Show Selection", command=treeview.show_selection)
+    show_selection_button.pack(side=tk.LEFT, padx=5, pady=3)
+    get_node_data = tk.Button(text="Get Item Details", command=treeview.get_selected_value)
+    get_node_data.pack(side=tk.LEFT, padx=5, pady=3)
     
 
     create_tooltip(combobox, "Select a CSV file to import")
