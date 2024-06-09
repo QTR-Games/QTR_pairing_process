@@ -173,18 +173,36 @@ def save_textbox_content(textbox, directory):
         for line in content.split('\n'):
             writer.writerow(line.split(','))
 
+def generate_trees(fNames, oNames, fRatings,oRatings, treeview):
+    treeview.delete(*treeview.get_children())
+    tree_names = fNames
+    for name in fNames:
+        generate_combinations(tree_names, oNames, fRatings,oRatings, treeview)
+        tree_names[:] = cycle_list(fNames)
+        # generate_combinations(tree_names, oNames, fRatings,oRatings, treeview)
+        # tree_names[:] = cycle_list(tree_names)
+        # generate_combinations(tree_names, oNames, fRatings,oRatings, treeview)
+        # tree_names[:] = cycle_list(tree_names)
+        # generate_combinations(tree_names, oNames, fRatings,oRatings, treeview)
+        # tree_names[:] = cycle_list(tree_names)
+        # generate_combinations(tree_names, oNames, fRatings,oRatings, treeview)
+    
+
 def generate_combinations(fNames, oNames, fRatings,oRatings, treeview):
 
-    treeview.delete(*treeview.get_children())
-    tree_top = treeview.insert("", 'end', text=f"Pairings")
-    for name in fNames:
-        generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,tree_top)
-        fNames[:] = cycle_list(fNames)
+    # treeview.delete(*treeview.get_children())
+    # tree_top = treeview.insert("", 'end', text=f"Pairings")
+    # for name in fNames:
+        # breakpoint()
+    generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,"")
+    # fNames[:] = cycle_list(fNames)
+    # oNames[:] = cycle_list(oNames)
 
 def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,parent):
     if not fNames:
         return
-
+    
+    current_value = 0
     first_fName = fNames[0]
     remaining_fNames = fNames[1:]
     first_oName = oNames[0]
@@ -193,24 +211,29 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,pa
     combs_sorted = sorted(combs, key=lambda x: (x[0], x[1]))
     
     for comb in combs_sorted:
+        
         rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
         rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
-        recommend = f"{comb[1]} @ {rating_1}"
+        recommend = comb[1]+"@"+rating_1
         if rating_0 > rating_1:
-            recommend = f"{comb[0]} @ {rating_0}"
-        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=(f"{recommend}"))
+            recommend = comb[0]+"@"+rating_0
+        # item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=(f"{recommend}"))
+        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
         
         if remaining_fNames:
+            
             for opponent in comb:
-                child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=fRatings[first_fName].get(opponent))
+                current_value = current_value+int(fRatings[first_fName].get(opponent))
+                child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=current_value)
                 
+                # print(current_value)
                 nested_oNames = [name for name in oNames if name != opponent]
-                
-                # fNode = treeview.insert(child_id,'end',text=f"name is {name}",values=child_id)
+                # nested_fNames = [name for name in fNames if name != first_fName]
                 generate_nested_combinations(nested_oNames, remaining_fNames, oRatings, fRatings, treeview, child_id)
     
 def sort_names(fNames, oNames, check_alpha):
     if check_alpha.get():
+        print("Sorting...")
         fNames_sorted = sorted(fNames, key=lambda x: x)
         oNames_sorted = sorted(oNames, key=lambda x: x)
     else:
@@ -403,12 +426,14 @@ def create_ui():
         if print_ratings:
             print(f"fRatings: {fRatings}\n")
             print(f"oRatings: {oRatings}\n")
+            print(f"fNames: {fNames}; sorted fNames: {sorted_fNames}")
+            print(f"oNames: {oNames}; sorted oNames: {sorted_oNames}")
         validate_grid_data(grid_entries)
         # this uses the "OUR TEAM FIRST" checkbox to drive which team starts the pairing process.
         if team_b.get():
-            generate_combinations(sorted_fNames, sorted_oNames, fRatings, oRatings, treeview)
+            generate_trees(sorted_fNames, sorted_oNames, fRatings, oRatings, treeview)
         else:
-            generate_combinations(sorted_oNames, sorted_fNames, oRatings, fRatings, treeview)
+            generate_trees(sorted_oNames, sorted_fNames, oRatings, fRatings, treeview)
 
     generateButton = tk.Button(bottom_frame, text="Generate Combinations", command=on_generate_combinations)
     generateButton.pack(pady=10)
@@ -416,7 +441,7 @@ def create_ui():
     show_info_button.pack()
     show_selection_button = tk.Button(text="Show Selection", command=treeview.show_selection)
     show_selection_button.pack(side=tk.LEFT, padx=5, pady=3)
-    get_node_data = tk.Button(text="Get Item Details", command=treeview.get_selected_value)
+    get_node_data = tk.Button(text="Get Rating", command=treeview.get_selected_value)
     get_node_data.pack(side=tk.LEFT, padx=5, pady=3)
     
 
