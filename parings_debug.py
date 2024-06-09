@@ -4,6 +4,7 @@ import os
 import csv
 import ctypes
 from itertools import combinations
+
 class LazyTreeview(ttk.Treeview):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -11,14 +12,20 @@ class LazyTreeview(ttk.Treeview):
 
     def on_open(self, event):
         item = self.focus()
+        # print(item)
         if not self.get_children(item):
             self.populate_tree(item)
 
     def populate_tree(self, parent=''):
         for i in range(5):
             node_id = self.insert(parent, 'end', text=f"Node {parent}-{i}")
+            # print(node_id)
             self.insert(node_id, 'end')
-
+            
+    def show_info(self):
+        item = self.focus()
+        messagebox.showerror("NODE INFO", item)
+        
 class ToolTip:
     def __init__(self, widget, text):
         self.widget = widget
@@ -50,8 +57,6 @@ def get_csv_files(directory):
 
 
 def select_directory_and_update_combobox(combobox, directory):
-    # directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
-    # directory = '.'
     if directory:
         csv_files = [f[:-4] for f in os.listdir(directory) if f.endswith('.csv')]
         combobox['values'] = csv_files
@@ -144,12 +149,17 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,pa
     for comb in combs_sorted:
         rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
         rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
-        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
+        recommend = f"{comb[1]} @ {rating_1}"
+        if rating_0 > rating_1:
+            recommend = f"{comb[0]} @ {rating_0}"
+        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=(recommend))
         
         if remaining_fNames:
             for opponent in comb:
-                child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=fRatings[first_fName].get(opponent))
+                child_id = treeview.insert(item_id, 'end', text=f"CHILD OF {item_id} -- {opponent} rating {fRatings[first_fName].get(opponent)}", values=fRatings[first_fName].get(opponent))
                 nested_oNames = [name for name in oNames if name != opponent]
+                
+                # fNode = treeview.insert(child_id,'end',text=f"name is {name}",values=child_id)
                 generate_nested_combinations(nested_oNames, remaining_fNames, oRatings, fRatings, treeview, child_id)
     
 def sort_names(fNames, oNames, check_alpha):
@@ -256,7 +266,7 @@ def cycle_list(lst):
     return lst[1:] + lst[:1]
 
 def create_ui():
-    global grid_entries, grid_widgets, print_ratings, color_map, directory
+    global grid_entries, grid_widgets, print_ratings, color_map, directory, tree_top
     print_ratings = True
     color_map = {
         '1': 'orangered',
@@ -322,13 +332,18 @@ def create_ui():
     pairingLead.select()
     
     # Treeview (bottom side)
-    treeview = LazyTreeview(bottom_frame)
+    treeview = LazyTreeview(bottom_frame, columns=("Pairing"))
+    # treeview = ttk.Treeview(bottom_frame, columns=("Rating"))
+    # treeview.heading("#0", text="Pairing")
+    # treeview.heading("Rating", text="Rating & Node_Id")
     treeview.pack(expand=1, fill='both')
+    
+    
     
     sort_alpha = tk.IntVar()
     alphaBox = tk.Checkbutton(bottom_frame, text="Sort Pairings Alphabetically", variable=sort_alpha)
     alphaBox.pack(pady=5)
-    alphaBox.select()
+    # alphaBox.select()
     
     def on_generate_combinations():
         fNames = [grid_entries[i][0].get() for i in range(1, 6)]
@@ -338,7 +353,8 @@ def create_ui():
         sorted_fNames, sorted_oNames = sort_names(fNames, oNames, sort_alpha)
 
         if print_ratings:
-            print(fRatings)
+            print(f"fRatings: {fRatings}\n")
+            print(f"oRatings: {oRatings}\n")
         validate_grid_data(grid_entries)
         # this uses the "OUR TEAM FIRST" checkbox to drive which team starts the pairing process.
         if team_b.get():
@@ -348,6 +364,9 @@ def create_ui():
 
     generateButton = tk.Button(bottom_frame, text="Generate Combinations", command=on_generate_combinations)
     generateButton.pack(pady=10)
+    button = tk.Button(text="Show Info", command=treeview.show_info)
+    button.pack()
+    
 
     create_tooltip(combobox, "Select a CSV file to import")
     create_tooltip(textbox, "Enter CSV data here")
