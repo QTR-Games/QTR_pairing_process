@@ -180,13 +180,13 @@ def generate_combinations(fNames, oNames, fRatings, oRatings, treeview, sort_alp
     fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
     oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
     for name in fNames_sorted:
-        team_node = treeview.insert("",'end',text=name)
+        team_node = treeview.insert("",'end',text=name, value=name)
         generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview, team_node)
     
     # generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview)
     # fNames[:] = cycle_list(fNames)
     # oNames[:] = cycle_list(oNames)
-
+    
 def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,parent):
     if not fNames:
         return
@@ -320,7 +320,7 @@ def cycle_list(lst):
 
 def create_ui():
     global grid_entries, grid_widgets, print_ratings, color_map, directory
-    print_ratings = True
+    print_ratings = False
     color_map = {
         '1': 'orangered',
         '2': 'orange',
@@ -333,6 +333,12 @@ def create_ui():
     root = tk.Tk()
     root.geometry('+0+0')  # Set the window position to top-left corner
     root.title('Parings Debug')
+    
+    # Bind the Escape key to close the application
+    root.bind('<Escape>', lambda event: root.quit())
+    
+    # Bind the Enter key to trigger generate_combinations
+    root.bind('<Return>', lambda event: on_generate_combinations())
 
     # Define frames for layout
     top_frame = tk.Frame(root)
@@ -396,7 +402,7 @@ def create_ui():
     sort_alpha = tk.IntVar()
     alphaBox = tk.Checkbutton(bottom_frame, text="Sort Pairings Alphabetically", variable=sort_alpha)
     alphaBox.pack(pady=5)
-    # alphaBox.select()
+    alphaBox.select()
     
     def on_generate_combinations():
         fNames = [grid_entries[i][0].get() for i in range(1, 6)]
