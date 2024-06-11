@@ -4,6 +4,7 @@ import os
 import csv
 import ctypes
 from itertools import combinations
+# import pandas as pd
 
 class LazyTreeview(ttk.Treeview):
     def __init__(self, *args, **kwargs):
@@ -174,20 +175,28 @@ def save_textbox_content(textbox, directory):
         for line in content.split('\n'):
             writer.writerow(line.split(','))
 
+def prep_names():
+    fNames = [grid_entries[i][0].get() for i in range(1, 6)]
+    oNames = [grid_entries[0][i].get() for i in range(1, 6)]
+    fRatings = {fNames[i]: {oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
+    oRatings = {oNames[i]: {fNames[j]: grid_entries[j+1][i+1].get() for j in range(5)} for i in range(5)}
+    # sorted_fNames, sorted_oNames = sort_names(fNames, oNames, sort_alpha=sort_alpha.get())
+    return fNames, oNames, fRatings, oRatings
+
 def generate_combinations(fNames, oNames, fRatings, oRatings, treeview, sort_alpha):
     treeview.delete(*treeview.get_children())
-    # tree_top = treeview.insert("", 'end', text=f"Pairings")
+    tree_top = treeview.insert("", 'end', text=f"Pairings")
     fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
     oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
     for name in fNames_sorted:
-        team_node = treeview.insert("",'end',text=name, value=name)
-        generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview, team_node)
+        # team_node = treeview.insert("",'end',text=name, value=name)
+        # generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview, team_node)
+        # fNames[:] = cycle_list(fNames)
+        # oNames[:] = cycle_list(oNames)
+        generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview, tree_top,sort_alpha)
+        
     
-    # generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview)
-    # fNames[:] = cycle_list(fNames)
-    # oNames[:] = cycle_list(oNames)
-    
-def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,parent):
+def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,parent,sort_alpha):
     if not fNames:
         return
     
@@ -196,23 +205,29 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,pa
     first_oName = oNames[0]
     remaining_oNames = oNames[1:]
     combs = list(combinations(oNames, 2))
-    combs_sorted = sorted(combs, key=lambda x: (x[0], x[1]))
+    combs_sorted = sorted(combs, key=lambda x: (x[0], x[1])) if sort_alpha else combs
     
     for comb in combs_sorted:
         rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
         rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
         # item_id will print the information about the two possible matchup choices you have at this level.
-        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=remaining_fNames)
+        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=remaining_fNames, tags=maximum(rating_0,rating_1))
         
         if remaining_fNames:
             for opponent in comb:
                 # child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=fRatings[first_fName].get(opponent))
                 nested_oNames = [name for name in oNames if name != opponent]
                 nested_fNames = [name for name in fNames if name != first_fName]
-                child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=opponent)
+                child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=opponent, tags=fRatings[first_fName].get(opponent))
                 
-                generate_nested_combinations(nested_oNames, remaining_fNames, oRatings, fRatings, treeview, child_id)
+                generate_nested_combinations(nested_oNames, remaining_fNames, oRatings, fRatings, treeview, child_id,sort_alpha)
     
+def maximum(a, b):
+    if a >= b:
+        return a
+    else:
+        return b
+
 def sort_names(fNames, oNames, check_alpha):
     if check_alpha.get():
         print("Sorting...")
@@ -392,11 +407,14 @@ def create_ui():
     
     # Treeview (bottom side)
     treeview = LazyTreeview(bottom_frame, columns=("Rating"))
-    # treeview = ttk.Treeview(bottom_frame, columns=("Rating"))
-    # treeview.heading("#0", text="Pairing")
-    # treeview.heading("Rating", text="Rating & Node_Id")
+    treeview.heading("#0", text="Pairing")
+    treeview.heading("Rating", text="Rating")
+    treeview.tag_configure('1', background="orangered")
+    treeview.tag_configure('2', background="orange")
+    treeview.tag_configure('3', background="yellow")
+    treeview.tag_configure('4', background="yellowgreen")
+    treeview.tag_configure('5', background="deepskyblue")
     treeview.pack(expand=1, fill='both')
-    
     
     
     sort_alpha = tk.IntVar()
@@ -405,11 +423,7 @@ def create_ui():
     alphaBox.select()
     
     def on_generate_combinations():
-        fNames = [grid_entries[i][0].get() for i in range(1, 6)]
-        oNames = [grid_entries[0][i].get() for i in range(1, 6)]
-        fRatings = {fNames[i]: {oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
-        oRatings = {oNames[i]: {fNames[j]: grid_entries[j+1][i+1].get() for j in range(5)} for i in range(5)}
-        # sorted_fNames, sorted_oNames = sort_names(fNames, oNames, sort_alpha)
+        fNames, oNames, fRatings, oRatings = prep_names()
 
         if print_ratings:
             print(f"fRatings: {fRatings}\n")
@@ -429,7 +443,6 @@ def create_ui():
     show_selection_button.pack(side=tk.LEFT, padx=5, pady=3)
     get_node_data = tk.Button(text="Get Rating", command=treeview.get_selected_value)
     get_node_data.pack(side=tk.LEFT, padx=5, pady=3)
-    
 
     create_tooltip(combobox, "Select a CSV file to import")
     create_tooltip(textbox, "Enter CSV data here")
