@@ -2,77 +2,118 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import os
 import csv
-import ctypes
 from itertools import combinations
-# import pandas as pd
 
-class LazyTreeview(ttk.Treeview):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.bind('<<TreeviewOpen>>', self.on_open)
-        self.bind('<<TreeviewSelect>>', self.on_select)
-        self.bind('<<TreeviewClose>>', self.on_close)
+class LazyTreeview(ttk.Frame):
+    def __init__(self, master, **kwargs):
+        super().__init__(master)
+        
+        self.tree = ttk.Treeview(self, **kwargs)
+        self.tree.grid(row=0, column=0, sticky='nsew')
+        
+        self.vsb = ttk.Scrollbar(self, orient='vertical', command=self.tree.yview)
+        self.hsb = ttk.Scrollbar(self, orient='horizontal', command=self.tree.xview)
+        
+        self.tree.configure(yscrollcommand=self._on_yscroll, xscrollcommand=self._on_xscroll)
+        
+        self.vsb_visible = False
+        self.hsb_visible = False
+        
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        
+        self.tree.bind('<Configure>', self._update_scrollbars)
+
+        self.tree.bind('<<TreeviewOpen>>', self.on_open)
+        self.tree.bind('<<TreeviewSelect>>', self.on_select)
+        self.tree.bind('<<TreeviewClose>>', self.on_close)
+
+    def _on_yscroll(self, *args):
+        self.vsb.set(*args)
+        self._toggle_scrollbar(self.vsb, 'y', *args)
+
+    def _on_xscroll(self, *args):
+        self.hsb.set(*args)
+        self._toggle_scrollbar(self.hsb, 'x', *args)
+
+    def _toggle_scrollbar(self, scrollbar, orient, *args):
+        if float(args[1]) - float(args[0]) < 1.0:
+            if orient == 'y' and not self.vsb_visible:
+                self.vsb.grid(row=0, column=1, sticky='ns')
+                self.vsb_visible = True
+            elif orient == 'x' and not self.hsb_visible:
+                self.hsb.grid(row=1, column=0, sticky='ew')
+                self.hsb_visible = True
+        else:
+            if orient == 'y' and self.vsb_visible:
+                self.vsb.grid_remove()
+                self.vsb_visible = False
+            elif orient == 'x' and self.hsb_visible:
+                self.hsb.grid_remove()
+                self.hsb_visible = False
+
+    def _update_scrollbars(self, event):
+        self.tree.update_idletasks()
+        self._toggle_scrollbar(self.vsb, 'y', *self.tree.yview())
+        self._toggle_scrollbar(self.hsb, 'x', *self.tree.xview())
 
     def on_open(self, event):
-        item = self.focus()
-        print(f"Opened {item}")
-        if not self.get_children(item):
+        item = self.tree.focus()
+        if print_tree:
+            print(f"Opened {item}")
+        if not self.tree.get_children(item):
             self.populate_tree(item)
 
     def on_select(self, event):
-        item = self.focus()
-        print(f"Selected {item}")
+        item = self.tree.focus()
+        if print_tree:
+            print(f"Selected {item}")
                 
     def on_close(self, event):
-        item = self.focus()
-        print(f"Closed {item}")
+        item = self.tree.focus()
+        if print_tree:
+            print(f"Closed {item}")
         
-    
     def populate_tree(self, parent=''):
         for i in range(6):
-            node_id = self.insert(parent, 'end', text=f"Node {parent}-{i}")
-            # print(node_id)
-            self.insert(node_id, 'end')
+            node_id = self.tree.insert(parent, 'end', text=f"Node {parent}-{i}")
+            self.tree.insert(node_id, 'end')
             
     def show_info(self):
-        item = self.focus()
+        item = self.tree.focus()
         messagebox.showerror("NODE INFO", item)
-        print(self.selection()[0])
+        print(self.tree.selection()[0])
         
     def get_item(self):
-        item = self.selection()[0]
+        item = self.tree.selection()[0]
         return item
     
     def get_item_details(self):
-        item = self.selection()[0]
-        # Get and display the text of the selected item.
-        text = self.item(item, option="text")
-        value = self.item(item, option="value")
-        details = {text,value[0]}
+        item = self.tree.selection()[0]
+        text = self.tree.item(item, option="text")
+        value = self.tree.item(item, option="value")
+        details = {text, value[0]}
         print(details)
         return details
         
     def get_selected_value(self):
-        item = self.selection()[0]
-        # Get and display the text of the selected item.
-        value = self.item(item, option="value")
+        item = self.tree.selection()[0]
+        value = self.tree.item(item, option="value")
         print(value[0])
         return value
         
     def item_details(self):
-        item = self.selection()[0]
+        item = self.tree.selection()[0]
         print(f"item id = {item}")
         details = {item}
         print(set(item))
         
     def show_selection(self):
-        item = self.selection()[0]
-        # Get and display the text of the selected item.
-        text = self.item(item, option="text")
-        details = self.item(item, option="value")
+        item = self.tree.selection()[0]
+        text = self.tree.item(item, option="text")
+        details = self.tree.item(item, option="value")
         messagebox.showinfo(message=text, title="Selection")
         messagebox.showinfo(message=details, title="details")
-        
 
 class ToolTip:
     def __init__(self, widget, text):
@@ -103,7 +144,6 @@ def get_csv_files(directory):
     print(f"CSV files found in {directory}: {files}")
     return files
 
-
 def select_directory_and_update_combobox(combobox, directory):
     if directory:
         csv_files = [f[:-4] for f in os.listdir(directory) if f.endswith('.csv')]
@@ -128,7 +168,6 @@ def update_textbox(grid_entries, textbox):
                 textbox.insert(tk.END, ', '.join(row_values) + '\n')
     textbox.config(state=tk.NORMAL)
 
-
 def update_combobox_colors(grid_entries, color_map):
     for row in range(1, 6):
         for col in range(1, 6):
@@ -141,7 +180,7 @@ def update_color_on_change(var, index, mode, row, col, color_map):
     if value in color_map:
         grid_widgets[row][col].config(bg=color_map[value])
     else:
-        grid_widgets[row][col].config(bg='white')  # Default to white if no matching value
+        grid_widgets[row][col].config(bg='white')
 
 def get_data_from_csv(combobox, textbox, directory):
     try:
@@ -180,24 +219,24 @@ def prep_names():
     oNames = [grid_entries[0][i].get() for i in range(1, 6)]
     fRatings = {fNames[i]: {oNames[j]: grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
     oRatings = {oNames[i]: {fNames[j]: grid_entries[j+1][i+1].get() for j in range(5)} for i in range(5)}
-    # sorted_fNames, sorted_oNames = sort_names(fNames, oNames, sort_alpha=sort_alpha.get())
     return fNames, oNames, fRatings, oRatings
 
 def generate_combinations(fNames, oNames, fRatings, oRatings, treeview, sort_alpha):
-    treeview.delete(*treeview.get_children())
-    tree_top = treeview.insert("", 'end', text=f"Pairings")
+    treeview.tree.delete(*treeview.tree.get_children())
+    tree_top = treeview.tree.insert("", 'end', text=f"Pairings")
     fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
     oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
-    for name in fNames_sorted:
-        # team_node = treeview.insert("",'end',text=name, value=name)
-        # generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview, team_node)
-        # fNames[:] = cycle_list(fNames)
-        # oNames[:] = cycle_list(oNames)
-        generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview, tree_top,sort_alpha)
-        
     
-def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,parent,sort_alpha):
+    for name in fNames_sorted:
+        print(f"Top Level: {name} in {fNames_sorted}")
+        generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview.tree, tree_top, sort_alpha)
+        # fNames_sorted[:] = cycle_list(fNames_sorted)
+        # oNames_sorted[:] = cycle_list(oNames_sorted)
+        
+        
+def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview, parent, sort_alpha):
     if not fNames:
+        # print("NOT FNAMES")
         return
     
     first_fName = fNames[0]
@@ -206,27 +245,44 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview,pa
     remaining_oNames = oNames[1:]
     combs = list(combinations(oNames, 2))
     combs_sorted = sorted(combs, key=lambda x: (x[0], x[1])) if sort_alpha else combs
-    
+    checkpoint_1 = 0
     for comb in combs_sorted:
         rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
         rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
-        # item_id will print the information about the two possible matchup choices you have at this level.
-        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=remaining_fNames, tags=maximum(rating_0,rating_1))
+        print(f"generate_nested_combinations checkpoint_1 = {checkpoint_1} - {comb}")
+        if checkpoint_1 == 1:
+            print(f"\tbreaking out of loop - for comb in combs_sorted:\n\tNext Node would be: {first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
+            break
+        checkpoint_1 += 1
+        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=remaining_fNames, tags=maximum(rating_0, rating_1))
+        
+        # for line in item_id.tree.get_children():
+            # for value in self.tree.item(line)['values']:
+                # print(value)
+
+
+        # print(f"Adding Node: {first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
         
         if remaining_fNames:
+            # print(f"Remaining Names: {remaining_fNames}")
+            checkpoint_2 = 0
             for opponent in comb:
-                # child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=fRatings[first_fName].get(opponent))
+                
                 nested_oNames = [name for name in oNames if name != opponent]
                 nested_fNames = [name for name in fNames if name != first_fName]
+                if checkpoint_2 == 2:
+                    print(f"\tbreaking out of loop - for opponent in comb:\n\tNext Node would be: {opponent} rating {fRatings[first_fName].get(opponent)}")
+                    break
+                checkpoint_2 += 1
+                print(f"this child_id: {opponent} rating {fRatings[first_fName].get(opponent)}")
                 child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=opponent, tags=fRatings[first_fName].get(opponent))
+
+                # print(f"Adding Child Node: {opponent} rating {fRatings[first_fName].get(opponent)} under Parent {item_id}")
                 
-                generate_nested_combinations(nested_oNames, remaining_fNames, oRatings, fRatings, treeview, child_id,sort_alpha)
+                generate_nested_combinations(nested_oNames, remaining_fNames, oRatings, fRatings, treeview, child_id, sort_alpha)
     
 def maximum(a, b):
-    if a >= b:
-        return a
-    else:
-        return b
+    return a if a >= b else b
 
 def sort_names(fNames, oNames, check_alpha):
     if check_alpha.get():
@@ -263,7 +319,7 @@ def validate_textbox_data(textbox):
         messagebox.showerror("Error", "Invalid number of rows in textbox. Expected 6 rows.")
         return False
     for row in rows:
-        if len(row.split(',')) != 6:
+        if len(row.split(',') != 6):
             messagebox.showerror("Error", "Invalid number of columns in textbox. Expected 6 columns per row.")
             return False
     return True
@@ -291,7 +347,6 @@ def load_grid_state(grid_entries):
                 if r < 6 and c < 6:
                     grid_entries[r][c].set(value)
 
-# Adding tooltips (using a simple function)
 def create_tooltip(widget, text):
     tooltip = tk.Toplevel(widget)
     tooltip.wm_overrideredirect(True)
@@ -326,16 +381,13 @@ def extract_ratings():
             opponent = grid_entries[0][col].get()
             rating = int(grid_entries[row][col].get())
             ratings[player][opponent] = rating
-    # print(f"{ratings}")
     return ratings
 
 def cycle_list(lst):
     return lst[1:] + lst[:1]
 
-
 def create_ui():
-    global grid_entries, grid_widgets, print_ratings, color_map, directory
-    print_ratings = False
+    global grid_entries, grid_widgets, print_ratings, color_map, directory, print_tree
     color_map = {
         '1': 'orangered',
         '2': 'orange',
@@ -344,18 +396,16 @@ def create_ui():
         '5': 'deepskyblue'
     }
     directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+    print_ratings = False
+    print_tree = False
 
     root = tk.Tk()
-    root.geometry('+0+0')  # Set the window position to top-left corner
-    root.title('Parings Debug')
+    root.geometry('+0+0')
+    root.title('Pairings Debug')
     
-    # Bind the Escape key to close the application
     root.bind('<Escape>', lambda event: root.quit())
-    
-    # Bind the Enter key to trigger generate_combinations
     root.bind('<Return>', lambda event: on_generate_combinations())
 
-    # Define frames for layout
     top_frame = tk.Frame(root)
     top_frame.pack(side=tk.TOP, fill=tk.X)
 
@@ -368,7 +418,6 @@ def create_ui():
     bottom_frame = tk.Frame(root)
     bottom_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-    # Grid entries (left side)
     grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
     grid_widgets = [[None for _ in range(6)] for _ in range(6)]
     for r in range(6):
@@ -378,20 +427,15 @@ def create_ui():
             grid_widgets[r][c] = entry
             grid_entries[r][c].trace_add('write', lambda name, index, mode, var=grid_entries[r][c], row=r, col=c: update_color_on_change(var, index, mode, row, col, color_map))
 
-
-    # Combobox and buttons (left side)
     tk.Label(left_frame, text='Select File:').grid(row=8, column=0, padx=5, pady=5, sticky=tk.W)
     combobox = ttk.Combobox(left_frame, state='readonly', width=20)
     combobox.grid(row=8, column=1, padx=5, pady=5, sticky=tk.W)
     select_directory_and_update_combobox(combobox, directory)
     
-    # tk.Button(left_frame, text='UPDATE COLOR', command=lambda: update_combobox_colors(grid_entries,color_map)).grid(row=8, column=2, padx=5, pady=5, sticky=tk.W)
     tk.Button(left_frame, text="IMPORT CSV", command=lambda: get_data_from_csv(combobox, textbox, directory)).grid(row=8, column=3, padx=5, pady=5, sticky=tk.W)
-    # Add buttons to save and load the grid state:
     tk.Button(left_frame, text="Load Grid", command=lambda: load_grid_state(grid_entries)).grid(row=8, column=4, padx=5, pady=5, sticky=tk.W)
     tk.Button(left_frame, text="Save Grid", command=lambda: save_grid_state(grid_entries)).grid(row=8, column=5, padx=5, pady=5, sticky=tk.W)
     
-    # Textbox (right side)
     textbox = tk.Text(right_frame, width=60, height=7)
     textbox.pack(expand=1, fill='both')
 
@@ -405,31 +449,27 @@ def create_ui():
     pairingLead.pack(side=tk.BOTTOM, padx=5, pady=3)
     pairingLead.select()
     
-    # Treeview (bottom side)
     treeview = LazyTreeview(bottom_frame, columns=("Rating"))
-    treeview.heading("#0", text="Pairing")
-    treeview.heading("Rating", text="Rating")
-    treeview.tag_configure('1', background="orangered")
-    treeview.tag_configure('2', background="orange")
-    treeview.tag_configure('3', background="yellow")
-    treeview.tag_configure('4', background="yellowgreen")
-    treeview.tag_configure('5', background="deepskyblue")
+    treeview.tree.heading("#0", text="Pairing")
+    treeview.tree.heading("Rating", text="Rating")
+    treeview.tree.tag_configure('1', background="orangered")
+    treeview.tree.tag_configure('2', background="orange")
+    treeview.tree.tag_configure('3', background="yellow")
+    treeview.tree.tag_configure('4', background="yellowgreen")
+    treeview.tree.tag_configure('5', background="deepskyblue")
     treeview.pack(expand=1, fill='both')
-    
-    
+
     sort_alpha = tk.IntVar()
     alphaBox = tk.Checkbutton(bottom_frame, text="Sort Pairings Alphabetically", variable=sort_alpha)
     alphaBox.pack(pady=5)
     alphaBox.select()
-    
+
     def on_generate_combinations():
         fNames, oNames, fRatings, oRatings = prep_names()
-
         if print_ratings:
             print(f"fRatings: {fRatings}\n")
             print(f"oRatings: {oRatings}\n")
         validate_grid_data(grid_entries)
-        # this uses the "OUR TEAM FIRST" checkbox to drive which team starts the pairing process.
         if team_b.get():
             generate_combinations(fNames, oNames, fRatings, oRatings, treeview, sort_alpha=sort_alpha.get())
         else:
