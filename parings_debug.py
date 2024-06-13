@@ -83,6 +83,17 @@ class LazyTreeview(ttk.Frame):
         item = self.tree.focus()
         messagebox.showerror("NODE INFO", item)
         print(self.tree.selection()[0])
+
+        # Calculate and print the depth of the node
+        depth = self.get_depth(item)
+        print(f"Depth of the selected node: {depth}")
+        
+    def get_depth(self, item):
+        depth = 0
+        while self.tree.parent(item):
+            item = self.tree.parent(item)
+            depth += 1
+        return depth
         
     def get_item(self):
         item = self.tree.selection()[0]
@@ -112,8 +123,11 @@ class LazyTreeview(ttk.Frame):
         item = self.tree.selection()[0]
         text = self.tree.item(item, option="text")
         details = self.tree.item(item, option="value")
-        messagebox.showinfo(message=text, title="Selection")
-        messagebox.showinfo(message=details, title="details")
+        # Calculate and print the depth of the node
+        depth = self.get_depth(item)
+        print(f"text: {text}")
+        print(f"details: {details}")
+        print(f"Depth of Node: {depth}")
 
 class ToolTip:
     def __init__(self, widget, text):
@@ -222,21 +236,22 @@ def prep_names():
     return fNames, oNames, fRatings, oRatings
 
 def generate_combinations(fNames, oNames, fRatings, oRatings, treeview, sort_alpha):
-    treeview.tree.delete(*treeview.tree.get_children())
-    tree_top = treeview.tree.insert("", 'end', text=f"Pairings")
+    
+    #tree_top = treeview.tree.insert("", 'end', text=f"Pairings")
     fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
     oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
     
-    for name in fNames_sorted:
-        print(f"Top Level: {name} in {fNames_sorted}")
-        generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview.tree, tree_top, sort_alpha)
-        # fNames_sorted[:] = cycle_list(fNames_sorted)
+    # for name in fNames_sorted:
+    # print(f"Top Level: {name} in {fNames_sorted}")
+    generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview.tree, "", sort_alpha)
+    # fNames_sorted[:] = cycle_list(fNames_sorted)
+    # generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview.tree, "", sort_alpha)
         # oNames_sorted[:] = cycle_list(oNames_sorted)
         
         
 def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview, parent, sort_alpha):
     if not fNames:
-        # print("NOT FNAMES")
+        print("NOT FNAMES")
         return
     
     first_fName = fNames[0]
@@ -249,37 +264,45 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview, p
     for comb in combs_sorted:
         rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
         rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
-        print(f"generate_nested_combinations checkpoint_1 = {checkpoint_1} - {comb}")
-        if checkpoint_1 == 1:
-            print(f"\tbreaking out of loop - for comb in combs_sorted:\n\tNext Node would be: {first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
-            break
-        checkpoint_1 += 1
-        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=remaining_fNames, tags=maximum(rating_0, rating_1))
         
-        # for line in item_id.tree.get_children():
-            # for value in self.tree.item(line)['values']:
-                # print(value)
-
-
-        # print(f"Adding Node: {first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
+        """ if checkpoint_1 == 1:
+            print(f"\tbreaking out of loop - for comb in combs_sorted:\tNext Node would be: {first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
+            break """
+        checkpoint_1 += 1
+        # THIS ITEM_ID PRINTS "POTENTIAL PLAYER VS OPPONENT 1, RATING X OR OPPONENT 2 RATING Y"
+        # THIS WILL PRINT AT EACH LEVEL OF THE TREE FOLLOWING A "DECISION" NODE (A NODE WITH ONLY ONE NAME E.G. "+DAN RATING 4")
+        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=remaining_fNames, tags=maximum(rating_0, rating_1))
+        # print(f"item_id text: {first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
         
         if remaining_fNames:
-            # print(f"Remaining Names: {remaining_fNames}")
             checkpoint_2 = 0
+            temp_child_id_array = []
             for opponent in comb:
                 
                 nested_oNames = [name for name in oNames if name != opponent]
                 nested_fNames = [name for name in fNames if name != first_fName]
-                if checkpoint_2 == 2:
-                    print(f"\tbreaking out of loop - for opponent in comb:\n\tNext Node would be: {opponent} rating {fRatings[first_fName].get(opponent)}")
+                # print(f"\tbreaking out of loop - for opponent in comb:\n\tNext Node would be: {opponent} rating {fRatings[first_fName].get(opponent)}")
+                """ if checkpoint_2 == 2:
+                    print(f"breaking loop at opponent {opponent}")
                     break
-                checkpoint_2 += 1
+                checkpoint_2 += 1 """
                 print(f"this child_id: {opponent} rating {fRatings[first_fName].get(opponent)}")
+                # THIS LOOP PRINTS THE "DECISION NODE" - SINGLE NAME AND RATING THAT CHOOSES THE CURRENTLY PICKED PLAYER.
+                # THIS SHOULD ALWAYS PRINT TWICE SINCE YOU ARE EXPECTING THE ABOVE LINE PRESENT THE USER WITH A CHOICE BETWEEN TWO OUTCOMES.
                 child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=opponent, tags=fRatings[first_fName].get(opponent))
-
-                # print(f"Adding Child Node: {opponent} rating {fRatings[first_fName].get(opponent)} under Parent {item_id}")
-                
+                temp_child_id_array.append(child_id)
+                # THIS IS THE LINE THAT GOES BACK UP ONE LEVEL AND RE-PAIRS
                 generate_nested_combinations(nested_oNames, remaining_fNames, oRatings, fRatings, treeview, child_id, sort_alpha)
+            else:
+                i = 0
+                
+                for id in temp_child_id_array:
+                    # PRINT THE FINAL PAIRING NODE HERE???
+                    print(f"\t\tLEAF = {first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
+                    leaf_child_id = treeview.insert(id, i, text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=opponent, tags=fRatings[first_fName].get(opponent))
+                    i += i
+            
+        
     
 def maximum(a, b):
     return a if a >= b else b
@@ -465,19 +488,20 @@ def create_ui():
     alphaBox.select()
 
     def on_generate_combinations():
+        treeview.tree.delete(*treeview.tree.get_children())
         fNames, oNames, fRatings, oRatings = prep_names()
         if print_ratings:
             print(f"fRatings: {fRatings}\n")
             print(f"oRatings: {oRatings}\n")
         validate_grid_data(grid_entries)
         if team_b.get():
-            generate_combinations(fNames, oNames, fRatings, oRatings, treeview, sort_alpha=sort_alpha.get())
+            generate_combinations(fNames, oNames, fRatings, oRatings, treeview, sort_alpha=sort_alpha.get())    
         else:
             generate_combinations(oNames, fNames, oRatings, fRatings, treeview, sort_alpha=sort_alpha.get())
 
     generateButton = tk.Button(bottom_frame, text="Generate Combinations", command=on_generate_combinations)
     generateButton.pack(pady=10)
-    show_info_button = tk.Button(text="Show Info", command=treeview.item_details)
+    show_info_button = tk.Button(text="Show Info", command=treeview.show_info)
     show_info_button.pack()
     show_selection_button = tk.Button(text="Show Selection", command=treeview.show_selection)
     show_selection_button.pack(side=tk.LEFT, padx=5, pady=3)
