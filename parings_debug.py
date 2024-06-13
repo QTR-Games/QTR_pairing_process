@@ -228,9 +228,9 @@ def generate_combinations(fNames, oNames, fRatings, oRatings, treeview, sort_alp
     oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
     
     for name in fNames_sorted:
-        print(f"Top Level: {name} in {fNames_sorted}")
+        # print(f"Top Level: {name} in {fNames_sorted}")
         generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview.tree, tree_top, sort_alpha)
-        # fNames_sorted[:] = cycle_list(fNames_sorted)
+        fNames_sorted[:] = cycle_list(fNames_sorted)
         # oNames_sorted[:] = cycle_list(oNames_sorted)
         
         
@@ -249,11 +249,11 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview, p
     for comb in combs_sorted:
         rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
         rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
-        print(f"generate_nested_combinations checkpoint_1 = {checkpoint_1} - {comb}")
-        if checkpoint_1 == 1:
-            print(f"\tbreaking out of loop - for comb in combs_sorted:\n\tNext Node would be: {first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
-            break
-        checkpoint_1 += 1
+        # print(f"generate_nested_combinations checkpoint_1 = {checkpoint_1} - {comb}")
+        # if checkpoint_1 == 1:
+        #     print(f"\tbreaking out of loop - for comb in combs_sorted:\n\tNext Node would be: {first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
+        #     break
+        # checkpoint_1 += 1
         item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=remaining_fNames, tags=maximum(rating_0, rating_1))
         
         # for line in item_id.tree.get_children():
@@ -270,11 +270,11 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview, p
                 
                 nested_oNames = [name for name in oNames if name != opponent]
                 nested_fNames = [name for name in fNames if name != first_fName]
-                if checkpoint_2 == 2:
-                    print(f"\tbreaking out of loop - for opponent in comb:\n\tNext Node would be: {opponent} rating {fRatings[first_fName].get(opponent)}")
-                    break
-                checkpoint_2 += 1
-                print(f"this child_id: {opponent} rating {fRatings[first_fName].get(opponent)}")
+                # if checkpoint_2 == 2:
+                #     print(f"\tbreaking out of loop - for opponent in comb:\n\tNext Node would be: {opponent} rating {fRatings[first_fName].get(opponent)}")
+                #     break
+                # checkpoint_2 += 1
+                # print(f"this child_id: {opponent} rating {fRatings[first_fName].get(opponent)}")
                 child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=opponent, tags=fRatings[first_fName].get(opponent))
 
                 # print(f"Adding Child Node: {opponent} rating {fRatings[first_fName].get(opponent)} under Parent {item_id}")
