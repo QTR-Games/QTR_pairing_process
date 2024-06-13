@@ -4,6 +4,8 @@ import os
 import csv
 from itertools import combinations
 
+
+
 class LazyTreeview(ttk.Frame):
     def __init__(self, master, **kwargs):
         super().__init__(master)
@@ -59,19 +61,19 @@ class LazyTreeview(ttk.Frame):
 
     def on_open(self, event):
         item = self.tree.focus()
-        if print_tree:
+        if print_output:
             print(f"Opened {item}")
         if not self.tree.get_children(item):
             self.populate_tree(item)
 
     def on_select(self, event):
         item = self.tree.focus()
-        if print_tree:
+        if print_output:
             print(f"Selected {item}")
                 
     def on_close(self, event):
         item = self.tree.focus()
-        if print_tree:
+        if print_output:
             print(f"Closed {item}")
         
     def populate_tree(self, parent=''):
@@ -387,7 +389,8 @@ def cycle_list(lst):
     return lst[1:] + lst[:1]
 
 def create_ui():
-    global grid_entries, grid_widgets, print_ratings, color_map, directory, print_tree
+    
+    global grid_entries, grid_widgets, print_output, color_map, directory
     color_map = {
         '1': 'orangered',
         '2': 'orange',
@@ -396,13 +399,15 @@ def create_ui():
         '5': 'deepskyblue'
     }
     directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
-    print_ratings = False
-    print_tree = False
+    print_output = True
 
     root = tk.Tk()
     root.geometry('+0+0')
     root.title('Pairings Debug')
+    if print_output:
+        print(f"TKINTER VERSION: {tk.TkVersion}")
     
+
     root.bind('<Escape>', lambda event: root.quit())
     root.bind('<Return>', lambda event: on_generate_combinations())
 
@@ -466,7 +471,7 @@ def create_ui():
 
     def on_generate_combinations():
         fNames, oNames, fRatings, oRatings = prep_names()
-        if print_ratings:
+        if print_output:
             print(f"fRatings: {fRatings}\n")
             print(f"oRatings: {oRatings}\n")
         validate_grid_data(grid_entries)
