@@ -5,6 +5,7 @@ import csv
 from itertools import combinations, permutations
 
 # BETA COPY FROM pairings_debug.py WORKING AS OF 20240614
+# WRITTEN AND TESTED BY DANIEL P. RAVEN & MATT RUSSELL
 
 class LazyTreeview(ttk.Frame):
     def __init__(self, master, **kwargs):
