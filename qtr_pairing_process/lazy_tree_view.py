@@ -1,8 +1,9 @@
 from tkinter import ttk, messagebox
 
 
-class LazyTreeview(ttk.Frame):
-    def __init__(self, master, **kwargs):
+class LazyTreeView(ttk.Frame):
+    def __init__(self, print_output, master, **kwargs):
+        self.print_output = print_output
         super().__init__(master)
         
         self.tree = ttk.Treeview(self, **kwargs)
@@ -56,19 +57,19 @@ class LazyTreeview(ttk.Frame):
 
     def on_open(self, event):
         item = self.tree.focus()
-        if print_output:
+        if self.print_output:
             print(f"Opened {item}")
         if not self.tree.get_children(item):
             self.populate_tree(item)
 
     def on_select(self, event):
         item = self.tree.focus()
-        if print_output:
+        if self.print_output:
             print(f"Selected {item}")
                 
     def on_close(self, event):
         item = self.tree.focus()
-        if print_output:
+        if self.print_output:
             print(f"Closed {item}")
         
     def populate_tree(self, parent=''):
