@@ -16,20 +16,21 @@ add in the concepts for the 'penalty for pairing at 5" whatever that means.
 
 
 
-NEW REQUEST TO ADD SOME KIND OF METRIC TO NUDGE THE VALUE OF A MATCHUP BASED ON WHETHER OR NOT YOU ARE PICKING TABLES.
+• NEW REQUEST TO ADD SOME KIND OF METRIC TO NUDGE THE VALUE OF A MATCHUP BASED ON WHETHER OR NOT YOU ARE PICKING TABLES.
 
-BATTLEFIELD ADVANTAGE MODIFIER (BAM)
+• BATTLEFIELD ADVANTAGE MODIFIER (BAM)
 
-First idea is to allow a universal 'tolerance' number. This will allow a quick and dirty nudge on the fly to make the app easier to use on the day of an event.
+	First idea is to allow a universal 'tolerance' number. This will allow a quick and dirty nudge on the fly to make the app easier to use on the day of an event.
 
-To help support teams that plan more and have more depth, we could eventually expand the grid of input values to accept a 2nd and 3rd qualifier for each cell in the grid currently.
+	To help support teams that plan more and have more depth, we could eventually expand the grid of input values to accept a 2nd and 3rd qualifier for each cell in the grid currently.
 
-So for Dan Vs. Matt, if the matchup is normally a 3:
+	So for Dan Vs. Matt, if the matchup is normally a 3:
 
-My "Battlefield Advantage" is a 1;
-This means if I get to pick the table, my rating against matt would go up a whole letter grade because the tables are just that good for me.
-because I would go UP a whole letter grade (from a 3 to a 4) if I get to pick the table.
+	My "Battlefield Advantage" is a 1;
+	This means if I get to pick the table, my rating against matt would go up a whole letter grade because the tables are just that good for me.
+	because I would go UP a whole letter grade (from a 3 to a 4) if I get to pick the table.
 
-My Battlefield Disadvantage is a 0.5;
-If I am not able to pick the table, this only influences the matchup a little bit. I only go DOWN half a letter grade from a 3 to a 2.5
+	My Battlefield Disadvantage is a 0.5;
+	If I am not able to pick the table, this only influences the matchup a little bit. I only go DOWN half a letter grade from a 3 to a 2.5
 
+• ADD SUPPORT FOR CHANGING THE RATINGS AGAINST THE ENEMY TEAM BASED ON THE PRESENT SCENARIO
