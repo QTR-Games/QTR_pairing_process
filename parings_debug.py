@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import os
 import csv
-from itertools import combinations
+from itertools import combinations, permutations
 
 
 
@@ -230,22 +230,19 @@ def generate_combinations(fNames, oNames, fRatings, oRatings, treeview, sort_alp
     oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
     
     for name in fNames_sorted:
+        fnames_filtered = [x for x in fNames_sorted if x!=name]
         # print(f"Top Level: {name} in {fNames_sorted}")
-        generate_nested_combinations(fNames_sorted, oNames_sorted, fRatings, oRatings, treeview.tree, tree_top, sort_alpha)
+        generate_nested_combinations(name,fnames_filtered, oNames_sorted, fRatings, oRatings, treeview.tree, tree_top, sort_alpha)
         fNames_sorted[:] = cycle_list(fNames_sorted)
         # oNames_sorted[:] = cycle_list(oNames_sorted)
         
         
-def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview, parent, sort_alpha):
-    if not fNames:
-        # print("NOT FNAMES")
-        return
-    
-    first_fName = fNames[0]
-    remaining_fNames = fNames[1:]
+def generate_nested_combinations(first_fName, fNames, oNames, fRatings, oRatings, treeview, parent, sort_alpha):
+
     first_oName = oNames[0]
-    remaining_oNames = oNames[1:]
     combs = list(combinations(oNames, 2))
+    if oNames and not combs:
+        combs = list(combinations([first_oName,first_oName], 2))
     combs_sorted = sorted(combs, key=lambda x: (x[0], x[1])) if sort_alpha else combs
     checkpoint_1 = 0
     for comb in combs_sorted:
@@ -256,7 +253,7 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview, p
         #     print(f"\tbreaking out of loop - for comb in combs_sorted:\n\tNext Node would be: {first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
         #     break
         # checkpoint_1 += 1
-        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=remaining_fNames, tags=maximum(rating_0, rating_1))
+        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=fNames, tags=maximum(rating_0, rating_1))
         
         # for line in item_id.tree.get_children():
             # for value in self.tree.item(line)['values']:
@@ -265,12 +262,13 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview, p
 
         # print(f"Adding Node: {first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
         
-        if remaining_fNames:
+        if fNames:
             # print(f"Remaining Names: {remaining_fNames}")
             checkpoint_2 = 0
-            for opponent in comb:
+            opponent_perms = list(permutations(comb, 2))
+            for opponent, next_fName in opponent_perms:
                 
-                nested_oNames = [name for name in oNames if name != opponent]
+                nested_oNames = [name for name in oNames if name != opponent and name!=next_fName]
                 nested_fNames = [name for name in fNames if name != first_fName]
                 # if checkpoint_2 == 2:
                 #     print(f"\tbreaking out of loop - for opponent in comb:\n\tNext Node would be: {opponent} rating {fRatings[first_fName].get(opponent)}")
@@ -281,8 +279,8 @@ def generate_nested_combinations(fNames, oNames, fRatings, oRatings, treeview, p
 
                 # print(f"Adding Child Node: {opponent} rating {fRatings[first_fName].get(opponent)} under Parent {item_id}")
                 
-                generate_nested_combinations(nested_oNames, remaining_fNames, oRatings, fRatings, treeview, child_id, sort_alpha)
-    
+                generate_nested_combinations(next_fName, nested_oNames, fNames, oRatings, fRatings, treeview, child_id, sort_alpha)
+        
 def maximum(a, b):
     return a if a >= b else b
 
@@ -399,6 +397,7 @@ def create_ui():
         '5': 'deepskyblue'
     }
     directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+    # directory = '.'
     print_output = True
 
     root = tk.Tk()
