@@ -146,7 +146,7 @@ def get_csv_files(directory):
     print(f"CSV files found in {directory}: {files}")
     return files
 
-def select_directory_and_update_combobox(combobox, directory):
+def update_combobox(combobox, directory):
     if directory:
         csv_files = [f[:-4] for f in os.listdir(directory) if f.endswith('.csv')]
         combobox['values'] = csv_files
@@ -159,6 +159,17 @@ def clear_textbox(textbox):
     textbox.config(state=tk.NORMAL)
     textbox.delete(1.0, tk.END)
 
+def clear_grid(grid_entries):
+    try:
+        if not grid_entries:
+            raise ValueError("The Grid is not populated")
+        for row in range(0, 6):
+            for col in range(0, 6):
+                grid_entries[row][col].set("")
+        update_grid_colors(grid_entries, color_map)
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+
 def update_textbox(grid_entries, textbox):
     has_values = any(entry.get() for row in grid_entries for entry in row)
     textbox.config(state=tk.NORMAL)
@@ -170,7 +181,7 @@ def update_textbox(grid_entries, textbox):
                 textbox.insert(tk.END, ', '.join(row_values) + '\n')
     textbox.config(state=tk.NORMAL)
 
-def update_combobox_colors(grid_entries, color_map):
+def update_grid_colors(grid_entries, color_map):
     for row in range(1, 6):
         for col in range(1, 6):
             value = grid_entries[row][col].get()
@@ -201,20 +212,29 @@ def get_data_from_csv(combobox, textbox, directory):
 
         textbox.delete(1.0, tk.END)
         textbox.insert(tk.END, content)
+        update_grid_colors(grid_entries, color_map)
     except Exception as e:
         messagebox.showerror("Error", str(e))
 
 def save_textbox_content(textbox, directory):
-    file_path = filedialog.asksaveasfilename(initialdir=directory, defaultextension=".csv",
-                                             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-    if not file_path:
-        return
+    try:
+        file_path = filedialog.asksaveasfilename(initialdir=directory, defaultextension=".csv",
+                                                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+        if not file_path:
+            return
 
-    content = textbox.get(1.0, tk.END).strip()
-    with open(file_path, 'w', newline='') as file:
-        writer = csv.writer(file)
-        for line in content.split('\n'):
-            writer.writerow(line.split(','))
+        content = textbox.get(1.0, tk.END).strip()
+        if not content:
+            raise ValueError("No Data found in TextBox")
+        else:    
+            with open(file_path, 'w', newline='') as file:
+                writer = csv.writer(file)
+                for line in content.split('\n'):
+                    writer.writerow(line.split(','))
+        get_csv_files(directory)
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+    
 
 def prep_names():
     fNames = [grid_entries[i][0].get() for i in range(1, 6)]
@@ -225,14 +245,14 @@ def prep_names():
 
 def generate_combinations(fNames, oNames, fRatings, oRatings, treeview, sort_alpha):
     treeview.tree.delete(*treeview.tree.get_children())
-    tree_top = treeview.tree.insert("", 'end', text=f"Pairings")
+    # tree_top = treeview.tree.insert("", 'end', text=f"Pairings")
     fNames_sorted = sorted(fNames, key=lambda x: x) if sort_alpha else fNames
     oNames_sorted = sorted(oNames, key=lambda x: x) if sort_alpha else oNames
     
     for name in fNames_sorted:
         fnames_filtered = [x for x in fNames_sorted if x!=name]
         # print(f"Top Level: {name} in {fNames_sorted}")
-        generate_nested_combinations(name,fnames_filtered, oNames_sorted, fRatings, oRatings, treeview.tree, tree_top, sort_alpha)
+        generate_nested_combinations(name,fnames_filtered, oNames_sorted, fRatings, oRatings, treeview.tree, "", sort_alpha)
         fNames_sorted[:] = cycle_list(fNames_sorted)
         # oNames_sorted[:] = cycle_list(oNames_sorted)
         
@@ -244,23 +264,12 @@ def generate_nested_combinations(first_fName, fNames, oNames, fRatings, oRatings
     if oNames and not combs:
         combs = list(combinations([first_oName,first_oName], 2))
     combs_sorted = sorted(combs, key=lambda x: (x[0], x[1])) if sort_alpha else combs
-    checkpoint_1 = 0
+    
     for comb in combs_sorted:
         rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
         rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
-        # print(f"generate_nested_combinations checkpoint_1 = {checkpoint_1} - {comb}")
-        # if checkpoint_1 == 1:
-        #     print(f"\tbreaking out of loop - for comb in combs_sorted:\n\tNext Node would be: {first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
-        #     break
-        # checkpoint_1 += 1
-        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=fNames, tags=maximum(rating_0, rating_1))
         
-        # for line in item_id.tree.get_children():
-            # for value in self.tree.item(line)['values']:
-                # print(value)
-
-
-        # print(f"Adding Node: {first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)")
+        item_id = treeview.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=fNames, tags=maximum(rating_0, rating_1))
         
         if fNames:
             # print(f"Remaining Names: {remaining_fNames}")
@@ -270,14 +279,8 @@ def generate_nested_combinations(first_fName, fNames, oNames, fRatings, oRatings
                 
                 nested_oNames = [name for name in oNames if name != opponent and name!=next_fName]
                 nested_fNames = [name for name in fNames if name != first_fName]
-                # if checkpoint_2 == 2:
-                #     print(f"\tbreaking out of loop - for opponent in comb:\n\tNext Node would be: {opponent} rating {fRatings[first_fName].get(opponent)}")
-                #     break
-                # checkpoint_2 += 1
-                # print(f"this child_id: {opponent} rating {fRatings[first_fName].get(opponent)}")
+                
                 child_id = treeview.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=opponent, tags=fRatings[first_fName].get(opponent))
-
-                # print(f"Adding Child Node: {opponent} rating {fRatings[first_fName].get(opponent)} under Parent {item_id}")
                 
                 generate_nested_combinations(next_fName, nested_oNames, fNames, oRatings, fRatings, treeview, child_id, sort_alpha)
         
@@ -324,7 +327,7 @@ def validate_textbox_data(textbox):
             return False
     return True
 
-def save_grid_state(grid_entries):
+def save_grid_state(grid_entries): # SAVES THE CONTENTS OF THE GRID TO A CSV FILE
     file_path = filedialog.asksaveasfilename(defaultextension=".csv",
                                              filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
     if not file_path:
@@ -334,18 +337,60 @@ def save_grid_state(grid_entries):
         writer = csv.writer(file)
         for row in grid_entries:
             writer.writerow([entry.get() for entry in row])
+    update_grid_colors(grid_entries, color_map)
 
-def load_grid_state(grid_entries):
-    file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-    if not file_path:
-        return
+def load_grid_state(grid_entries, combobox, textbox):
+    try:
+        file_name = combobox.get()
+        if not file_name:
+            file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+            if not file_path:
+                raise ValueError("Invalid File Path")
 
-    with open(file_path, 'r') as file:
-        reader = csv.reader(file)
-        for r, row in enumerate(reader):
-            for c, value in enumerate(row):
-                if r < 6 and c < 6:
-                    grid_entries[r][c].set(value)
+            with open(file_path, 'r') as file:
+                reader = csv.reader(file)
+                for r, row in enumerate(reader):
+                    for c, value in enumerate(row):
+                        if r < 6 and c < 6:
+                            grid_entries[r][c].set(value)
+        else:
+            file_path = os.path.join(directory, file_name + '.csv')
+            if not file_path:
+                raise ValueError("Invalid File Path")
+            
+            with open(file_path, 'r') as file:
+                reader = csv.reader(file)
+                for r, row in enumerate(reader):
+                    for c, value in enumerate(row):
+                        if r < 6 and c < 6:
+                            grid_entries[r][c].set(value)
+
+        copy_grid_to_textbox(combobox, textbox)
+        update_grid_colors(grid_entries, color_map)
+        
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+    
+    
+
+def copy_grid_to_textbox(combobox, textbox):
+    try:
+        file_name = combobox.get()
+        file_path = os.path.join(directory, file_name + '.csv')
+
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File {file_path} does not exist")
+
+        with open(file_path, 'r') as file:
+            reader = csv.reader(file)
+            content = '\n'.join([','.join(row) for row in reader])
+
+        textbox.delete(1.0, tk.END)
+        textbox.insert(tk.END, content)
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+    update_grid_colors(grid_entries, color_map)
+    
 
 def create_tooltip(widget, text):
     tooltip = tk.Toplevel(widget)
@@ -396,9 +441,14 @@ def create_ui():
         '4': 'yellowgreen',
         '5': 'deepskyblue'
     }
-    directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+    # directory = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"
+    # print(f"GETTING CWD: {os.getcwd()}")
+    directory = os.getcwd()
     # directory = '.'
-    print_output = True
+    print_output = False
+    if print_output:
+        print(f"GETTING CWD: {directory}")
+    
 
     root = tk.Tk()
     root.geometry('+0+0')
@@ -434,17 +484,18 @@ def create_ui():
     tk.Label(left_frame, text='Select File:').grid(row=8, column=0, padx=5, pady=5, sticky=tk.W)
     combobox = ttk.Combobox(left_frame, state='readonly', width=20)
     combobox.grid(row=8, column=1, padx=5, pady=5, sticky=tk.W)
-    select_directory_and_update_combobox(combobox, directory)
+    update_combobox(combobox, directory)
     
-    tk.Button(left_frame, text="IMPORT CSV", command=lambda: get_data_from_csv(combobox, textbox, directory)).grid(row=8, column=3, padx=5, pady=5, sticky=tk.W)
-    tk.Button(left_frame, text="Load Grid", command=lambda: load_grid_state(grid_entries)).grid(row=8, column=4, padx=5, pady=5, sticky=tk.W)
-    tk.Button(left_frame, text="Save Grid", command=lambda: save_grid_state(grid_entries)).grid(row=8, column=5, padx=5, pady=5, sticky=tk.W)
-    
+    tk.Button(left_frame, text="Load From File", command=lambda: load_grid_state(grid_entries, combobox, textbox)).grid(row=8, column=2, padx=5, pady=5, sticky=tk.W)
+    tk.Button(left_frame, text="Save Grid\nTo File", command=lambda: save_grid_state(grid_entries)).grid(row=8, column=3, padx=5, pady=5, sticky=tk.W)
+    tk.Button(left_frame, text="Clear Grid", command=lambda: clear_grid(grid_entries)).grid(row=8, column=4, padx=5, pady=5, sticky=tk.W) # .pack(side=tk.LEFT, padx=5, pady=3)
+    tk.Button(left_frame, text="Update Text", command=lambda: update_textbox(grid_entries, textbox)).grid(row=8, column=5, padx=5, pady=5, sticky=tk.W) # .pack(side=tk.LEFT, padx=5, pady=3)
+
     textbox = tk.Text(right_frame, width=60, height=7)
     textbox.pack(expand=1, fill='both')
 
+    tk.Button(right_frame, text="IMPORT CSV\nTO TEXT", command=lambda: get_data_from_csv(combobox, textbox, directory)).pack(side=tk.LEFT, padx=5, pady=3) # grid(row=8, column=3, padx=5, pady=5, sticky=tk.W)
     tk.Button(right_frame, text="Update Grid", command=lambda: update_grid_from_textbox(textbox, grid_entries)).pack(side=tk.LEFT, padx=5, pady=3)
-    tk.Button(right_frame, text="Update Text", command=lambda: update_textbox(grid_entries, textbox)).pack(side=tk.LEFT, padx=5, pady=3)
     tk.Button(right_frame, text="Clear Text", command=lambda: clear_textbox(textbox)).pack(side=tk.LEFT, padx=5, pady=3)
     tk.Button(right_frame, text="Save", command=lambda: save_textbox_content(textbox, directory)).pack(side=tk.LEFT, padx=5, pady=3)
     
@@ -482,7 +533,9 @@ def create_ui():
     generateButton = tk.Button(bottom_frame, text="Generate Combinations", command=on_generate_combinations)
     generateButton.pack(pady=10)
     show_info_button = tk.Button(text="Show Info", command=treeview.item_details)
-    show_info_button.pack()
+    show_info_button.pack(padx=5, pady=3)
+    update_colors_button = tk.Button(text="Update Colors", command=update_grid_colors(grid_entries, color_map))
+    update_colors_button.pack(side=tk.LEFT, padx=5, pady=3)
     show_selection_button = tk.Button(text="Show Selection", command=treeview.show_selection)
     show_selection_button.pack(side=tk.LEFT, padx=5, pady=3)
     get_node_data = tk.Button(text="Get Rating", command=treeview.get_selected_value)
@@ -492,9 +545,11 @@ def create_ui():
     create_tooltip(textbox, "Enter CSV data here")
     create_tooltip(treeview, "Generated combinations will be displayed here")
     
-    get_data_from_csv(combobox, textbox, directory)
-    update_grid_from_textbox(textbox, grid_entries)
-    update_combobox_colors(grid_entries, color_map)
+    # THIS SECTION USED TO PREPOPULATE THE APPLICATION WITH DATA ON LOAD. USED FOR TESTING.
+    # get_data_from_csv(combobox, textbox, directory)
+    # update_grid_from_textbox(textbox, grid_entries)
+    update_grid_colors(grid_entries, color_map)
+    # END PRE-POPULATION TESTING SECTION
     root.mainloop()
 
 if __name__ == '__main__':
