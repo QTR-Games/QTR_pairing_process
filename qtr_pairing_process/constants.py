@@ -5,3 +5,6 @@ DEFAULT_COLOR_MAP = {
     '4': 'yellowgreen',
     '5': 'deepskyblue'
 }
+
+MATT_DIR = '.'
+DAN_DIR = "C:/Users/Daniel.Raven/OneDrive - Vertex, Inc/Documents/myStuff/WM/Python Pairing Process"

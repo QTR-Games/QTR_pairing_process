@@ -7,7 +7,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 # repo libraries
-from qtr_pairing_process.constants import DEFAULT_COLOR_MAP
+from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, MATT_DIR, DAN_DIR
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.tree_generator import TreeGenerator
 class UiManager:
@@ -75,7 +75,7 @@ class UiManager:
         alphaBox.select()
 
         # create treeview and tree generator
-        self.treeview = LazyTreeView(self.bottom_frame, self.print_output,columns=("Rating"))
+        self.treeview = LazyTreeView(master=self.bottom_frame, print_output=self.print_output,columns=("Rating"))
         self.tree_generator = TreeGenerator(treeview=self.treeview, sort_alpha=self.sort_alpha.get())
 
     def create_ui(self):
@@ -327,3 +327,7 @@ class UiManager:
                 rating = int(self.grid_entries[row][col].get())
                 ratings[player][opponent] = rating
         return ratings
+
+if __name__ == '__main__':
+    ui_manager = UiManager(color_map=DEFAULT_COLOR_MAP, directory=MATT_DIR)
+    ui_manager.create_ui()
