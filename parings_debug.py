@@ -235,7 +235,6 @@ def generate_combinations(fNames, oNames, fRatings, oRatings, treeview, sort_alp
         generate_nested_combinations(name,fnames_filtered, oNames_sorted, fRatings, oRatings, treeview.tree, tree_top, sort_alpha)
         fNames_sorted[:] = cycle_list(fNames_sorted)
         # oNames_sorted[:] = cycle_list(oNames_sorted)
-        break
         
         
 def generate_nested_combinations(first_fName, fNames, oNames, fRatings, oRatings, treeview, parent, sort_alpha):
