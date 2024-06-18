@@ -7,14 +7,16 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 # repo libraries
-from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, MATT_DIR, DAN_DIR
+from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_TO_CSV_MAP
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.tree_generator import TreeGenerator
 class UiManager:
     def __init__(
         self,
         color_map,
+        scenario_map,
         directory,
+        scenario_to_csv_map,
         print_output=True
     ):
         self.grid_entries = None
@@ -22,12 +24,14 @@ class UiManager:
         self.print_output = print_output
         self.directory = directory
         self.color_map = color_map
-
+        self.scenario_map = scenario_map
+        self.scenario_to_csv_map = scenario_to_csv_map
         self.treeview = None
         self.initialize_ui_vars()
 
         if print_output:
             print(f"TKINTER VERSION: {tk.TkVersion}")
+            
             
     def initialize_ui_vars(self):
         # set root
@@ -40,6 +44,9 @@ class UiManager:
         self.root.bind('<Return>', lambda event: self.on_generate_combinations())
     
         # set frames
+        self.drop_down_frame = tk.Frame(self.root)
+        self.drop_down_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
         self.top_frame = tk.Frame(self.root)
         self.top_frame.pack(side=tk.TOP, fill=tk.X)
 
@@ -48,6 +55,9 @@ class UiManager:
 
         self.right_frame = tk.Frame(self.top_frame)
         self.right_frame.pack(side=tk.LEFT, padx=10, pady=10)
+
+        self.button_row_frame = tk.Frame(self.root)
+        self.button_row_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         self.bottom_frame = tk.Frame(self.root)
         self.bottom_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
@@ -58,9 +68,6 @@ class UiManager:
         # create textbox
         self.textbox = tk.Text(self.right_frame, width=60, height=7)
         self.textbox.pack(expand=1, fill='both')
-        # create combobox
-        self.combobox = ttk.Combobox(self.left_frame, state='readonly', width=20)
-        self.combobox.grid(row=8, column=1, padx=5, pady=5, sticky=tk.W)
 
         # set team_b button
         self.team_b = tk.IntVar()
@@ -70,7 +77,7 @@ class UiManager:
 
         # set alpha checkbox
         self.sort_alpha = tk.IntVar()
-        alphaBox = tk.Checkbutton(self.bottom_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
+        alphaBox = tk.Checkbutton(self.right_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
         alphaBox.pack(pady=5)
         alphaBox.select()
 
@@ -87,19 +94,32 @@ class UiManager:
                 self.grid_widgets[r][c] = entry
                 self.grid_entries[r][c].trace_add('write', lambda name, index, mode, var=self.grid_entries[r][c], row=r, col=c: self.update_color_on_change(var, index, mode, row, col))
 
-        tk.Label(self.left_frame, text='Select File:').grid(row=8, column=0, padx=5, pady=5, sticky=tk.W)
+        # create combobox for file selection
+        # create the label
+        tk.Label(self.drop_down_frame, text='Select File:').pack(side=tk.LEFT, padx=5, pady=5)
+        # create combobox
+        self.combobox = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
+        self.combobox.pack(side=tk.LEFT, padx=5, pady=5)
+
+        # create combobox for scenario selection
+        # create the label
+        tk.Label(self.drop_down_frame, text='Choose Scenario:').pack(side=tk.LEFT, padx=5, pady=5)
+        # create combobox
+        self.scenario_box = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
+        self.scenario_box.pack(side=tk.LEFT, padx=5, pady=5)
 
         self.select_directory_and_update_combobox()
+        self.update_scenario_box()
         
-        tk.Button(self.left_frame, text="IMPORT CSV", command=lambda: self.get_data_from_csv()).grid(row=8, column=3, padx=5, pady=5, sticky=tk.W)
-        tk.Button(self.left_frame, text="Load Grid", command=lambda: self.load_grid_state()).grid(row=8, column=4, padx=5, pady=5, sticky=tk.W)
-        tk.Button(self.left_frame, text="Save Grid", command=lambda: self.save_grid_state()).grid(row=8, column=5, padx=5, pady=5, sticky=tk.W)
+        tk.Button(self.button_row_frame, text="IMPORT CSV", command=lambda: self.get_data_from_csv()).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_state()).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_state()).pack(side=tk.LEFT, padx=5, pady=5)
         
 
-        tk.Button(self.right_frame, text="Update Grid", command=lambda: self.update_grid_from_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.right_frame, text="Update Text", command=lambda: self.update_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.right_frame, text="Clear Text", command=lambda: self.clear_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.right_frame, text="Save", command=lambda: self.save_textbox_content()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Update Grid", command=lambda: self.update_grid_from_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Update Text", command=lambda: self.update_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Clear Text", command=lambda: self.clear_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Save", command=lambda: self.save_textbox_content()).pack(side=tk.LEFT, padx=5, pady=3)
         
         # Configure Treeview
         self.treeview.tree.heading("#0", text="Pairing")
@@ -122,6 +142,7 @@ class UiManager:
         get_node_data.pack(side=tk.LEFT, padx=5, pady=3)
 
         self.create_tooltip(self.combobox, "Select a CSV file to import")
+        self.create_tooltip(self.scenario_box, "Choose this round's scenario")
         self.create_tooltip(self.textbox, "Enter CSV data here")
         self.create_tooltip(self.treeview, "Generated combinations will be displayed here")
         
@@ -132,7 +153,8 @@ class UiManager:
 
 
     def on_generate_combinations(self):
-        fNames, oNames, fRatings, oRatings = self.prep_names()
+        fNames, oNames = self.prep_names()
+        fRatings, oRatings = self.prep_ratings(fNames,oNames)
         if self.print_output:
             print(f"fRatings: {fRatings}\n")
             print(f"oRatings: {oRatings}\n")
@@ -142,9 +164,17 @@ class UiManager:
         else:
             self.tree_generator.generate_combinations(oNames, fNames, oRatings, fRatings)
 
-
-
-
+    def update_scenario_box(self):
+        scenarios = []
+        if self.scenario_map:
+            for scenario in self.scenario_map.values():
+                if self.print_output:
+                    print(scenario)
+                scenarios.append(scenario)
+            self.scenario_box['values'] = scenarios
+        else:
+            self.scenario_map.set("1 - Recon","2 - Battle Lines","3 - Wolves At Our Heels","4 - Payload","5 - Two Fronts","6 - Invasion")
+        
     def get_csv_files(self):
         files = [f[:-4] for f in os.listdir(self.directory) if f.endswith('.csv')]
         print(f"CSV files found in {self.directory}: {files}")
@@ -223,11 +253,16 @@ class UiManager:
     def prep_names(self):
         fNames = [self.grid_entries[i][0].get() for i in range(1, 6)]
         oNames = [self.grid_entries[0][i].get() for i in range(1, 6)]
+        return fNames, oNames
+
+    def prep_ratings(self,fNames,oNames):
         fRatings = {fNames[i]: {oNames[j]: self.grid_entries[i+1][j+1].get() for j in range(5)} for i in range(5)}
         oRatings = {oNames[i]: {fNames[j]: self.grid_entries[j+1][i+1].get() for j in range(5)} for i in range(5)}
-        return fNames, oNames, fRatings, oRatings
-
-
+        return fRatings, oRatings
+    
+    def prep_scenario(self):
+        scenario = self.get_scenario_num()
+        return scenario
 
     def sort_names(self, fNames, oNames, check_alpha):
         if check_alpha.get():
@@ -240,6 +275,8 @@ class UiManager:
         return fNames_sorted, oNames_sorted
     
     def update_grid_from_textbox(self):
+        # if self.print_output:
+            # print(self.get_scenario_num())
         content = self.textbox.get(1.0, tk.END).strip()
         rows = content.split('\n')
         for r, row in enumerate(rows):
@@ -314,6 +351,14 @@ class UiManager:
 
     def get_friendly_player_names(self):
         return [self.grid_entries[row][0].get() for row in range(1, 6)]
+    
+    def get_scenario_num(self):
+        num_string = self.scenario_box.get()[:1]
+        num = 0
+        if num_string:
+            num = int(num_string)
+            if self.print_output: print(type(num))
+        return num
 
     def extract_ratings(self):
         ratings = {}
@@ -329,5 +374,5 @@ class UiManager:
         return ratings
 
 if __name__ == '__main__':
-    ui_manager = UiManager(color_map=DEFAULT_COLOR_MAP, directory=MATT_DIR)
+    ui_manager = UiManager(color_map=DEFAULT_COLOR_MAP, scenario_map=SCENARIO_MAP, directory=os.getcwd())
     ui_manager.create_ui()
