@@ -72,13 +72,13 @@ class UiManager:
         # set team_b button
         self.team_b = tk.IntVar()
         pairingLead = tk.Checkbutton(self.right_frame, text="Our team first", variable=self.team_b)
-        pairingLead.pack(side=tk.BOTTOM, padx=5, pady=3)
+        pairingLead.pack(side=tk.RIGHT, padx=5, pady=3)
         pairingLead.select()
 
         # set alpha checkbox
         self.sort_alpha = tk.IntVar()
         alphaBox = tk.Checkbutton(self.right_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
-        alphaBox.pack(pady=5)
+        alphaBox.pack(side=tk.RIGHT,pady=3,padx=5)
         alphaBox.select()
 
         # create treeview and tree generator
@@ -232,7 +232,7 @@ class UiManager:
             with open(file_path, 'r') as file:
                 reader = csv.reader(file)
                 content = '\n'.join([','.join(row) for row in reader])
-
+            if self.print_output:print(content)
             self.textbox.delete(1.0, tk.END)
             self.textbox.insert(tk.END, content)
         except Exception as e:
@@ -275,15 +275,41 @@ class UiManager:
         return fNames_sorted, oNames_sorted
     
     def update_grid_from_textbox(self):
-        # if self.print_output:
-            # print(self.get_scenario_num())
+        if self.print_output: print(f"current scenario: {self.get_scenario_num()}")
+        if self.print_output: print(f"current csvmap: {self.scenario_to_csv_map.get(self.get_scenario_num())}")
         content = self.textbox.get(1.0, tk.END).strip()
         rows = content.split('\n')
-        for r, row in enumerate(rows):
-            values = row.split(',')
-            for c, value in enumerate(values):
-                if r < 6 and c < 6:
-                    self.grid_entries[r][c].set(value)
+        current_scenario = self.get_scenario_num()
+        rating_range = []
+        row_target = [1,6]
+        if current_scenario < 1:
+            print("Scenario Agnostic Pairing...")
+        if row_target:
+            row_target = self.scenario_to_csv_map.get(self.get_scenario_num())
+
+        
+            # self.scenario_to_csv_map.get()
+        if row_target == "1,6":
+            for r, row in enumerate(rows):
+                values = row.split(',')
+                for c, value in enumerate(values):
+                    if r < 6 and c < 6:
+                        self.grid_entries[r][c].set(value)
+        else:
+            
+            row_low = int(row_target.split(",")[0])
+            row_hi = int(row_target.split(",")[1])
+            
+            # TRYING TO GET THIS TO READ THE REST OF THE CSV FILE.
+            # USE ROW.SPLIT(",") == SCENARIO NUMBER???
+            
+            for r, row in enumerate(rows):
+                values = row.split(',')
+                print(f"row is {row} - check the range: {row_low} < {values[0]} < {row_hi} ")
+                for c, value in enumerate(values):
+                    if row in range(row_low, row_hi):
+                        if r < 6 and c < 6:
+                            self.grid_entries[r][c].set(value)
                     
     def validate_grid_data(self):
         for row in range(1, 6):
