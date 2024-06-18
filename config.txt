@@ -8,3 +8,12 @@ root="C:\Users\Daniel.Raven\OneDrive - Vertex, Inc\Documents\myStuff\WM\Python P
 # Accepted values are: classic | european; 
 # Default:classic
 pairingStyle=classic
+
+# settings below control font sizes for the app.
+# Different settings. Universal controls all sizes,
+# but can be overridden by more specific settings.
+# default font size is 10
+font.size.common=12
+# font.size.grid=14
+# font.size.textbox=12
+# font.size.treeview=14
