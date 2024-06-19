@@ -7,7 +7,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 # repo libraries
-from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_TO_CSV_MAP
+from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_RANGES, SCENARIO_TO_CSV_MAP
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.tree_generator import TreeGenerator
 class UiManager:
@@ -16,6 +16,7 @@ class UiManager:
         color_map,
         scenario_map,
         directory,
+        scenario_ranges,
         scenario_to_csv_map,
         print_output=True
     ):
@@ -25,6 +26,7 @@ class UiManager:
         self.directory = directory
         self.color_map = color_map
         self.scenario_map = scenario_map
+        self.scenario_ranges = scenario_ranges
         self.scenario_to_csv_map = scenario_to_csv_map
         self.treeview = None
         self.initialize_ui_vars()
@@ -168,8 +170,7 @@ class UiManager:
         scenarios = []
         if self.scenario_map:
             for scenario in self.scenario_map.values():
-                if self.print_output:
-                    print(scenario)
+                # if self.print_output:print(scenario)
                 scenarios.append(scenario)
             self.scenario_box['values'] = scenarios
         else:
@@ -232,7 +233,7 @@ class UiManager:
             with open(file_path, 'r') as file:
                 reader = csv.reader(file)
                 content = '\n'.join([','.join(row) for row in reader])
-            if self.print_output:print(content)
+            # if self.print_output:print(content)
             self.textbox.delete(1.0, tk.END)
             self.textbox.insert(tk.END, content)
         except Exception as e:
@@ -274,43 +275,35 @@ class UiManager:
             oNames_sorted = oNames
         return fNames_sorted, oNames_sorted
     
-    def update_grid_from_textbox(self):
-        if self.print_output: print(f"current scenario: {self.get_scenario_num()}")
-        if self.print_output: print(f"current csvmap: {self.scenario_to_csv_map.get(self.get_scenario_num())}")
+    def get_row_range(self):
+        current_scenario = self.get_scenario_num()
+        
+        row_lo, row_hi = self.scenario_ranges.get(current_scenario, (1, 6))  # Default to (1, 6) if scenario is not found
+        
+        if current_scenario < 1:
+            print("Scenario Agnostic Pairing...")
+        
+        return row_lo, row_hi
+
+
+    def update_grid_from_textbox(self): 
         content = self.textbox.get(1.0, tk.END).strip()
         rows = content.split('\n')
         current_scenario = self.get_scenario_num()
-        rating_range = []
-        row_target = [1,6]
-        if current_scenario < 1:
-            print("Scenario Agnostic Pairing...")
-        if row_target:
-            row_target = self.scenario_to_csv_map.get(self.get_scenario_num())
-
-        
-            # self.scenario_to_csv_map.get()
-        if row_target == "1,6":
-            for r, row in enumerate(rows):
-                values = row.split(',')
-                for c, value in enumerate(values):
-                    if r < 6 and c < 6:
+        row_lo, row_hi = self.get_row_range()
+        row_correction = current_scenario * 6
+        for r, row in enumerate(rows):
+            values = row.split(',')
+            for c, value in enumerate(values):
+                if c < 6:
+                    if r < 6:
                         self.grid_entries[r][c].set(value)
-        else:
-            
-            row_low = int(row_target.split(",")[0])
-            row_hi = int(row_target.split(",")[1])
-            
-            # TRYING TO GET THIS TO READ THE REST OF THE CSV FILE.
-            # USE ROW.SPLIT(",") == SCENARIO NUMBER???
-            
-            for r, row in enumerate(rows):
-                values = row.split(',')
-                print(f"row is {row} - check the range: {row_low} < {values[0]} < {row_hi} ")
-                for c, value in enumerate(values):
-                    if row in range(row_low, row_hi):
-                        if r < 6 and c < 6:
-                            self.grid_entries[r][c].set(value)
-                    
+                    if row_lo <= r < row_hi:
+                        corrected_r = r - row_correction
+                        if corrected_r < 6:
+                            self.grid_entries[corrected_r][c].set(value)
+                            # if self.print_output: print(f"r: {r}; row_correction: {row_correction}; sum: {corrected_r}; c is: {c}; value: {value}")
+
     def validate_grid_data(self):
         for row in range(1, 6):
             for col in range(1, 6):
