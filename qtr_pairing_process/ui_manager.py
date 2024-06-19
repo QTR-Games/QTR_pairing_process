@@ -106,24 +106,31 @@ class UiManager:
         # create combobox for scenario selection
         # create the label
         tk.Label(self.drop_down_frame, text='Choose Scenario:').pack(side=tk.LEFT, padx=5, pady=5)
-        # create combobox
-        self.scenario_box = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
+        # create scenarios drop down box
+        # Use a StringVar to hold the value of the Combobox
+        self.scenario_var = tk.StringVar()
+        self.scenario_box = ttk.Combobox(self.drop_down_frame, state='readonly', width=20, textvariable=self.scenario_var)
+        # self.scenario_box.bind('<<ComboboxSelected>>', self.on_combobox_select)
         self.scenario_box.pack(side=tk.LEFT, padx=5, pady=5)
-
+        # Set an instance variable to keep track of the previous value
+        self.previous_value = self.scenario_var.get()
+        # Attach a trace to the StringVar
+        self.scenario_var.trace_add('write', self.on_scenario_box_change)
         self.select_directory_and_update_combobox()
         self.update_scenario_box()
-        
+
+        # Add Buttons to a row just above the pairing grid       
         tk.Button(self.button_row_frame, text="IMPORT CSV", command=lambda: self.get_data_from_csv()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_state()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_state()).pack(side=tk.LEFT, padx=5, pady=5)
-        
-
         tk.Button(self.button_row_frame, text="Update Grid", command=lambda: self.update_grid_from_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Update Text", command=lambda: self.update_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Clear Text", command=lambda: self.clear_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Save", command=lambda: self.save_textbox_content()).pack(side=tk.LEFT, padx=5, pady=3)
         
-        # Configure Treeview
+        # Configure Treeview ... with style!
+        style = ttk.Style()
+        style.configure("Treeview", font=("Arial", 12))
         self.treeview.tree.heading("#0", text="Pairing")
         self.treeview.tree.heading("Rating", text="Rating")
         self.treeview.tree.tag_configure('1', background="orangered")
@@ -144,8 +151,8 @@ class UiManager:
         get_node_data.pack(side=tk.LEFT, padx=5, pady=3)
 
         self.create_tooltip(self.combobox, "Select a CSV file to import")
-        self.create_tooltip(self.scenario_box, "Choose this round's scenario")
-        self.create_tooltip(self.textbox, "Enter CSV data here")
+        self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
+        self.create_tooltip(self.textbox, "You may copy and paste valus from a CSV file in this box.")
         self.create_tooltip(self.treeview, "Generated combinations will be displayed here")
         
         self.get_data_from_csv()
@@ -174,8 +181,18 @@ class UiManager:
                 scenarios.append(scenario)
             self.scenario_box['values'] = scenarios
         else:
-            self.scenario_map.set("1 - Recon","2 - Battle Lines","3 - Wolves At Our Heels","4 - Payload","5 - Two Fronts","6 - Invasion")
-        
+            self.scenario_box['values'] = ("1 - Recon","2 - Battle Lines","3 - Wolves At Our Heels","4 - Payload","5 - Two Fronts","6 - Invasion")
+
+    def on_scenario_box_change(self, *args):
+        # Get the new value
+        new_value = self.scenario_var.get()
+        # Compare with the previous value
+        if new_value != self.previous_value:
+            print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
+            self.previous_value = new_value
+            self.update_grid_from_textbox()
+
+
     def get_csv_files(self):
         files = [f[:-4] for f in os.listdir(self.directory) if f.endswith('.csv')]
         print(f"CSV files found in {self.directory}: {files}")
@@ -194,7 +211,7 @@ class UiManager:
         self.textbox.config(state=tk.NORMAL)
         self.textbox.delete(1.0, tk.END)
 
-    def update_textbox(self):
+    def update_textbox(self): # THIS NEEDS TO BE UPDATED TO ACCOMODATE SCENARIO STUFF.
         has_values = any(entry.get() for row in self.grid_entries for entry in row)
         self.textbox.config(state=tk.NORMAL)
         self.textbox.delete(1.0, tk.END)
@@ -250,6 +267,7 @@ class UiManager:
             writer = csv.writer(file)
             for line in content.split('\n'):
                 writer.writerow(line.split(','))
+        self.get_csv_files()
 
     def prep_names(self):
         fNames = [self.grid_entries[i][0].get() for i in range(1, 6)]
@@ -277,21 +295,20 @@ class UiManager:
     
     def get_row_range(self):
         current_scenario = self.get_scenario_num()
-        
         row_lo, row_hi = self.scenario_ranges.get(current_scenario, (1, 6))  # Default to (1, 6) if scenario is not found
-        
         if current_scenario < 1:
             print("Scenario Agnostic Pairing...")
-        
         return row_lo, row_hi
 
+    def get_scenario_num(self):
+        num_string = self.scenario_box.get()[:1]
+        num = 0
+        if num_string:
+            num = int(num_string)
+            if self.print_output: print(type(num))
+        return num
 
-    def update_grid_from_textbox(self): 
-        content = self.textbox.get(1.0, tk.END).strip()
-        rows = content.split('\n')
-        current_scenario = self.get_scenario_num()
-        row_lo, row_hi = self.get_row_range()
-        row_correction = current_scenario * 6
+    def update_grid(self,rows,row_lo,row_hi,row_correction):
         for r, row in enumerate(rows):
             values = row.split(',')
             for c, value in enumerate(values):
@@ -303,6 +320,14 @@ class UiManager:
                         if corrected_r < 6:
                             self.grid_entries[corrected_r][c].set(value)
                             # if self.print_output: print(f"r: {r}; row_correction: {row_correction}; sum: {corrected_r}; c is: {c}; value: {value}")
+
+    def update_grid_from_textbox(self): 
+        content = self.textbox.get(1.0, tk.END).strip()
+        rows = content.split('\n')
+        current_scenario = self.get_scenario_num()
+        row_lo, row_hi = self.get_row_range()
+        row_correction = current_scenario * 6
+        self.update_grid(rows,row_lo,row_hi,row_correction)
 
     def validate_grid_data(self):
         for row in range(1, 6):
@@ -371,14 +396,6 @@ class UiManager:
     def get_friendly_player_names(self):
         return [self.grid_entries[row][0].get() for row in range(1, 6)]
     
-    def get_scenario_num(self):
-        num_string = self.scenario_box.get()[:1]
-        num = 0
-        if num_string:
-            num = int(num_string)
-            if self.print_output: print(type(num))
-        return num
-
     def extract_ratings(self):
         ratings = {}
         fNames = self.get_friendly_player_names()
