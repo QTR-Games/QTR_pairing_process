@@ -12,19 +12,31 @@ DEFAULT_COLOR_MAP = {
 DIRECTORY = os.getcwd()
 
 SCENARIO_MAP = {
-    '1': "1 - Recon",
-    '2': "2 - Battle Lines",
-    '3': "3 - Wolves At Our Heels",
-    '4': "4 - Payload",
-    '5': "5 - Two Fronts",
-    '6': "6 - Invasion"}
+    0: "0 - Neutral",
+    1: "1 - Recon",
+    2: "2 - Battle Lines",
+    3: "3 - Wolves At Our Heels",
+    4: "4 - Payload",
+    5: "5 - Two Fronts",
+    6: "6 - Invasion"}
+
+SCENARIO_RANGES = {
+    0: (1, 6),    # Scenario Agnostic
+    1: (7, 12),
+    2: (13, 18),
+    3: (19, 24),
+    4: (25, 30),
+    5: (31, 36),
+    6: (37, 42)
+}
 
 SCENARIO_TO_CSV_MAP = {
-    0: 1,
-    1: 7,
-    2: 13,
-    3: 19,
-    4: 25,
-    5: 31,
-    6: 37
+    0: "1,6",
+    1: "7,12",
+    2: "13,18",
+    3: "19,24",
+    4: "25,30",
+    5: "31,36",
+    6: "37,42"
 }
+
