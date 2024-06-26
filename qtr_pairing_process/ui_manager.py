@@ -1,3 +1,6 @@
+"""
+© Daniel P Raven and Matt Russell 2024 All Rights Reserved
+"""
 # native libraries
 import os
 import csv
