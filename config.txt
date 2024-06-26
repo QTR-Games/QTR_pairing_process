@@ -1,3 +1,5 @@
+# """ © Daniel P Raven 2024 All Rights Reserved """ #
+
 # CONFIG FILE FOR PAIRINGS.PY
 
 # Root directory for data files and configuration information
