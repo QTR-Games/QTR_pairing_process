@@ -1,3 +1,4 @@
+""" © Daniel P Raven 2024 All Rights Reserved """
 from qtr_pairing_process.ui_manager import UiManager
 from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_RANGES, SCENARIO_TO_CSV_MAP
 
