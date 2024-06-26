@@ -1,3 +1,5 @@
+""" © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
+
 import os
 DEFAULT_COLOR_MAP = {
     '1': 'orangered',
