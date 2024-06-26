@@ -1,5 +1,6 @@
-from tkinter import ttk, messagebox
+""" © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 
+from tkinter import ttk, messagebox
 
 class LazyTreeView(ttk.Frame):
     def __init__(self, print_output, master, **kwargs):

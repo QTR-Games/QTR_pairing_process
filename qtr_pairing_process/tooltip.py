@@ -1,3 +1,5 @@
+""" © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
+
 import tkinter as tk
 
 class ToolTip:

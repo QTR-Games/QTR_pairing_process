@@ -1,3 +1,5 @@
+""" © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
+
 from itertools import combinations, permutations
 
 import qtr_pairing_process.utility_funcs as uf
