@@ -38,13 +38,42 @@ class TreeGenerator:
         for comb in combs_sorted:
             rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
             rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
-            item_id = self.treeview.tree.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=fNames, tags=max(rating_0, rating_1))
+            item_id = self.treeview.tree.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=max(rating_0, rating_1), tags=max(rating_0, rating_1))
             
             if fNames:
                 opponent_perms = list(permutations(comb, 2))
                 for opponent, next_fName in opponent_perms:                    
                     nested_oNames = [name for name in oNames if name != opponent and name!=next_fName]
                     nested_fNames = [name for name in fNames if name != first_fName]
-                    child_id = self.treeview.tree.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=opponent, tags=fRatings[first_fName].get(opponent))                    
+                    child_id = self.treeview.tree.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=fRatings[first_fName].get(opponent), tags=fRatings[first_fName].get(opponent))                    
                     self.generate_nested_combinations(next_fName,nested_oNames, fNames, oRatings, fRatings, child_id)
+
+    def traverse_and_sum_values(self):
+        # Get all root nodes
+        root_nodes = self.treeview.tree.get_children()
+        for root in root_nodes:
+            sum_leaf_values(root)
+
+    def sum_leaf_values(self, node):
+        child_ids = self.treeview.tree.get_children(node)
+        if not child_ids:
+            # Leaf node, return the integer value from the values column
+            try:
+                value = int(self.treeview.tree.item(node, 'values')[0])
+                print(f"sum_leaf_values\nleaf node hit. returned value = {value}")
+                return value
+          
+            except (ValueError, IndexError):
+                return 0
+        else:
+            # Sum the values of child nodes
+            total_sum = 0
+            for child_id in child_ids:
+                total_sum += self.treeview.sum_leaf_values(child_id)
+            self.tree.set(node, 'values', total_sum)
+            return total_sum
+    
+    
+
+    
         
