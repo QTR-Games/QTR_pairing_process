@@ -173,7 +173,7 @@ class UiManager:
             self.tree_generator.generate_combinations(fNames, oNames, fRatings, oRatings)
         else:
             self.tree_generator.generate_combinations(oNames, fNames, oRatings, fRatings)
-        self.tree_generator.traverse_and_sum_values()
+                   
 
     def update_scenario_box(self):
         scenarios = []

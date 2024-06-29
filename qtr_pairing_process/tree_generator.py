@@ -26,6 +26,8 @@ class TreeGenerator:
             self.generate_nested_combinations(name, fnames_filtered, oNames_sorted, fRatings, oRatings, tree_top)
             fNames_sorted[:] = uf.cycle_list(fNames_sorted)
             # oNames_sorted[:] = cycle_list(oNames_sorted)
+
+        self.traverse_and_sum_values()
             
         
     def generate_nested_combinations(self, first_fName, fNames, oNames, fRatings, oRatings, parent):
@@ -48,11 +50,21 @@ class TreeGenerator:
                     child_id = self.treeview.tree.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=fRatings[first_fName].get(opponent), tags=fRatings[first_fName].get(opponent))                    
                     self.generate_nested_combinations(next_fName,nested_oNames, fNames, oRatings, fRatings, child_id)
 
+    def set_value(self,value):
+        
+        item = self.treeview.tree.get_item()
+        print(item)
+        try:
+            self.treeview.tree.set(item,'values',value)
+        except (ValueError, IndexError):
+            # print(f"set_item_details has failed")
+            return 0
+
     def traverse_and_sum_values(self):
         # Get all root nodes
         root_nodes = self.treeview.tree.get_children()
         for root in root_nodes:
-            sum_leaf_values(root)
+            self.sum_leaf_values(root)
 
     def sum_leaf_values(self, node):
         child_ids = self.treeview.tree.get_children(node)
@@ -60,7 +72,7 @@ class TreeGenerator:
             # Leaf node, return the integer value from the values column
             try:
                 value = int(self.treeview.tree.item(node, 'values')[0])
-                print(f"sum_leaf_values\nleaf node hit. returned value = {value}")
+                print(f"sum_leaf_values - LEAF NODE HIT.\nreturned value = {value}")
                 return value
           
             except (ValueError, IndexError):
@@ -68,9 +80,12 @@ class TreeGenerator:
         else:
             # Sum the values of child nodes
             total_sum = 0
+            value = self.treeview.tree.item(node, 'values')
             for child_id in child_ids:
-                total_sum += self.treeview.sum_leaf_values(child_id)
-            self.tree.set(node, 'values', total_sum)
+                total_sum += int(self.sum_leaf_values(child_id))
+            # print(f"sum_leaf_values - NON LEAF NODE HIT.\nNode: {node}, Current Value = {value[0]}, Returned total_sum: {total_sum}")
+            # self.set_value(total_sum)
+            self.set_value(total_sum)
             return total_sum
     
     
