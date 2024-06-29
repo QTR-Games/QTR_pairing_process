@@ -223,14 +223,32 @@ class UiManager:
         rows = content.split('\n')
         
         # Ensure the rows list has enough lines
-        while len(rows) < row_hi:
+        while len(rows) < 42:  # Ensure we have enough rows for the highest scenario
             rows.append('')
+        
+        # Always set the first row with the team name followed by opponent names if not already set
+        team_name = self.grid_entries[0][0].get().strip()
+        if not rows[0].startswith(team_name):
+            rows[0] = f"{team_name},{','.join([self.grid_entries[0][c].get().strip() for c in range(1, 6)])}"
+        
+        # Set specific scenario rows with the scenario number followed by opponent names if not already set
+        scenario_headers = {
+            1: 7,
+            2: 13,
+            3: 19,
+            4: 25,
+            5: 31,
+            6: 37
+        }
+        
+        for scenario, row_start in scenario_headers.items():
+            if len(rows) > row_start and not rows[row_start].startswith(str(scenario)):
+                rows[row_start] = f"{scenario},{','.join([self.grid_entries[0][c].get().strip() for c in range(1, 6)])}"
         
         # Update only the lines corresponding to the current scenario
         for r in range(row_lo, row_hi):
             row_values = [self.grid_entries[r - row_lo + 1][c].get().strip() for c in range(6)]
-            # row_values = row_values.trim()
-            rows[r] = ','.join(row_values)
+            rows[r] = ', '.join(row_values)
         
         # Write back the modified content to the textbox
         self.textbox.config(state=tk.NORMAL)
