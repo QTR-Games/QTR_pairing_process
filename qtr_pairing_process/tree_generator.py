@@ -57,7 +57,7 @@ class TreeGenerator:
         try:
             self.treeview.tree.set(item,'values',value)
         except (ValueError, IndexError):
-            # print(f"set_item_details has failed")
+            print(f"set_item_details has failed")
             return 0
 
     def traverse_and_sum_values(self):
@@ -83,7 +83,7 @@ class TreeGenerator:
             value = self.treeview.tree.item(node, 'values')
             for child_id in child_ids:
                 total_sum += int(self.sum_leaf_values(child_id))
-            # print(f"sum_leaf_values - NON LEAF NODE HIT.\nNode: {node}, Current Value = {value[0]}, Returned total_sum: {total_sum}")
+            print(f"sum_leaf_values - NON LEAF NODE HIT.\nNode: {node}, Current Value = {value[0]}, Returned total_sum: {total_sum}")
             # self.set_value(total_sum)
             self.set_value(total_sum)
             return total_sum
