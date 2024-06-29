@@ -213,23 +213,30 @@ class UiManager:
         self.textbox.config(state=tk.NORMAL)
         self.textbox.delete(1.0, tk.END)
 
-    def update_textbox(self): # THIS NEEDS TO BE UPDATED TO ACCOMODATE SCENARIO STUFF.
-        content = self.textbox.get(1.0, tk.END).strip()
-        rows = content.split('\n')
+    def update_textbox(self):
+        # Get the current scenario
         current_scenario = self.get_scenario_num()
         row_lo, row_hi = self.get_row_range()
-        row_correction = current_scenario * 6
         
-        # has_values = any(entry.get() for row in self.grid_entries for entry in row)
-        # self.textbox.config(state=tk.NORMAL)
-        # self.textbox.delete(1.0, tk.END)
-        # if has_values:
-            # for row in rows:
-                # row_values = [entry.get().strip() for entry in row]
-                # if any(row_values):
-                    # self.textbox.insert(tk.END, ', '.join(row_values) + '\n')
-        # self.textbox.config(state=tk.NORMAL)
-        # self.update_text(rows,row_lo,row_hi,row_correction)
+        # Read the existing content in the textbox
+        content = self.textbox.get(1.0, tk.END).strip()
+        rows = content.split('\n')
+        
+        # Ensure the rows list has enough lines
+        while len(rows) < row_hi:
+            rows.append('')
+        
+        # Update only the lines corresponding to the current scenario
+        for r in range(row_lo, row_hi):
+            row_values = [self.grid_entries[r - row_lo + 1][c].get().strip() for c in range(6)]
+            # row_values = row_values.trim()
+            rows[r] = ','.join(row_values)
+        
+        # Write back the modified content to the textbox
+        self.textbox.config(state=tk.NORMAL)
+        self.textbox.delete(1.0, tk.END)
+        self.textbox.insert(tk.END, '\n'.join(rows))
+        self.textbox.config(state=tk.NORMAL)
 
     def update_grid_from_textbox(self): 
         content = self.textbox.get(1.0, tk.END).strip()
