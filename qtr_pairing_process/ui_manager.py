@@ -190,7 +190,7 @@ class UiManager:
         new_value = self.scenario_var.get()
         # Compare with the previous value
         if new_value != self.previous_value:
-            print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
+            # print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
             self.previous_value = new_value
             self.update_grid_from_textbox()
 
@@ -214,15 +214,30 @@ class UiManager:
         self.textbox.delete(1.0, tk.END)
 
     def update_textbox(self): # THIS NEEDS TO BE UPDATED TO ACCOMODATE SCENARIO STUFF.
-        has_values = any(entry.get() for row in self.grid_entries for entry in row)
-        self.textbox.config(state=tk.NORMAL)
-        self.textbox.delete(1.0, tk.END)
-        if has_values:
-            for row in self.grid_entries:
-                row_values = [entry.get().strip() for entry in row]
-                if any(row_values):
-                    self.textbox.insert(tk.END, ', '.join(row_values) + '\n')
-        self.textbox.config(state=tk.NORMAL)
+        content = self.textbox.get(1.0, tk.END).strip()
+        rows = content.split('\n')
+        current_scenario = self.get_scenario_num()
+        row_lo, row_hi = self.get_row_range()
+        row_correction = current_scenario * 6
+        
+        # has_values = any(entry.get() for row in self.grid_entries for entry in row)
+        # self.textbox.config(state=tk.NORMAL)
+        # self.textbox.delete(1.0, tk.END)
+        # if has_values:
+            # for row in rows:
+                # row_values = [entry.get().strip() for entry in row]
+                # if any(row_values):
+                    # self.textbox.insert(tk.END, ', '.join(row_values) + '\n')
+        # self.textbox.config(state=tk.NORMAL)
+        # self.update_text(rows,row_lo,row_hi,row_correction)
+
+    def update_grid_from_textbox(self): 
+        content = self.textbox.get(1.0, tk.END).strip()
+        rows = content.split('\n')
+        current_scenario = self.get_scenario_num()
+        row_lo, row_hi = self.get_row_range()
+        row_correction = current_scenario * 6
+        self.update_grid(rows,row_lo,row_hi,row_correction)
 
     def update_combobox_colors(self):
         for row in range(1, 6):
