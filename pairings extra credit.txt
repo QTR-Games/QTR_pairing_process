@@ -34,3 +34,11 @@ add in the concepts for the 'penalty for pairing at 5" whatever that means.
 	If I am not able to pick the table, this only influences the matchup a little bit. I only go DOWN half a letter grade from a 3 to a 2.5
 
 • ADD SUPPORT FOR CHANGING THE RATINGS AGAINST THE ENEMY TEAM BASED ON THE PRESENT SCENARIO
+
+• for sum_leaf_values within the tree_generator class - What if we put a toggle in here to allow users to switch between different types of matchup ratings?
+	It could be useful to use the original method of just summing all the things. 
+	This could widen the gap and reduce the amount of nodes that a user must scroll through
+
+• For tree_generator - Need to add an operation to SORT the nodes at every level of the tree so that it will display the optimized node at the top.
+	I think it would be best to implement this as a button after the tree has been generated. 
+	This will allow the user to toggle it back and forth as they need during pairings.
