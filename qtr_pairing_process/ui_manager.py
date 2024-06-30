@@ -23,6 +23,7 @@ class UiManager:
     ):
         self.grid_entries = None
         self.grid_widgets = None
+        self.text_entries = None
         self.print_output = print_output
         self.directory = directory
         self.color_map = color_map
@@ -127,7 +128,8 @@ class UiManager:
         tk.Button(self.button_row_frame, text="Update Text", command=lambda: self.update_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Clear Text", command=lambda: self.clear_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Save", command=lambda: self.save_textbox_content()).pack(side=tk.LEFT, padx=5, pady=3)
-        
+        tk.Button(self.button_row_frame, text="Get Text", command=lambda: self.get_scenario_text()).pack(side=tk.LEFT, padx=5, pady=3)
+
         # Configure Treeview ... with style!
         style = ttk.Style()
         style.configure("Treeview", font=("Arial", 12))
@@ -251,20 +253,6 @@ class UiManager:
         self.textbox.insert(tk.END, '\n'.join(rows))
         self.textbox.config(state=tk.NORMAL)
 
-
-
-
-
-
-
-    def update_grid_from_textbox(self): 
-        content = self.textbox.get(1.0, tk.END).strip()
-        rows = content.split('\n')
-        current_scenario = self.get_scenario_num()
-        row_lo, row_hi = self.get_row_range()
-        row_correction = current_scenario * 6
-        self.update_grid(rows,row_lo,row_hi,row_correction)
-
     def update_combobox_colors(self):
         for row in range(1, 6):
             for col in range(1, 6):
@@ -364,14 +352,29 @@ class UiManager:
                             self.grid_entries[corrected_r][c].set(value)
                             # if self.print_output: print(f"r: {r}; row_correction: {row_correction}; sum: {corrected_r}; c is: {c}; value: {value}")
 
-    def update_grid_from_textbox(self): 
+    def prep_text(self):
         content = self.textbox.get(1.0, tk.END).strip()
         rows = content.split('\n')
         current_scenario = self.get_scenario_num()
         row_lo, row_hi = self.get_row_range()
         row_correction = current_scenario * 6
+        return rows,row_lo,row_hi,row_correction
+
+    def update_grid_from_textbox(self):
+        rows,row_lo,row_hi,row_correction = self.prep_text()
         self.update_grid(rows,row_lo,row_hi,row_correction)
 
+    def get_scenario_text(self):
+        rows, row_lo, row_hi, row_correction = self.prep_text()
+        
+        scenario_values = ""
+        for r in range(row_lo, row_hi):
+            if r < len(rows):
+                scenario_values += rows[r] + "\n"
+            else:
+                scenario_values += "\n"  # Add empty string if row is out of bounds
+        return scenario_values
+    
     def validate_grid_data(self):
         for row in range(1, 6):
             for col in range(1, 6):
