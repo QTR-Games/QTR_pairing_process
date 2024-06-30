@@ -78,11 +78,16 @@ class TreeGenerator:
             # Sum the values of child nodes
             total_sum = 0
             value = self.treeview.tree.item(node, 'values')
+            match_ratings = []
+             
             for child_id in child_ids:
                 total_sum += int(self.sum_leaf_values(child_id))
-            # print(f"sum_leaf_values - NON LEAF NODE HIT.\nNode: {node}, Current Value = {value[0]}, Returned total_sum: {total_sum}")
+                match_ratings.append(int(self.sum_leaf_values(child_id)))
+
+            max_rating = max(match_ratings)
+            # print(f"sum_leaf_values - NON LEAF NODE HIT.\nNode: {node}, match_ratings = {match_ratings}, Returned total_sum: {total_sum}")
             # self.set_value(total_sum)
-            self.set_value(total_sum, node)
+            self.set_value(max_rating, node)
             return total_sum
     
     
