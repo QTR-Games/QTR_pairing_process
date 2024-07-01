@@ -129,6 +129,7 @@ class UiManager:
         tk.Button(self.button_row_frame, text="Clear Text", command=lambda: self.clear_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Save", command=lambda: self.save_textbox_content()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Get Text", command=lambda: self.get_scenario_text()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Cycle", command=lambda: self.cycle_scenarios()).pack(side=tk.LEFT, padx=5, pady=3)
 
         # Configure Treeview ... with style!
         style = ttk.Style()
@@ -217,7 +218,7 @@ class UiManager:
     def update_textbox(self):
         # Get the current scenario
         current_scenario = self.get_scenario_num()
-        row_lo, row_hi = self.get_row_range()
+        row_lo, row_hi = self.get_row_range(current_scenario)
 
         # Read the existing content in the textbox
         content = self.textbox.get(1.0, tk.END).strip()
@@ -324,8 +325,8 @@ class UiManager:
             oNames_sorted = oNames
         return fNames_sorted, oNames_sorted
     
-    def get_row_range(self):
-        current_scenario = self.get_scenario_num()
+    def get_row_range(self, scenario):
+        current_scenario = scenario[:1]
         row_lo, row_hi = self.scenario_ranges.get(current_scenario, (1, 6))  # Default to (1, 6) if scenario is not found
         if current_scenario < 1:
             print("Scenario Agnostic Pairing...")
@@ -352,28 +353,38 @@ class UiManager:
                             self.grid_entries[corrected_r][c].set(value)
                             # if self.print_output: print(f"r: {r}; row_correction: {row_correction}; sum: {corrected_r}; c is: {c}; value: {value}")
 
-    def prep_text(self):
+    def prep_text(self, scenario):
         content = self.textbox.get(1.0, tk.END).strip()
         rows = content.split('\n')
-        current_scenario = self.get_scenario_num()
-        row_lo, row_hi = self.get_row_range()
+        current_scenario = scenario
+        row_lo, row_hi = self.get_row_range(current_scenario)
         row_correction = current_scenario * 6
         return rows,row_lo,row_hi,row_correction
 
     def update_grid_from_textbox(self):
-        rows,row_lo,row_hi,row_correction = self.prep_text()
+        rows,row_lo,row_hi,row_correction = self.prep_text(self.get_scenario_num())
         self.update_grid(rows,row_lo,row_hi,row_correction)
 
-    def get_scenario_text(self):
-        rows, row_lo, row_hi, row_correction = self.prep_text()
-        
+    def get_scenario_text(self,scenario):
         scenario_values = ""
-        for r in range(row_lo, row_hi):
-            if r < len(rows):
-                scenario_values += rows[r] + "\n"
-            else:
-                scenario_values += "\n"  # Add empty string if row is out of bounds
+        for scenario in self.scenario_map.values():
+            rows, row_lo, row_hi, row_correction = self.prep_text(scenario)
+            
+            for r in range(row_lo, row_hi):
+                if r < len(rows):
+                    scenario_values += rows[r] + "\n"
+                else:
+                    scenario_values += "\n"  # Add empty string if row is out of bounds
         return scenario_values
+    
+    def cycle_scenarios(self):
+        scenario_values = ""
+        for scenario in self.scenario_map.values():
+            self.scenario_box.set(scenario)
+            scenario_values += self.get_scenario_text(scenario) + "\n"
+        
+        print(f"SCENARIO_VALUES: {scenario_values}")
+        return(scenario_values)
     
     def validate_grid_data(self):
         for row in range(1, 6):
