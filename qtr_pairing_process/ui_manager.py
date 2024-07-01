@@ -288,13 +288,15 @@ class UiManager:
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
-    def save_textbox_content(self):
+    def save_textbox_content(self,content=""):
         file_path = filedialog.asksaveasfilename(initialdir=self.directory, defaultextension=".csv",
                                                 filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
         if not file_path:
             return
 
-        content = self.textbox.get(1.0, tk.END).strip()
+        if content is "":
+            print(f"NO CONTENT PRESENTED")
+            content = self.textbox.get(1.0, tk.END).strip()
         with open(file_path, 'w', newline='') as file:
             writer = csv.writer(file)
             for line in content.split('\n'):
@@ -326,7 +328,7 @@ class UiManager:
         return fNames_sorted, oNames_sorted
     
     def get_row_range(self, scenario):
-        current_scenario = scenario[:1]
+        current_scenario = scenario
         row_lo, row_hi = self.scenario_ranges.get(current_scenario, (1, 6))  # Default to (1, 6) if scenario is not found
         if current_scenario < 1:
             print("Scenario Agnostic Pairing...")
@@ -356,7 +358,7 @@ class UiManager:
     def prep_text(self, scenario):
         content = self.textbox.get(1.0, tk.END).strip()
         rows = content.split('\n')
-        current_scenario = scenario
+        current_scenario = self.get_scenario_num()
         row_lo, row_hi = self.get_row_range(current_scenario)
         row_correction = current_scenario * 6
         return rows,row_lo,row_hi,row_correction
@@ -368,6 +370,10 @@ class UiManager:
     def get_scenario_text(self,scenario):
         scenario_values = ""
         for scenario in self.scenario_map.values():
+            self.scenario_box.set(scenario)
+            names = "".join(self.get_opponent_player_names())
+            scenario_values += str(self.get_scenario_num()) + ","
+            scenario_values += names + "\n" # GET THE SCENARIO NUM + NAMES OF THE OPPONENTS FOR INDEX ROW
             rows, row_lo, row_hi, row_correction = self.prep_text(scenario)
             
             for r in range(row_lo, row_hi):
@@ -375,15 +381,13 @@ class UiManager:
                     scenario_values += rows[r] + "\n"
                 else:
                     scenario_values += "\n"  # Add empty string if row is out of bounds
+           
         return scenario_values
     
     def cycle_scenarios(self):
-        scenario_values = ""
-        for scenario in self.scenario_map.values():
-            self.scenario_box.set(scenario)
-            scenario_values += self.get_scenario_text(scenario) + "\n"
-        
-        print(f"SCENARIO_VALUES: {scenario_values}")
+        scenario_values = self.get_scenario_text(self.scenario_box.get()) + "\n"
+        # print(f"SCENARIO_VALUES:\n{scenario_values}")
+        self.save_textbox_content(scenario_values)
         return(scenario_values)
     
     def validate_grid_data(self):
