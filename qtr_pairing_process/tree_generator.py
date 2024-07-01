@@ -50,14 +50,11 @@ class TreeGenerator:
                     child_id = self.treeview.tree.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=fRatings[first_fName].get(opponent), tags=fRatings[first_fName].get(opponent))                    
                     self.generate_nested_combinations(next_fName,nested_oNames, fNames, oRatings, fRatings, child_id)
 
-    def set_value(self,value):
-        
-        item = self.treeview.tree.get_item()
-        print(item)
+    def set_value(self,value, node):
         try:
-            self.treeview.tree.set(item,'values',value)
+            self.treeview.tree.set(node,'Rating',value)
         except (ValueError, IndexError):
-            # print(f"set_item_details has failed")
+            print(f"set_item_details has failed")
             return 0
 
     def traverse_and_sum_values(self):
@@ -72,7 +69,7 @@ class TreeGenerator:
             # Leaf node, return the integer value from the values column
             try:
                 value = int(self.treeview.tree.item(node, 'values')[0])
-                print(f"sum_leaf_values - LEAF NODE HIT.\nreturned value = {value}")
+                # print(f"sum_leaf_values - LEAF NODE HIT.\nreturned value = {value}")
                 return value
           
             except (ValueError, IndexError):
@@ -81,11 +78,16 @@ class TreeGenerator:
             # Sum the values of child nodes
             total_sum = 0
             value = self.treeview.tree.item(node, 'values')
+            match_ratings = []
+             
             for child_id in child_ids:
                 total_sum += int(self.sum_leaf_values(child_id))
-            # print(f"sum_leaf_values - NON LEAF NODE HIT.\nNode: {node}, Current Value = {value[0]}, Returned total_sum: {total_sum}")
+                match_ratings.append(int(self.sum_leaf_values(child_id)))
+
+            max_rating = max(match_ratings)
+            # print(f"sum_leaf_values - NON LEAF NODE HIT.\nNode: {node}, match_ratings = {match_ratings}, Returned total_sum: {total_sum}")
             # self.set_value(total_sum)
-            self.set_value(total_sum)
+            self.set_value(max_rating, node)
             return total_sum
     
     
