@@ -81,9 +81,6 @@ class UiManager:
         self.grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
         self.grid_widgets = [[None for _ in range(6)] for _ in range(6)]
     
-        # create textbox
-        self.textbox = tk.Text(self.right_frame, width=60, height=7)
-        self.textbox.pack(expand=1, fill='both')
 
         # set team_b button
         self.team_b = tk.IntVar()
@@ -141,13 +138,10 @@ class UiManager:
         self.update_scenario_box()
 
         # Add Buttons to a row just above the pairing grid       
-        tk.Button(self.button_row_frame, text="IMPORT CSV", command=lambda: self.get_data_from_csv()).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(self.button_row_frame, text="Export CSV", command=lambda: self.export_csvs()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_data_from_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
-        tk.Button(self.button_row_frame, text="Update Grid", command=lambda: self.update_grid_from_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Update Text", command=lambda: self.update_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Clear Text", command=lambda: self.clear_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Save", command=lambda: self.save_textbox_content()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
         
         # Configure Treeview ... with style!
         style = ttk.Style()
@@ -173,11 +167,9 @@ class UiManager:
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
-        self.create_tooltip(self.textbox, "You may copy and paste valus from a CSV file in this box.")
         self.create_tooltip(self.treeview, "Generated combinations will be displayed here")
         
         # self.get_data_from_csv()
-        self.update_grid_from_textbox()
         self.update_combobox_colors()
         self.root.mainloop()
 
@@ -212,13 +204,7 @@ class UiManager:
         if new_value != self.previous_value:
             print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
             self.previous_value = new_value
-            self.update_grid_from_textbox()
-
-
-    def get_csv_files(self):
-        files = [f[:-4] for f in os.listdir(self.directory) if f.endswith('.csv')]
-        print(f"CSV files found in {self.directory}: {files}")
-        return files
+            self.load_grid_data_from_db()
 
     ####################
     # DB Fill/Save Funcs
@@ -335,25 +321,13 @@ class UiManager:
                     rating=rating
                 )
 
+    def export_csvs(self):
+        pass
+    def import_csvs(self):
+        pass
+
 
     #############################################
-
-
-    def clear_textbox(self):
-        self.textbox.config(state=tk.NORMAL)
-        self.textbox.delete(1.0, tk.END)
-
-    def update_textbox(self): # THIS NEEDS TO BE UPDATED TO ACCOMODATE SCENARIO STUFF.
-        has_values = any(entry.get() for row in self.grid_entries for entry in row)
-        self.textbox.config(state=tk.NORMAL)
-        self.textbox.delete(1.0, tk.END)
-        if has_values:
-            for row in self.grid_entries:
-                row_values = [entry.get().strip() for entry in row]
-                if any(row_values):
-                    self.textbox.insert(tk.END, ', '.join(row_values) + '\n')
-        self.textbox.config(state=tk.NORMAL)
-
 
     def update_combobox_colors(self):
         for row in range(1, 6):
@@ -368,39 +342,6 @@ class UiManager:
             self.grid_widgets[row][col].config(bg=self.color_map[value])
         else:
             self.grid_widgets[row][col].config(bg='white')
-
-    def get_data_from_csv(self):
-        try:
-            file_name = self.combobox_1.get()
-            if not file_name:
-                raise ValueError("No file selected")
-
-            file_path = os.path.join(self.directory, file_name + '.csv')
-
-            if not os.path.exists(file_path):
-                raise FileNotFoundError(f"File {file_path} does not exist")
-
-            with open(file_path, 'r') as file:
-                reader = csv.reader(file)
-                content = '\n'.join([','.join(row) for row in reader])
-            # if self.print_output:print(content)
-            self.textbox.delete(1.0, tk.END)
-            self.textbox.insert(tk.END, content)
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-
-    def save_textbox_content(self):
-        file_path = filedialog.asksaveasfilename(initialdir=self.directory, defaultextension=".csv",
-                                                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-        if not file_path:
-            return
-
-        content = self.textbox.get(1.0, tk.END).strip()
-        with open(file_path, 'w', newline='') as file:
-            writer = csv.writer(file)
-            for line in content.split('\n'):
-                writer.writerow(line.split(','))
-        self.get_csv_files()
 
     def prep_names(self):
         fNames = [self.grid_entries[i][0].get() for i in range(1, 6)]
@@ -441,26 +382,6 @@ class UiManager:
             if self.print_output: print(type(num))
         return num
 
-    def update_grid(self,rows,row_lo,row_hi,row_correction):
-        for r, row in enumerate(rows):
-            values = row.split(',')
-            for c, value in enumerate(values):
-                if c < 6:
-                    if r < 6:
-                        self.grid_entries[r][c].set(value)
-                    if row_lo <= r < row_hi:
-                        corrected_r = r - row_correction
-                        if corrected_r < 6:
-                            self.grid_entries[corrected_r][c].set(value)
-                            # if self.print_output: print(f"r: {r}; row_correction: {row_correction}; sum: {corrected_r}; c is: {c}; value: {value}")
-
-    def update_grid_from_textbox(self): 
-        content = self.textbox.get(1.0, tk.END).strip()
-        rows = content.split('\n')
-        current_scenario = self.get_scenario_num()
-        row_lo, row_hi = self.get_row_range()
-        row_correction = current_scenario * 6
-        self.update_grid(rows,row_lo,row_hi,row_correction)
 
     def validate_grid_data(self):
         for row in range(1, 6):
@@ -471,40 +392,7 @@ class UiManager:
                     return False
         return True
 
-    def validate_textbox_data(self):
-        content = self.textbox.get(1.0, tk.END).strip()
-        rows = content.split('\n')
-        if len(rows) != 6:
-            messagebox.showerror("Error", "Invalid number of rows in textbox. Expected 6 rows.")
-            return False
-        for row in rows:
-            if len(row.split(',') != 6):
-                messagebox.showerror("Error", "Invalid number of columns in textbox. Expected 6 columns per row.")
-                return False
-        return True
 
-    def save_grid_state(self):
-        file_path = filedialog.asksaveasfilename(defaultextension=".csv",
-                                                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-        if not file_path:
-            return
-
-        with open(file_path, 'w', newline='') as file:
-            writer = csv.writer(file)
-            for row in self.grid_entries:
-                writer.writerow([entry.get() for entry in row])
-
-    def load_grid_state(self):
-        file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-        if not file_path:
-            return
-
-        with open(file_path, 'r') as file:
-            reader = csv.reader(file)
-            for r, row in enumerate(reader):
-                for c, value in enumerate(row):
-                    if r < 6 and c < 6:
-                        self.grid_entries[r][c].set(value)
 
     def create_tooltip(self, widget, text):
         tooltip = tk.Toplevel(widget)
