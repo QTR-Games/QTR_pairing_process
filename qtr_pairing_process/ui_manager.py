@@ -6,11 +6,12 @@ import csv
 # installed libraries
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-
 # repo libraries
 from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_RANGES, SCENARIO_TO_CSV_MAP
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.tree_generator import TreeGenerator
+from qtr_pairing_process.db_load_ui import DbLoadUi
+from qtr_pairing_process.db_management.db_manager import DbManager
 class UiManager:
     def __init__(
         self,
@@ -30,11 +31,25 @@ class UiManager:
         self.scenario_ranges = scenario_ranges
         self.scenario_to_csv_map = scenario_to_csv_map
         self.treeview = None
+
+
+        self.select_database()
         self.initialize_ui_vars()
 
         if print_output:
             print(f"TKINTER VERSION: {tk.TkVersion}")
             
+
+    def select_database(self):
+        db_load_ui = DbLoadUi()
+        self.db_path, self.db_name = db_load_ui.create_or_load_database()
+
+        if self.db_path is None:
+
+            self.db_manager = DbManager()
+            self.db_manager.create_tables()
+        else:
+            self.db_manager = DbManager(path=self.db_path, name=self.db_name)
             
     def initialize_ui_vars(self):
         # set root
@@ -99,10 +114,17 @@ class UiManager:
 
         # create combobox for file selection
         # create the label
-        tk.Label(self.drop_down_frame, text='Select File:').pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Label(self.drop_down_frame, text='Select Team 1:').pack(side=tk.LEFT, padx=5, pady=5)
+
         # create combobox
-        self.combobox = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
-        self.combobox.pack(side=tk.LEFT, padx=5, pady=5)
+        self.combobox_1 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
+        self.combobox_1.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        tk.Label(self.drop_down_frame, text='Select Team 2:').pack(side=tk.LEFT, padx=5, pady=5)
+
+        # create combobox
+        self.combobox_2 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
+        self.combobox_2.pack(side=tk.LEFT, padx=5, pady=5)
 
         # create combobox for scenario selection
         # create the label
@@ -151,12 +173,12 @@ class UiManager:
         get_node_data = tk.Button(text="Get Rating", command=self.treeview.get_selected_value)
         get_node_data.pack(side=tk.LEFT, padx=5, pady=3)
 
-        self.create_tooltip(self.combobox, "Select a CSV file to import")
+        self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
         self.create_tooltip(self.textbox, "You may copy and paste valus from a CSV file in this box.")
         self.create_tooltip(self.treeview, "Generated combinations will be displayed here")
         
-        self.get_data_from_csv()
+        # self.get_data_from_csv()
         self.update_grid_from_textbox()
         self.update_combobox_colors()
         self.root.mainloop()
@@ -201,13 +223,13 @@ class UiManager:
         return files
 
     def select_directory_and_update_combobox(self):
-        if self.directory:
-            csv_files = [f[:-4] for f in os.listdir(self.directory) if f.endswith('.csv')]
-            self.combobox['values'] = csv_files
-            if not csv_files:
-                self.combobox.set("No CSV files found")
-            else:
-                self.combobox.set(csv_files[0])
+        sql = 'select team_name from teams'
+        teams = self.db_manager.query_sql(sql)
+        team_names = [t[0] for t in teams]
+        if not team_names:
+            team_names = ['No teams Found']
+        self.combobox_1['values'] = team_names
+        self.combobox_2['values'] = team_names
 
     def clear_textbox(self):
         self.textbox.config(state=tk.NORMAL)
@@ -240,7 +262,7 @@ class UiManager:
 
     def get_data_from_csv(self):
         try:
-            file_name = self.combobox.get()
+            file_name = self.combobox_1.get()
             if not file_name:
                 raise ValueError("No file selected")
 
