@@ -126,5 +126,5 @@ class DbManager:
                         player_id_2=player_2_row[0],
                         team_id_2=player_2_row[1],
                         scenario_id=scenario_id,
-                        rating=1
+                        rating=player_1_row[0]**2 + player_2_row[0]**2
                     )

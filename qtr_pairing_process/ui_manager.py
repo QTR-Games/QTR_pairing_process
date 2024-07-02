@@ -45,9 +45,7 @@ class UiManager:
         self.db_path, self.db_name = db_load_ui.create_or_load_database()
 
         if self.db_path is None:
-
             self.db_manager = DbManager()
-            self.db_manager.create_tables()
         else:
             self.db_manager = DbManager(path=self.db_path, name=self.db_name)
             
@@ -144,8 +142,8 @@ class UiManager:
 
         # Add Buttons to a row just above the pairing grid       
         tk.Button(self.button_row_frame, text="IMPORT CSV", command=lambda: self.get_data_from_csv()).pack(side=tk.LEFT, padx=5, pady=5)
-        tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_state()).pack(side=tk.LEFT, padx=5, pady=5)
-        tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_state()).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_data_from_db()).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Update Grid", command=lambda: self.update_grid_from_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Update Text", command=lambda: self.update_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Clear Text", command=lambda: self.clear_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
@@ -235,7 +233,7 @@ class UiManager:
         self.combobox_1['values'] = team_names
         self.combobox_2['values'] = team_names
 
-    def load_grid_from_db(self):
+    def load_grid_data_from_db(self):
         team_1 = self.combobox_1.get()
         team_2 = self.combobox_2.get()
         scenario_id = int(self.scenario_box.get()[:1])
@@ -254,9 +252,9 @@ class UiManager:
         team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
         team_2_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_2_id))
 
-        team_1_dict = {row[0]:row[1] for row in team_1_players}
-        team_2_dict = {row[0]:row[1] for row in team_2_players}
-
+        team_1_dict = {row[0]:{'position':i+1,'name':row[1]} for i,row in enumerate(team_1_players)}
+        team_2_dict = {row[0]:{'position':i+1,'name':row[1]}for i,row in enumerate(team_2_players)}
+        print(team_1_dict)
         ratings_sql = f"""
             SELECT
                 team_1_player_id,
@@ -267,9 +265,9 @@ class UiManager:
             FROM
                 ratings
             WHERE
-                team_1_player_id IN ({','.join(team_1_dict.keys())})
+                team_1_player_id IN ({','.join([str(x) for x in team_1_dict.keys()])})
               AND
-                team_2_player_id IN ({','.join(team_2_dict.keys())})
+                team_2_player_id IN ({','.join([str(x) for x in team_2_dict.keys()])})
               AND
                 team_1_id = {team_1_id}
               AND
@@ -282,11 +280,60 @@ class UiManager:
         """
 
         ratings_rows = self.db_manager.query_sql(ratings_sql)
+        print(ratings_rows)
+        # update usernames
+        for _, row_dict in team_2_dict.items():
+
+            self.grid_entries[0][row_dict['position']].set(row_dict['name'])
+        
+        for _, row_dict in team_1_dict.items():
+            self.grid_entries[row_dict['position']][0].set(row_dict['name'])
+
+        for r, row in enumerate(ratings_rows):
+            team_1_pos = team_1_dict[row[0]]['position']
+            team_2_pos = team_2_dict[row[1]]['position']
+            self.grid_entries[team_1_pos][team_2_pos].set(row[2])
+        
 
 
 
+    def save_grid_data_to_db(self):
+        team_1 = self.combobox_1.get()
+        team_2 = self.combobox_2.get()
+        scenario_id = int(self.scenario_box.get()[:1])
+
+        team_sql_template = "select team_id from teams where team_name='{team_name}'"
+        team_1_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_1))
+        team_1_id = team_1_row[0][0]
+
+        team_2_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_2))
+        team_2_id = team_2_row[0][0]
+
+        if team_1_id > team_2_id:
+            team_1_id, team_2_id = team_2_id, team_1_id
+
+        player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
+        team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
+        team_2_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_2_id))
+
+        team_1_dict = {i+1:{'id':row[0],'name':row[1]} for i,row in enumerate(team_1_players)}
+        team_2_dict = {i+1:{'id':row[0],'name':row[1]}for i,row in enumerate(team_2_players)}
 
 
+        for row in range(1,len(self.grid_entries)):
+            for col in range(1,len(self.grid_entries[0])):
+                rating = int(self.grid_entries[row][col].get())
+                team_1_player_id = team_1_dict[row]['id']
+                team_2_player_id = team_2_dict[col]['id']
+
+                self.db_manager.upsert_rating(
+                    player_id_1=team_1_player_id,
+                    player_id_2=team_2_player_id,
+                    team_id_1=team_1_id,
+                    team_id_2=team_2_id,
+                    scenario_id=scenario_id,
+                    rating=rating
+                )
 
 
     #############################################
