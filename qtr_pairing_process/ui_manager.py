@@ -139,7 +139,7 @@ class UiManager:
         self.previous_value = self.scenario_var.get()
         # Attach a trace to the StringVar
         self.scenario_var.trace_add('write', self.on_scenario_box_change)
-        self.select_directory_and_update_combobox()
+        self.select_team_names()
         self.update_scenario_box()
 
         # Add Buttons to a row just above the pairing grid       
@@ -222,7 +222,11 @@ class UiManager:
         print(f"CSV files found in {self.directory}: {files}")
         return files
 
-    def select_directory_and_update_combobox(self):
+    ####################
+    # DB Fill/Save Funcs
+    ####################
+
+    def select_team_names(self):
         sql = 'select team_name from teams'
         teams = self.db_manager.query_sql(sql)
         team_names = [t[0] for t in teams]
@@ -230,6 +234,63 @@ class UiManager:
             team_names = ['No teams Found']
         self.combobox_1['values'] = team_names
         self.combobox_2['values'] = team_names
+
+    def load_grid_from_db(self):
+        team_1 = self.combobox_1.get()
+        team_2 = self.combobox_2.get()
+        scenario_id = int(self.scenario_box.get()[:1])
+
+        team_sql_template = "select team_id from teams where team_name='{team_name}'"
+        team_1_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_1))
+        team_1_id = team_1_row[0][0]
+
+        team_2_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_2))
+        team_2_id = team_2_row[0][0]
+
+        if team_1_id > team_2_id:
+            team_1_id, team_2_id = team_2_id, team_1_id
+
+        player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
+        team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
+        team_2_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_2_id))
+
+        team_1_dict = {row[0]:row[1] for row in team_1_players}
+        team_2_dict = {row[0]:row[1] for row in team_2_players}
+
+        ratings_sql = f"""
+            SELECT
+                team_1_player_id,
+                team_2_player_id,
+                rating,
+                team_1_id,
+                team_2_id
+            FROM
+                ratings
+            WHERE
+                team_1_player_id IN ({','.join(team_1_dict.keys())})
+              AND
+                team_2_player_id IN ({','.join(team_2_dict.keys())})
+              AND
+                team_1_id = {team_1_id}
+              AND
+                team_2_id = {team_2_id}
+              AND
+                scenario_id = {scenario_id}
+            ORDER BY
+                team_1_player_id, team_2_player_id
+
+        """
+
+        ratings_rows = self.db_manager.query_sql(ratings_sql)
+
+
+
+
+
+
+
+    #############################################
+
 
     def clear_textbox(self):
         self.textbox.config(state=tk.NORMAL)
@@ -245,6 +306,7 @@ class UiManager:
                 if any(row_values):
                     self.textbox.insert(tk.END, ', '.join(row_values) + '\n')
         self.textbox.config(state=tk.NORMAL)
+
 
     def update_combobox_colors(self):
         for row in range(1, 6):
