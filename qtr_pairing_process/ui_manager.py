@@ -123,13 +123,13 @@ class UiManager:
         # Add Buttons to a row just above the pairing grid       
         tk.Button(self.button_row_frame, text="IMPORT CSV", command=lambda: self.get_data_from_csv()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_state()).pack(side=tk.LEFT, padx=5, pady=5)
-        tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_state()).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.cycle_scenarios_save()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Update Grid", command=lambda: self.update_grid_from_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Update Text", command=lambda: self.update_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Update Text", command=lambda: self.cycle_scenarios_to_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Clear Text", command=lambda: self.clear_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Save", command=lambda: self.save_textbox_content()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Get Text", command=lambda: self.get_scenario_text()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Cycle", command=lambda: self.cycle_scenarios()).pack(side=tk.LEFT, padx=5, pady=3)
+        #tk.Button(self.button_row_frame, text="Cycle", command=lambda: self.cycle_scenarios()).pack(side=tk.LEFT, padx=5, pady=3)
 
         # Configure Treeview ... with style!
         style = ttk.Style()
@@ -215,44 +215,7 @@ class UiManager:
         self.textbox.config(state=tk.NORMAL)
         self.textbox.delete(1.0, tk.END)
 
-    def update_textbox(self):
-        # Get the current scenario
-        current_scenario = self.get_scenario_num()
-        row_lo, row_hi = self.get_row_range(current_scenario)
-
-        # Read the existing content in the textbox
-        content = self.textbox.get(1.0, tk.END).strip()
-        rows = content.split('\n')
-
-        # Ensure the rows list has enough lines
-        while len(rows) < 42:  # Ensure we have enough rows for the highest scenario
-            rows.append('')
-
-        # Set specific scenario headers with the scenario number followed by opponent names if not already set
-        scenario_headers = {
-            1: 7,
-            2: 13,
-            3: 19,
-            4: 25,
-            5: 31,
-            6: 37
-        }
-        
-        for scenario, row_start in scenario_headers.items():
-            if current_scenario == scenario:
-                if len(rows) <= row_start or not rows[row_start].startswith(str(scenario)):
-                    rows[row_start] = f"{scenario},{','.join([self.grid_entries[0][c].get().strip() for c in range(1, 6)])}"
-
-                # Update only the lines corresponding to the current scenario
-                for r in range(row_lo, row_hi):
-                    row_values = [self.grid_entries[r - row_lo + 1][c].get().strip() for c in range(6)]
-                    rows[r] = ', '.join(row_values)
-
-        # Write back the modified content to the textbox
-        self.textbox.config(state=tk.NORMAL)
-        self.textbox.delete(1.0, tk.END)
-        self.textbox.insert(tk.END, '\n'.join(rows))
-        self.textbox.config(state=tk.NORMAL)
+    
 
     def update_combobox_colors(self):
         for row in range(1, 6):
@@ -316,6 +279,14 @@ class UiManager:
     def prep_scenario(self):
         scenario = self.get_scenario_num()
         return scenario
+    
+    def prep_text(self, scenario):
+        content = self.textbox.get(1.0, tk.END).strip()
+        rows = content.split('\n')
+        current_scenario = self.get_scenario_num()
+        row_lo, row_hi = self.get_row_range(current_scenario)
+        row_correction = current_scenario * 6
+        return rows,row_lo,row_hi,row_correction
 
     def sort_names(self, fNames, oNames, check_alpha):
         if check_alpha.get():
@@ -355,14 +326,6 @@ class UiManager:
                             self.grid_entries[corrected_r][c].set(value)
                             # if self.print_output: print(f"r: {r}; row_correction: {row_correction}; sum: {corrected_r}; c is: {c}; value: {value}")
 
-    def prep_text(self, scenario):
-        content = self.textbox.get(1.0, tk.END).strip()
-        rows = content.split('\n')
-        current_scenario = self.get_scenario_num()
-        row_lo, row_hi = self.get_row_range(current_scenario)
-        row_correction = current_scenario * 6
-        return rows,row_lo,row_hi,row_correction
-
     def update_grid_from_textbox(self):
         rows,row_lo,row_hi,row_correction = self.prep_text(self.get_scenario_num())
         self.update_grid(rows,row_lo,row_hi,row_correction)
@@ -384,11 +347,28 @@ class UiManager:
            
         return scenario_values
     
-    def cycle_scenarios(self):
+    def cycle_scenarios_save(self):
         scenario_values = self.get_scenario_text(self.scenario_box.get()) + "\n"
-        # print(f"SCENARIO_VALUES:\n{scenario_values}")
+        scenario_values = scenario_values.strip()
         self.save_textbox_content(scenario_values)
         return(scenario_values)
+    
+    def cycle_scenarios_to_textbox(self):
+        scenario_values = self.get_scenario_text(self.scenario_box.get()) + "\n"
+        scenario_values = scenario_values.strip()
+        self.update_textbox(scenario_values)
+        return(scenario_values)
+    
+    def update_textbox(self,content=""):
+        if content is "":
+            print(f"NO CONTENT PRESENTED")
+            content = self.textbox.get(1.0, tk.END).strip()
+        
+        # Write back the content of the csv generated to the the textbox
+        self.textbox.config(state=tk.NORMAL)
+        self.textbox.delete(1.0, tk.END)
+        self.textbox.insert(tk.END, ''.join(content))
+        self.textbox.config(state=tk.NORMAL)
     
     def validate_grid_data(self):
         for row in range(1, 6):
