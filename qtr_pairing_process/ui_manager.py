@@ -5,7 +5,7 @@ import csv
 
 # installed libraries
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, simpledialog
 # repo libraries
 from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_RANGES, SCENARIO_TO_CSV_MAP
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
@@ -142,7 +142,7 @@ class UiManager:
         tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_data_from_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
-        # self.import_csvs('/mnt/data/TestScenarioLabels.csv')
+        tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
         
         # Configure Treeview ... with style!
         style = ttk.Style()
@@ -330,6 +330,17 @@ class UiManager:
                     scenario_id=scenario_id,
                     rating=rating
                 )
+
+    def add_team_to_db(self):
+        # Create a popup window to enter the team name
+        popup = tk.Tk()
+        popup.withdraw()  # Hide the main window
+        
+        team_name = simpledialog.askstring("Input", "Enter the team name:", parent=popup)
+        if team_name:
+            self.import_team_name(team_name)
+        popup.destroy()
+        self.set_team_dropdowns()
 
     def export_csvs(self):
         pass
