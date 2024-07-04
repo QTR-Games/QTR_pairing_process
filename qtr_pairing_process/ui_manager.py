@@ -341,77 +341,91 @@ class UiManager:
     
     def import_csvs(self, csv_file_path=""):
         team_names = self.select_team_names()
+        
+        # Assume that the left dropdown has the friendly team already set.
         team_1 = self.combobox_1.get()
+        if team_1 == "":
+            team_1 = "default_team_1"
         if csv_file_path == "":
             csv_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
         
         with open(csv_file_path, mode='r', newline='') as file:
             reader = csv.reader(file)
             rows = list(reader)
-            # Assume that the left dropdown has the friendly team already set.
             
-            # Assuming the file format is:
-            # Scenario ID, Team 2 Player Names...
-            # Followed by player ratings for each player in Team 1 against all Team 2 players for that scenario
-
-            i = 0
             scenario_id = 0
             team_2 = rows[0][0]
             print(f"TEAM NAME FROM CSV: {team_2}")
 
+            add_team = False
             for team in team_names:
                 if team == team_2:
-                    print(f"Found Team {team_2} in DB!")
+                    # print(f"Found Team {team_2} in DB!")
                     add_team = False
                     break
                 else:
-                    print(f"{team} doesn't match {team_2}")
+                    # print(f"{team} doesn't match {team_2}")
                     add_team = True
             
-            if add_team:
-                print("importing team")
-                try:
-                    self.db_manager.execute_sql(f"INSERT INTO teams (team_name) VALUES ('{team_2}')")
-                    print(f"TEAM {team_2} ADDED")
-                except (ValueError, IndexError):
-                    return 0
-                
-
-
-
             # Insert team 2 team name into the database if it doesn't already exist.
-
-            """ # If the team name in the CSV is not in the Database, add it.
-            if len(team_exists) > 0:
-                self.db_manager.execute_sql(
-                    f"INSERT INTO teams (team_name) VALUES ('{team_2}')"
-                )
-                print(f"TEAM {team_2} ADDED")
+            if add_team:
+                return self.import_team_name(team_2)
                 
+            # Assuming the file format is:
+            # Scenario ID, Team 2 Player Names...
+            # Followed by player ratings for each player in Team 1 against all Team 2 players for that scenario
             
-            while i < len(rows):
-                scenario_row = rows[i]
-                if i == 0:
-                    
-                else: 
-                    scenario_id = int(scenario_row[0])
-                team_2_players = scenario_row[1:]
+            team_sql_template = "select team_id from teams where team_name='{team_name}'"
+            team_1_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_1))
+            print(team_1_row)
+            team_1_id = team_1_row[0][0]
 
-                
-                # Insert team 2 players into the database
-                for player_name in team_2_players:
+            team_2_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_2))
+            team_2_id = team_2_row[0][0]
+
+            player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
+            team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
+            team_2_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_2_id))
+
+            print(f"{team_1_players}\n - vs - \n{team_2_players}")
+
+            # rows,row_lo,row_hi,row_correction = self.prep_text(self.get_scenario_num())
+            # self.update_grid(rows,row_lo,row_hi,row_correction)
+            
+            scenario_row = rows[0]
+            team_2_players_file = scenario_row[1:]
+            scenario_id = 0
+            
+            print(team_2_players_file)
+
+            add_players = False
+
+            # Insert team 2 players into the database
+            # If we already added the team then we know the players will not exist so add them.
+            # otherwise we need to check if the names exist for this team.
+            if add_team:
+                add_players = True
+
+            # Check if team 2 has these players.
+            if team_2_players == []:
+                add_players = True
+
+            if add_players:
+                for player_name in team_2_players_file:
+                    print(f"adding enemy player - {player_name}")
+
                     self.db_manager.execute_sql(
-                        f"INSERT INTO players (player_name) VALUES ('{player_name}')"
+                        f"INSERT INTO players (player_name,team_id) VALUES ('{player_name}','{team_2_id}')"
                     )
-
-                # Retrieve team 2 player IDs
-                team_2_player_ids = []
-                for player_name in team_2_players:
-                    result = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player_name}'")
-                    team_2_player_ids.append(result[-1][0])  # Get the last inserted player ID
-                
-                i += 1
             
+            # Retrieve team 2 player IDs
+            team_2_player_ids = []
+            for player_name in team_2_players_file:
+                result = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player_name}'")
+                team_2_player_ids.append(result[-1][0])  # Get the last inserted player ID
+            
+            print(f"players added.")
+            """
             # Now read player ratings for team 1 players
             while i < len(rows) and not rows[i][0].isdigit():
                 rating_row = rows[i]
@@ -436,7 +450,37 @@ class UiManager:
                 
                 i += 1
                  """
+        # update the drop downs in the UI in case a new team was added.
         self.set_team_dropdowns()
+
+    def update_grid(self,rows,row_lo,row_hi,row_correction):
+        for r, row in enumerate(rows):
+            values = row.split(',')
+            for c, value in enumerate(values):
+                if c < 6:
+                    if r < 6:
+                        self.grid_entries[r][c].set(value)
+                    if row_lo <= r < row_hi:
+                        corrected_r = r - row_correction
+                        if corrected_r < 6:
+                            self.grid_entries[corrected_r][c].set(value)
+                            # if self.print_output: print(f"r: {r}; row_correction: {row_correction}; sum: {corrected_r}; c is: {c}; value: {value}")
+    
+    def prep_text(self, scenario):
+        content = self.textbox.get(1.0, tk.END).strip()
+        rows = content.split('\n')
+        current_scenario = self.get_scenario_num()
+        row_lo, row_hi = self.get_row_range(current_scenario)
+        row_correction = current_scenario * 6
+        return rows,row_lo,row_hi,row_correction
+    
+    def import_team_name(self, team_name):
+        print("importing team")
+        try:
+            self.db_manager.execute_sql(f"INSERT INTO teams (team_name) VALUES ('{team_name}')")
+            print(f"TEAM {team_name} ADDED")
+        except (ValueError, IndexError):
+            return 0
 
 
     #############################################
