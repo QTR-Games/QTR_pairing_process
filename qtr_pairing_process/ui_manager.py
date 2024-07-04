@@ -19,7 +19,7 @@ class UiManager:
         directory,
         scenario_ranges,
         scenario_to_csv_map,
-        print_output=True
+        print_output=False
     ):
         self.grid_entries = None
         self.grid_widgets = None
@@ -190,14 +190,14 @@ class UiManager:
         new_value = self.scenario_var.get()
         # Compare with the previous value
         if new_value != self.previous_value:
-            print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
+            # print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
             self.previous_value = new_value
             self.update_grid_from_textbox()
 
 
     def get_csv_files(self):
         files = [f[:-4] for f in os.listdir(self.directory) if f.endswith('.csv')]
-        print(f"CSV files found in {self.directory}: {files}")
+        # print(f"CSV files found in {self.directory}: {files}")
         return files
 
     def select_directory_and_update_combobox(self):
@@ -287,7 +287,7 @@ class UiManager:
 
     def sort_names(self, fNames, oNames, check_alpha):
         if check_alpha.get():
-            print("Sorting...")
+            # print("Sorting...")
             fNames_sorted = sorted(fNames, key=lambda x: x)
             oNames_sorted = sorted(oNames, key=lambda x: x)
         else:
