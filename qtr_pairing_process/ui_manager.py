@@ -134,7 +134,7 @@ class UiManager:
         self.previous_value = self.scenario_var.get()
         # Attach a trace to the StringVar
         self.scenario_var.trace_add('write', self.on_scenario_box_change)
-        self.select_team_names()
+        self.set_team_dropdowns()
         self.update_scenario_box()
 
         # Add Buttons to a row just above the pairing grid       
@@ -142,6 +142,7 @@ class UiManager:
         tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_data_from_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
+        # self.import_csvs('/mnt/data/TestScenarioLabels.csv')
         
         # Configure Treeview ... with style!
         style = ttk.Style()
@@ -154,7 +155,6 @@ class UiManager:
         self.treeview.tree.tag_configure('4', background="yellowgreen")
         self.treeview.tree.tag_configure('5', background="deepskyblue")
         self.treeview.pack(expand=1, fill='both')
-
     
         generateButton = tk.Button(self.bottom_frame, text="Generate Combinations", command=self.on_generate_combinations)
         generateButton.pack(pady=10)
@@ -171,7 +171,6 @@ class UiManager:
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
         self.create_tooltip(self.treeview, "Generated combinations will be displayed here")
         
-        # self.get_data_from_csv()
         self.update_combobox_colors()
         self.root.mainloop()
 
@@ -210,6 +209,8 @@ class UiManager:
             print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
             self.previous_value = new_value
             self.load_grid_data_from_db()
+            # Pull updated set of team names from DB when the drop down changes.
+            self.set_team_dropdowns()
 
     ####################
     # DB Fill/Save Funcs
@@ -221,6 +222,10 @@ class UiManager:
         team_names = [t[0] for t in teams]
         if not team_names:
             team_names = ['No teams Found']
+        return team_names
+
+    def set_team_dropdowns(self):
+        team_names = self.select_team_names()
         self.combobox_1['values'] = team_names
         self.combobox_2['values'] = team_names
 
@@ -328,8 +333,110 @@ class UiManager:
 
     def export_csvs(self):
         pass
-    def import_csvs(self):
-        pass
+
+
+
+
+
+    
+    def import_csvs(self, csv_file_path=""):
+        team_names = self.select_team_names()
+        team_1 = self.combobox_1.get()
+        if csv_file_path == "":
+            csv_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+        
+        with open(csv_file_path, mode='r', newline='') as file:
+            reader = csv.reader(file)
+            rows = list(reader)
+            # Assume that the left dropdown has the friendly team already set.
+            
+            # Assuming the file format is:
+            # Scenario ID, Team 2 Player Names...
+            # Followed by player ratings for each player in Team 1 against all Team 2 players for that scenario
+
+            i = 0
+            scenario_id = 0
+            team_2 = rows[0][0]
+            print(f"TEAM NAME FROM CSV: {team_2}")
+
+            for team in team_names:
+                if team == team_2:
+                    print(f"Found Team {team_2} in DB!")
+                    add_team = False
+                    break
+                else:
+                    print(f"{team} doesn't match {team_2}")
+                    add_team = True
+            
+            if add_team:
+                print("importing team")
+                try:
+                    self.db_manager.execute_sql(f"INSERT INTO teams (team_name) VALUES ('{team_2}')")
+                    print(f"TEAM {team_2} ADDED")
+                except (ValueError, IndexError):
+                    return 0
+                
+
+
+
+            # Insert team 2 team name into the database if it doesn't already exist.
+
+            """ # If the team name in the CSV is not in the Database, add it.
+            if len(team_exists) > 0:
+                self.db_manager.execute_sql(
+                    f"INSERT INTO teams (team_name) VALUES ('{team_2}')"
+                )
+                print(f"TEAM {team_2} ADDED")
+                
+            
+            while i < len(rows):
+                scenario_row = rows[i]
+                if i == 0:
+                    
+                else: 
+                    scenario_id = int(scenario_row[0])
+                team_2_players = scenario_row[1:]
+
+                
+                # Insert team 2 players into the database
+                for player_name in team_2_players:
+                    self.db_manager.execute_sql(
+                        f"INSERT INTO players (player_name) VALUES ('{player_name}')"
+                    )
+
+                # Retrieve team 2 player IDs
+                team_2_player_ids = []
+                for player_name in team_2_players:
+                    result = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player_name}'")
+                    team_2_player_ids.append(result[-1][0])  # Get the last inserted player ID
+                
+                i += 1
+            
+            # Now read player ratings for team 1 players
+            while i < len(rows) and not rows[i][0].isdigit():
+                rating_row = rows[i]
+                team_1_player_name = rating_row[0]
+                ratings = rating_row[1:]
+
+                # Insert team 1 player into the database
+                self.db_manager.execute_sql(
+                    f"INSERT INTO players (player_name) VALUES ('{team_1_player_name}')"
+                )
+
+                # Retrieve team 1 player ID
+                result = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{team_1_player_name}'")
+                team_1_player_id = result[-1][0]  # Get the last inserted player ID
+
+                # Insert ratings into the database
+                for team_2_player_id, rating in zip(team_2_player_ids, ratings):
+                    self.db_manager.execute_sql(
+                        f"INSERT INTO ratings (team_1_player_id, team_2_player_id, rating, scenario_id) "
+                        f"VALUES ({team_1_player_id}, {team_2_player_id}, {rating}, {scenario_id})"
+                    )
+                
+                i += 1
+                 """
+        self.set_team_dropdowns()
 
 
     #############################################
