@@ -27,7 +27,7 @@ class TreeGenerator:
             fNames_sorted[:] = uf.cycle_list(fNames_sorted)
             # oNames_sorted[:] = cycle_list(oNames_sorted)
 
-        # self.traverse_and_sum_values()
+        
             
         
     def generate_nested_combinations(self, first_fName, fNames, oNames, fRatings, oRatings, parent):
