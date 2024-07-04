@@ -160,6 +160,8 @@ class UiManager:
         generateButton.pack(pady=10)
         show_info_button = tk.Button(text="Show Info", command=self.treeview.item_details)
         show_info_button.pack()
+        math_button = tk.Button(text="DO MATHS!", command=self.traverse_and_sum_values)
+        math_button.pack(side=tk.LEFT, padx=5, pady=3)
         show_selection_button = tk.Button(text="Show Selection", command=self.treeview.show_selection)
         show_selection_button.pack(side=tk.LEFT, padx=5, pady=3)
         get_node_data = tk.Button(text="Get Rating", command=self.treeview.get_selected_value)
@@ -186,6 +188,9 @@ class UiManager:
         else:
             self.tree_generator.generate_combinations(oNames, fNames, oRatings, fRatings)
                    
+    def traverse_and_sum_values(self):
+        print("MATH IS HAPPENING!!!")
+        self.tree_generator.traverse_and_sum_values()
 
     def update_scenario_box(self):
         scenarios = []

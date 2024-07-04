@@ -90,7 +90,3 @@ class TreeGenerator:
             self.set_value(max_rating, node)
             return total_sum
     
-    
-
-    
-        
