@@ -57,13 +57,14 @@ class TreeGenerator:
             print(f"set_item_details has failed")
             return 0
 
-    def traverse_and_sum_values(self):
+    def traverse_and_sum_values(self, mode=0):
         # Get all root nodes
+        print(f"MODE = {mode}")
         root_nodes = self.treeview.tree.get_children()
         for root in root_nodes:
-            self.sum_leaf_values(root)
+            self.sum_leaf_values(root,mode)
 
-    def sum_leaf_values(self, node):
+    def sum_leaf_values(self, node, mode=0):
         child_ids = self.treeview.tree.get_children(node)
         if not child_ids:
             # Leaf node, return the integer value from the values column
@@ -75,20 +76,41 @@ class TreeGenerator:
             except (ValueError, IndexError):
                 return 0
         else:
-            # Sum the values of child nodes
-            total_sum = 0
-            value = self.treeview.tree.item(node, 'values')
-            match_ratings = []
-             
-            for child_id in child_ids:
-                total_sum += int(self.sum_leaf_values(child_id))
-                match_ratings.append(int(self.sum_leaf_values(child_id)))
+            try:
+                if (mode == 0):
+                    # Sum the values of child nodes
+                    total_sum = 0
+                    value = self.treeview.tree.item(node, 'values')
+                    match_ratings = []
+                    
+                    for child_id in child_ids:
+                        current_value = int(self.sum_leaf_values(child_id,0))
+                        total_sum += current_value
+                        match_ratings.append(current_value)
 
-            max_rating = max(match_ratings)
-            # print(f"sum_leaf_values - NON LEAF NODE HIT.\nNode: {node}, match_ratings = {match_ratings}, Returned total_sum: {total_sum}")
-            # self.set_value(total_sum)
-            self.set_value(max_rating, node)
-            return total_sum
+                    max_rating = max(match_ratings)
+                    # print(f"sum_leaf_values - NON LEAF NODE HIT.\nNode: {node}, match_ratings = {match_ratings}, Returned total_sum: {total_sum}")
+                    # self.set_value(total_sum)
+                    self.set_value(max_rating, node)
+                    return total_sum
+                else:
+                    # Sum the values of child nodes
+                    total_sum = 0
+                    value = self.treeview.tree.item(node, 'values')
+                    # match_ratings = []
+                    
+                    for child_id in child_ids:
+                        total_sum += int(self.sum_leaf_values(child_id,1))
+                        # match_ratings.append(int(self.sum_leaf_values(child_id)))
+
+                    # max_rating += sum(match_ratings)
+                    # print(f"sum_leaf_values - NON LEAF NODE HIT.\nNode: {node}, match_ratings = {match_ratings}, Returned total_sum: {total_sum}")
+                    # self.set_value(total_sum)
+                    self.set_value(total_sum, node)
+                    return total_sum
+            except (ValueError, IndexError):
+                return 0
+            
     
     
 
