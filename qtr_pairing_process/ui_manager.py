@@ -143,9 +143,9 @@ class UiManager:
         tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_data_from_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
-        
+        tk.Button(self.button_row_frame, text="REFRESH", command=lambda: self.update_ui()).pack(side=tk.LEFT, padx=5, pady=3)
+
         # Configure Treeview ... with style!
         style = ttk.Style()
         style.configure("Treeview", font=("Arial", 12))
@@ -210,15 +210,20 @@ class UiManager:
         if new_value != self.previous_value:
             print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
             self.previous_value = new_value
-            self.load_grid_data_from_db()
-            # Pull updated set of team names from DB when the drop down changes.
-            self.set_team_dropdowns()
-
+            self.update_ui()
+            
     ####################
     # DB Fill/Save Funcs
     ####################
 
+    def update_ui(self):
+        # Update the team dropdowns and grid values
+        self.set_team_dropdowns()
+        self.load_grid_data_from_db()
+
     def select_team_names(self):
+        # Using this for testing.
+        # Possibly remove this later.
         sql = 'select team_name from teams'
         teams = self.db_manager.query_sql(sql)
         team_names = [t[0] for t in teams]
@@ -234,7 +239,11 @@ class UiManager:
     def load_grid_data_from_db(self):
         team_1 = self.combobox_1.get()
         team_2 = self.combobox_2.get()
-        scenario_id = int(self.scenario_box.get()[:1])
+        scenario = self.scenario_box.get()[:1]
+        if scenario == '':
+            self.scenario_box.set("0 - Neutral")
+            scenario = self.scenario_box.get()[:1]
+        scenario_id = int(scenario)
 
         team_sql_template = "select team_id from teams where team_name='{team_name}'"
         team_1_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_1))
@@ -243,8 +252,9 @@ class UiManager:
         team_2_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_2))
         team_2_id = team_2_row[0][0]
 
-        if team_1_id > team_2_id:
-            team_1_id, team_2_id = team_2_id, team_1_id
+        # Do not assume that the lower team value is the home team
+        # if team_1_id > team_2_id:
+            # team_1_id, team_2_id = team_2_id, team_1_id
 
         player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
         team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
@@ -292,9 +302,6 @@ class UiManager:
             team_2_pos = team_2_dict[row[1]]['position']
             self.grid_entries[team_1_pos][team_2_pos].set(row[2])
         
-
-
-
     def save_grid_data_to_db(self):
         team_1 = self.combobox_1.get()
         team_2 = self.combobox_2.get()
@@ -307,8 +314,9 @@ class UiManager:
         team_2_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_2))
         team_2_id = team_2_row[0][0]
 
-        if team_1_id > team_2_id:
-            team_1_id, team_2_id = team_2_id, team_1_id
+        # Do not assume that the lower team value is the home team
+        # if team_1_id > team_2_id:
+            # team_1_id, team_2_id = team_2_id, team_1_id
 
         player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
         team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
@@ -342,7 +350,7 @@ class UiManager:
         if team_name:
             self.db_manager.create_team(team_name)
         popup.destroy()
-        self.set_team_dropdowns()
+        self.update_ui()
 
     def delete_team(self):
         popup = tk.Tk()
@@ -385,77 +393,81 @@ class UiManager:
     
     def import_csvs(self):
         file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-        try:
-            with open(file_path, newline='') as csvfile:
-                reader = csv.reader(csvfile)
-                self.import_csv_header(reader)
-                self.set_team_dropdowns()
-                self.import_csv_ratings(reader)
-        except (ValueError, IndexError):
-            return 0
+        with open(file_path, newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            self.import_csv_header(reader)
+            self.update_ui()
+            self.import_csv_ratings(reader)
+        
 
     def import_csv_header(self,reader):
         lines = list(reader)
         # Only take the first two lines from the file.
         lines = lines[:2]
+        try:
+            for line in lines:
+                team_name = line[0]
+                player_names = line[1:]
+                # Try to upsert this team and the players.
+                team_id = self.db_manager.upsert_team(team_name)
+                players = self.db_manager.upsert_and_validate_players(team_id, player_names)
+                # if self.print_output:print(f"team_id: {team_id};\nteam_name: {team_name};\nplayer_names: {player_names}")
+                # if self.print_output:print(f"team_id: {team_id};\nteam_name: {team_name};\nplayers: {players}")
 
-        for line in lines:
-            team_name = line[0]
-            player_names = line[1:]
-            # Try to upsert this team and the players.
-            team_id = self.db_manager.upsert_team(team_name)
-            players = self.db_manager.upsert_and_validate_players(team_id, player_names)
-            # if self.print_output:print(f"team_id: {team_id};\nteam_name: {team_name};\nplayer_names: {player_names}")
-            # if self.print_output:print(f"team_id: {team_id};\nteam_name: {team_name};\nplayers: {players}")
+            self.combobox_1.set(lines[0][0])
+            self.combobox_2.set(lines[1][0])
+        except (ValueError, IndexError):
+            return 0
 
-    def import_csv_ratings(self,reader):
-        
+    def import_csv_ratings(self, reader):
         lines = list(reader)
         # Skip the first two header lines
         lines = lines[2:]
         
         scenario_id = None
-        team_1_players = []
         team_2_players = []
-        
-        for line in lines:
-            if line[0].isdigit():
-                # New scenario block starts
-                scenario_id = int(line[0])
-                team_2_players = line[1:]
+        try:
+            for line in lines:
+                print(line)
+                if len(line) > 1 and line[0].isdigit() and all(item.isdigit() for item in line[1:]):
+                    # New scenario block starts
+                    scenario_id = int(line[0])
+                    team_2_players = line[1:]
+                    
+                    # Retrieve player_ids for enemy team (team_2)
+                    team_2_player_ids = {}
+                    for player_name in team_2_players:
+                        result = self.db_manager.query_sql("SELECT player_id FROM players WHERE player_name=?", (player_name,))
+                        if result:
+                            team_2_player_ids[player_name] = result[0][0]
                 
-                # Retrieve player_ids for enemy team (team_2)
-                team_2_player_ids = {}
-                for player_name in team_2_players:
-                    result = self.db_manager.query_sql("SELECT player_id FROM players WHERE player_name=?", (player_name,))
+                elif len(line) > 1:
+                    # Friendly team players' ratings line
+                    player_name = line[0]
+                    ratings = list(map(int, line[1:]))
+                    
+                    # Retrieve player_id and team_id for friendly team (team_1)
+                    result = self.db_manager.query_sql("SELECT player_id, team_id FROM players WHERE player_name=?", (player_name,))
                     if result:
-                        team_2_player_ids[player_name] = result[0][0]
-                
-            else:
-                # Friendly team players' ratings line
-                player_name = line[0]
-                ratings = list(map(int, line[1:]))
-                
-                # Retrieve player_id for friendly team (team_1)
-                result = self.db_manager.query_sql("SELECT player_id, team_id FROM players WHERE player_name=?", (player_name,))
-                if result:
-                    player_id_1, team_id_1 = result[0]
+                        player_id_1, team_id_1 = result[0]
 
-                    # Retrieve team_2_id (enemy team) from first enemy player found
-                    team_2_id = self.db_manager.query_sql("SELECT team_id FROM players WHERE player_name=?", (team_2_players[0],))[0][0]
+                        # Retrieve team_id of the enemy team (team_2) from the first enemy player
+                        team_2_id = self.db_manager.query_sql("SELECT team_id FROM players WHERE player_name=?", (team_2_players[0],))[0][0]
 
-                    for i, rating in enumerate(ratings):
-                        player_name_2 = team_2_players[i]
-                        player_id_2 = team_2_player_ids[player_name_2]
-                        
-                        self.db_manager.upsert_rating(
-                            player_id_1=player_id_1,
-                            player_id_2=player_id_2,
-                            team_id_1=team_id_1,
-                            team_id_2=team_2_id,
-                            scenario_id=scenario_id,
-                            rating=rating
-                        )
+                        for i, rating in enumerate(ratings):
+                            player_name_2 = team_2_players[i]
+                            player_id_2 = team_2_player_ids[player_name_2]
+                            # upsert_rating(self, player_id_1, player_id_2, team_id_1, team_id_2, scenario_id, rating):
+                            self.db_manager.upsert_rating(
+                                player_id_1,
+                                player_id_2,
+                                team_id_1,
+                                team_2_id,
+                                scenario_id,
+                                rating
+                            )
+        except (ValueError, IndexError):
+            return 0
 
     def update_grid(self,rows,row_lo,row_hi,row_correction):
         for r, row in enumerate(rows):
