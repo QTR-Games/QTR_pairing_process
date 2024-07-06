@@ -69,18 +69,76 @@ class DbManager:
             {insert_str}
         """
         self.execute_sql(insert_sql)
-
+    #######
+    # Teams
+    #######
     def create_team(self, team_name):
         table = 'teams'
         columns = ['team_name']
         value_string = f"('{team_name}')"
         self.insert_row(value_string, columns, table)
 
+    def query_team_id(self, team_name):
+        sql = f"select team_id from teams where team_name = '{team_name}'"
+        results = self.query_sql(sql)
+        
+        if len(results)>1:
+            raise ValueError(f'Too Many Records for team {team_name}')
+        elif len(results) == 1:
+            team_id = results[0][0]
+        else:
+            team_id = None
+        return team_id
+
+    def upsert_team(self, team_name):
+        team_id = self.query_team_id(team_name)
+        if not team_id:
+            self.create_team(team_name=team_name)
+            team_id = self.query_team_id(team_name=team_name)
+            if not team_id:
+                raise ValueError('Team Not Upserting')
+        return team_id
+            
+    #########
+    # Players
+    #########
     def create_player(self, player_name, team_id):
         table = 'players'
         columns = ['player_name','team_id']
         value_string = f"('{player_name}', {team_id})"
         self.insert_row(value_string, columns, table)
+
+    def query_players(self,team_id):
+        
+        sql = f"select player_id, player_name from players where team_id = '{team_id}' ORDER BY player_id"
+        results = self.query_sql(sql)
+        
+        if len(results)>5 or (len(results)>0 and len(results)<5):
+            raise ValueError(f'Invalid Number of Player Records for team {team_id}')
+        elif len(results) == 5:
+            players = results
+        else:
+            players = None
+        return players
+
+    def upsert_and_validate_players(self, team_id, player_names):
+        
+        players = self.query_players(team_id)
+        if not players:
+            for player_name in player_names:
+                self.create_player(team_id=team_id, player_name=player_name)
+            players = self.query_players(team_id=team_id)
+            if not players:
+                raise ValueError('Team Not Upserting')
+        # validate players are the same
+        queried_player_names = [x[1] for x in players]
+        if queried_player_names != player_names:
+            raise ValueError(f'Players differ between existing team and queried team: {queried_player_names} {player_names}')
+        return players
+        
+    #########
+    # Ratings
+    #########
 
     def upsert_rating(self, player_id_1, player_id_2, team_id_1, team_id_2, scenario_id, rating):
 
