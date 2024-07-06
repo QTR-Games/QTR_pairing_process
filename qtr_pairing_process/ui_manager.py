@@ -12,6 +12,7 @@ from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.tree_generator import TreeGenerator
 from qtr_pairing_process.db_load_ui import DbLoadUi
 from qtr_pairing_process.db_management.db_manager import DbManager
+from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
 class UiManager:
     def __init__(
         self,
@@ -143,6 +144,7 @@ class UiManager:
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
         
         # Configure Treeview ... with style!
         style = ttk.Style()
@@ -342,87 +344,151 @@ class UiManager:
         popup.destroy()
         self.set_team_dropdowns()
 
+    def delete_team(self):
+        popup = tk.Tk()
+        popup.withdraw()  # Hide the main window
+
+        # Fetch existing team names
+        team_names = self.select_team_names()
+
+        # Create and display the delete team dialog
+        dialog = DeleteTeamDialog(popup, team_names)
+        popup.wait_window(dialog.top)
+
+        team_name = dialog.selected_team
+        if team_name is None:
+            return  # User cancelled the operation
+
+        # Validate the user's input
+        if team_name not in team_names:
+            messagebox.showerror("Error", f"Invalid team name: {team_name}")
+            return
+
+        # Retrieve the team_id of the selected team
+        team_id_row = self.db_manager.query_sql(f"SELECT team_id FROM teams WHERE team_name='{team_name}'")
+        if not team_id_row:
+            messagebox.showerror("Error", f"Team not found: '{team_name}'")
+            return
+
+        team_id = team_id_row[0][0]
+
+        # Delete related records
+        self.db_manager.execute_sql(f"DELETE FROM ratings WHERE team_1_id={team_id} OR team_2_id={team_id}")
+        self.db_manager.execute_sql(f"DELETE FROM players WHERE team_id={team_id}")
+        self.db_manager.execute_sql(f"DELETE FROM teams WHERE team_id={team_id}")
+
+        messagebox.showinfo("Success", f"Team '{team_name}' and all related records have been deleted successfully.")
+        self.set_team_dropdowns()
+
     def export_csvs(self):
         pass
     
-    def import_csv_header(self, file_path):
-        with open(file_path, newline='') as csvfile:
-            reader = csv.reader(csvfile)
-
-            for row in reader:
-                team_name = row[0]
-                player_names = row[1:]
-
-                # Insert the team into the teams table
-                self.db_manager.create_team(team_name)
-                team_insert = team_name
-                # player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
-                # team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
-                # team_2_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_2_id))
-                # Retrieve the newly inserted team_id
-                team_sql_template = "SELECT team_id FROM teams WHERE team_name={team_insert} order by team_id"
-                team_id_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_insert))
-                team_id = team_id_row[0][0]
-
-                # Insert each player into the players table associated with the team_id
-                for player_name in player_names:
-                    self.db_manager.create_player(player_name, team_id)
-
-    def import_csv_ratings(self, file_path):
-        self.import_csv_header(file_path)
-        with open(file_path, newline='') as csvfile:
-            reader = csv.reader(csvfile)
-            lines = list(reader)
-            
-            # Skip the first two header lines
-            lines = lines[2:]
-            
-            scenario_id = None
-            team_1_players = []
-            team_2_players = []
-            
-            for line in lines:
-                if line[0].isdigit():
-                    # New scenario block starts
-                    scenario_id = int(line[0])
-                    team_2_players = line[1:]
-                    
-                    # Retrieve player_ids for enemy team (team_2)
-                    team_2_player_ids = {}
-                    for player_name in team_2_players:
-                        result = self.db_manager.query_sql("SELECT player_id FROM players WHERE player_name=?", (player_name,))
-                        if result:
-                            team_2_player_ids[player_name] = result[0][0]
-                    
-                else:
-                    # Friendly team players' ratings line
-                    player_name = line[0]
-                    ratings = list(map(int, line[1:]))
-                    
-                    # Retrieve player_id for friendly team (team_1)
-                    result = self.db_manager.query_sql("SELECT player_id, team_id FROM players WHERE player_name=?", (player_name,))
-                    if result:
-                        player_id_1, team_id_1 = result[0]
-
-                        # Retrieve team_2_id (enemy team) from first enemy player found
-                        team_2_id = self.db_manager.query_sql("SELECT team_id FROM players WHERE player_name=?", (team_2_players[0],))[0][0]
-
-                        for i, rating in enumerate(ratings):
-                            player_name_2 = team_2_players[i]
-                            player_id_2 = team_2_player_ids[player_name_2]
-                            
-                            self.db_manager.upsert_rating(
-                                player_id_1=player_id_1,
-                                player_id_2=player_id_2,
-                                team_id_1=team_id_1,
-                                team_id_2=team_2_id,
-                                scenario_id=scenario_id,
-                                rating=rating
-                            )
-
     def import_csvs(self):
         file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-        self.import_csv_ratings(file_path)
+        try:
+            with open(file_path, newline='') as csvfile:
+                reader = csv.reader(csvfile)
+                self.import_csv_header(reader)
+                self.set_team_dropdowns()
+                # self.import_csv_ratings(reader)
+        except (ValueError, IndexError):
+            return 0
+
+    def import_csv_header(self,reader):
+        lines = list(reader)
+        # Only take the first two lines from the file.
+        lines = lines[:2]
+
+        existing_teams = self.select_team_names()
+        print(f"\nexisting_teams - {existing_teams}")
+                
+        player_sql_template = "INSERT INTO players (team_id, player_name) VALUES (?, '?')"
+
+        for line in lines:
+            team_name = line[0]
+            player_names = line[1:]
+            
+            print(f"team_name_1 - {team_name}; Names - {player_names}")
+            
+            # Check if the teams are already in the database.
+
+            if team_name in existing_teams:
+                print(f"team_name exists!")
+            else:
+                self.db_manager.create_team(team_name)
+                print(f"TEAM {team_name} ADDED")
+                # if we are already adding a team, then we know that the players must also be added.
+                # we can use the gpt code to get recently added records because we know we have just added this team
+                team_sql_template = "select team_id from teams where team_name='{team_insert}'"
+                team_row = self.db_manager.query_sql(team_sql_template.format(team_insert=team_name))
+                team_id = team_row[0][0]
+
+                print(f"team_id {team_id}; player_names: {player_names}")
+
+                # Insert each player into the players table associated with the team_id
+                # for player_name in player_names:
+                    # self.db_manager.execute_sql(player_sql_template, (team_id, player_name))
+
+            
+            # player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
+            # team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
+            # team_2_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_2_id))
+            # Retrieve the newly inserted team_id
+
+            # Insert each player into the players table associated with the team_id
+            # for player_name in player_names:
+                # self.db_manager.create_player(player_name, team_id)
+
+    def import_csv_ratings(self,reader):
+        
+        lines = list(reader)
+        # Skip the first two header lines
+        lines = lines[2:]
+        
+        scenario_id = None
+        team_1_players = []
+        team_2_players = []
+        
+        for line in lines:
+            if line[0].isdigit():
+                # New scenario block starts
+                scenario_id = int(line[0])
+                team_2_players = line[1:]
+                
+                # Retrieve player_ids for enemy team (team_2)
+                team_2_player_ids = {}
+                for player_name in team_2_players:
+                    result = self.db_manager.query_sql("SELECT player_id FROM players WHERE player_name=?", (player_name,))
+                    if result:
+                        team_2_player_ids[player_name] = result[0][0]
+                
+            else:
+                # Friendly team players' ratings line
+                player_name = line[0]
+                ratings = list(map(int, line[1:]))
+                
+                # Retrieve player_id for friendly team (team_1)
+                result = self.db_manager.query_sql("SELECT player_id, team_id FROM players WHERE player_name=?", (player_name,))
+                if result:
+                    player_id_1, team_id_1 = result[0]
+
+                    # Retrieve team_2_id (enemy team) from first enemy player found
+                    team_2_id = self.db_manager.query_sql("SELECT team_id FROM players WHERE player_name=?", (team_2_players[0],))[0][0]
+
+                    for i, rating in enumerate(ratings):
+                        player_name_2 = team_2_players[i]
+                        player_id_2 = team_2_player_ids[player_name_2]
+                        
+                        self.db_manager.upsert_rating(
+                            player_id_1=player_id_1,
+                            player_id_2=player_id_2,
+                            team_id_1=team_id_1,
+                            team_id_2=team_2_id,
+                            scenario_id=scenario_id,
+                            rating=rating
+                        )
+
+    
 
 
     def update_grid(self,rows,row_lo,row_hi,row_correction):
