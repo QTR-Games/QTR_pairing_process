@@ -340,7 +340,7 @@ class UiManager:
         
         team_name = simpledialog.askstring("Input", "Enter the team name:", parent=popup)
         if team_name:
-            self.import_team_name(team_name)
+            self.db_manager.create_team(team_name)
         popup.destroy()
         self.set_team_dropdowns()
 
@@ -390,7 +390,7 @@ class UiManager:
                 reader = csv.reader(csvfile)
                 self.import_csv_header(reader)
                 self.set_team_dropdowns()
-                # self.import_csv_ratings(reader)
+                self.import_csv_ratings(reader)
         except (ValueError, IndexError):
             return 0
 
@@ -399,45 +399,14 @@ class UiManager:
         # Only take the first two lines from the file.
         lines = lines[:2]
 
-        existing_teams = self.select_team_names()
-        print(f"\nexisting_teams - {existing_teams}")
-                
-        player_sql_template = "INSERT INTO players (team_id, player_name) VALUES (?, '?')"
-
         for line in lines:
             team_name = line[0]
             player_names = line[1:]
-            
-            print(f"team_name_1 - {team_name}; Names - {player_names}")
-            
-            # Check if the teams are already in the database.
-
-            if team_name in existing_teams:
-                print(f"team_name exists!")
-            else:
-                self.db_manager.create_team(team_name)
-                print(f"TEAM {team_name} ADDED")
-                # if we are already adding a team, then we know that the players must also be added.
-                # we can use the gpt code to get recently added records because we know we have just added this team
-                team_sql_template = "select team_id from teams where team_name='{team_insert}'"
-                team_row = self.db_manager.query_sql(team_sql_template.format(team_insert=team_name))
-                team_id = team_row[0][0]
-
-                print(f"team_id {team_id}; player_names: {player_names}")
-
-                # Insert each player into the players table associated with the team_id
-                # for player_name in player_names:
-                    # self.db_manager.execute_sql(player_sql_template, (team_id, player_name))
-
-            
-            # player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
-            # team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
-            # team_2_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_2_id))
-            # Retrieve the newly inserted team_id
-
-            # Insert each player into the players table associated with the team_id
-            # for player_name in player_names:
-                # self.db_manager.create_player(player_name, team_id)
+            # Try to upsert this team and the players.
+            team_id = self.db_manager.upsert_team(team_name)
+            players = self.db_manager.upsert_and_validate_players(team_id, player_names)
+            # if self.print_output:print(f"team_id: {team_id};\nteam_name: {team_name};\nplayer_names: {player_names}")
+            # if self.print_output:print(f"team_id: {team_id};\nteam_name: {team_name};\nplayers: {players}")
 
     def import_csv_ratings(self,reader):
         
@@ -488,9 +457,6 @@ class UiManager:
                             rating=rating
                         )
 
-    
-
-
     def update_grid(self,rows,row_lo,row_hi,row_correction):
         for r, row in enumerate(rows):
             values = row.split(',')
@@ -512,13 +478,13 @@ class UiManager:
         row_correction = current_scenario * 6
         return rows,row_lo,row_hi,row_correction
     
-    def import_team_name(self, team_name):
+    """ def import_team_name(self, team_name):
         print("importing team")
         try:
             self.db_manager.execute_sql(f"INSERT INTO teams (team_name) VALUES ('{team_name}')")
             print(f"TEAM {team_name} ADDED")
         except (ValueError, IndexError):
-            return 0
+            return 0 """
 
 
     #############################################

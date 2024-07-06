@@ -153,6 +153,7 @@ class DbManager:
         update_column = 'rating'
 
         self.upsert_row(value_string, columns, table, contraint_columns, update_column)
+        
     def create_tables(self):
         path = 'qtr_pairing_process/db_management/sql'
         files = os.listdir(path)
