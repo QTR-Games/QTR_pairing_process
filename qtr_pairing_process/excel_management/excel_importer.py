@@ -12,6 +12,7 @@ class ExcelImporter:
         self.ratings = {}
         self.file_path = file_path
         self.file_name = file_name
+
     def read_excel_file(self):
         print(self.file_path, self.file_name)
         self.workbook = openpyxl.load_workbook(filename = f'{self.file_path}/{self.file_name}')
