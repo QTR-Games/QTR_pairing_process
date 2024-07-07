@@ -414,6 +414,8 @@ class UiManager:
     def import_csv_header(self,lines):
         # Only take the first two lines from the file.
         lines = lines[:2]
+        team_ids = []
+        team_names = []
         try:
             for line in lines:
                 team_name = line[0]
@@ -422,7 +424,8 @@ class UiManager:
                 team_id = self.db_manager.upsert_team(team_name)
                 players = self.db_manager.upsert_and_validate_players(team_id, player_names)
 
-            team_names = []
+            print(f"TYPE OF PLAYERS - {type(players)}")
+            print(players)
             self.combobox_1.set(lines[0][0])
             team_names.append(lines[0][0])
             self.combobox_2.set(lines[1][0])
