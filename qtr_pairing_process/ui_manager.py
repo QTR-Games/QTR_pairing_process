@@ -407,44 +407,32 @@ class UiManager:
         with open(file_path, newline='') as csvfile:
             reader = csv.reader(csvfile)
             lines = list(reader)
-            team_names = self.import_csv_header(lines)
-            self.import_csv_ratings(lines, team_names)
+            self.import_csv_header(lines)
+            self.import_csv_ratings(lines)
         
 
     def import_csv_header(self,lines):
         # Only take the first two lines from the file.
         lines = lines[:2]
-        team_ids = []
-        team_names = []
-        try:
-            for line in lines:
-                team_name = line[0]
-                player_names = line[1:]
-                # Try to upsert this team and the players.
-                team_id = self.db_manager.upsert_team(team_name)
-                players = self.db_manager.upsert_and_validate_players(team_id, player_names)
+        for line in lines:
+            team_name = line[0]
+            player_names = line[1:]
+            # Try to upsert this team and the players.
+            team_id = self.db_manager.upsert_team(team_name)
+            players = self.db_manager.upsert_and_validate_players(team_id, player_names)
 
-            print(f"TYPE OF PLAYERS - {type(players)}")
-            print(players)
-            self.combobox_1.set(lines[0][0])
-            team_names.append(lines[0][0])
-            self.combobox_2.set(lines[1][0])
-            team_names.append(lines[1][0])
-            return team_names
-        except (ValueError, IndexError):
-            return 0
+        self.combobox_1.set(lines[0][0])
+        self.combobox_2.set(lines[1][0])
 
-    def import_csv_ratings(self, lines, team_names):
+    def import_csv_ratings(self, lines):
         # Skip the first two header lines
         lines = lines[2:]
         team_2_players = []
         for line in lines:
             rating_line = all(item.isdigit() for item in line[1:])
-            print(f"rating_line = {rating_line}")
             if not rating_line:
                 # New scenario block starts
                 scenario_id = int(line[0])
-                print(f"scenario: {scenario_id} ")
                 team_2_players = line[1:]
                 
                 # Retrieve player_ids for enemy team (team_2)
@@ -500,15 +488,6 @@ class UiManager:
         row_lo, row_hi = self.get_row_range(current_scenario)
         row_correction = current_scenario * 6
         return rows,row_lo,row_hi,row_correction
-    
-    """ def import_team_name(self, team_name):
-        print("importing team")
-        try:
-            self.db_manager.execute_sql(f"INSERT INTO teams (team_name) VALUES ('{team_name}')")
-            print(f"TEAM {team_name} ADDED")
-        except (ValueError, IndexError):
-            return 0 """
-
 
     #############################################
 
