@@ -407,58 +407,69 @@ class UiManager:
         with open(file_path, newline='') as csvfile:
             reader = csv.reader(csvfile)
             lines = list(reader)
-            self.import_csv_header(lines)
-            self.import_csv_ratings(lines)
-        
 
-    def import_csv_header(self,lines):
+        self.import_csv_header(lines)
+        self.import_csv_ratings(lines)
+        self.update_ui()
+
+    def import_csv_header(self, lines):
         # Only take the first two lines from the file.
-        lines = lines[:2]
-        for line in lines:
+        if len(lines) < 2:
+            raise ValueError("Insufficient number of lines")
+
+        first_two_lines = lines[:2]
+
+        for index, line in enumerate(first_two_lines):
             team_name = line[0]
             player_names = line[1:]
+
             # Try to upsert this team and the players.
             team_id = self.db_manager.upsert_team(team_name)
-            players = self.db_manager.upsert_and_validate_players(team_id, player_names)
+            self.db_manager.upsert_and_validate_players(team_id, player_names)
 
-        self.combobox_1.set(lines[0][0])
-        self.combobox_2.set(lines[1][0])
+            # Set combobox values based on the index
+            if index == 0:
+                self.combobox_1.set(team_name)
+            elif index == 1:
+                self.combobox_2.set(team_name)
 
     def import_csv_ratings(self, lines):
         # Skip the first two header lines
         lines = lines[2:]
         team_2_players = []
+        team_2_player_ids = {}
+        team_2_id = None
+
         for line in lines:
             rating_line = all(item.isdigit() for item in line[1:])
             if not rating_line:
-                # New scenario block starts
                 scenario_id = int(line[0])
                 team_2_players = line[1:]
-                
+
                 # Retrieve player_ids for enemy team (team_2)
-                team_2_player_ids = {}
-                for player_name in team_2_players:
-                    result = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name='{player_name}'")
-                    if result:
-                        team_2_player_ids[player_name] = result[0][0]
-            
+                team_2_player_ids = {
+                    player_name: player_id 
+                    for player_name, player_id in self.db_manager.query_sql(
+                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_2_players)})"
+                    )
+                }
+                
+                # Retrieve team_id of the enemy team (team_2) once
+                if team_2_players:
+                    team_2_id = self.db_manager.query_sql(f"SELECT team_id FROM players WHERE player_name='{team_2_players[0]}'")[0][0]
+
             elif len(line) > 1 and not line[0].isdigit():
-                # Friendly team players' ratings line
                 player_name = line[0]
                 ratings = list(map(int, line[1:]))
-                
+
                 # Retrieve player_id and team_id for friendly team (team_1)
                 result = self.db_manager.query_sql(f"SELECT player_id, team_id FROM players WHERE player_name='{player_name}'")
                 if result:
                     player_id_1, team_id_1 = result[0]
 
-                    # Retrieve team_id of the enemy team (team_2) from the first enemy player
-                    team_2_id = self.db_manager.query_sql(f"SELECT team_id FROM players WHERE player_name='{team_2_players[0]}'")[0][0]
-
                     for i, rating in enumerate(ratings):
                         player_name_2 = team_2_players[i]
                         player_id_2 = team_2_player_ids[player_name_2]
-                        # upsert_rating(self, player_id_1, player_id_2, team_id_1, team_id_2, scenario_id, rating):
                         self.db_manager.upsert_rating(
                             player_id_1,
                             player_id_2,
@@ -467,6 +478,7 @@ class UiManager:
                             scenario_id,
                             rating
                         )
+
 
     def update_grid(self,rows,row_lo,row_hi,row_correction):
         for r, row in enumerate(rows):
