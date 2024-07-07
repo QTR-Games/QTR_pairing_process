@@ -11,8 +11,11 @@ from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIREC
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.tree_generator import TreeGenerator
 from qtr_pairing_process.db_load_ui import DbLoadUi
+from qtr_pairing_process.xlsx_load_ui import XlsxLoadUi
 from qtr_pairing_process.db_management.db_manager import DbManager
 from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
+from qtr_pairing_process.excel_management.excel_importer import ExcelImporter
+
 class UiManager:
     def __init__(
         self,
@@ -143,8 +146,10 @@ class UiManager:
         tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_data_from_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="REFRESH", command=lambda: self.update_ui()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Import XSLX", command=lambda: self.import_xlsx()).pack(side=tk.LEFT, padx=5, pady=3)
 
         # Configure Treeview ... with style!
         style = ttk.Style()
@@ -387,6 +392,12 @@ class UiManager:
 
         messagebox.showinfo("Success", f"Team '{team_name}' and all related records have been deleted successfully.")
         self.set_team_dropdowns()
+
+    def import_xlsx(self):
+        xslx_load_ui  = XlsxLoadUi()
+        file_path, file_name = xslx_load_ui.load_xslx_file()
+        excel_importer = ExcelImporter(db_manager=self.db_manager, file_path=file_path, file_name=file_name)
+        excel_importer.execute()
 
     def export_csvs(self):
         pass

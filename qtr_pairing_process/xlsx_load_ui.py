@@ -1,20 +1,20 @@
 
-from tkinter import Label, Button, Tk
+from tkinter import Label, Button, Tk, Toplevel
 from os.path import expanduser
 # import filedialog module
 from tkinter import filedialog
 
-class DbLoadUi:
+class XlsxLoadUi:
     def __init__(self) -> None:
         self.path = None
         self.name = None
-        self.window = Tk()
-    def create_or_load_database(self):
+        self.window = Toplevel()
+    def load_xslx_file(self):
         # Create the root window
         
         window = self.window
         # Set window title
-        window.title('Initial Database Load')
+        window.title('XLSX to load to Database')
         
         # Set window size
         window.geometry("400x200")
@@ -24,18 +24,15 @@ class DbLoadUi:
         
         # Create a File Explorer label
         label_file_explorer = Label(window, 
-                                    text = "Select Database File or Create New Database",
-                                    width = 50, height = 4, 
+                                    text = "Select XLSX File to import",
+                                    width = 50, height = 4,
                                     fg = "blue")
         
             
         button_explore = Button(window, 
                                 text = "Browse Files",
-                                command = self.browseFiles) 
+                                command = self.browse_files) 
         
-        button_exit = Button(window, 
-                            text = "Create New File",
-                            command =window.destroy) 
         
         # Grid method is chosen for placing
         # the widgets at respective positions 
@@ -44,25 +41,26 @@ class DbLoadUi:
         label_file_explorer.grid(column = 1, row = 1)
         
         button_explore.grid(column = 1, row = 2)
-        
-        button_exit.grid(column = 1,row = 3)
-        
+                
         # Let the window wait for any events
         window.mainloop()
-        print(self.path, self.name)
+        window.destroy()
+        print('Returning XLSX values')
         return self.path, self.name
 
-    def browseFiles(self):
+    def browse_files(self):
         home = expanduser("~")
 
         filename = filedialog.askopenfilename(initialdir = home,
                                             title = "Select a File",
-                                            filetypes = (("DB files",
-                                                            "*.db"),
+                                            filetypes = (("XSLX files",
+                                                            "*.xlsx"),
                                                         ("all files",
                                                             "*.*")))
         
         self.path = '/'.join(filename.split('/')[:-1])
         self.name = filename.split('/')[-1]
-        self.window.destroy()
+        print(self.path, self.name)
+        self.window.quit()
+        print('destroying window...')
         
