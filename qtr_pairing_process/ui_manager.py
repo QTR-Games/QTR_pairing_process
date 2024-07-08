@@ -400,7 +400,60 @@ class UiManager:
         excel_importer.execute()
 
     def export_csvs(self):
-        pass
+        print(f"Exporting Matchups to CSV")
+
+        # Prompt the user to select a file location to save the CSV
+        file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+        if not file_path:
+            return
+
+        # Retrieve data from the database
+        team1_name, team1_players = self.retrieve_team_data(self.combobox_1.get())
+        team2_name, team2_players = self.retrieve_team_data(self.combobox_2.get())
+        ratings = self.retrieve_ratings(team1_players, team2_players)
+
+        # Write data to CSV
+        with open(file_path, mode='w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+
+            # Write headers
+            writer.writerow([team1_name] + team1_players)
+            writer.writerow([team2_name] + team2_players)
+
+            # Write ratings
+            for scenario_id, rating_data in ratings.items():
+                writer.writerow([scenario_id] + team2_players)
+                for player, player_ratings in rating_data.items():
+                    writer.writerow([player] + player_ratings)
+
+    def retrieve_team_data(self, team_name):
+        team_id = self.db_manager.query_team_id(team_name)
+        players = self.db_manager.query_sql(f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id")
+        player_names = [player[0] for player in players]
+        return team_name, player_names
+
+    def retrieve_ratings(self, team1_players, team2_players):
+        ratings = {}
+        scenario_ids = self.db_manager.query_sql("SELECT scenario_id FROM scenarios ORDER BY scenario_id")
+        
+        for scenario in scenario_ids:
+            scenario_id = scenario[0]
+            ratings[scenario_id] = {}
+            for player1 in team1_players:
+                player1_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player1}'")[0][0]
+                player_ratings = []
+                for player2 in team2_players:
+                    player2_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player2}'")[0][0]
+                    rating = self.db_manager.query_sql(f"""
+                        SELECT rating FROM ratings
+                        WHERE team_1_player_id = {player1_id} AND team_2_player_id = {player2_id} AND scenario_id = {scenario_id}
+                    """)
+                    player_ratings.append(rating[0][0] if rating else 0)  # Default to 0 if no rating found
+                ratings[scenario_id][player1] = player_ratings
+
+        return ratings
+
+
     
     def import_csvs(self):
         file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
