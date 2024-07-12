@@ -412,6 +412,10 @@ class UiManager:
         team2_name, team2_players = self.retrieve_team_data(self.combobox_2.get())
         ratings = self.retrieve_ratings(team1_players, team2_players)
 
+        print(f"team 1 players {team1_players}")
+        print(f"team 2 players {team2_players}")
+        print(f"ratings for these teams are {ratings}")
+
         # Write data to CSV
         with open(file_path, mode='w', newline='') as csvfile:
             writer = csv.writer(csvfile)
@@ -424,8 +428,7 @@ class UiManager:
             for scenario_id, rating_data in ratings.items():
                 writer.writerow([scenario_id] + team2_players)
                 for player, player_ratings in rating_data.items():
-                    writer.writerow([player] + player_ratings)
-
+                    writer.writerow([player] + player_ratings) 
     def retrieve_team_data(self, team_name):
         team_id = self.db_manager.query_team_id(team_name)
         players = self.db_manager.query_sql(f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id")
@@ -434,13 +437,14 @@ class UiManager:
 
     def retrieve_ratings(self, team1_players, team2_players):
         ratings = {}
-        scenario_ids = self.db_manager.query_sql("SELECT scenario_id FROM scenarios ORDER BY scenario_id")
-        
-        for scenario in scenario_ids:
-            scenario_id = scenario[0]
+        scenario_id = []        
+        for scenario in range(0,6):
+            print(f"scenarios - {scenario}")
+            scenario_id = scenario
             ratings[scenario_id] = {}
             for player1 in team1_players:
                 player1_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player1}'")[0][0]
+                print(f"player1 - {player1_id}: {player1}")
                 player_ratings = []
                 for player2 in team2_players:
                     player2_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player2}'")[0][0]

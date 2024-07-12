@@ -6,7 +6,7 @@ DEFAULT_COLOR_MAP = {
     '2': 'orange',
     '3': 'yellow',
     '4': 'yellowgreen',
-    '5': 'deepskyblue'
+    '5': 'green'
 }
 
 # MATT_DIR = '.'
