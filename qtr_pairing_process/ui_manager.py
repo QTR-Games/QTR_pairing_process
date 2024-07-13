@@ -24,7 +24,7 @@ class UiManager:
         directory,
         scenario_ranges,
         scenario_to_csv_map,
-        print_output=True
+        print_output=False
     ):
         self.grid_entries = None
         self.grid_widgets = None
@@ -167,8 +167,12 @@ class UiManager:
         generateButton.pack(pady=10)
         show_info_button = tk.Button(text="Show Info", command=self.treeview.item_details)
         show_info_button.pack()
-        math_button = tk.Button(text="DO MATHS!", command=self.traverse_and_sum_values)
-        math_button.pack(side=tk.LEFT, padx=5, pady=3)
+
+        math_button_0 = tk.Button(text="MATH (Max)!", command=self.traverse_and_sum_values_0)
+        math_button_0.pack()
+        math_button_1 = tk.Button(text="MATH (Sum)!", command=self.traverse_and_sum_values_1)
+        math_button_1.pack()
+        
         show_selection_button = tk.Button(text="Show Selection", command=self.treeview.show_selection)
         show_selection_button.pack(side=tk.LEFT, padx=5, pady=3)
         get_node_data = tk.Button(text="Get Rating", command=self.treeview.get_selected_value)
@@ -193,6 +197,14 @@ class UiManager:
             self.tree_generator.generate_combinations(fNames, oNames, fRatings, oRatings)
         else:
             self.tree_generator.generate_combinations(oNames, fNames, oRatings, fRatings)
+        
+    def traverse_and_sum_values_0(self):
+        print("Math is HAPPENING!")
+        self.tree_generator.traverse_and_sum_values(0)
+
+    def traverse_and_sum_values_1(self):
+        print("Math is HAPPENING differently!")
+        self.tree_generator.traverse_and_sum_values(1)
                    
     def traverse_and_sum_values(self):
         print("MATH IS HAPPENING!!!")
@@ -213,8 +225,9 @@ class UiManager:
         new_value = self.scenario_var.get()
         # Compare with the previous value
         if new_value != self.previous_value:
-            print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
+            # print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
             self.previous_value = new_value
+
             self.update_ui()
             
     ####################
@@ -560,6 +573,7 @@ class UiManager:
 
     #############################################
 
+
     def update_combobox_colors(self):
         for row in range(1, 6):
             for col in range(1, 6):
@@ -590,7 +604,7 @@ class UiManager:
 
     def sort_names(self, fNames, oNames, check_alpha):
         if check_alpha.get():
-            print("Sorting...")
+            # print("Sorting...")
             fNames_sorted = sorted(fNames, key=lambda x: x)
             oNames_sorted = sorted(oNames, key=lambda x: x)
         else:
