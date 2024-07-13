@@ -81,6 +81,9 @@ class UiManager:
 
         self.bottom_frame = tk.Frame(self.root)
         self.bottom_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        self.bottom_frame_2 = tk.Frame(self.root)
+        self.bottom_frame_2.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
     
         self.grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
         self.grid_widgets = [[None for _ in range(6)] for _ in range(6)]
@@ -164,21 +167,25 @@ class UiManager:
         self.treeview.pack(expand=1, fill='both')
     
         generateButton = tk.Button(self.bottom_frame, text="Generate Combinations", command=self.on_generate_combinations)
+        generateButton.config(height=10, width=50)
         generateButton.pack(pady=10)
-        show_info_button = tk.Button(text="Show Info", command=self.treeview.item_details)
-        show_info_button.pack()
-
-        math_button_0 = tk.Button(text="MATH (Max)!", command=self.traverse_and_sum_values_0)
-        math_button_0.pack(side=tk.LEFT, padx=5, pady=3)
-        math_button_1 = tk.Button(text="MATH (Sum)!", command=self.traverse_and_sum_values_1)
-        math_button_1.pack(side=tk.LEFT, padx=5, pady=3)
-        optimize_button = tk.Button(text="Matchup/nOptimization", command=self.optimize_matchups)
-        optimize_button.pack(side=tk.LEFT, padx=5, pady=3)
-        
+        # show_info_button = tk.Button(text="Show Info", command=self.treeview.item_details)
+        # show_info_button.pack()
         # show_selection_button = tk.Button(text="Show Selection", command=self.treeview.show_selection)
         # show_selection_button.pack(side=tk.LEFT, padx=5, pady=3)
         # get_node_data = tk.Button(text="Get Rating", command=self.treeview.get_selected_value)
         # get_node_data.pack(side=tk.LEFT, padx=5, pady=3)
+        math_button_0 = tk.Button(self.bottom_frame_2, text="MATH (Max)!", command=self.traverse_and_sum_values_0)
+        math_button_0.config(height=3, width=30)
+        math_button_0.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        optimize_button = tk.Button(self.bottom_frame_2,text="Optimize!", command=self.optimize_matchups)
+        optimize_button.config(height=3, width=30)
+        optimize_button.pack(side=tk.LEFT, padx=5, pady=5)
+
+        math_button_1 = tk.Button(self.bottom_frame_2, text="MATH (Sum)!", command=self.traverse_and_sum_values_1)
+        math_button_1.config(height=3, width=30)
+        math_button_1.pack(side=tk.LEFT, padx=5, pady=5)
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
@@ -186,7 +193,6 @@ class UiManager:
         
         self.update_combobox_colors()
         self.root.mainloop()
-
 
     def on_generate_combinations(self):
         fNames, oNames = self.prep_names()
