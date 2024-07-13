@@ -5,12 +5,17 @@ import csv
 
 # installed libraries
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-
+from tkinter import ttk, messagebox, filedialog, simpledialog
 # repo libraries
 from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_RANGES, SCENARIO_TO_CSV_MAP
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.tree_generator import TreeGenerator
+from qtr_pairing_process.db_load_ui import DbLoadUi
+from qtr_pairing_process.xlsx_load_ui import XlsxLoadUi
+from qtr_pairing_process.db_management.db_manager import DbManager
+from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
+from qtr_pairing_process.excel_management.excel_importer import ExcelImporter
+
 class UiManager:
     def __init__(
         self,
@@ -30,11 +35,23 @@ class UiManager:
         self.scenario_ranges = scenario_ranges
         self.scenario_to_csv_map = scenario_to_csv_map
         self.treeview = None
+
+
+        self.select_database()
         self.initialize_ui_vars()
 
         if print_output:
             print(f"TKINTER VERSION: {tk.TkVersion}")
             
+
+    def select_database(self):
+        db_load_ui = DbLoadUi()
+        self.db_path, self.db_name = db_load_ui.create_or_load_database()
+
+        if self.db_path is None:
+            self.db_manager = DbManager()
+        else:
+            self.db_manager = DbManager(path=self.db_path, name=self.db_name)
             
     def initialize_ui_vars(self):
         # set root
@@ -68,9 +85,6 @@ class UiManager:
         self.grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
         self.grid_widgets = [[None for _ in range(6)] for _ in range(6)]
     
-        # create textbox
-        self.textbox = tk.Text(self.right_frame, width=60, height=7)
-        self.textbox.pack(expand=1, fill='both')
 
         # set team_b button
         self.team_b = tk.IntVar()
@@ -99,10 +113,17 @@ class UiManager:
 
         # create combobox for file selection
         # create the label
-        tk.Label(self.drop_down_frame, text='Select File:').pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Label(self.drop_down_frame, text='Select Team 1:').pack(side=tk.LEFT, padx=5, pady=5)
+
         # create combobox
-        self.combobox = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
-        self.combobox.pack(side=tk.LEFT, padx=5, pady=5)
+        self.combobox_1 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
+        self.combobox_1.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        tk.Label(self.drop_down_frame, text='Select Team 2:').pack(side=tk.LEFT, padx=5, pady=5)
+
+        # create combobox
+        self.combobox_2 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
+        self.combobox_2.pack(side=tk.LEFT, padx=5, pady=5)
 
         # create combobox for scenario selection
         # create the label
@@ -117,18 +138,19 @@ class UiManager:
         self.previous_value = self.scenario_var.get()
         # Attach a trace to the StringVar
         self.scenario_var.trace_add('write', self.on_scenario_box_change)
-        self.select_directory_and_update_combobox()
+        self.set_team_dropdowns()
         self.update_scenario_box()
 
         # Add Buttons to a row just above the pairing grid       
-        tk.Button(self.button_row_frame, text="IMPORT CSV", command=lambda: self.get_data_from_csv()).pack(side=tk.LEFT, padx=5, pady=5)
-        tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_state()).pack(side=tk.LEFT, padx=5, pady=5)
-        tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_state()).pack(side=tk.LEFT, padx=5, pady=5)
-        tk.Button(self.button_row_frame, text="Update Grid", command=lambda: self.update_grid_from_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Update Text", command=lambda: self.update_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Clear Text", command=lambda: self.clear_textbox()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Save", command=lambda: self.save_textbox_content()).pack(side=tk.LEFT, padx=5, pady=3)
-        
+        tk.Button(self.button_row_frame, text="Export CSV", command=lambda: self.export_csvs()).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_data_from_db()).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="REFRESH", command=lambda: self.update_ui()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Import XSLX", command=lambda: self.import_xlsx()).pack(side=tk.LEFT, padx=5, pady=3)
+
         # Configure Treeview ... with style!
         style = ttk.Style()
         style.configure("Treeview", font=("Arial", 12))
@@ -140,28 +162,26 @@ class UiManager:
         self.treeview.tree.tag_configure('4', background="yellowgreen")
         self.treeview.tree.tag_configure('5', background="deepskyblue")
         self.treeview.pack(expand=1, fill='both')
-
     
         generateButton = tk.Button(self.bottom_frame, text="Generate Combinations", command=self.on_generate_combinations)
         generateButton.pack(pady=10)
         show_info_button = tk.Button(text="Show Info", command=self.treeview.item_details)
         show_info_button.pack()
+
         math_button_0 = tk.Button(text="MATH (Max)!", command=self.traverse_and_sum_values_0)
         math_button_0.pack()
         math_button_1 = tk.Button(text="MATH (Sum)!", command=self.traverse_and_sum_values_1)
         math_button_1.pack()
+        
         show_selection_button = tk.Button(text="Show Selection", command=self.treeview.show_selection)
         show_selection_button.pack(side=tk.LEFT, padx=5, pady=3)
         get_node_data = tk.Button(text="Get Rating", command=self.treeview.get_selected_value)
         get_node_data.pack(side=tk.LEFT, padx=5, pady=3)
 
-        self.create_tooltip(self.combobox, "Select a CSV file to import")
+        self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
-        self.create_tooltip(self.textbox, "You may copy and paste valus from a CSV file in this box.")
         self.create_tooltip(self.treeview, "Generated combinations will be displayed here")
         
-        self.get_data_from_csv()
-        self.update_grid_from_textbox()
         self.update_combobox_colors()
         self.root.mainloop()
 
@@ -186,6 +206,9 @@ class UiManager:
         print("Math is HAPPENING differently!")
         self.tree_generator.traverse_and_sum_values(1)
                    
+    def traverse_and_sum_values(self):
+        print("MATH IS HAPPENING!!!")
+        self.tree_generator.traverse_and_sum_values()
 
     def update_scenario_box(self):
         scenarios = []
@@ -204,37 +227,352 @@ class UiManager:
         if new_value != self.previous_value:
             # print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
             self.previous_value = new_value
-            self.update_grid_from_textbox()
+
+            self.update_ui()
+            
+    ####################
+    # DB Fill/Save Funcs
+    ####################
+
+    def update_ui(self):
+        # Update the team dropdowns and grid values
+        self.set_team_dropdowns()
+        self.load_grid_data_from_db()
+
+    def select_team_names(self):
+        # Using this for testing.
+        # Possibly remove this later.
+        sql = 'select team_name from teams'
+        teams = self.db_manager.query_sql(sql)
+        team_names = [t[0] for t in teams]
+        if not team_names:
+            team_names = ['No teams Found']
+        return team_names
+
+    def set_team_dropdowns(self):
+        team_names = self.select_team_names()
+        self.combobox_1['values'] = team_names
+        self.combobox_2['values'] = team_names
+
+    def load_grid_data_from_db(self):
+        team_1 = self.combobox_1.get()
+        team_2 = self.combobox_2.get()
+        scenario = self.scenario_box.get()[:1]
+        if scenario == '':
+            self.scenario_box.set("0 - Neutral")
+            scenario = self.scenario_box.get()[:1]
+        scenario_id = int(scenario)
+
+        team_sql_template = "select team_id from teams where team_name='{team_name}'"
+        team_1_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_1))
+        team_1_id = team_1_row[0][0]
+
+        team_2_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_2))
+        team_2_id = team_2_row[0][0]
+
+        # Do not assume that the lower team value is the home team
+        # if team_1_id > team_2_id:
+            # team_1_id, team_2_id = team_2_id, team_1_id
+
+        player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
+        team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
+        team_2_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_2_id))
+
+        team_1_dict = {row[0]:{'position':i+1,'name':row[1]} for i,row in enumerate(team_1_players)}
+        team_2_dict = {row[0]:{'position':i+1,'name':row[1]}for i,row in enumerate(team_2_players)}
+        print(team_1_dict)
+        ratings_sql = f"""
+            SELECT
+                team_1_player_id,
+                team_2_player_id,
+                rating,
+                team_1_id,
+                team_2_id
+            FROM
+                ratings
+            WHERE
+                team_1_player_id IN ({','.join([str(x) for x in team_1_dict.keys()])})
+              AND
+                team_2_player_id IN ({','.join([str(x) for x in team_2_dict.keys()])})
+              AND
+                team_1_id = {team_1_id}
+              AND
+                team_2_id = {team_2_id}
+              AND
+                scenario_id = {scenario_id}
+            ORDER BY
+                team_1_player_id, team_2_player_id
+
+        """
+
+        ratings_rows = self.db_manager.query_sql(ratings_sql)
+        print(ratings_rows)
+        # update usernames
+        for _, row_dict in team_2_dict.items():
+
+            self.grid_entries[0][row_dict['position']].set(row_dict['name'])
+        
+        for _, row_dict in team_1_dict.items():
+            self.grid_entries[row_dict['position']][0].set(row_dict['name'])
+
+        for r, row in enumerate(ratings_rows):
+            team_1_pos = team_1_dict[row[0]]['position']
+            team_2_pos = team_2_dict[row[1]]['position']
+            self.grid_entries[team_1_pos][team_2_pos].set(row[2])
+        
+    def save_grid_data_to_db(self):
+        team_1 = self.combobox_1.get()
+        team_2 = self.combobox_2.get()
+        scenario_id = int(self.scenario_box.get()[:1])
+
+        team_sql_template = "select team_id from teams where team_name='{team_name}'"
+        team_1_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_1))
+        team_1_id = team_1_row[0][0]
+
+        team_2_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_2))
+        team_2_id = team_2_row[0][0]
+
+        # Do not assume that the lower team value is the home team
+        # if team_1_id > team_2_id:
+            # team_1_id, team_2_id = team_2_id, team_1_id
+
+        player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
+        team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
+        team_2_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_2_id))
+
+        team_1_dict = {i+1:{'id':row[0],'name':row[1]} for i,row in enumerate(team_1_players)}
+        team_2_dict = {i+1:{'id':row[0],'name':row[1]}for i,row in enumerate(team_2_players)}
 
 
-    def get_csv_files(self):
-        files = [f[:-4] for f in os.listdir(self.directory) if f.endswith('.csv')]
-        # print(f"CSV files found in {self.directory}: {files}")
-        return files
+        for row in range(1,len(self.grid_entries)):
+            for col in range(1,len(self.grid_entries[0])):
+                rating = int(self.grid_entries[row][col].get())
+                team_1_player_id = team_1_dict[row]['id']
+                team_2_player_id = team_2_dict[col]['id']
 
-    def select_directory_and_update_combobox(self):
-        if self.directory:
-            csv_files = [f[:-4] for f in os.listdir(self.directory) if f.endswith('.csv')]
-            self.combobox['values'] = csv_files
-            if not csv_files:
-                self.combobox.set("No CSV files found")
-            else:
-                self.combobox.set(csv_files[0])
+                self.db_manager.upsert_rating(
+                    player_id_1=team_1_player_id,
+                    player_id_2=team_2_player_id,
+                    team_id_1=team_1_id,
+                    team_id_2=team_2_id,
+                    scenario_id=scenario_id,
+                    rating=rating
+                )
 
-    def clear_textbox(self):
-        self.textbox.config(state=tk.NORMAL)
-        self.textbox.delete(1.0, tk.END)
+    def add_team_to_db(self):
+        # Create a popup window to enter the team name
+        popup = tk.Tk()
+        popup.withdraw()  # Hide the main window
+        
+        team_name = simpledialog.askstring("Input", "Enter the team name:", parent=popup)
+        if team_name:
+            self.db_manager.create_team(team_name)
+        popup.destroy()
+        self.update_ui()
 
-    def update_textbox(self): # THIS NEEDS TO BE UPDATED TO ACCOMODATE SCENARIO STUFF.
-        has_values = any(entry.get() for row in self.grid_entries for entry in row)
-        self.textbox.config(state=tk.NORMAL)
-        self.textbox.delete(1.0, tk.END)
-        if has_values:
-            for row in self.grid_entries:
-                row_values = [entry.get().strip() for entry in row]
-                if any(row_values):
-                    self.textbox.insert(tk.END, ', '.join(row_values) + '\n')
-        self.textbox.config(state=tk.NORMAL)
+    def delete_team(self):
+        popup = tk.Tk()
+        popup.withdraw()  # Hide the main window
+
+        # Fetch existing team names
+        team_names = self.select_team_names()
+
+        # Create and display the delete team dialog
+        dialog = DeleteTeamDialog(popup, team_names)
+        popup.wait_window(dialog.top)
+
+        team_name = dialog.selected_team
+        if team_name is None:
+            return  # User cancelled the operation
+
+        # Validate the user's input
+        if team_name not in team_names:
+            messagebox.showerror("Error", f"Invalid team name: {team_name}")
+            return
+
+        # Retrieve the team_id of the selected team
+        team_id_row = self.db_manager.query_sql(f"SELECT team_id FROM teams WHERE team_name='{team_name}'")
+        if not team_id_row:
+            messagebox.showerror("Error", f"Team not found: '{team_name}'")
+            return
+
+        team_id = team_id_row[0][0]
+
+        # Delete related records
+        self.db_manager.execute_sql(f"DELETE FROM ratings WHERE team_1_id={team_id} OR team_2_id={team_id}")
+        self.db_manager.execute_sql(f"DELETE FROM players WHERE team_id={team_id}")
+        self.db_manager.execute_sql(f"DELETE FROM teams WHERE team_id={team_id}")
+
+        messagebox.showinfo("Success", f"Team '{team_name}' and all related records have been deleted successfully.")
+        self.set_team_dropdowns()
+
+    def import_xlsx(self):
+        xslx_load_ui  = XlsxLoadUi()
+        file_path, file_name = xslx_load_ui.load_xslx_file()
+        excel_importer = ExcelImporter(db_manager=self.db_manager, file_path=file_path, file_name=file_name)
+        excel_importer.execute()
+
+    def export_csvs(self):
+        print(f"Exporting Matchups to CSV")
+
+        # Prompt the user to select a file location to save the CSV
+        file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+        if not file_path:
+            return
+
+        # Retrieve data from the database
+        team1_name, team1_players = self.retrieve_team_data(self.combobox_1.get())
+        team2_name, team2_players = self.retrieve_team_data(self.combobox_2.get())
+        ratings = self.retrieve_ratings(team1_players, team2_players)
+
+        print(f"team 1 players {team1_players}")
+        print(f"team 2 players {team2_players}")
+        print(f"ratings for these teams are {ratings}")
+
+        # Write data to CSV
+        with open(file_path, mode='w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+
+            # Write headers
+            writer.writerow([team1_name] + team1_players)
+            writer.writerow([team2_name] + team2_players)
+
+            # Write ratings
+            for scenario_id, rating_data in ratings.items():
+                writer.writerow([scenario_id] + team2_players)
+                for player, player_ratings in rating_data.items():
+                    writer.writerow([player] + player_ratings) 
+    def retrieve_team_data(self, team_name):
+        team_id = self.db_manager.query_team_id(team_name)
+        players = self.db_manager.query_sql(f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id")
+        player_names = [player[0] for player in players]
+        return team_name, player_names
+
+    def retrieve_ratings(self, team1_players, team2_players):
+        ratings = {}
+        scenario_id = []        
+        for scenario in range(0,6):
+            print(f"scenarios - {scenario}")
+            scenario_id = scenario
+            ratings[scenario_id] = {}
+            for player1 in team1_players:
+                player1_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player1}'")[0][0]
+                print(f"player1 - {player1_id}: {player1}")
+                player_ratings = []
+                for player2 in team2_players:
+                    player2_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player2}'")[0][0]
+                    rating = self.db_manager.query_sql(f"""
+                        SELECT rating FROM ratings
+                        WHERE team_1_player_id = {player1_id} AND team_2_player_id = {player2_id} AND scenario_id = {scenario_id}
+                    """)
+                    player_ratings.append(rating[0][0] if rating else 0)  # Default to 0 if no rating found
+                ratings[scenario_id][player1] = player_ratings
+
+        return ratings
+
+
+    
+    def import_csvs(self):
+        file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+        with open(file_path, newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            lines = list(reader)
+
+        self.import_csv_header(lines)
+        self.import_csv_ratings(lines)
+        self.update_ui()
+
+    def import_csv_header(self, lines):
+        # Only take the first two lines from the file.
+        if len(lines) < 2:
+            raise ValueError("Insufficient number of lines")
+
+        first_two_lines = lines[:2]
+
+        for index, line in enumerate(first_two_lines):
+            team_name = line[0]
+            player_names = line[1:]
+
+            # Try to upsert this team and the players.
+            team_id = self.db_manager.upsert_team(team_name)
+            self.db_manager.upsert_and_validate_players(team_id, player_names)
+
+            # Set combobox values based on the index
+            if index == 0:
+                self.combobox_1.set(team_name)
+            elif index == 1:
+                self.combobox_2.set(team_name)
+
+    def import_csv_ratings(self, lines):
+        # Skip the first two header lines
+        lines = lines[2:]
+        team_2_players = []
+        team_2_player_ids = {}
+        team_2_id = None
+
+        for line in lines:
+            rating_line = all(item.isdigit() for item in line[1:])
+            if not rating_line:
+                scenario_id = int(line[0])
+                team_2_players = line[1:]
+
+                # Retrieve player_ids for enemy team (team_2)
+                team_2_player_ids = {
+                    player_name: player_id 
+                    for player_name, player_id in self.db_manager.query_sql(
+                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_2_players)})"
+                    )
+                }
+                
+                # Retrieve team_id of the enemy team (team_2) once
+                if team_2_players:
+                    team_2_id = self.db_manager.query_sql(f"SELECT team_id FROM players WHERE player_name='{team_2_players[0]}'")[0][0]
+
+            elif len(line) > 1 and not line[0].isdigit():
+                player_name = line[0]
+                ratings = list(map(int, line[1:]))
+
+                # Retrieve player_id and team_id for friendly team (team_1)
+                result = self.db_manager.query_sql(f"SELECT player_id, team_id FROM players WHERE player_name='{player_name}'")
+                if result:
+                    player_id_1, team_id_1 = result[0]
+
+                    for i, rating in enumerate(ratings):
+                        player_name_2 = team_2_players[i]
+                        player_id_2 = team_2_player_ids[player_name_2]
+                        self.db_manager.upsert_rating(
+                            player_id_1,
+                            player_id_2,
+                            team_id_1,
+                            team_2_id,
+                            scenario_id,
+                            rating
+                        )
+
+
+    def update_grid(self,rows,row_lo,row_hi,row_correction):
+        for r, row in enumerate(rows):
+            values = row.split(',')
+            for c, value in enumerate(values):
+                if c < 6:
+                    if r < 6:
+                        self.grid_entries[r][c].set(value)
+                    if row_lo <= r < row_hi:
+                        corrected_r = r - row_correction
+                        if corrected_r < 6:
+                            self.grid_entries[corrected_r][c].set(value)
+                            # if self.print_output: print(f"r: {r}; row_correction: {row_correction}; sum: {corrected_r}; c is: {c}; value: {value}")
+    
+    def prep_text(self, scenario):
+        content = self.textbox.get(1.0, tk.END).strip()
+        rows = content.split('\n')
+        current_scenario = self.get_scenario_num()
+        row_lo, row_hi = self.get_row_range(current_scenario)
+        row_correction = current_scenario * 6
+        return rows,row_lo,row_hi,row_correction
+
+    #############################################
+
 
     def update_combobox_colors(self):
         for row in range(1, 6):
@@ -249,39 +587,6 @@ class UiManager:
             self.grid_widgets[row][col].config(bg=self.color_map[value])
         else:
             self.grid_widgets[row][col].config(bg='white')
-
-    def get_data_from_csv(self):
-        try:
-            file_name = self.combobox.get()
-            if not file_name:
-                raise ValueError("No file selected")
-
-            file_path = os.path.join(self.directory, file_name + '.csv')
-
-            if not os.path.exists(file_path):
-                raise FileNotFoundError(f"File {file_path} does not exist")
-
-            with open(file_path, 'r') as file:
-                reader = csv.reader(file)
-                content = '\n'.join([','.join(row) for row in reader])
-            # if self.print_output:print(content)
-            self.textbox.delete(1.0, tk.END)
-            self.textbox.insert(tk.END, content)
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-
-    def save_textbox_content(self):
-        file_path = filedialog.asksaveasfilename(initialdir=self.directory, defaultextension=".csv",
-                                                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-        if not file_path:
-            return
-
-        content = self.textbox.get(1.0, tk.END).strip()
-        with open(file_path, 'w', newline='') as file:
-            writer = csv.writer(file)
-            for line in content.split('\n'):
-                writer.writerow(line.split(','))
-        self.get_csv_files()
 
     def prep_names(self):
         fNames = [self.grid_entries[i][0].get() for i in range(1, 6)]
@@ -322,26 +627,6 @@ class UiManager:
             if self.print_output: print(type(num))
         return num
 
-    def update_grid(self,rows,row_lo,row_hi,row_correction):
-        for r, row in enumerate(rows):
-            values = row.split(',')
-            for c, value in enumerate(values):
-                if c < 6:
-                    if r < 6:
-                        self.grid_entries[r][c].set(value)
-                    if row_lo <= r < row_hi:
-                        corrected_r = r - row_correction
-                        if corrected_r < 6:
-                            self.grid_entries[corrected_r][c].set(value)
-                            # if self.print_output: print(f"r: {r}; row_correction: {row_correction}; sum: {corrected_r}; c is: {c}; value: {value}")
-
-    def update_grid_from_textbox(self): 
-        content = self.textbox.get(1.0, tk.END).strip()
-        rows = content.split('\n')
-        current_scenario = self.get_scenario_num()
-        row_lo, row_hi = self.get_row_range()
-        row_correction = current_scenario * 6
-        self.update_grid(rows,row_lo,row_hi,row_correction)
 
     def validate_grid_data(self):
         for row in range(1, 6):
@@ -352,40 +637,7 @@ class UiManager:
                     return False
         return True
 
-    def validate_textbox_data(self):
-        content = self.textbox.get(1.0, tk.END).strip()
-        rows = content.split('\n')
-        if len(rows) != 6:
-            messagebox.showerror("Error", "Invalid number of rows in textbox. Expected 6 rows.")
-            return False
-        for row in rows:
-            if len(row.split(',') != 6):
-                messagebox.showerror("Error", "Invalid number of columns in textbox. Expected 6 columns per row.")
-                return False
-        return True
 
-    def save_grid_state(self):
-        file_path = filedialog.asksaveasfilename(defaultextension=".csv",
-                                                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-        if not file_path:
-            return
-
-        with open(file_path, 'w', newline='') as file:
-            writer = csv.writer(file)
-            for row in self.grid_entries:
-                writer.writerow([entry.get() for entry in row])
-
-    def load_grid_state(self):
-        file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-        if not file_path:
-            return
-
-        with open(file_path, 'r') as file:
-            reader = csv.reader(file)
-            for r, row in enumerate(reader):
-                for c, value in enumerate(row):
-                    if r < 6 and c < 6:
-                        self.grid_entries[r][c].set(value)
 
     def create_tooltip(self, widget, text):
         tooltip = tk.Toplevel(widget)

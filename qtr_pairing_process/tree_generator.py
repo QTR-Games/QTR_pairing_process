@@ -103,6 +103,7 @@ class TreeGenerator:
                         total_sum += int(self.sum_leaf_values(child_id,1))
                         # match_ratings.append(int(self.sum_leaf_values(child_id)))
 
+
                     # max_rating += sum(match_ratings)
                     # print(f"sum_leaf_values - NON LEAF NODE HIT.\nNode: {node}, match_ratings = {match_ratings}, Returned total_sum: {total_sum}")
                     # self.set_value(total_sum)
@@ -115,4 +116,4 @@ class TreeGenerator:
     
 
     
-        
+      
