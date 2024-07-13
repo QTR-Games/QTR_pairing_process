@@ -169,14 +169,14 @@ class UiManager:
         show_info_button.pack()
 
         math_button_0 = tk.Button(text="MATH (Max)!", command=self.traverse_and_sum_values_0)
-        math_button_0.pack()
+        math_button_0.pack(side=tk.LEFT, padx=5, pady=3)
         math_button_1 = tk.Button(text="MATH (Sum)!", command=self.traverse_and_sum_values_1)
-        math_button_1.pack()
+        math_button_1.pack(side=tk.LEFT, padx=5, pady=3)
         
-        show_selection_button = tk.Button(text="Show Selection", command=self.treeview.show_selection)
-        show_selection_button.pack(side=tk.LEFT, padx=5, pady=3)
-        get_node_data = tk.Button(text="Get Rating", command=self.treeview.get_selected_value)
-        get_node_data.pack(side=tk.LEFT, padx=5, pady=3)
+        # show_selection_button = tk.Button(text="Show Selection", command=self.treeview.show_selection)
+        # show_selection_button.pack(side=tk.LEFT, padx=5, pady=3)
+        # get_node_data = tk.Button(text="Get Rating", command=self.treeview.get_selected_value)
+        # get_node_data.pack(side=tk.LEFT, padx=5, pady=3)
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
