@@ -89,31 +89,53 @@ class TreeGenerator:
                         match_ratings.append(current_value)
 
                     max_rating = max(match_ratings)
-                    # print(f"sum_leaf_values - NON LEAF NODE HIT.\nNode: {node}, match_ratings = {match_ratings}, Returned total_sum: {total_sum}")
-                    # self.set_value(total_sum)
                     self.set_value(max_rating, node)
                     return total_sum
                 else:
                     # Sum the values of child nodes
                     total_sum = 0
                     value = self.treeview.tree.item(node, 'values')
-                    # match_ratings = []
                     
                     for child_id in child_ids:
                         total_sum += int(self.sum_leaf_values(child_id,1))
                         # match_ratings.append(int(self.sum_leaf_values(child_id)))
 
-
-                    # max_rating += sum(match_ratings)
-                    # print(f"sum_leaf_values - NON LEAF NODE HIT.\nNode: {node}, match_ratings = {match_ratings}, Returned total_sum: {total_sum}")
-                    # self.set_value(total_sum)
                     self.set_value(total_sum, node)
                     return total_sum
             except (ValueError, IndexError):
                 return 0
             
-    
-    
+    def optimize_matchups(self):
+        # Get the children of the root node
+        root_nodes = self.treeview.tree.get_children()
+        for root in root_nodes:
+            # Get the child nodes of the current root node
+            child_ids = self.treeview.tree.get_children(root)
+            if child_ids:
+                # Create a list of tuples (child_id, value)
+                children_with_values = []
+                for child_id in child_ids:
+                    value = self.treeview.tree.item(child_id, 'values')[0]  # Adjust the index if the value column is different
+                    children_with_values.append((child_id, value))
+                
+                # Sort the list of tuples based on the value in descending order
+                children_with_values.sort(key=lambda x: x[1], reverse=True)
+                
+                # Extract the sorted child_ids
+                sorted_child_ids = [child_id for child_id, value in children_with_values]
+                
+                # Remove all children from the root node
+                for child_id in child_ids:
+                    self.treeview.tree.detach(child_id)
+                
+                # Reinsert the children in sorted order
+                for child_id in sorted_child_ids:
+                    self.treeview.tree.move(child_id, root, 'end')
 
+                    
+
+
+                    
+               
     
       

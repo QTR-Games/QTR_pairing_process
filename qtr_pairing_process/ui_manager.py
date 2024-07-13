@@ -159,8 +159,8 @@ class UiManager:
         self.treeview.tree.tag_configure('1', background="orangered")
         self.treeview.tree.tag_configure('2', background="orange")
         self.treeview.tree.tag_configure('3', background="yellow")
-        self.treeview.tree.tag_configure('4', background="yellowgreen")
-        self.treeview.tree.tag_configure('5', background="deepskyblue")
+        self.treeview.tree.tag_configure('4', background="greenyellow")
+        self.treeview.tree.tag_configure('5', background="lime")
         self.treeview.pack(expand=1, fill='both')
     
         generateButton = tk.Button(self.bottom_frame, text="Generate Combinations", command=self.on_generate_combinations)
@@ -172,6 +172,8 @@ class UiManager:
         math_button_0.pack(side=tk.LEFT, padx=5, pady=3)
         math_button_1 = tk.Button(text="MATH (Sum)!", command=self.traverse_and_sum_values_1)
         math_button_1.pack(side=tk.LEFT, padx=5, pady=3)
+        optimize_button = tk.Button(text="Matchup/nOptimization", command=self.optimize_matchups)
+        optimize_button.pack(side=tk.LEFT, padx=5, pady=3)
         
         # show_selection_button = tk.Button(text="Show Selection", command=self.treeview.show_selection)
         # show_selection_button.pack(side=tk.LEFT, padx=5, pady=3)
@@ -209,6 +211,10 @@ class UiManager:
     def traverse_and_sum_values(self):
         print("MATH IS HAPPENING!!!")
         self.tree_generator.traverse_and_sum_values()
+
+    def optimize_matchups(self):
+        print("RETICULATING SPLINES")
+        self.tree_generator.optimize_matchups()
 
     def update_scenario_box(self):
         scenarios = []
@@ -306,7 +312,7 @@ class UiManager:
         """
 
         ratings_rows = self.db_manager.query_sql(ratings_sql)
-        print(ratings_rows)
+        # print(ratings_rows)
         # update usernames
         for _, row_dict in team_2_dict.items():
 
