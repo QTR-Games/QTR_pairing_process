@@ -8,7 +8,7 @@ from qtr_pairing_process.constants import SCENARIO_MAP
 class DbManager:
     def __init__(self, path=None, name=None) -> None:
         self.path = path or expanduser("~")
-        self.name = name or 'default.db'
+        self.name = name or 'qtr_pairing_db.db'
         print(self.path, self.name)
         self.initialize_db()
     def initialize_db(self):

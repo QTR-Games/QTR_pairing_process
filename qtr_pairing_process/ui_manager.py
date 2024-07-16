@@ -167,7 +167,7 @@ class UiManager:
         self.treeview.pack(expand=1, fill='both')
     
         generateButton = tk.Button(self.bottom_frame, text="Generate Combinations", command=self.on_generate_combinations)
-        generateButton.config(height=10, width=50)
+        generateButton.config(height=5, width=30)
         generateButton.pack(pady=10)
         # show_info_button = tk.Button(text="Show Info", command=self.treeview.item_details)
         # show_info_button.pack()
