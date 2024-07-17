@@ -57,7 +57,7 @@ class UiManager:
         # set root
         self.root = tk.Tk()
         self.root.geometry('+0+0')
-        self.root.title('Pairings Debug')
+        self.root.title(f"QTR'S KLIK KLAKER")
 
         # set key bindings
         self.root.bind('<Escape>', lambda event: self.root.quit())
@@ -81,13 +81,9 @@ class UiManager:
 
         self.bottom_frame = tk.Frame(self.root)
         self.bottom_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-
-        self.bottom_frame_2 = tk.Frame(self.root)
-        self.bottom_frame_2.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
     
         self.grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
         self.grid_widgets = [[None for _ in range(6)] for _ in range(6)]
-    
 
         # set team_b button
         self.team_b = tk.IntVar()
@@ -106,7 +102,29 @@ class UiManager:
         self.tree_generator = TreeGenerator(treeview=self.treeview, sort_alpha=self.sort_alpha.get())
 
     def create_ui(self):
-        
+        # Create a notebook for tabs
+        notebook = ttk.Notebook(self.root)
+
+        # Create the frames for the tabs
+        team_grid_frame = tk.Frame(notebook)
+        matchup_tree_frame = tk.Frame(notebook)
+
+        # Add tabs to the notebook
+        notebook.add(team_grid_frame, text='Team Grid')
+        notebook.add(matchup_tree_frame, text='Matchup Tree')
+
+        # Pack the notebook to fill the main window
+        notebook.pack(expand=1, fill='both')
+
+        # Configure the Team Grid tab
+        self.left_frame = tk.Frame(team_grid_frame)
+        self.drop_down_frame = tk.Frame(team_grid_frame)
+        self.button_row_frame = tk.Frame(team_grid_frame)
+
+        self.left_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+        self.drop_down_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+        self.button_row_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+
         for r in range(6):
             for c in range(6):
                 entry = tk.Entry(self.left_frame, textvariable=self.grid_entries[r][c], width=10)
@@ -114,47 +132,48 @@ class UiManager:
                 self.grid_widgets[r][c] = entry
                 self.grid_entries[r][c].trace_add('write', lambda name, index, mode, var=self.grid_entries[r][c], row=r, col=c: self.update_color_on_change(var, index, mode, row, col))
 
-        # create combobox for file selection
-        # create the label
         tk.Label(self.drop_down_frame, text='Select Team 1:').pack(side=tk.LEFT, padx=5, pady=5)
-
-        # create combobox
         self.combobox_1 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
         self.combobox_1.pack(side=tk.LEFT, padx=5, pady=5)
-        
-        tk.Label(self.drop_down_frame, text='Select Team 2:').pack(side=tk.LEFT, padx=5, pady=5)
 
-        # create combobox
+        tk.Label(self.drop_down_frame, text='Select Team 2:').pack(side=tk.LEFT, padx=5, pady=5)
         self.combobox_2 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
         self.combobox_2.pack(side=tk.LEFT, padx=5, pady=5)
 
-        # create combobox for scenario selection
-        # create the label
         tk.Label(self.drop_down_frame, text='Choose Scenario:').pack(side=tk.LEFT, padx=5, pady=5)
-        # create scenarios drop down box
-        # Use a StringVar to hold the value of the Combobox
         self.scenario_var = tk.StringVar()
         self.scenario_box = ttk.Combobox(self.drop_down_frame, state='readonly', width=20, textvariable=self.scenario_var)
-        # self.scenario_box.bind('<<ComboboxSelected>>', self.on_combobox_select)
         self.scenario_box.pack(side=tk.LEFT, padx=5, pady=5)
-        # Set an instance variable to keep track of the previous value
         self.previous_value = self.scenario_var.get()
-        # Attach a trace to the StringVar
         self.scenario_var.trace_add('write', self.on_scenario_box_change)
         self.set_team_dropdowns()
         self.update_scenario_box()
 
-        # Add Buttons to a row just above the pairing grid       
         tk.Button(self.button_row_frame, text="Export CSV", command=lambda: self.export_csvs()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_data_from_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="REFRESH", command=lambda: self.update_ui()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Import XSLX", command=lambda: self.import_xlsx()).pack(side=tk.LEFT, padx=5, pady=3)
 
-        # Configure Treeview ... with style!
+        # Configure the Matchup Tree tab
+        self.bottom_frame = tk.Frame(matchup_tree_frame)
+        self.bottom_frame.pack(expand=1, fill='both')
+
+        generateButton = tk.Button(self.bottom_frame, text=f"Generate\nCombinations", command=self.on_generate_combinations)
+        generateButton.pack(side=tk.RIGHT, padx=5, pady=5)
+
+        math_button_0 = tk.Button(self.bottom_frame, text=f"Maximize\nMatchup Strength!", command=self.traverse_and_sum_values_0)
+        math_button_0.pack(side=tk.LEFT, padx=5, pady=5)
+
+        optimize_button = tk.Button(self.bottom_frame, text="Optimize!", command=self.optimize_matchups)
+        optimize_button.pack(side=tk.LEFT, padx=5, pady=5)
+
+        math_button_1 = tk.Button(self.bottom_frame, text=f"Sum\nMatchup Strength!", command=self.traverse_and_sum_values_1)
+        math_button_1.pack(side=tk.LEFT, padx=5, pady=5)
+
+        # Configure Treeview with style and maximize space
         style = ttk.Style()
         style.configure("Treeview", font=("Arial", 12))
         self.treeview.tree.heading("#0", text="Pairing")
@@ -165,33 +184,13 @@ class UiManager:
         self.treeview.tree.tag_configure('4', background="greenyellow")
         self.treeview.tree.tag_configure('5', background="lime")
         self.treeview.pack(expand=1, fill='both')
-    
-        generateButton = tk.Button(self.bottom_frame, text="Generate Combinations", command=self.on_generate_combinations)
-        generateButton.config(height=5, width=30)
-        generateButton.pack(pady=10)
-        # show_info_button = tk.Button(text="Show Info", command=self.treeview.item_details)
-        # show_info_button.pack()
-        # show_selection_button = tk.Button(text="Show Selection", command=self.treeview.show_selection)
-        # show_selection_button.pack(side=tk.LEFT, padx=5, pady=3)
-        # get_node_data = tk.Button(text="Get Rating", command=self.treeview.get_selected_value)
-        # get_node_data.pack(side=tk.LEFT, padx=5, pady=3)
-        math_button_0 = tk.Button(self.bottom_frame_2, text="MATH (Max)!", command=self.traverse_and_sum_values_0)
-        math_button_0.config(height=3, width=30)
-        math_button_0.pack(side=tk.LEFT, padx=5, pady=5)
-        
-        optimize_button = tk.Button(self.bottom_frame_2,text="Optimize!", command=self.optimize_matchups)
-        optimize_button.config(height=3, width=30)
-        optimize_button.pack(side=tk.LEFT, padx=5, pady=5)
-
-        math_button_1 = tk.Button(self.bottom_frame_2, text="MATH (Sum)!", command=self.traverse_and_sum_values_1)
-        math_button_1.config(height=3, width=30)
-        math_button_1.pack(side=tk.LEFT, padx=5, pady=5)
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
         self.create_tooltip(self.treeview, "Generated combinations will be displayed here")
-        
+
         self.update_combobox_colors()
+
         self.root.mainloop()
 
     def on_generate_combinations(self):
