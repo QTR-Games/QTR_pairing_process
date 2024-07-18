@@ -62,12 +62,26 @@ class UiManager:
         # set key bindings
         self.root.bind('<Escape>', lambda event: self.root.quit())
         self.root.bind('<Return>', lambda event: self.on_generate_combinations())
-    
-        # set frames
-        self.drop_down_frame = tk.Frame(self.root)
+
+        # Create a notebook for tabs
+        self.notebook = ttk.Notebook(self.root)
+
+        # Create the frames for the tabs
+        self.team_grid_frame = tk.Frame(self.notebook)
+        self.matchup_tree_frame = tk.Frame(self.notebook)
+
+        # Add tabs to the notebook
+        self.notebook.add(self.team_grid_frame, text='Team Grid')
+        self.notebook.add(self.matchup_tree_frame, text='Matchup Tree')
+
+        # Pack the notebook to fill the main window
+        self.notebook.pack(expand=1, fill='both')
+
+        # set frames for the team grid tab
+        self.drop_down_frame = tk.Frame(self.team_grid_frame)
         self.drop_down_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        self.top_frame = tk.Frame(self.root)
+        self.top_frame = tk.Frame(self.team_grid_frame)
         self.top_frame.pack(side=tk.TOP, fill=tk.X)
 
         self.left_frame = tk.Frame(self.top_frame)
@@ -76,12 +90,13 @@ class UiManager:
         self.right_frame = tk.Frame(self.top_frame)
         self.right_frame.pack(side=tk.LEFT, padx=10, pady=10)
 
-        self.button_row_frame = tk.Frame(self.root)
+        self.button_row_frame = tk.Frame(self.team_grid_frame)
         self.button_row_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        self.bottom_frame = tk.Frame(self.root)
-        self.bottom_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-    
+        # set frames for the matchup tree tab
+        self.bottom_frame = tk.Frame(self.matchup_tree_frame)
+        self.bottom_frame.pack(expand=1, fill='both')
+
         self.grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
         self.grid_widgets = [[None for _ in range(6)] for _ in range(6)]
 
@@ -94,37 +109,14 @@ class UiManager:
         # set alpha checkbox
         self.sort_alpha = tk.IntVar()
         alphaBox = tk.Checkbutton(self.right_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
-        alphaBox.pack(side=tk.RIGHT,pady=3,padx=5)
+        alphaBox.pack(side=tk.RIGHT, pady=3, padx=5)
         alphaBox.select()
 
         # create treeview and tree generator
-        self.treeview = LazyTreeView(master=self.bottom_frame, print_output=self.print_output,columns=("Rating"))
+        self.treeview = LazyTreeView(master=self.bottom_frame, print_output=self.print_output, columns=("Rating"))
         self.tree_generator = TreeGenerator(treeview=self.treeview, sort_alpha=self.sort_alpha.get())
 
     def create_ui(self):
-        # Create a notebook for tabs
-        notebook = ttk.Notebook(self.root)
-
-        # Create the frames for the tabs
-        team_grid_frame = tk.Frame(notebook)
-        matchup_tree_frame = tk.Frame(notebook)
-
-        # Add tabs to the notebook
-        notebook.add(team_grid_frame, text='Team Grid')
-        notebook.add(matchup_tree_frame, text='Matchup Tree')
-
-        # Pack the notebook to fill the main window
-        notebook.pack(expand=1, fill='both')
-
-        # Configure the Team Grid tab
-        self.left_frame = tk.Frame(team_grid_frame)
-        self.drop_down_frame = tk.Frame(team_grid_frame)
-        self.button_row_frame = tk.Frame(team_grid_frame)
-
-        self.left_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
-        self.drop_down_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
-        self.button_row_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
-
         for r in range(6):
             for c in range(6):
                 entry = tk.Entry(self.left_frame, textvariable=self.grid_entries[r][c], width=10)
@@ -157,10 +149,7 @@ class UiManager:
         tk.Button(self.button_row_frame, text="REFRESH", command=lambda: self.update_ui()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Import XSLX", command=lambda: self.import_xlsx()).pack(side=tk.LEFT, padx=5, pady=3)
 
-        # Configure the Matchup Tree tab
-        self.bottom_frame = tk.Frame(matchup_tree_frame)
-        self.bottom_frame.pack(expand=1, fill='both')
-
+        # Configure the bottom_frame for Matchup Tree tab
         generateButton = tk.Button(self.bottom_frame, text=f"Generate\nCombinations", command=self.on_generate_combinations)
         generateButton.pack(side=tk.RIGHT, padx=5, pady=5)
 
