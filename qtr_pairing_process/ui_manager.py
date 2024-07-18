@@ -78,7 +78,7 @@ class UiManager:
         self.notebook.pack(expand=1, fill='both')
 
         # set frames for the team grid tab
-        self.drop_down_frame = tk.Frame(self.root)
+        self.drop_down_frame = tk.Frame(self.team_grid_frame)
         self.drop_down_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         self.top_frame = tk.Frame(self.team_grid_frame)
@@ -91,29 +91,29 @@ class UiManager:
         self.right_frame.pack(side=tk.LEFT, padx=10, pady=10)
 
         self.button_row_frame = tk.Frame(self.team_grid_frame)
-        self.button_row_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self.button_row_frame.pack(side=tk.TOP, fill=tk.X)
 
         # set frames for the matchup tree tab
-        self.bottom_frame = tk.Frame(self.matchup_tree_frame)
-        self.bottom_frame.pack(expand=1, fill='both')
+        self.tree_tab_left_frame = tk.Frame(self.matchup_tree_frame)
+        self.tree_tab_left_frame.pack(side=tk.LEFT, expand=1, fill='both')
+        self.tree_tab_right_frame = tk.Frame(self.matchup_tree_frame)
+        self.tree_tab_right_frame.pack(side=tk.LEFT, expand=1, fill='both')
 
         self.grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
         self.grid_widgets = [[None for _ in range(6)] for _ in range(6)]
 
-        # set team_b button
         self.team_b = tk.IntVar()
-        pairingLead = tk.Checkbutton(self.right_frame, text="Our team first", variable=self.team_b)
-        pairingLead.pack(side=tk.RIGHT, padx=5, pady=3)
+        pairingLead = tk.Checkbutton(self.tree_tab_left_frame, text="Our team first", variable=self.team_b)
+        pairingLead.pack(fill=tk.X, pady=5)
         pairingLead.select()
 
-        # set alpha checkbox
         self.sort_alpha = tk.IntVar()
-        alphaBox = tk.Checkbutton(self.right_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
-        alphaBox.pack(side=tk.RIGHT, pady=3, padx=5)
+        alphaBox = tk.Checkbutton(self.tree_tab_left_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
+        alphaBox.pack(fill=tk.X, pady=5)
         alphaBox.select()
 
         # create treeview and tree generator
-        self.treeview = LazyTreeView(master=self.bottom_frame, print_output=self.print_output, columns=("Rating"))
+        self.treeview = LazyTreeView(master=self.tree_tab_right_frame, print_output=self.print_output, columns=("Rating"))
         self.tree_generator = TreeGenerator(treeview=self.treeview, sort_alpha=self.sort_alpha.get())
 
     def create_ui(self):
@@ -164,7 +164,7 @@ class UiManager:
 
 		# Configure Treeview with style and maximize space
         style = ttk.Style()
-        style.configure("Treeview", font=("Arial", 12))
+        style.configure("Treeview", font=("Arial", 10))
         self.treeview.tree.heading("#0", text="Pairing")
         self.treeview.tree.heading("Rating", text="Rating")
         self.treeview.tree.tag_configure('1', background="orangered")
@@ -175,7 +175,7 @@ class UiManager:
         self.treeview.pack(expand=1, fill='both')
 		
         # Configure the bottom_frame for Matchup Tree tab
-        buttons_frame = tk.Frame(self.bottom_frame)
+        buttons_frame = tk.Frame(self.tree_tab_left_frame)
         buttons_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
 
         generateButton = tk.Button(buttons_frame, text="Generate\nCombinations", command=self.on_generate_combinations)
@@ -189,8 +189,6 @@ class UiManager:
 
         optimize_button = tk.Button(buttons_frame, text="Optimize!", command=self.optimize_matchups)
         optimize_button.pack(fill=tk.X, pady=5)
-
-        
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
