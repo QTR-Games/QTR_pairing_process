@@ -78,7 +78,7 @@ class UiManager:
         self.notebook.pack(expand=1, fill='both')
 
         # set frames for the team grid tab
-        self.drop_down_frame = tk.Frame(self.team_grid_frame)
+        self.drop_down_frame = tk.Frame(self.root)
         self.drop_down_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         self.top_frame = tk.Frame(self.team_grid_frame)
@@ -124,31 +124,56 @@ class UiManager:
                 self.grid_widgets[r][c] = entry
                 self.grid_entries[r][c].trace_add('write', lambda name, index, mode, var=self.grid_entries[r][c], row=r, col=c: self.update_color_on_change(var, index, mode, row, col))
 
+		# create combobox for file selection
+        # create the label
         tk.Label(self.drop_down_frame, text='Select Team 1:').pack(side=tk.LEFT, padx=5, pady=5)
+        # create combobox
         self.combobox_1 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
         self.combobox_1.pack(side=tk.LEFT, padx=5, pady=5)
-
+		
         tk.Label(self.drop_down_frame, text='Select Team 2:').pack(side=tk.LEFT, padx=5, pady=5)
+        # create combobox
         self.combobox_2 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
         self.combobox_2.pack(side=tk.LEFT, padx=5, pady=5)
 
+        # create combobox for scenario selection
+        # create the label
         tk.Label(self.drop_down_frame, text='Choose Scenario:').pack(side=tk.LEFT, padx=5, pady=5)
+        # create scenarios drop down box
+        # Use a StringVar to hold the value of the Combobox
         self.scenario_var = tk.StringVar()
         self.scenario_box = ttk.Combobox(self.drop_down_frame, state='readonly', width=20, textvariable=self.scenario_var)
+        # self.scenario_box.bind('<<ComboboxSelected>>', self.on_combobox_select)
         self.scenario_box.pack(side=tk.LEFT, padx=5, pady=5)
+        # Set an instance variable to keep track of the previous value
         self.previous_value = self.scenario_var.get()
+        # Attach a trace to the StringVar
         self.scenario_var.trace_add('write', self.on_scenario_box_change)
         self.set_team_dropdowns()
         self.update_scenario_box()
 
+        # Add Buttons to a row just above the pairing grid       
         tk.Button(self.button_row_frame, text="Export CSV", command=lambda: self.export_csvs()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_data_from_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
+		# tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="REFRESH", command=lambda: self.update_ui()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Import XSLX", command=lambda: self.import_xlsx()).pack(side=tk.LEFT, padx=5, pady=3)
 
+		# Configure Treeview with style and maximize space
+        style = ttk.Style()
+        style.configure("Treeview", font=("Arial", 12))
+        self.treeview.tree.heading("#0", text="Pairing")
+        self.treeview.tree.heading("Rating", text="Rating")
+        self.treeview.tree.tag_configure('1', background="orangered")
+        self.treeview.tree.tag_configure('2', background="orange")
+        self.treeview.tree.tag_configure('3', background="yellow")
+        self.treeview.tree.tag_configure('4', background="greenyellow")
+        self.treeview.tree.tag_configure('5', background="lime")
+        self.treeview.pack(expand=1, fill='both')
+		
         # Configure the bottom_frame for Matchup Tree tab
         buttons_frame = tk.Frame(self.bottom_frame)
         buttons_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
@@ -165,17 +190,7 @@ class UiManager:
         optimize_button = tk.Button(buttons_frame, text="Optimize!", command=self.optimize_matchups)
         optimize_button.pack(fill=tk.X, pady=5)
 
-        # Configure Treeview with style and maximize space
-        style = ttk.Style()
-        style.configure("Treeview", font=("Arial", 12))
-        self.treeview.tree.heading("#0", text="Pairing")
-        self.treeview.tree.heading("Rating", text="Rating")
-        self.treeview.tree.tag_configure('1', background="orangered")
-        self.treeview.tree.tag_configure('2', background="orange")
-        self.treeview.tree.tag_configure('3', background="yellow")
-        self.treeview.tree.tag_configure('4', background="greenyellow")
-        self.treeview.tree.tag_configure('5', background="lime")
-        self.treeview.pack(side=tk.LEFT, expand=1, fill='both')
+        
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
