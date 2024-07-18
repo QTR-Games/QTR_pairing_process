@@ -150,17 +150,20 @@ class UiManager:
         tk.Button(self.button_row_frame, text="Import XSLX", command=lambda: self.import_xlsx()).pack(side=tk.LEFT, padx=5, pady=3)
 
         # Configure the bottom_frame for Matchup Tree tab
-        generateButton = tk.Button(self.bottom_frame, text=f"Generate\nCombinations", command=self.on_generate_combinations)
-        generateButton.pack(side=tk.RIGHT, padx=5, pady=5)
+        buttons_frame = tk.Frame(self.bottom_frame)
+        buttons_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
 
-        math_button_0 = tk.Button(self.bottom_frame, text=f"Maximize\nMatchup Strength!", command=self.traverse_and_sum_values_0)
-        math_button_0.pack(side=tk.LEFT, padx=5, pady=5)
+        generateButton = tk.Button(buttons_frame, text="Generate\nCombinations", command=self.on_generate_combinations)
+        generateButton.pack(fill=tk.X, pady=5)
 
-        optimize_button = tk.Button(self.bottom_frame, text="Optimize!", command=self.optimize_matchups)
-        optimize_button.pack(side=tk.LEFT, padx=5, pady=5)
+        math_button_0 = tk.Button(buttons_frame, text="Maximize\nMatchup Strength!", command=self.traverse_and_sum_values_0)
+        math_button_0.pack(fill=tk.X, pady=5)
 
-        math_button_1 = tk.Button(self.bottom_frame, text=f"Sum\nMatchup Strength!", command=self.traverse_and_sum_values_1)
-        math_button_1.pack(side=tk.LEFT, padx=5, pady=5)
+        math_button_1 = tk.Button(buttons_frame, text="Sum\nMatchup Strength!", command=self.traverse_and_sum_values_1)
+        math_button_1.pack(fill=tk.X, pady=5)
+
+        optimize_button = tk.Button(buttons_frame, text="Optimize!", command=self.optimize_matchups)
+        optimize_button.pack(fill=tk.X, pady=5)
 
         # Configure Treeview with style and maximize space
         style = ttk.Style()
@@ -172,7 +175,7 @@ class UiManager:
         self.treeview.tree.tag_configure('3', background="yellow")
         self.treeview.tree.tag_configure('4', background="greenyellow")
         self.treeview.tree.tag_configure('5', background="lime")
-        self.treeview.pack(expand=1, fill='both')
+        self.treeview.pack(side=tk.LEFT, expand=1, fill='both')
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
