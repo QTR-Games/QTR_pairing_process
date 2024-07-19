@@ -21,6 +21,10 @@ class DbLoadUi:
         
         #Set window background color
         window.config(background = "white")
+
+        # set key bindings
+        window.bind('<Escape>', lambda event: window.destroy())
+        # self.window.bind('<Return>', lambda event: self.on_generate_combinations())
         
         # Create a File Explorer label
         label_file_explorer = Label(window, 
