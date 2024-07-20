@@ -307,8 +307,8 @@ class UiManager:
         team_2_id = team_2_row[0][0]
 
         # Do not assume that the lower team value is the home team
-        # if team_1_id > team_2_id:
-            # team_1_id, team_2_id = team_2_id, team_1_id
+        if team_1_id > team_2_id:
+            team_1_id, team_2_id = team_2_id, team_1_id
 
         player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
         team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
@@ -369,8 +369,8 @@ class UiManager:
         team_2_id = team_2_row[0][0]
 
         # Do not assume that the lower team value is the home team
-        # if team_1_id > team_2_id:
-            # team_1_id, team_2_id = team_2_id, team_1_id
+        if team_1_id > team_2_id:
+            team_1_id, team_2_id = team_2_id, team_1_id
 
         player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
         team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
@@ -384,15 +384,17 @@ class UiManager:
                 rating = int(self.grid_entries[row][col].get())
                 team_1_player_id = team_1_dict[row]['id']
                 team_2_player_id = team_2_dict[col]['id']
-
-                self.db_manager.upsert_rating(
-                    player_id_1=team_1_player_id,
-                    player_id_2=team_2_player_id,
-                    team_id_1=team_1_id,
-                    team_id_2=team_2_id,
-                    scenario_id=scenario_id,
-                    rating=rating
-                )
+                try:
+                    self.db_manager.upsert_rating(
+                        player_id_1=team_1_player_id,
+                        player_id_2=team_2_player_id,
+                        team_id_1=team_1_id,
+                        team_id_2=team_2_id,
+                        scenario_id=scenario_id,
+                        rating=rating
+                    )
+                except (ValueError, IndexError):
+                    return 0 
 
     def add_team_to_db(self):
         # Create a popup window to enter the team name
@@ -515,7 +517,7 @@ class UiManager:
 
         self.import_csv_header(lines)
         self.import_csv_ratings(lines)
-        # self.update_ui()
+        self.update_ui()
 
     def import_csv_header(self, lines):
         # Only take the first two lines from the file.
@@ -546,6 +548,7 @@ class UiManager:
         team_2_id = None
 
         for line in lines:
+            print(line)
             rating_line = all(item.isdigit() for item in line[1:])
             if not rating_line:
                 scenario_id = int(line[0])
@@ -570,19 +573,22 @@ class UiManager:
                 # Retrieve player_id and team_id for friendly team (team_1)
                 result = self.db_manager.query_sql(f"SELECT player_id, team_id FROM players WHERE player_name='{player_name}'")
                 if result:
+                    print(result[0])
                     player_id_1, team_id_1 = result[0]
-
-                    for i, rating in enumerate(ratings):
-                        player_name_2 = team_2_players[i]
-                        player_id_2 = team_2_player_ids[player_name_2]
-                        self.db_manager.upsert_rating(
-                            player_id_1,
-                            player_id_2,
-                            team_id_1,
-                            team_2_id,
-                            scenario_id,
-                            rating
-                        )
+                    try:
+                        for i, rating in enumerate(ratings):
+                            player_name_2 = team_2_players[i]
+                            player_id_2 = team_2_player_ids[player_name_2]
+                            self.db_manager.upsert_rating(
+                                player_id_1,
+                                player_id_2,
+                                team_id_1,
+                                team_2_id,
+                                scenario_id,
+                                rating
+                            )
+                    except (ValueError,IndexError):
+                        return 0
 
 
     def update_grid(self,rows,row_lo,row_hi,row_correction):

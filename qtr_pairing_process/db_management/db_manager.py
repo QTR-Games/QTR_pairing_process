@@ -187,8 +187,10 @@ class DbManager:
         value_string = f"({player_id_1}, {team_id_1}, {player_id_2}, {team_id_2}, {scenario_id}, {rating})"
         contraint_columns = ['team_1_player_id', 'team_2_player_id', 'scenario_id']
         update_column = 'rating'
-
-        self.upsert_row(value_string, columns, table, contraint_columns, update_column)
+        try:
+            self.upsert_row(value_string, columns, table, contraint_columns, update_column)
+        except (ValueError, IndexError):
+            return 0
         
     def create_tables(self):
         path = 'qtr_pairing_process/db_management/sql'
