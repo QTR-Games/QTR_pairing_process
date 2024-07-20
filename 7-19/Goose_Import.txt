@@ -1,0 +1,44 @@
+Team Irving,Justin,Mike,Rick,Stephen,Jake
+Canada Goose,Shadowflame Shard - Kyr / Shy,Grymkin - Witch / Wand,Sea Raiders - Hor / Sab,House Kallyss - Scy / Hel,Winter Korps - Ekat / Sav
+0,Shadowflame Shard - Kyr / Shy,Grymkin - Witch / Wand,Sea Raiders - Hor / Sab,House Kallyss - Scy / Hel,Winter Korps - Ekat / Sav
+Justin,3,4,3,3,2
+Mike,3,2,3,2,2
+Rick,3,3,3,3,2
+Stephen,2,3,3,3,3
+Jake,3,3,2,3,1
+1,Shadowflame Shard - Kyr / Shy,Grymkin - Witch / Wand,Sea Raiders - Hor / Sab,House Kallyss - Scy / Hel,Winter Korps - Ekat / Sav
+Justin,3,4,3,3,2
+Mike,3,2,3,2,2
+Rick,3,3,3,3,2
+Stephen,2,3,3,3,3
+Jake,3,3,2,3,1
+2,Shadowflame Shard - Kyr / Shy,Grymkin - Witch / Wand,Sea Raiders - Hor / Sab,House Kallyss - Scy / Hel,Winter Korps - Ekat / Sav
+Justin,3,4,3,3,2
+Mike,3,2,3,2,2
+Rick,3,3,3,3,2
+Stephen,2,3,3,3,3
+Jake,3,3,2,3,1
+3,Shadowflame Shard - Kyr / Shy,Grymkin - Witch / Wand,Sea Raiders - Hor / Sab,House Kallyss - Scy / Hel,Winter Korps - Ekat / Sav
+Justin,3,4,3,3,2
+Mike,3,2,3,2,2
+Rick,3,3,3,3,2
+Stephen,2,3,3,3,3
+Jake,3,3,2,3,1
+4,Shadowflame Shard - Kyr / Shy,Grymkin - Witch / Wand,Sea Raiders - Hor / Sab,House Kallyss - Scy / Hel,Winter Korps - Ekat / Sav
+Justin,3,4,3,3,2
+Mike,3,2,3,2,2
+Rick,3,3,3,3,2
+Stephen,2,3,3,3,3
+Jake,3,3,2,3,1
+5,Shadowflame Shard - Kyr / Shy,Grymkin - Witch / Wand,Sea Raiders - Hor / Sab,House Kallyss - Scy / Hel,Winter Korps - Ekat / Sav
+Justin,3,4,3,3,2
+Mike,3,2,3,2,2
+Rick,3,3,3,3,2
+Stephen,2,3,3,3,3
+Jake,3,3,2,3,1
+6,Shadowflame Shard - Kyr / Shy,Grymkin - Witch / Wand,Sea Raiders - Hor / Sab,House Kallyss - Scy / Hel,Winter Korps - Ekat / Sav
+Justin,3,4,3,3,2
+Mike,3,2,3,2,2
+Rick,3,3,3,3,2
+Stephen,2,3,3,3,3
+Jake,3,3,2,3,1

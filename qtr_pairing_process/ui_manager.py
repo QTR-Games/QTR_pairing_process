@@ -57,17 +57,35 @@ class UiManager:
         # set root
         self.root = tk.Tk()
         self.root.geometry('+0+0')
-        self.root.title('Pairings Debug')
+        self.root.title(f"QTR'S KLIK KLAKER")
 
         # set key bindings
         self.root.bind('<Escape>', lambda event: self.root.quit())
         self.root.bind('<Return>', lambda event: self.on_generate_combinations())
-    
-        # set frames
-        self.drop_down_frame = tk.Frame(self.root)
-        self.drop_down_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self.root.bind('<Control-Tab>', lambda event: self.switch_tab())
 
-        self.top_frame = tk.Frame(self.root)
+        # Create the top team name and scenario display
+        self.drop_down_frame = tk.Frame(self.root)
+        self.drop_down_frame.pack(side=tk.TOP)
+
+        # Create a notebook for tabs
+        self.notebook = ttk.Notebook(self.root)
+
+        # Create the frames for the tabs
+        self.team_grid_frame = tk.Frame(self.notebook)
+        self.matchup_tree_frame = tk.Frame(self.notebook)
+
+        # Add tabs to the notebook
+        self.notebook.add(self.team_grid_frame, text='Team Grid')
+        self.notebook.add(self.matchup_tree_frame, text='Matchup Tree')
+
+        # Pack the notebook to fill the main window
+        self.notebook.pack(expand=1, fill='both')
+
+        # set frames for the team grid tab
+        
+
+        self.top_frame = tk.Frame(self.team_grid_frame)
         self.top_frame.pack(side=tk.TOP, fill=tk.X)
 
         self.left_frame = tk.Frame(self.top_frame)
@@ -76,37 +94,33 @@ class UiManager:
         self.right_frame = tk.Frame(self.top_frame)
         self.right_frame.pack(side=tk.LEFT, padx=10, pady=10)
 
-        self.button_row_frame = tk.Frame(self.root)
-        self.button_row_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self.button_row_frame = tk.Frame(self.team_grid_frame)
+        self.button_row_frame.pack(side=tk.TOP, fill=tk.X)
 
-        self.bottom_frame = tk.Frame(self.root)
-        self.bottom_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # set frames for the matchup tree tab
+        self.tree_tab_left_frame = tk.Frame(self.matchup_tree_frame)
+        self.tree_tab_left_frame.pack(side=tk.LEFT)
+        self.tree_tab_right_frame = tk.Frame(self.matchup_tree_frame)
+        self.tree_tab_right_frame.pack(side=tk.LEFT, expand=1, fill=tk.BOTH)
 
-        self.bottom_frame_2 = tk.Frame(self.root)
-        self.bottom_frame_2.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-    
         self.grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
         self.grid_widgets = [[None for _ in range(6)] for _ in range(6)]
-    
 
-        # set team_b button
         self.team_b = tk.IntVar()
-        pairingLead = tk.Checkbutton(self.right_frame, text="Our team first", variable=self.team_b)
-        pairingLead.pack(side=tk.RIGHT, padx=5, pady=3)
-        pairingLead.select()
+        # pairingLead = tk.Checkbutton(self.tree_tab_left_frame, text="Our team first", variable=self.team_b)
+        # pairingLead.pack(fill=tk.X, pady=5)
+        # pairingLead.select()
 
-        # set alpha checkbox
         self.sort_alpha = tk.IntVar()
-        alphaBox = tk.Checkbutton(self.right_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
-        alphaBox.pack(side=tk.RIGHT,pady=3,padx=5)
-        alphaBox.select()
+        # alphaBox = tk.Checkbutton(self.tree_tab_left_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
+        # alphaBox.pack(fill=tk.X, pady=5)
+        # alphaBox.select()
 
         # create treeview and tree generator
-        self.treeview = LazyTreeView(master=self.bottom_frame, print_output=self.print_output,columns=("Rating"))
+        self.treeview = LazyTreeView(master=self.tree_tab_right_frame, print_output=self.print_output, columns=("Rating"))
         self.tree_generator = TreeGenerator(treeview=self.treeview, sort_alpha=self.sort_alpha.get())
 
     def create_ui(self):
-        
         for r in range(6):
             for c in range(6):
                 entry = tk.Entry(self.left_frame, textvariable=self.grid_entries[r][c], width=10)
@@ -114,16 +128,14 @@ class UiManager:
                 self.grid_widgets[r][c] = entry
                 self.grid_entries[r][c].trace_add('write', lambda name, index, mode, var=self.grid_entries[r][c], row=r, col=c: self.update_color_on_change(var, index, mode, row, col))
 
-        # create combobox for file selection
+		# create combobox for file selection
         # create the label
         tk.Label(self.drop_down_frame, text='Select Team 1:').pack(side=tk.LEFT, padx=5, pady=5)
-
         # create combobox
         self.combobox_1 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
         self.combobox_1.pack(side=tk.LEFT, padx=5, pady=5)
-        
+		
         tk.Label(self.drop_down_frame, text='Select Team 2:').pack(side=tk.LEFT, padx=5, pady=5)
-
         # create combobox
         self.combobox_2 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
         self.combobox_2.pack(side=tk.LEFT, padx=5, pady=5)
@@ -149,14 +161,14 @@ class UiManager:
         tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_data_from_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
+		# tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="REFRESH", command=lambda: self.update_ui()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Import XSLX", command=lambda: self.import_xlsx()).pack(side=tk.LEFT, padx=5, pady=3)
 
-        # Configure Treeview ... with style!
+		# Configure Treeview with style and maximize space
         style = ttk.Style()
-        style.configure("Treeview", font=("Arial", 12))
+        style.configure("Treeview", font=("Arial", 10))
         self.treeview.tree.heading("#0", text="Pairing")
         self.treeview.tree.heading("Rating", text="Rating")
         self.treeview.tree.tag_configure('1', background="orangered")
@@ -165,35 +177,47 @@ class UiManager:
         self.treeview.tree.tag_configure('4', background="greenyellow")
         self.treeview.tree.tag_configure('5', background="lime")
         self.treeview.pack(expand=1, fill='both')
-    
-        generateButton = tk.Button(self.bottom_frame, text="Generate Combinations", command=self.on_generate_combinations)
-        generateButton.config(height=5, width=30)
-        generateButton.pack(pady=10)
-        # show_info_button = tk.Button(text="Show Info", command=self.treeview.item_details)
-        # show_info_button.pack()
-        # show_selection_button = tk.Button(text="Show Selection", command=self.treeview.show_selection)
-        # show_selection_button.pack(side=tk.LEFT, padx=5, pady=3)
-        # get_node_data = tk.Button(text="Get Rating", command=self.treeview.get_selected_value)
-        # get_node_data.pack(side=tk.LEFT, padx=5, pady=3)
-        math_button_0 = tk.Button(self.bottom_frame_2, text="MATH (Max)!", command=self.traverse_and_sum_values_0)
-        math_button_0.config(height=3, width=30)
-        math_button_0.pack(side=tk.LEFT, padx=5, pady=5)
-        
-        optimize_button = tk.Button(self.bottom_frame_2,text="Optimize!", command=self.optimize_matchups)
-        optimize_button.config(height=3, width=30)
-        optimize_button.pack(side=tk.LEFT, padx=5, pady=5)
+		
+        # Configure the bottom_frame for Matchup Tree tab
+        buttons_frame = tk.Frame(self.tree_tab_left_frame)
+        buttons_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
 
-        math_button_1 = tk.Button(self.bottom_frame_2, text="MATH (Sum)!", command=self.traverse_and_sum_values_1)
-        math_button_1.config(height=3, width=30)
-        math_button_1.pack(side=tk.LEFT, padx=5, pady=5)
+        generateButton = tk.Button(buttons_frame, text="Generate\nCombinations", command=self.on_generate_combinations)
+        generateButton.pack(fill=tk.X, pady=5)
+
+        math_button_0 = tk.Button(buttons_frame, text="Maximize\nMatchup Strength!", command=self.traverse_and_sum_values_0)
+        math_button_0.pack(fill=tk.X, pady=5)
+
+        math_button_1 = tk.Button(buttons_frame, text="Sum\nMatchup Strength!", command=self.traverse_and_sum_values_1)
+        math_button_1.pack(fill=tk.X, pady=5)
+
+        optimize_button = tk.Button(buttons_frame, text="Optimize!", command=self.optimize_matchups)
+        optimize_button.pack(fill=tk.X, pady=5)
+
+        # self.team_b = tk.IntVar()
+        pairingLead = tk.Checkbutton(buttons_frame, text="Our team first", variable=self.team_b)
+        pairingLead.pack(side=tk.BOTTOM,pady=5)
+        pairingLead.select()
+
+        # self.sort_alpha = tk.IntVar()
+        alphaBox = tk.Checkbutton(buttons_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
+        alphaBox.pack(pady=5)
+        alphaBox.select()
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
         self.create_tooltip(self.treeview, "Generated combinations will be displayed here")
-        
+
         self.update_combobox_colors()
+
         self.root.mainloop()
 
+    def switch_tab(self):
+        current_tab = self.notebook.index(self.notebook.select())
+        total_tabs = self.notebook.index('end')
+        next_tab = (current_tab + 1) % total_tabs
+        self.notebook.select(next_tab)
+    
     def on_generate_combinations(self):
         fNames, oNames = self.prep_names()
         fRatings, oRatings = self.prep_ratings(fNames,oNames)
@@ -283,8 +307,8 @@ class UiManager:
         team_2_id = team_2_row[0][0]
 
         # Do not assume that the lower team value is the home team
-        # if team_1_id > team_2_id:
-            # team_1_id, team_2_id = team_2_id, team_1_id
+        if team_1_id > team_2_id:
+            team_1_id, team_2_id = team_2_id, team_1_id
 
         player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
         team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
@@ -345,8 +369,8 @@ class UiManager:
         team_2_id = team_2_row[0][0]
 
         # Do not assume that the lower team value is the home team
-        # if team_1_id > team_2_id:
-            # team_1_id, team_2_id = team_2_id, team_1_id
+        if team_1_id > team_2_id:
+            team_1_id, team_2_id = team_2_id, team_1_id
 
         player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
         team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
@@ -355,21 +379,22 @@ class UiManager:
         team_1_dict = {i+1:{'id':row[0],'name':row[1]} for i,row in enumerate(team_1_players)}
         team_2_dict = {i+1:{'id':row[0],'name':row[1]}for i,row in enumerate(team_2_players)}
 
-
         for row in range(1,len(self.grid_entries)):
             for col in range(1,len(self.grid_entries[0])):
                 rating = int(self.grid_entries[row][col].get())
                 team_1_player_id = team_1_dict[row]['id']
                 team_2_player_id = team_2_dict[col]['id']
-
-                self.db_manager.upsert_rating(
-                    player_id_1=team_1_player_id,
-                    player_id_2=team_2_player_id,
-                    team_id_1=team_1_id,
-                    team_id_2=team_2_id,
-                    scenario_id=scenario_id,
-                    rating=rating
-                )
+                try:
+                    self.db_manager.upsert_rating(
+                        player_id_1=team_1_player_id,
+                        player_id_2=team_2_player_id,
+                        team_id_1=team_1_id,
+                        team_id_2=team_2_id,
+                        scenario_id=scenario_id,
+                        rating=rating
+                    )
+                except (ValueError, IndexError):
+                    return 0 
 
     def add_team_to_db(self):
         # Create a popup window to enter the team name
@@ -523,6 +548,7 @@ class UiManager:
         team_2_id = None
 
         for line in lines:
+            print(line)
             rating_line = all(item.isdigit() for item in line[1:])
             if not rating_line:
                 scenario_id = int(line[0])
@@ -547,19 +573,22 @@ class UiManager:
                 # Retrieve player_id and team_id for friendly team (team_1)
                 result = self.db_manager.query_sql(f"SELECT player_id, team_id FROM players WHERE player_name='{player_name}'")
                 if result:
+                    print(result[0])
                     player_id_1, team_id_1 = result[0]
-
-                    for i, rating in enumerate(ratings):
-                        player_name_2 = team_2_players[i]
-                        player_id_2 = team_2_player_ids[player_name_2]
-                        self.db_manager.upsert_rating(
-                            player_id_1,
-                            player_id_2,
-                            team_id_1,
-                            team_2_id,
-                            scenario_id,
-                            rating
-                        )
+                    try:
+                        for i, rating in enumerate(ratings):
+                            player_name_2 = team_2_players[i]
+                            player_id_2 = team_2_player_ids[player_name_2]
+                            self.db_manager.upsert_rating(
+                                player_id_1,
+                                player_id_2,
+                                team_id_1,
+                                team_2_id,
+                                scenario_id,
+                                rating
+                            )
+                    except (ValueError,IndexError):
+                        return 0
 
 
     def update_grid(self,rows,row_lo,row_hi,row_correction):

@@ -1,0 +1,44 @@
+Team Irving,Justin,Mike,Rick,Stephen,Jake
+Canada Moose,Winter Korps - Sik / Sav,House Kallyss - Mor / Scry,Brineblood Marauders - Rage / Shadow,Dark Operations - Cyph / Thex,Sea Raiders - Hor / Sab
+0,Winter Korps - Sik / Sav,House Kallyss - Mor / Scry,Brineblood Marauders - Rage / Shadow,Dark Operations - Cyph / Thex,Sea Raiders - Hor / Sab
+Justin,2,3,2,3,2
+Mike,3,3,3,2,3
+Rick,2,3,3,3,3
+Stephen,3,3,3,3,3
+Jake,3,3,4,3,2
+1,Winter Korps - Sik / Sav,House Kallyss - Mor / Scry,Brineblood Marauders - Rage / Shadow,Dark Operations - Cyph / Thex,Sea Raiders - Hor / Sab
+Justin,2,3,2,3,2
+Mike,3,3,3,2,3
+Rick,2,3,3,3,3
+Stephen,3,3,3,3,3
+Jake,3,3,4,3,2
+2,Winter Korps - Sik / Sav,House Kallyss - Mor / Scry,Brineblood Marauders - Rage / Shadow,Dark Operations - Cyph / Thex,Sea Raiders - Hor / Sab
+Justin,2,3,2,3,2
+Mike,3,3,3,2,3
+Rick,2,3,3,3,3
+Stephen,3,3,3,3,3
+Jake,3,3,4,3,2
+3,Winter Korps - Sik / Sav,House Kallyss - Mor / Scry,Brineblood Marauders - Rage / Shadow,Dark Operations - Cyph / Thex,Sea Raiders - Hor / Sab
+Justin,2,3,2,3,2
+Mike,3,3,3,2,3
+Rick,2,3,3,3,3
+Stephen,3,3,3,3,3
+Jake,3,3,4,3,2
+4,Winter Korps - Sik / Sav,House Kallyss - Mor / Scry,Brineblood Marauders - Rage / Shadow,Dark Operations - Cyph / Thex,Sea Raiders - Hor / Sab
+Justin,2,3,2,3,2
+Mike,3,3,3,2,3
+Rick,2,3,3,3,3
+Stephen,3,3,3,3,3
+Jake,3,3,4,3,2
+5,Winter Korps - Sik / Sav,House Kallyss - Mor / Scry,Brineblood Marauders - Rage / Shadow,Dark Operations - Cyph / Thex,Sea Raiders - Hor / Sab
+Justin,2,3,2,3,2
+Mike,3,3,3,2,3
+Rick,2,3,3,3,3
+Stephen,3,3,3,3,3
+Jake,3,3,4,3,2
+6,Winter Korps - Sik / Sav,House Kallyss - Mor / Scry,Brineblood Marauders - Rage / Shadow,Dark Operations - Cyph / Thex,Sea Raiders - Hor / Sab
+Justin,2,3,2,3,2
+Mike,3,3,3,2,3
+Rick,2,3,3,3,3
+Stephen,3,3,3,3,3
+Jake,3,3,4,3,2
