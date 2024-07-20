@@ -379,7 +379,6 @@ class UiManager:
         team_1_dict = {i+1:{'id':row[0],'name':row[1]} for i,row in enumerate(team_1_players)}
         team_2_dict = {i+1:{'id':row[0],'name':row[1]}for i,row in enumerate(team_2_players)}
 
-
         for row in range(1,len(self.grid_entries)):
             for col in range(1,len(self.grid_entries[0])):
                 rating = int(self.grid_entries[row][col].get())
@@ -516,7 +515,7 @@ class UiManager:
 
         self.import_csv_header(lines)
         self.import_csv_ratings(lines)
-        self.update_ui()
+        # self.update_ui()
 
     def import_csv_header(self, lines):
         # Only take the first two lines from the file.

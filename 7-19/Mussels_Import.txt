@@ -1,0 +1,44 @@
+Team Irving,Justin,Mike,Rick,Stephen,Jake
+Mussels from Brussels,Dark Host - Denny 3 / Scav,House Kallyss - Mor / Scry,House Kallyss - Hel / Tyr,Sea Raiders - Hor / Sab,Brineblood Marauders - Rage / Boomy
+0,Dark Host - Denny 3 / Scav,House Kallyss - Mor / Scry,House Kallyss - Hel / Tyr,Sea Raiders - Hor / Sab,Brineblood Marauders - Rage / Boomy
+Justin,3,3,3,2,2
+Mike,2,3,3,3,3
+Rick,3,3,3,3,3
+Stephen,4,3,3,3,3
+Jake,4,3,3,2,3
+1,Dark Host - Denny 3 / Scav,House Kallyss - Mor / Scry,House Kallyss - Hel / Tyr,Sea Raiders - Hor / Sab,Brineblood Marauders - Rage / Boomy
+Justin,3,3,3,2,2
+Mike,2,3,3,3,3
+Rick,3,3,3,3,3
+Stephen,4,3,3,3,3
+Jake,4,3,3,2,3
+2,Dark Host - Denny 3 / Scav,House Kallyss - Mor / Scry,House Kallyss - Hel / Tyr,Sea Raiders - Hor / Sab,Brineblood Marauders - Rage / Boomy
+Justin,3,3,3,2,2
+Mike,2,3,3,3,3
+Rick,3,3,3,3,3
+Stephen,4,3,3,3,3
+Jake,4,3,3,2,3
+3,Dark Host - Denny 3 / Scav,House Kallyss - Mor / Scry,House Kallyss - Hel / Tyr,Sea Raiders - Hor / Sab,Brineblood Marauders - Rage / Boomy
+Justin,3,3,3,2,2
+Mike,2,3,3,3,3
+Rick,3,3,3,3,3
+Stephen,4,3,3,3,3
+Jake,4,3,3,2,3
+4,Dark Host - Denny 3 / Scav,House Kallyss - Mor / Scry,House Kallyss - Hel / Tyr,Sea Raiders - Hor / Sab,Brineblood Marauders - Rage / Boomy
+Justin,3,3,3,2,2
+Mike,2,3,3,3,3
+Rick,3,3,3,3,3
+Stephen,4,3,3,3,3
+Jake,4,3,3,2,3
+5,Dark Host - Denny 3 / Scav,House Kallyss - Mor / Scry,House Kallyss - Hel / Tyr,Sea Raiders - Hor / Sab,Brineblood Marauders - Rage / Boomy
+Justin,3,3,3,2,2
+Mike,2,3,3,3,3
+Rick,3,3,3,3,3
+Stephen,4,3,3,3,3
+Jake,4,3,3,2,3
+6,Dark Host - Denny 3 / Scav,House Kallyss - Mor / Scry,House Kallyss - Hel / Tyr,Sea Raiders - Hor / Sab,Brineblood Marauders - Rage / Boomy
+Justin,3,3,3,2,2
+Mike,2,3,3,3,3
+Rick,3,3,3,3,3
+Stephen,4,3,3,3,3
+Jake,4,3,3,2,3

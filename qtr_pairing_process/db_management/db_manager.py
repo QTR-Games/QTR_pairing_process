@@ -8,13 +8,14 @@ from qtr_pairing_process.constants import SCENARIO_MAP
 class DbManager:
     def __init__(self, path=None, name=None) -> None:
         self.path = path or expanduser("~")
-        self.name = name or 'qtr_pairing_db.db'
+        self.name = name or 'default.db'
         print(self.path, self.name)
         self.initialize_db()
     def initialize_db(self):
         if not os.path.isfile(f'{self.path}/{self.name}'):
             self.create_tables()
             self.create_default_teams()
+            self.create_default_scenarios()
             self.create_default_players()
             self.create_default_ratings()
     def connect_db(self, path, name):
@@ -69,6 +70,38 @@ class DbManager:
             {insert_str}
         """
         self.execute_sql(insert_sql)
+    
+    ###########
+    # Scenarios
+    ###########
+    def create_scenario(self, scenario_id, scenario_name):
+        table = 'scenarios'
+        columns = ['scenario_id','scenario_name']
+        value_string = f"({scenario_id}, '{scenario_name}')"
+        self.insert_row(value_string, columns, table)
+
+    def query_scenario_id(self, scenario_name):
+        sql = f"select scenario_id from scenarios where scenario_name = '{scenario_name}'"
+        results = self.query_sql(sql)
+        print(f"query_scenario_id results {results}")
+        if len(results)>1:
+            raise ValueError(f'Too Many Records for team {scenario_name}')
+        elif len(results) == 1:
+            scenario_id = results[0][0]
+        else:
+            scenario_id = None
+        return scenario_id
+
+    def upsert_scenario(self, scenario_name):
+        scenario_id = self.query_scenario_id(scenario_name)
+        if not scenario_id:
+            self.create_scenario(scenario_id=scenario_id, scenario_name=scenario_name)
+            scenario_id = self.query_scenario_id(scenario_name=scenario_name)
+            if not scenario_id:
+                raise ValueError('Team Not Upserting')
+        return scenario_id
+
+
     #######
     # Teams
     #######
@@ -105,8 +138,11 @@ class DbManager:
     def create_player(self, player_name, team_id):
         table = 'players'
         columns = ['player_name','team_id']
+        # contraint_columns = ['player_id', 'team_id']
+        # update_column = 'player_name'
         value_string = f"('{player_name}', {team_id})"
         self.insert_row(value_string, columns, table)
+        # self.upsert_row(value_string, columns, table, contraint_columns, update_column)
 
     def query_players(self,team_id):
         
@@ -141,7 +177,7 @@ class DbManager:
     #########
 
     def upsert_rating(self, player_id_1, player_id_2, team_id_1, team_id_2, scenario_id, rating):
-
+        # Do Not Assume we need to reverse the order of teams
         if team_id_1 > team_id_2:
             team_id_1, team_id_2 = team_id_2, team_id_1
             player_id_1, player_id_2 = player_id_2, player_id_1
@@ -166,6 +202,15 @@ class DbManager:
     def create_default_teams(self):
         self.create_team('default_team_1')
         self.create_team('default_team_2')
+
+    def create_default_scenarios(self):
+        self.create_scenario(0,'0 - Neutral')
+        self.create_scenario(1,'1 - Recon')
+        self.create_scenario(2,'2 - Battle Lines')
+        self.create_scenario(3,'3 - Wolves At Our Heels')
+        self.create_scenario(4,'4 - Payload')
+        self.create_scenario(5,'5 - Two Fronts')
+        self.create_scenario(6,'6 - Invasion')
 
     def create_default_players(self):
         for i in range(1,3):
