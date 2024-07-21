@@ -231,19 +231,15 @@ class UiManager:
             self.tree_generator.generate_combinations(oNames, fNames, oRatings, fRatings)
         
     def traverse_and_sum_values_0(self):
-        print("Math is HAPPENING!")
         self.tree_generator.traverse_and_sum_values(0)
 
     def traverse_and_sum_values_1(self):
-        print("Math is HAPPENING differently!")
         self.tree_generator.traverse_and_sum_values(1)
                    
     def traverse_and_sum_values(self):
-        print("MATH IS HAPPENING!!!")
         self.tree_generator.traverse_and_sum_values()
 
     def optimize_matchups(self):
-        print("RETICULATING SPLINES")
         self.tree_generator.optimize_matchups()
 
     def update_scenario_box(self):
@@ -316,7 +312,7 @@ class UiManager:
 
         team_1_dict = {row[0]:{'position':i+1,'name':row[1]} for i,row in enumerate(team_1_players)}
         team_2_dict = {row[0]:{'position':i+1,'name':row[1]}for i,row in enumerate(team_2_players)}
-        print(team_1_dict)
+        # print(team_1_dict)
         ratings_sql = f"""
             SELECT
                 team_1_player_id,
@@ -338,7 +334,6 @@ class UiManager:
                 scenario_id = {scenario_id}
             ORDER BY
                 team_1_player_id, team_2_player_id
-
         """
 
         ratings_rows = self.db_manager.query_sql(ratings_sql)
@@ -462,10 +457,6 @@ class UiManager:
         team2_name, team2_players = self.retrieve_team_data(self.combobox_2.get())
         ratings = self.retrieve_ratings(team1_players, team2_players)
 
-        print(f"team 1 players {team1_players}")
-        print(f"team 2 players {team2_players}")
-        print(f"ratings for these teams are {ratings}")
-
         # Write data to CSV
         with open(file_path, mode='w', newline='') as csvfile:
             writer = csv.writer(csvfile)
@@ -478,7 +469,8 @@ class UiManager:
             for scenario_id, rating_data in ratings.items():
                 writer.writerow([scenario_id] + team2_players)
                 for player, player_ratings in rating_data.items():
-                    writer.writerow([player] + player_ratings) 
+                    writer.writerow([player] + player_ratings)
+
     def retrieve_team_data(self, team_name):
         team_id = self.db_manager.query_team_id(team_name)
         players = self.db_manager.query_sql(f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id")
@@ -489,12 +481,12 @@ class UiManager:
         ratings = {}
         scenario_id = []        
         for scenario in range(0,6):
-            print(f"scenarios - {scenario}")
+            
             scenario_id = scenario
             ratings[scenario_id] = {}
             for player1 in team1_players:
                 player1_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player1}'")[0][0]
-                print(f"player1 - {player1_id}: {player1}")
+                # print(f"player1 - {player1_id}: {player1}")
                 player_ratings = []
                 for player2 in team2_players:
                     player2_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player2}'")[0][0]
@@ -515,102 +507,126 @@ class UiManager:
             reader = csv.reader(csvfile)
             lines = list(reader)
 
-        self.import_csv_header(lines)
-        self.import_csv_ratings(lines)
+        self.import_csv_header_and_ratings(lines)
+        # self.import_csv_ratings(lines)
         self.update_ui()
 
-    def import_csv_header(self, lines):
+    def import_csv_header_and_ratings(self, lines):
         # Only take the first two lines from the file.
-        if len(lines) < 2:
+        print(f"file length={len(lines)}")
+        if len(lines) < 44:
             raise ValueError("Insufficient number of lines")
 
-        first_two_lines = lines[:2]
+        team_lines = lines[:2]
+        rating_section = lines[2:]
+        scenario_id = 0
+        team_id = 0
+        team_id_1 = 0
+        team_id_2 = 0
+        team_name = ""
+        team_2_player_ids = {}
 
-        for index, line in enumerate(first_two_lines):
+        for index, line in enumerate(team_lines):
             team_name = line[0]
             player_names = line[1:]
 
             # Try to upsert this team and the players.
-            team_id = self.db_manager.upsert_team(team_name)
-            self.db_manager.upsert_and_validate_players(team_id, player_names)
+            try:
+                team_id = self.db_manager.upsert_team(team_name)
+                players = self.db_manager.upsert_and_validate_players(team_id, player_names)
+            except ValueError as e:
+                print(f"import_csv_header_and_ratings ERROR - {e}")
 
             # Set combobox values based on the index
             if index == 0:
                 self.combobox_1.set(team_name)
+                team_id_1 = team_id
             elif index == 1:
                 self.combobox_2.set(team_name)
-
-    def import_csv_ratings(self, lines):
-        # Skip the first two header lines
-        lines = lines[2:]
-        team_2_players = []
-        team_2_player_ids = {}
-        team_2_id = None
-
-        for line in lines:
-            print(line)
+                team_id_2 = team_id
+        
+        for line in rating_section:
+            # print(line)
             rating_line = all(item.isdigit() for item in line[1:])
+            # if this line DOES NOT CONTAIN a friendly player followed by ratings
+            # this line must contain scenario number followed by enemy player names
             if not rating_line:
                 scenario_id = int(line[0])
                 team_2_players = line[1:]
+                team_1_players = self.db_manager.query_sql(f"SELECT player_name FROM players WHERE team_id = {team_id_1}")
 
                 # Retrieve player_ids for enemy team (team_2)
                 team_2_player_ids = {
                     player_name: player_id 
                     for player_name, player_id in self.db_manager.query_sql(
-                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_2_players)})"
+                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_2_players)}) and team_id={team_id_2}"
                     )
                 }
-                
-                # Retrieve team_id of the enemy team (team_2) once
-                if team_2_players:
-                    team_2_id = self.db_manager.query_sql(f"SELECT team_id FROM players WHERE player_name='{team_2_players[0]}'")[0][0]
+                print(team_2_player_ids)
 
+            # if this line DOES contain a friendly player followed by ratings
+            # this line must contain ratings to upsert
             elif len(line) > 1 and not line[0].isdigit():
                 player_name = line[0]
                 ratings = list(map(int, line[1:]))
 
-                # Retrieve player_id and team_id for friendly team (team_1)
-                result = self.db_manager.query_sql(f"SELECT player_id, team_id FROM players WHERE player_name='{player_name}'")
-                if result:
-                    print(result[0])
-                    player_id_1, team_id_1 = result[0]
-                    try:
-                        for i, rating in enumerate(ratings):
-                            player_name_2 = team_2_players[i]
-                            player_id_2 = team_2_player_ids[player_name_2]
-                            self.db_manager.upsert_rating(
-                                player_id_1,
-                                player_id_2,
-                                team_id_1,
-                                team_2_id,
-                                scenario_id,
-                                rating
-                            )
-                    except (ValueError,IndexError):
-                        return 0
+                
+                if team_1_player_ids:
+                    player_id_1 = team_1_player_ids[1]
+                    self.db_manager.upsert_rating(player_id_1, player_id_2, team_id_1, team_id_2, scenario_id, rating)
 
 
-    def update_grid(self,rows,row_lo,row_hi,row_correction):
-        for r, row in enumerate(rows):
-            values = row.split(',')
-            for c, value in enumerate(values):
-                if c < 6:
-                    if r < 6:
-                        self.grid_entries[r][c].set(value)
-                    if row_lo <= r < row_hi:
-                        corrected_r = r - row_correction
-                        if corrected_r < 6:
-                            self.grid_entries[corrected_r][c].set(value)
-                            # if self.print_output: print(f"r: {r}; row_correction: {row_correction}; sum: {corrected_r}; c is: {c}; value: {value}")
-    
-    def prep_text(self, scenario):
-        content = self.textbox.get(1.0, tk.END).strip()
-        rows = content.split('\n')
-        current_scenario = self.get_scenario_num()
-        row_lo, row_hi = self.get_row_range(current_scenario)
-        row_correction = current_scenario * 6
-        return rows,row_lo,row_hi,row_correction
+    # def import_csv_ratings(self, lines):
+    #     # Skip the first two header lines
+    #     lines = lines[2:]
+    #     team_2_players = []
+    #     team_2_player_ids = {}
+    #     team_2_id = 0
+
+    #     for line in lines:
+    #         # print(line)
+    #         rating_line = all(item.isdigit() for item in line[1:])
+    #         if not rating_line:
+    #             scenario_id = int(line[0])
+    #             team_2_players = line[1:]
+
+    #             # Retrieve player_ids for enemy team (team_2)
+    #             team_2_player_ids = {
+    #                 player_name: player_id 
+    #                 for player_name, player_id in self.db_manager.query_sql(
+    #                     f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_2_players)}) "
+    #                 )
+    #             }
+    #             print(team_2_id)
+    #             # Retrieve team_id of the enemy team (team_2) once
+    #             if team_2_players:
+    #                 team_2_id = self.db_manager.query_sql(f"SELECT team_id FROM players WHERE player_name='{team_2_players[0]}'")[0][0]
+
+    #         elif len(line) > 1 and not line[0].isdigit():
+    #             player_name = line[0]
+    #             ratings = list(map(int, line[1:]))
+                
+    #             # Retrieve player_id and team_id for friendly team (team_1)
+    #             result = self.db_manager.query_sql(f"SELECT player_id, team_id FROM players WHERE player_name='{player_name}'")
+    #             if result:
+                    
+    #                 player_id_1, team_id_1 = result[0]
+    #                 try:
+    #                     for i, rating in enumerate(ratings):
+    #                         player_name_2 = team_2_players[i]
+    #                         player_id_2 = team_2_player_ids[player_name_2]
+    #                         rows_affected = self.db_manager.upsert_rating(
+    #                             player_id_1,
+    #                             player_id_2,
+    #                             team_id_1,
+    #                             team_2_id,
+    #                             scenario_id,
+    #                             rating
+    #                         )
+    #                         if rows_affected == 0:
+    #                             raise ValueError(f'insert_scenarios operation failed for table {table}. No rows were affected.')
+    #                 except (ValueError,IndexError):
+    #                     return 0
 
     #############################################
 
