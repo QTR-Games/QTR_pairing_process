@@ -603,65 +603,7 @@ class UiManager:
                         except (ValueError, IndexError) as e:
                             print(f"import_csv_header_and_ratings ERROR - {e}")
 
-
-                        
-
-                                
-
-    # def import_csv_ratings(self, lines):
-    #     # Skip the first two header lines
-    #     lines = lines[2:]
-    #     team_2_players = []
-    #     team_2_player_ids = {}
-    #     team_2_id = 0
-
-    #     for line in lines:
-    #         # print(line)
-    #         rating_line = all(item.isdigit() for item in line[1:])
-    #         if not rating_line:
-    #             scenario_id = int(line[0])
-    #             team_2_players = line[1:]
-
-    #             # Retrieve player_ids for enemy team (team_2)
-    #             team_2_player_ids = {
-    #                 player_name: player_id 
-    #                 for player_name, player_id in self.db_manager.query_sql(
-    #                     f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_2_players)}) "
-    #                 )
-    #             }
-    #             print(team_2_id)
-    #             # Retrieve team_id of the enemy team (team_2) once
-    #             if team_2_players:
-    #                 team_2_id = self.db_manager.query_sql(f"SELECT team_id FROM players WHERE player_name='{team_2_players[0]}'")[0][0]
-
-    #         elif len(line) > 1 and not line[0].isdigit():
-    #             player_name = line[0]
-    #             ratings = list(map(int, line[1:]))
-                
-    #             # Retrieve player_id and team_id for friendly team (team_1)
-    #             result = self.db_manager.query_sql(f"SELECT player_id, team_id FROM players WHERE player_name='{player_name}'")
-    #             if result:
-                    
-    #                 player_id_1, team_id_1 = result[0]
-    #                 try:
-    #                     for i, rating in enumerate(ratings):
-    #                         player_name_2 = team_2_players[i]
-    #                         player_id_2 = team_2_player_ids[player_name_2]
-    #                         rows_affected = self.db_manager.upsert_rating(
-    #                             player_id_1,
-    #                             player_id_2,
-    #                             team_id_1,
-    #                             team_2_id,
-    #                             scenario_id,
-    #                             rating
-    #                         )
-    #                         if rows_affected == 0:
-    #                             raise ValueError(f'insert_scenarios operation failed for table {table}. No rows were affected.')
-    #                 except (ValueError,IndexError):
-    #                     return 0
-
     #############################################
-
 
     def update_combobox_colors(self):
         for row in range(1, 6):
