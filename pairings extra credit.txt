@@ -44,13 +44,11 @@ add in the concepts for the 'penalty for pairing at 5" whatever that means.
 	This will allow the user to toggle it back and forth as they need during pairings.
 
 
-Instead of coloring the entire row, we want to highlight only the specific combinations.
-a 2/5 is orange a 3/5 yell etc
-
-Make the grid of matchups larger
-
-inverting or sorting descending or ascending after the matchups are generated
-
 20240721
 
 add tool tips to the player names to display the full name for that player.
+
+Instead of coloring the entire row, we want to highlight only the specific combinations.
+a 2/5 is orange a 3/5 yell etc
+
+inverting or sorting descending or ascending after the matchups are generated
