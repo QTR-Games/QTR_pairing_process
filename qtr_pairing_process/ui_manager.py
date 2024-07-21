@@ -513,68 +513,100 @@ class UiManager:
 
     def import_csv_header_and_ratings(self, lines):
         # Only take the first two lines from the file.
-        print(f"file length={len(lines)}")
+        # CSV import should be exactly 44 lines if done correctly.
+        # Let's allow it to be short, in case we don't want to import all 6 scenarios
+        # print(f"file length={len(lines)}")
         if len(lines) < 44:
             raise ValueError("Insufficient number of lines")
 
         team_lines = lines[:2]
         rating_section = lines[2:]
-        scenario_id = 0
-        team_id = 0
-        team_id_1 = 0
-        team_id_2 = 0
-        team_name = ""
-        team_2_player_ids = {}
+
+        team_names = []
+        team_name_1 = ""
+        team_name_2 = ""
+        player_names = []
+        team_players_1 = []
+        team_players_2 = []
+
+        team_2_players_ids = {}
 
         for index, line in enumerate(team_lines):
-            team_name = line[0]
-            player_names = line[1:]
+            team_names.append(line[0])
+            player_names.append(line[1:])
 
             # Try to upsert this team and the players.
             try:
-                team_id = self.db_manager.upsert_team(team_name)
-                players = self.db_manager.upsert_and_validate_players(team_id, player_names)
+                team_id = self.db_manager.upsert_team(line[0])
+                players = self.db_manager.upsert_and_validate_players(team_id, player_names[index])
             except ValueError as e:
                 print(f"import_csv_header_and_ratings ERROR - {e}")
 
             # Set combobox values based on the index
             if index == 0:
-                self.combobox_1.set(team_name)
+                team_name_1 = team_names[index]
+                self.combobox_1.set(team_name_1)
                 team_id_1 = team_id
+                team_players_1 = player_names[index]
             elif index == 1:
-                self.combobox_2.set(team_name)
+                team_name_2 = team_names[index]
+                self.combobox_2.set(team_name_2)
                 team_id_2 = team_id
-        
+                team_players_2 = player_names[index]
+
         for line in rating_section:
-            # print(line)
-            rating_line = all(item.isdigit() for item in line[1:])
             # if this line DOES NOT CONTAIN a friendly player followed by ratings
             # this line must contain scenario number followed by enemy player names
+            rating_line = all(item.isdigit() for item in line[1:])
             if not rating_line:
                 scenario_id = int(line[0])
-                team_2_players = line[1:]
-                team_1_players = self.db_manager.query_sql(f"SELECT player_name FROM players WHERE team_id = {team_id_1}")
 
-                # Retrieve player_ids for enemy team (team_2)
-                team_2_player_ids = {
-                    player_name: player_id 
+                # Retrieve player_ids for team_1
+                team_1_players_ids = {
+                    player_name: player_id
                     for player_name, player_id in self.db_manager.query_sql(
-                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_2_players)}) and team_id={team_id_2}"
+                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_players_1)}) and team_id={team_id_1} ORDER BY player_id"
                     )
                 }
-                print(team_2_player_ids)
 
-            # if this line DOES contain a friendly player followed by ratings
-            # this line must contain ratings to upsert
+                # Retrieve player_ids for team_2
+                team_2_players_ids = {
+                    player_name: player_id
+                    for player_name, player_id in self.db_manager.query_sql(
+                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_players_2)}) and team_id={team_id_2} ORDER BY player_id"
+                    )
+                }
+
             elif len(line) > 1 and not line[0].isdigit():
-                player_name = line[0]
-                ratings = list(map(int, line[1:]))
+                # if this line DOES contain a friendly player followed by ratings
+                # this line must contain ratings to upsert
 
-                
-                if team_1_player_ids:
-                    player_id_1 = team_1_player_ids[1]
-                    self.db_manager.upsert_rating(player_id_1, player_id_2, team_id_1, team_id_2, scenario_id, rating)
+                if team_2_players_ids:
+                    player_1 = line[0]
+                    ratings = list(map(int, line[1:]))
+                    # Retrieve player_id and team_id for friendly team (team_1)
+                    result = self.db_manager.query_sql(f"SELECT player_id, team_id FROM players WHERE player_name='{player_1}' and team_id={team_id_1}")
+                    # if results are retrieved then we can continue.
+                    try: 
+                        if result:
+                            player_id_1, team_id_1 = result[0]
+                        else:
+                            raise ValueError(f'{player_1}')
+                    except (ValueError) as e:
+                        print(f"VALUE ERROR ON IMPORT: {e}\nThis name doesn't match any friendly player. Check the import file for mistakes based on this name: {e}")
 
+                    for i, rating in enumerate(ratings):
+                        try:
+                            player_name_2 = list(team_2_players_ids.keys())[i]
+                            player_id_2 = team_2_players_ids[player_name_2]
+                            self.db_manager.upsert_rating(player_id_1, player_id_2, team_id_1, team_id_2, scenario_id, rating)
+                        except (ValueError, IndexError) as e:
+                            print(f"import_csv_header_and_ratings ERROR - {e}")
+
+
+                        
+
+                                
 
     # def import_csv_ratings(self, lines):
     #     # Skip the first two header lines
