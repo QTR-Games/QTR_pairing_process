@@ -21,11 +21,15 @@ class DbManager:
     def connect_db(self, path, name):
         return sqlite3.connect(f'{path}/{name}')
     
-    def execute_sql(self, sql):
+    def execute_sql(self, sql, parameters=None):
         with self.connect_db(self.path, self.name) as db_conn:
             db_cur = db_conn.cursor()
-            db_cur.execute(sql)
+            if parameters:
+                db_cur.execute(sql, parameters)
+            else:
+                db_cur.execute(sql)
             db_conn.commit()
+            return db_cur.rowcount
 
     def query_sql(self, sql):
         with self.connect_db(self.path, self.name) as db_conn:
@@ -43,18 +47,19 @@ class DbManager:
         """
         self.execute_sql(insert_sql)
 
-    def upsert_row(self, value_string, columns, table, contraint_columns, update_column):
+    def upsert_row(self, value_string, columns, table, constraint_columns, update_column):
         upsert_sql = f"""
             INSERT INTO {table}
             ({','.join(columns)})
             VALUES
             {value_string}
-            ON CONFLICT({','.join(contraint_columns)})
+            ON CONFLICT({','.join(constraint_columns)})
             DO UPDATE SET
             {update_column} = excluded.{update_column}
-
         """
-        self.execute_sql(upsert_sql)
+        rows_affected = self.execute_sql(upsert_sql)
+        if rows_affected == 0:
+            raise ValueError(f'Upsert operation failed for table {table}. No rows were affected.')
 
     def insert_scenarios(self):
         insert_template = "({num},'{desc}')"
