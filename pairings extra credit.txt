@@ -50,3 +50,7 @@ a 2/5 is orange a 3/5 yell etc
 Make the grid of matchups larger
 
 inverting or sorting descending or ascending after the matchups are generated
+
+20240721
+
+add tool tips to the player names to display the full name for that player.
