@@ -1,6 +1,7 @@
 """ © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 
 from itertools import combinations, permutations
+import tkinter
 
 import qtr_pairing_process.utility_funcs as uf
 
@@ -27,9 +28,6 @@ class TreeGenerator:
             self.generate_nested_combinations(name, fnames_filtered, oNames_sorted, fRatings, oRatings, tree_top)
             fNames_sorted[:] = uf.cycle_list(fNames_sorted)
             # oNames_sorted[:] = cycle_list(oNames_sorted)
-
-        
-            
         
     def generate_nested_combinations(self, first_fName, fNames, oNames, fRatings, oRatings, parent):
         
@@ -67,66 +65,39 @@ class TreeGenerator:
 
     def sum_leaf_values(self, node, mode=0):
         child_ids = self.treeview.tree.get_children(node)
+        
         # If this is a Leaf node, return the integer value from the values column
         if not child_ids:
             try:
                 value = int(self.treeview.tree.item(node, 'values')[0])
-                # This returns the value of the final node at a branch ending
                 return value
-          
             except (ValueError, IndexError) as e:
                 print(f"sum_leaf_values error: {e}")
                 return 0
-        # If this is a branch node, keep recursing, until each value gets added.
-        else:
-            try:
-                # Maximize Matchup Strength!
-                if (mode == 0):
-                    # Sum the values of child nodes
-                    total_sum = 0
-                    value = self.treeview.tree.item(node, 'values')
-                    match_ratings = []
-                    
-                    for child_id in child_ids:
-                        current_value = int(self.sum_leaf_values(child_id,0))
-                        total_sum += current_value
-                        match_ratings.append(current_value)
+        
+        # This is a branch node, continue recursion
+        total_sum = 0
+        match_ratings = []
 
-                    max_rating = max(match_ratings)
-                    self.set_value(max_rating, node)
-                    return total_sum
-                elif (mode == 1): 
-                    # Sum Matchup Strength! - Full sum of all nodes all the way up the tree.
-                    # Sum the values of child nodes
-                    total_sum = 0
-                    value = self.treeview.tree.item(node, 'values')
-                    
-                    for child_id in child_ids:
-                        total_sum += int(self.sum_leaf_values(child_id,1))
-                        # match_ratings.append(int(self.sum_leaf_values(child_id)))
-
-                    self.set_value(total_sum, node)
-                    return total_sum
-                else: # mode must be 2.
-                    # Avoid Poor Matchups! This should be a risk averse sorting algorithm
-                    total_sum = 0
-                    value = self.treeview.tree.item(node, 'values')
-                    match_ratings = []
-                    
-                    for child_id in child_ids:
-                        current_value = int(self.sum_leaf_values(child_id,2))
-                        total_sum += current_value
-                        match_ratings.append(current_value)
-
-                    low_rating = min(match_ratings)
-                    self.set_value(low_rating, node)
-                    return total_sum
-
-
-            except (ValueError, IndexError) as e:
-                print(f"sum_leaf_values error: {e}")
-                return 0
-            
+        for child_id in child_ids:
+            current_value = self.sum_leaf_values(child_id, mode)
+            total_sum += current_value
+            match_ratings.append(current_value)
+        
+        # Set node value based on mode
+        if mode == 0:       # Maximize Matchup Strength!
+            max_rating = max(match_ratings)
+            self.set_value(max_rating, node)
+        elif mode == 1:     # Sum Matchup Strength! - Full sum of all nodes all the way up the tree.
+                            # Sum the values of child nodes
+            self.set_value(total_sum, node)
+        elif mode == 2:     # mode must be 2.
+                            # Avoid Poor Matchups! This should be a risk averse sorting algorithm
+            low_rating = min(match_ratings)
+            self.set_value(low_rating, node)
+        
+        return total_sum
+    
     def sort_matchup_value(self):
 
         # Save the original order before sorting
@@ -169,16 +140,24 @@ class TreeGenerator:
     def unsort_matchup_tree(self):
         # Restore the original order of the children for each root node
         for root, original_child_ids in self.original_order.items():
-            # Get the current child nodes
-            current_child_ids = self.treeview.tree.get_children(root)
+            try:
+                # Get the current child nodes
+                current_child_ids = self.treeview.tree.get_children(root)
+            except tkinter.TclError as e:
+                print(f"Error getting children of root {root}: {e}")
+                continue
             
             # Detach all current children
             for child_id in current_child_ids:
-                self.treeview.tree.detach(child_id)
+                try:
+                    self.treeview.tree.detach(child_id)
+                except tkinter.TclError as e:
+                    print(f"Error detaching child {child_id}: {e}")
+                    continue
             
             # Reinsert the children in their original order
             for child_id in original_child_ids:
-                self.treeview.tree.move(child_id, root, 'end')                
-               
-    
-      
+                try:
+                    self.treeview.tree.move(child_id, root, 'end')
+                except tkinter.TclError as e:
+                    print(f"Error moving child {child_id} to root {root}: {e}")
