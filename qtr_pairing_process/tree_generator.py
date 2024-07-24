@@ -12,6 +12,7 @@ class TreeGenerator:
     ):
         self.treeview = treeview
         self.sort_alpha = sort_alpha
+        self.original_order = {}
 
     def generate_combinations(self, fNames, oNames, fRatings, oRatings):
         self.treeview.tree.delete(*self.treeview.tree.get_children())
@@ -105,7 +106,11 @@ class TreeGenerator:
             except (ValueError, IndexError):
                 return 0
             
-    def optimize_matchups(self):
+    def sort_matchup_value(self):
+
+        # Save the original order before sorting
+        self.save_original_order()
+
         # Get the children of the root node
         root_nodes = self.treeview.tree.get_children()
         for root in root_nodes:
@@ -132,10 +137,27 @@ class TreeGenerator:
                 for child_id in sorted_child_ids:
                     self.treeview.tree.move(child_id, root, 'end')
 
-                    
+    def save_original_order(self):
+        # Save the original order of the children for each root node
+        root_nodes = self.treeview.tree.get_children()
+        for root in root_nodes:
+            child_ids = self.treeview.tree.get_children(root)
+            self.original_order[root] = list(child_ids)               
 
 
-                    
+    def unsort_matchup_tree(self):
+        # Restore the original order of the children for each root node
+        for root, original_child_ids in self.original_order.items():
+            # Get the current child nodes
+            current_child_ids = self.treeview.tree.get_children(root)
+            
+            # Detach all current children
+            for child_id in current_child_ids:
+                self.treeview.tree.detach(child_id)
+            
+            # Reinsert the children in their original order
+            for child_id in original_child_ids:
+                self.treeview.tree.move(child_id, root, 'end')                
                
     
       

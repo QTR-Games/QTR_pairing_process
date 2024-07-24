@@ -35,6 +35,7 @@ class UiManager:
         self.scenario_ranges = scenario_ranges
         self.scenario_to_csv_map = scenario_to_csv_map
         self.treeview = None
+        self.is_sorted = False  # State variable to track if the tree is sorted
 
 
         self.select_database()
@@ -191,8 +192,11 @@ class UiManager:
         math_button_1 = tk.Button(buttons_frame, text="Sum\nMatchup Strength!", command=self.traverse_and_sum_values_1)
         math_button_1.pack(fill=tk.X, pady=5)
 
-        optimize_button = tk.Button(buttons_frame, text="Optimize!", command=self.optimize_matchups)
-        optimize_button.pack(fill=tk.X, pady=5)
+        sort_tree_button = tk.Button(buttons_frame, text="Optimize!", command=self.sort_matchup_tree)
+        sort_tree_button.pack(fill=tk.X, pady=5)
+
+        self.sort_tree_button = tk.Button(buttons_frame, text="Sort Matchups!", command=self.toggle_sorting)
+        self.sort_tree_button.pack(fill=tk.X, pady=5)
 
         # self.team_b = tk.IntVar()
         pairingLead = tk.Checkbutton(buttons_frame, text="Our team first", variable=self.team_b)
@@ -239,8 +243,18 @@ class UiManager:
     def traverse_and_sum_values(self):
         self.tree_generator.traverse_and_sum_values()
 
-    def optimize_matchups(self):
-        self.tree_generator.optimize_matchups()
+    def sort_matchup_tree(self):
+        self.tree_generator.sort_matchup_value()
+
+    def toggle_sorting(self):
+        if self.is_sorted:
+            self.tree_generator.unsort_matchup_tree()
+            self.sort_tree_button.config(text="Sort Matchups!")
+        else:
+            self.tree_generator.sort_matchup_value()
+            self.sort_tree_button.config(text="Remove Sorting")
+        
+        self.is_sorted = not self.is_sorted  # Toggle the state
 
     def update_scenario_box(self):
         scenarios = []
@@ -303,8 +317,8 @@ class UiManager:
         team_2_id = team_2_row[0][0]
 
         # Do not assume that the lower team value is the home team
-        if team_1_id > team_2_id:
-            team_1_id, team_2_id = team_2_id, team_1_id
+        # if team_1_id > team_2_id:
+        #     team_1_id, team_2_id = team_2_id, team_1_id
 
         player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
         team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
@@ -364,8 +378,8 @@ class UiManager:
         team_2_id = team_2_row[0][0]
 
         # Do not assume that the lower team value is the home team
-        if team_1_id > team_2_id:
-            team_1_id, team_2_id = team_2_id, team_1_id
+        # if team_1_id > team_2_id:
+        #     team_1_id, team_2_id = team_2_id, team_1_id
 
         player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
         team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
