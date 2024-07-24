@@ -99,35 +99,64 @@ class TreeGenerator:
         return total_sum
     
     def sort_matchup_value(self):
-
-        # Save the original order before sorting
         self.save_original_order()
-
-        # Get the children of the root node
         root_nodes = self.treeview.tree.get_children()
         for root in root_nodes:
-            # Get the child nodes of the current root node
-            child_ids = self.treeview.tree.get_children(root)
-            if child_ids:
-                # Create a list of tuples (child_id, value)
-                children_with_values = []
-                for child_id in child_ids:
-                    value = self.treeview.tree.item(child_id, 'values')[0]  # Adjust the index if the value column is different
-                    children_with_values.append((child_id, value))
-                
-                # Sort the list of tuples based on the value in descending order
-                children_with_values.sort(key=lambda x: x[1], reverse=True)
-                
-                # Extract the sorted child_ids
-                sorted_child_ids = [child_id for child_id, value in children_with_values]
-                
-                # Remove all children from the root node
-                for child_id in child_ids:
-                    self.treeview.tree.detach(child_id)
-                
-                # Reinsert the children in sorted order
-                for child_id in sorted_child_ids:
-                    self.treeview.tree.move(child_id, root, 'end')
+            self.sort_children(root)
+    
+    # def sort_children(self, node):
+    #     # Get the child nodes of the current root node
+    #     child_ids = self.treeview.tree.get_children(node)
+    #     if child_ids:
+    #         # Create a list of tuples (child_id, value)
+    #         children_with_values = []
+    #         for child_id in child_ids:
+    #             value = self.treeview.tree.item(child_id, 'values')[0]  # Adjust the index if the value column is different
+    #             children_with_values.append((child_id, value))
+            
+    #         # Sort the list of tuples based on the value in descending order
+    #         children_with_values.sort(key=lambda x: x[1], reverse=True)
+            
+    #         # Extract the sorted child_ids
+    #         sorted_child_ids = [child_id for child_id, value in children_with_values]
+            
+    #         # Remove all children from the root node
+    #         for child_id in child_ids:
+    #             self.treeview.tree.detach(child_id)
+            
+    #         # Reinsert the children in sorted order
+    #         for child_id in sorted_child_ids:
+    #             self.treeview.tree.move(child_id, node, 'end')
+
+    #         # Recursively sort the children of each child
+    #         for child_id in sorted_child_ids:
+    #             self.sort_children(child_id)
+    
+    def sort_children(self, node):
+        child_ids = self.treeview.tree.get_children(node)
+        if child_ids:
+            children_with_scores = []
+            for child_id in child_ids:
+                value = int(self.treeview.tree.item(child_id, 'values')[0])
+                siblings = [int(self.treeview.tree.item(sibling_id, 'values')[0]) for sibling_id in child_ids if sibling_id != child_id]
+                score = self.calculate_score(value, siblings)
+                children_with_scores.append((child_id, score))
+            
+            children_with_scores.sort(key=lambda x: x[1], reverse=True)
+            sorted_child_ids = [child_id for child_id, score in children_with_scores]
+
+            for child_id in child_ids:
+                self.treeview.tree.detach(child_id)
+            for child_id in sorted_child_ids:
+                self.treeview.tree.move(child_id, node, 'end')
+
+            # Recursively sort the children of each child
+            for child_id in sorted_child_ids:
+                self.sort_children(child_id)
+
+    def calculate_score(self, value, siblings):
+        closeness_to_3 = sum(abs(sibling - 3) for sibling in siblings) / len(siblings) if siblings else 0
+        return (5 - closeness_to_3) + value
 
     def save_original_order(self):
         # Save the original order of the children for each root node

@@ -104,18 +104,21 @@ class UiManager:
         self.tree_tab_right_frame = tk.Frame(self.matchup_tree_frame)
         self.tree_tab_right_frame.pack(side=tk.LEFT, expand=1, fill=tk.BOTH)
 
+        self.buttons_frame = tk.Frame(self.tree_tab_left_frame)
+        self.buttons_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
+
         self.grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
         self.grid_widgets = [[None for _ in range(6)] for _ in range(6)]
 
         self.team_b = tk.IntVar()
-        # pairingLead = tk.Checkbutton(self.tree_tab_left_frame, text="Our team first", variable=self.team_b)
-        # pairingLead.pack(fill=tk.X, pady=5)
-        # pairingLead.select()
+        pairingLead = tk.Checkbutton(self.buttons_frame, text="Our team first", variable=self.team_b)
+        pairingLead.pack(side=tk.BOTTOM,pady=5)
+        pairingLead.select()
 
         self.sort_alpha = tk.IntVar()
-        # alphaBox = tk.Checkbutton(self.tree_tab_left_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
-        # alphaBox.pack(fill=tk.X, pady=5)
-        # alphaBox.select()
+        alphaBox = tk.Checkbutton(self.buttons_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
+        alphaBox.pack(side=tk.BOTTOM,pady=5)
+        alphaBox.select()
 
         # create treeview and tree generator
         self.treeview = LazyTreeView(master=self.tree_tab_right_frame, print_output=self.print_output, columns=("Rating"))
@@ -129,17 +132,27 @@ class UiManager:
                 self.grid_widgets[r][c] = entry
                 self.grid_entries[r][c].trace_add('write', lambda name, index, mode, var=self.grid_entries[r][c], row=r, col=c: self.update_color_on_change(var, index, mode, row, col))
 
-		# create combobox for file selection
-        # create the label
         tk.Label(self.drop_down_frame, text='Select Team 1:').pack(side=tk.LEFT, padx=5, pady=5)
+        # Use a StringVar to hold the value of the Combobox
+        self.team1_var = tk.StringVar()
         # create combobox
-        self.combobox_1 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
+        self.combobox_1 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20, textvariable=self.team1_var)
         self.combobox_1.pack(side=tk.LEFT, padx=5, pady=5)
+        # Set an instance variable to keep track of the previous value
+        self.previous_team1 = self.team1_var.get()
+        # Attach a trace to the StringVar
+        self.team1_var.trace_add('write', self.on_team_box_change)
 		
         tk.Label(self.drop_down_frame, text='Select Team 2:').pack(side=tk.LEFT, padx=5, pady=5)
+        # Use a StringVar to hold the value of the Combobox
+        self.team2_var = tk.StringVar()
         # create combobox
-        self.combobox_2 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
+        self.combobox_2 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20, textvariable=self.team2_var)
         self.combobox_2.pack(side=tk.LEFT, padx=5, pady=5)
+        # Set an instance variable to keep track of the previous value
+        self.previous_team2 = self.team2_var.get()
+        # Attach a trace to the StringVar
+        self.team2_var.trace_add('write', self.on_team_box_change)
 
         # create combobox for scenario selection
         # create the label
@@ -179,34 +192,20 @@ class UiManager:
         self.treeview.tree.tag_configure('5', background="lime")
         self.treeview.pack(expand=1, fill='both')
 		
-        # Configure the bottom_frame for Matchup Tree tab
-        buttons_frame = tk.Frame(self.tree_tab_left_frame)
-        buttons_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
-
-        generateButton = tk.Button(buttons_frame, text="Generate\nCombinations", command=self.on_generate_combinations)
+        generateButton = tk.Button(self.buttons_frame, text="Generate\nCombinations", command=self.on_generate_combinations)
         generateButton.pack(fill=tk.X, pady=5)
 
-        math_button_0 = tk.Button(buttons_frame, text="Maximize\nMatchup Strength!", command=self.traverse_and_sum_values_0)
+        math_button_0 = tk.Button(self.buttons_frame, text="Maximize\nMatchup Strength!", command=self.traverse_and_sum_values_0)
         math_button_0.pack(fill=tk.X, pady=5)
 
-        math_button_1 = tk.Button(buttons_frame, text="Sum\nMatchup Strength!", command=self.traverse_and_sum_values_1)
+        math_button_1 = tk.Button(self.buttons_frame, text="Sum\nMatchup Strength!", command=self.traverse_and_sum_values_1)
         math_button_1.pack(fill=tk.X, pady=5)
 
-        math_button_1 = tk.Button(buttons_frame, text="Avoid Poor Matchups!", command=self.traverse_and_sum_values_2)
+        math_button_1 = tk.Button(self.buttons_frame, text="Avoid Poor Matchups!", command=self.traverse_and_sum_values_2)
         math_button_1.pack(fill=tk.X, pady=5)
 
-        self.sort_tree_button = tk.Button(buttons_frame, text="Sort Matchups!", command=self.toggle_sorting)
+        self.sort_tree_button = tk.Button(self.buttons_frame, text="Sort Matchups!", command=self.toggle_sorting)
         self.sort_tree_button.pack(fill=tk.X, pady=5)
-
-        # self.team_b = tk.IntVar()
-        pairingLead = tk.Checkbutton(buttons_frame, text="Our team first", variable=self.team_b)
-        pairingLead.pack(side=tk.BOTTOM,pady=5)
-        pairingLead.select()
-
-        # self.sort_alpha = tk.IntVar()
-        alphaBox = tk.Checkbutton(buttons_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
-        alphaBox.pack(pady=5)
-        alphaBox.select()
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
@@ -277,6 +276,21 @@ class UiManager:
             # print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
             self.previous_value = new_value
 
+            self.update_ui()
+
+    def on_team_box_change(self, *args):
+        # Get the new value
+        new_team1_value = self.team1_var.get()
+        new_team2_value = self.team2_var.get()
+        perform_update = False
+        # Compare with the previous value
+        if new_team1_value != self.previous_team1:
+            self.previous_team1 = new_team1_value
+            perform_update = True
+        if new_team2_value != self.previous_team2:
+            self.previous_team2 = new_team2_value
+            perform_update = True
+        if perform_update:
             self.update_ui()
             
     ####################
