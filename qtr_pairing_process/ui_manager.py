@@ -192,8 +192,8 @@ class UiManager:
         math_button_1 = tk.Button(buttons_frame, text="Sum\nMatchup Strength!", command=self.traverse_and_sum_values_1)
         math_button_1.pack(fill=tk.X, pady=5)
 
-        sort_tree_button = tk.Button(buttons_frame, text="Optimize!", command=self.sort_matchup_tree)
-        sort_tree_button.pack(fill=tk.X, pady=5)
+        math_button_1 = tk.Button(buttons_frame, text="Avoid Poor Matchups!", command=self.traverse_and_sum_values_2)
+        math_button_1.pack(fill=tk.X, pady=5)
 
         self.sort_tree_button = tk.Button(buttons_frame, text="Sort Matchups!", command=self.toggle_sorting)
         self.sort_tree_button.pack(fill=tk.X, pady=5)
@@ -210,7 +210,7 @@ class UiManager:
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
-        self.create_tooltip(self.treeview, "Generated combinations will be displayed here")
+        self.create_tooltip(self.treeview, "Generated combinations will be displayed here\nNavigate the tree with arrow keys!")
 
         self.update_combobox_colors()
 
@@ -239,6 +239,9 @@ class UiManager:
 
     def traverse_and_sum_values_1(self):
         self.tree_generator.traverse_and_sum_values(1)
+
+    def traverse_and_sum_values_2(self):
+        self.tree_generator.traverse_and_sum_values(2)
                    
     def traverse_and_sum_values(self):
         self.tree_generator.traverse_and_sum_values()

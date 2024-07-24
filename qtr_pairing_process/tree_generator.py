@@ -67,17 +67,20 @@ class TreeGenerator:
 
     def sum_leaf_values(self, node, mode=0):
         child_ids = self.treeview.tree.get_children(node)
+        # If this is a Leaf node, return the integer value from the values column
         if not child_ids:
-            # Leaf node, return the integer value from the values column
             try:
                 value = int(self.treeview.tree.item(node, 'values')[0])
-                # print(f"sum_leaf_values - LEAF NODE HIT.\nreturned value = {value}")
+                # This returns the value of the final node at a branch ending
                 return value
           
-            except (ValueError, IndexError):
+            except (ValueError, IndexError) as e:
+                print(f"sum_leaf_values error: {e}")
                 return 0
+        # If this is a branch node, keep recursing, until each value gets added.
         else:
             try:
+                # Maximize Matchup Strength!
                 if (mode == 0):
                     # Sum the values of child nodes
                     total_sum = 0
@@ -92,7 +95,8 @@ class TreeGenerator:
                     max_rating = max(match_ratings)
                     self.set_value(max_rating, node)
                     return total_sum
-                else:
+                elif (mode == 1): 
+                    # Sum Matchup Strength! - Full sum of all nodes all the way up the tree.
                     # Sum the values of child nodes
                     total_sum = 0
                     value = self.treeview.tree.item(node, 'values')
@@ -103,7 +107,24 @@ class TreeGenerator:
 
                     self.set_value(total_sum, node)
                     return total_sum
-            except (ValueError, IndexError):
+                else: # mode must be 2.
+                    # Avoid Poor Matchups! This should be a risk averse sorting algorithm
+                    total_sum = 0
+                    value = self.treeview.tree.item(node, 'values')
+                    match_ratings = []
+                    
+                    for child_id in child_ids:
+                        current_value = int(self.sum_leaf_values(child_id,2))
+                        total_sum += current_value
+                        match_ratings.append(current_value)
+
+                    low_rating = min(match_ratings)
+                    self.set_value(low_rating, node)
+                    return total_sum
+
+
+            except (ValueError, IndexError) as e:
+                print(f"sum_leaf_values error: {e}")
                 return 0
             
     def sort_matchup_value(self):
