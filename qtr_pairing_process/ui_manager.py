@@ -201,6 +201,9 @@ class UiManager:
         math_button_1 = tk.Button(self.buttons_frame, text="Sum\nMatchup Strength!", command=self.traverse_and_sum_values_1)
         math_button_1.pack(fill=tk.X, pady=5)
 
+        math_button_3 = tk.Button(self.buttons_frame, text="MEAN\nMatchup Strength!", command=self.traverse_and_sum_values_3)
+        math_button_3.pack(fill=tk.X, pady=5)
+
         math_button_1 = tk.Button(self.buttons_frame, text="Avoid Poor Matchups!", command=self.traverse_and_sum_values_2)
         math_button_1.pack(fill=tk.X, pady=5)
 
@@ -242,8 +245,8 @@ class UiManager:
     def traverse_and_sum_values_2(self):
         self.tree_generator.traverse_and_sum_values(2)
                    
-    def traverse_and_sum_values(self):
-        self.tree_generator.traverse_and_sum_values()
+    def traverse_and_sum_values_3(self):
+        self.tree_generator.traverse_and_sum_values(3)
 
     def sort_matchup_tree(self):
         self.tree_generator.sort_matchup_value()

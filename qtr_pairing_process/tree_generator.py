@@ -1,6 +1,7 @@
 """ © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 
 from itertools import combinations, permutations
+import statistics
 import tkinter
 
 import qtr_pairing_process.utility_funcs as uf
@@ -91,10 +92,13 @@ class TreeGenerator:
         elif mode == 1:     # Sum Matchup Strength! - Full sum of all nodes all the way up the tree.
                             # Sum the values of child nodes
             self.set_value(total_sum, node)
-        elif mode == 2:     # mode must be 2.
+        elif mode == 2:     # "MIN" matchup stength.
                             # Avoid Poor Matchups! This should be a risk averse sorting algorithm
             low_rating = min(match_ratings)
             self.set_value(low_rating, node)
+        elif mode == 3:     # "AVG" Matchup strength.
+            avg_rating = statistics.mean(match_ratings)
+            self.set_value(avg_rating, node)
         
         return total_sum
     
@@ -104,34 +108,7 @@ class TreeGenerator:
         for root in root_nodes:
             self.sort_children(root)
     
-    # def sort_children(self, node):
-    #     # Get the child nodes of the current root node
-    #     child_ids = self.treeview.tree.get_children(node)
-    #     if child_ids:
-    #         # Create a list of tuples (child_id, value)
-    #         children_with_values = []
-    #         for child_id in child_ids:
-    #             value = self.treeview.tree.item(child_id, 'values')[0]  # Adjust the index if the value column is different
-    #             children_with_values.append((child_id, value))
-            
-    #         # Sort the list of tuples based on the value in descending order
-    #         children_with_values.sort(key=lambda x: x[1], reverse=True)
-            
-    #         # Extract the sorted child_ids
-    #         sorted_child_ids = [child_id for child_id, value in children_with_values]
-            
-    #         # Remove all children from the root node
-    #         for child_id in child_ids:
-    #             self.treeview.tree.detach(child_id)
-            
-    #         # Reinsert the children in sorted order
-    #         for child_id in sorted_child_ids:
-    #             self.treeview.tree.move(child_id, node, 'end')
-
-    #         # Recursively sort the children of each child
-    #         for child_id in sorted_child_ids:
-    #             self.sort_children(child_id)
-    
+    # NEW SORT - PROPOSAL CONCEPT - closeness to 3.
     def sort_children(self, node):
         child_ids = self.treeview.tree.get_children(node)
         if child_ids:
@@ -139,6 +116,7 @@ class TreeGenerator:
             for child_id in child_ids:
                 value = int(self.treeview.tree.item(child_id, 'values')[0])
                 siblings = [int(self.treeview.tree.item(sibling_id, 'values')[0]) for sibling_id in child_ids if sibling_id != child_id]
+                # calculate_score should take into account the factors for wtc level pairings
                 score = self.calculate_score(value, siblings)
                 children_with_scores.append((child_id, score))
             
@@ -163,7 +141,7 @@ class TreeGenerator:
         root_nodes = self.treeview.tree.get_children()
         for root in root_nodes:
             child_ids = self.treeview.tree.get_children(root)
-            self.original_order[root] = list(child_ids)               
+            self.original_order[root] = list(child_ids)
 
 
     def unsort_matchup_tree(self):
