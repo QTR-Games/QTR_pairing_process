@@ -1,5 +1,6 @@
 """ © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 # native libraries
+from multiprocessing import Value
 import os
 import csv
 
@@ -8,6 +9,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
 # repo libraries
 # from qtr_pairing_process import ui_db_funcs
+from qtr_pairing_process.db_management import db_manager
 from qtr_pairing_process.ui_db_funcs import UIDBFuncs
 from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_RANGES, SCENARIO_TO_CSV_MAP
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
@@ -190,6 +192,7 @@ class UiManager:
         tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.on_delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="REFRESH", command=lambda: self.update_ui()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Import XSLX", command=lambda: self.import_xlsx()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="GET SCORE", command=lambda: self.on_scenario_calculations()).pack(side=tk.LEFT, padx=5, pady=5)
 
 		# Configure Treeview with style and maximize space
         style = ttk.Style()
@@ -241,11 +244,44 @@ class UiManager:
         try:
             self.update_display_fields(0,0,"FLOOR")
             self.update_display_fields(0,1,"PINNED?")
-            self.update_display_fields(0,2,"CAN\nPIN?")
+            self.update_display_fields(0,2,"CAN-PIN?")
             self.update_display_fields(0,3,"PROTECT")
             self.update_display_fields(0,4,"CIELING")
         except (ValueError, IndexError) as e:
             print(f"update_display_fields has failed with error:\n{e}")
+
+    def on_scenario_calculations(self):
+        self.set_floor_values()
+        self.check_pinned_players()
+
+    def check_pinned_players(self): # Check each player to find if they have 2 or more ratings below 3.
+        for row in range(1,6):
+            try:
+                # Sum the ratings for the current row
+                player_pinned = False
+                num_bad_matchups = 0 # Reset the counter at the start of each row.
+                for col in range(1,6):
+                    if (int(self.grid_entries[row][col].get()) < 3):
+                        num_bad_matchups += 1 # count up for each bad matchup.
+                    if num_bad_matchups > 1: # When you reach two matchups, record a Yes and go to the next row.
+                        player_pinned = True
+                        break
+                # Update the corresponding entry in the display-only grid
+                self.update_display_fields(row, 1, player_pinned)
+
+            except (ValueError, IndexError) as e:
+                print(f"check_pinned_players has failed with error:\n{e}")
+
+    def set_floor_values(self): # Calculate the sum of ratings for each player and update the second grid
+        for row in range(1,6):
+            try:
+                # Sum the ratings for the current row
+                floor_rating_sum = sum(int(self.grid_entries[row][col].get()) for col in range(1,6))
+
+                # Update the corresponding entry in the display-only grid
+                self.update_display_fields(row, 0, floor_rating_sum)
+            except (ValueError, IndexError) as e:
+                print(f"set_floor_values has failed with error:\n{e}")
 
     def switch_tab(self):
         current_tab = self.notebook.index(self.notebook.select())
@@ -329,14 +365,17 @@ class UiManager:
         if perform_update:
             self.update_ui()
             
-    def update_ui(self):
-        # Update the team dropdowns and grid values
-        self.set_team_dropdowns()
-        self.load_grid_data_from_db()
+    
 
     ####################
     # DB Fill/Save Funcs
     ####################
+
+    def update_ui(self):
+        # Update the team dropdowns and grid values
+        self.set_team_dropdowns()
+        self.load_grid_data_from_db()
+        # print(self.extract_ratings())
 
     def select_team_names(self):
         # Using this for testing.
@@ -710,12 +749,12 @@ class UiManager:
             oNames_sorted = oNames
         return fNames_sorted, oNames_sorted
     
-    def get_row_range(self):
-        current_scenario = self.get_scenario_num()
-        row_lo, row_hi = self.scenario_ranges.get(current_scenario, (1, 6))  # Default to (1, 6) if scenario is not found
-        if current_scenario < 1:
-            print("Scenario Agnostic Pairing...")
-        return row_lo, row_hi
+    # def get_row_range(self):
+    #     current_scenario = self.get_scenario_num()
+    #     row_lo, row_hi = self.scenario_ranges.get(current_scenario, (1, 6))  # Default to (1, 6) if scenario is not found
+    #     if current_scenario < 1:
+    #         print("Scenario Agnostic Pairing...")
+    #     return row_lo, row_hi
 
     def get_scenario_num(self):
         num_string = self.scenario_box.get()[:1]
