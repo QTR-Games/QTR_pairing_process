@@ -1,4 +1,4 @@
-
+""" © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 import openpyxl
 from qtr_pairing_process.excel_management.constants import SHEET_NAMES
 from qtr_pairing_process.db_management.db_manager import DbManager

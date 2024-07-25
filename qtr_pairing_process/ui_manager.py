@@ -7,6 +7,8 @@ import csv
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
 # repo libraries
+# from qtr_pairing_process import ui_db_funcs
+from qtr_pairing_process.ui_db_funcs import UIDBFuncs
 from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_RANGES, SCENARIO_TO_CSV_MAP
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.tree_generator import TreeGenerator
@@ -15,6 +17,7 @@ from qtr_pairing_process.xlsx_load_ui import XlsxLoadUi
 from qtr_pairing_process.db_management.db_manager import DbManager
 from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
 from qtr_pairing_process.excel_management.excel_importer import ExcelImporter
+
 
 class UiManager:
     def __init__(
@@ -28,6 +31,8 @@ class UiManager:
     ):
         self.grid_entries = None
         self.grid_widgets = None
+        self.grid_display_entries = None
+        self.grid_display_widgets = None
         self.print_output = print_output
         self.directory = directory
         self.color_map = color_map
@@ -109,6 +114,8 @@ class UiManager:
 
         self.grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
         self.grid_widgets = [[None for _ in range(6)] for _ in range(6)]
+        self.grid_display_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
+        self.grid_display_widgets = [[None for _ in range(6)] for _ in range(6)]
 
         self.team_b = tk.IntVar()
         pairingLead = tk.Checkbutton(self.buttons_frame, text="Our team first", variable=self.team_b)
@@ -131,6 +138,10 @@ class UiManager:
                 entry.grid(row=r+2, column=c, padx=5, pady=5)
                 self.grid_widgets[r][c] = entry
                 self.grid_entries[r][c].trace_add('write', lambda name, index, mode, var=self.grid_entries[r][c], row=r, col=c: self.update_color_on_change(var, index, mode, row, col))
+
+                display_entry = tk.Entry(self.right_frame, textvariable=self.grid_display_entries[r][c], width=10, state='readonly')
+                display_entry.grid(row=r+2, column=c, padx=5, pady=5)
+                self.grid_display_widgets[r][c] = display_entry
 
         tk.Label(self.drop_down_frame, text='Select Team 1:').pack(side=tk.LEFT, padx=5, pady=5)
         # Use a StringVar to hold the value of the Combobox
@@ -176,7 +187,7 @@ class UiManager:
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
 		# tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.on_delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="REFRESH", command=lambda: self.update_ui()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Import XSLX", command=lambda: self.import_xlsx()).pack(side=tk.LEFT, padx=5, pady=3)
 
@@ -215,14 +226,36 @@ class UiManager:
         self.create_tooltip(self.treeview, "Generated combinations will be displayed here\nNavigate the tree with arrow keys!")
 
         self.update_combobox_colors()
+        self.init_display_headers()
 
         self.root.mainloop()
+
+    # Add this method to update display-only fields
+    def update_display_fields(self, row, col, value):
+        try:
+            self.grid_display_entries[row][col].set(value)
+        except (ValueError, IndexError) as e:
+            print(f"update_display_fields has failed with error:\n{e}")
+
+    def init_display_headers(self):
+        try:
+            self.update_display_fields(0,0,"FLOOR")
+            self.update_display_fields(0,1,"PINNED?")
+            self.update_display_fields(0,2,"CAN\nPIN?")
+            self.update_display_fields(0,3,"PROTECT")
+            self.update_display_fields(0,4,"CIELING")
+        except (ValueError, IndexError) as e:
+            print(f"update_display_fields has failed with error:\n{e}")
 
     def switch_tab(self):
         current_tab = self.notebook.index(self.notebook.select())
         total_tabs = self.notebook.index('end')
         next_tab = (current_tab + 1) % total_tabs
         self.notebook.select(next_tab)
+
+    def on_delete_team(self):
+        self.delete_team()
+        self.update_ui()
     
     def on_generate_combinations(self):
         fNames, oNames = self.prep_names()
@@ -296,14 +329,14 @@ class UiManager:
         if perform_update:
             self.update_ui()
             
-    ####################
-    # DB Fill/Save Funcs
-    ####################
-
     def update_ui(self):
         # Update the team dropdowns and grid values
         self.set_team_dropdowns()
         self.load_grid_data_from_db()
+
+    ####################
+    # DB Fill/Save Funcs
+    ####################
 
     def select_team_names(self):
         # Using this for testing.
@@ -692,7 +725,6 @@ class UiManager:
             if self.print_output: print(type(num))
         return num
 
-
     def validate_grid_data(self):
         for row in range(1, 6):
             for col in range(1, 6):
@@ -701,8 +733,6 @@ class UiManager:
                     messagebox.showerror("Error", f"Invalid rating at row {row+1}, column {col+1}. Ratings should be between 1 and 5.")
                     return False
         return True
-
-
 
     def create_tooltip(self, widget, text):
         tooltip = tk.Toplevel(widget)

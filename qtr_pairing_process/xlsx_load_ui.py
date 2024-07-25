@@ -1,4 +1,4 @@
-
+""" © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 from tkinter import Label, Button, Tk, Toplevel
 from os.path import expanduser
 # import filedialog module

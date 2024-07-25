@@ -15,8 +15,10 @@ class TreeGenerator:
         self.treeview = treeview
         self.sort_alpha = sort_alpha
         self.original_order = {}
+        self.fRatings = None
 
     def generate_combinations(self, fNames, oNames, fRatings, oRatings):
+        self.fRatings = fRatings
         self.treeview.tree.delete(*self.treeview.tree.get_children())
         tree_top = self.treeview.tree.insert("", 'end', text="Pairings")
         fNames_sorted = sorted(fNames, key=lambda x: x) if self.sort_alpha else fNames
@@ -108,7 +110,7 @@ class TreeGenerator:
         for root in root_nodes:
             self.sort_children(root)
     
-    # NEW SORT - PROPOSAL CONCEPT - closeness to 3.
+    # NEW SORTING LOGIC - CALCULATE_FLOOR???
     def sort_children(self, node):
         child_ids = self.treeview.tree.get_children(node)
         if child_ids:
@@ -116,9 +118,9 @@ class TreeGenerator:
             for child_id in child_ids:
                 value = int(self.treeview.tree.item(child_id, 'values')[0])
                 siblings = [int(self.treeview.tree.item(sibling_id, 'values')[0]) for sibling_id in child_ids if sibling_id != child_id]
-                # calculate_score should take into account the factors for wtc level pairings
-                score = self.calculate_score(value, siblings)
-                children_with_scores.append((child_id, score))
+                # Calculate the floor for each player against the enemy team
+                floor_score = self.calculate_floor(child_id, siblings)
+                children_with_scores.append((child_id, floor_score))
             
             children_with_scores.sort(key=lambda x: x[1], reverse=True)
             sorted_child_ids = [child_id for child_id, score in children_with_scores]
@@ -131,6 +133,37 @@ class TreeGenerator:
             # Recursively sort the children of each child
             for child_id in sorted_child_ids:
                 self.sort_children(child_id)
+
+    def calculate_floor(self, node, siblings):
+        # Assuming fRatings is a class attribute or passed appropriately
+        fRatings = self.treeview.tree.item(node, 'values')[0]
+        oNames = [sibling for sibling in siblings]
+        floor_score = sum(int(fRatings) for opponent in oNames)
+        return floor_score
+    
+    # NEW SORT - PROPOSAL CONCEPT - closeness to 3.
+    # def sort_children(self, node):
+    #     child_ids = self.treeview.tree.get_children(node)
+    #     if child_ids:
+    #         children_with_scores = []
+    #         for child_id in child_ids:
+    #             value = int(self.treeview.tree.item(child_id, 'values')[0])
+    #             siblings = [int(self.treeview.tree.item(sibling_id, 'values')[0]) for sibling_id in child_ids if sibling_id != child_id]
+    #             # calculate_score should take into account the factors for wtc level pairings
+    #             score = self.calculate_score(value, siblings)
+    #             children_with_scores.append((child_id, score))
+            
+    #         children_with_scores.sort(key=lambda x: x[1], reverse=True)
+    #         sorted_child_ids = [child_id for child_id, score in children_with_scores]
+
+    #         for child_id in child_ids:
+    #             self.treeview.tree.detach(child_id)
+    #         for child_id in sorted_child_ids:
+    #             self.treeview.tree.move(child_id, node, 'end')
+
+    #         # Recursively sort the children of each child
+    #         for child_id in sorted_child_ids:
+    #             self.sort_children(child_id)
 
     def calculate_score(self, value, siblings):
         closeness_to_3 = sum(abs(sibling - 3) for sibling in siblings) / len(siblings) if siblings else 0

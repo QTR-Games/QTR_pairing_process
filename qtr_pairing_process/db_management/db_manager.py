@@ -1,4 +1,4 @@
-
+""" © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 import sqlite3
 from os.path import expanduser
 import os
