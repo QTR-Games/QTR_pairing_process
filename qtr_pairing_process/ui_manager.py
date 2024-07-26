@@ -7,6 +7,7 @@ import csv
 # installed libraries
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
+from urllib import error
 # repo libraries
 # from qtr_pairing_process import ui_db_funcs
 from qtr_pairing_process.db_management import db_manager
@@ -246,25 +247,62 @@ class UiManager:
             self.update_display_fields(0,1,"PINNED?")
             self.update_display_fields(0,2,"CAN-PIN?")
             self.update_display_fields(0,3,"PROTECT")
-            self.update_display_fields(0,4,"CIELING")
+            # self.update_display_fields(0,4,"FLOOR 2")
         except (ValueError, IndexError) as e:
             print(f"update_display_fields has failed with error:\n{e}")
 
     def on_scenario_calculations(self):
-        self.set_floor_values()
-        self.check_pinned_players()
+        self.set_floor_values() # info_col 0
+        self.check_pinned_players() # info_col 1
+        self.check_for_pins() # info_col 2
+        self.check_protect() # info_col 3
 
+    def check_protect(self): # Check each player to find if they have 2 or more ratings below 3.
+        for row in range(1,6):
+            try:
+                # Sum the ratings for the current row
+                row_pinned = self.grid_display_entries[row][1].get() != "---"
+                row_pinner = self.grid_display_entries[row][2].get() != "---"
+                
+                protect = "No" # Reset the counter at the start of each row.
+                if row_pinned or row_pinner:
+                    protect = "Yes"
+                
+                # Update the corresponding entry in the display-only grid
+                self.update_display_fields(row, 3, protect)
+
+            except (ValueError, IndexError) as e:
+                print(f"check_protect has failed with error:\n{e}")
+    
+    def check_for_pins(self): # Check each player to find if they have 2 or more ratings below 3.
+        for row in range(1,6):
+            try:
+                # Sum the ratings for the current row
+                can_pin = "---"
+                good_matchups = 0 # Reset the counter at the start of each row.
+                for col in range(1,6):
+                    if (int(self.grid_entries[row][col].get()) > 3): # Any rating above 3 is good!
+                        good_matchups += 1 # count up for each good matchup.
+                    if good_matchups > 1: # When you reach two good matchups, record a Yes and go to the next player.
+                        can_pin = "PIN"
+                        break
+                # Update the corresponding entry in the display-only grid
+                self.update_display_fields(row, 2, can_pin)
+
+            except (ValueError, IndexError) as e:
+                print(f"check_for_pins has failed with error:\n{e}")
+    
     def check_pinned_players(self): # Check each player to find if they have 2 or more ratings below 3.
         for row in range(1,6):
             try:
                 # Sum the ratings for the current row
-                player_pinned = False
+                player_pinned = "---"
                 num_bad_matchups = 0 # Reset the counter at the start of each row.
                 for col in range(1,6):
                     if (int(self.grid_entries[row][col].get()) < 3):
                         num_bad_matchups += 1 # count up for each bad matchup.
                     if num_bad_matchups > 1: # When you reach two matchups, record a Yes and go to the next row.
-                        player_pinned = True
+                        player_pinned = "PINNED!"
                         break
                 # Update the corresponding entry in the display-only grid
                 self.update_display_fields(row, 1, player_pinned)
@@ -347,8 +385,10 @@ class UiManager:
         if new_value != self.previous_value:
             # print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
             self.previous_value = new_value
-
-            self.update_ui()
+            try:
+                self.update_ui()
+            except (error) as e:
+                print(f"scenario_box_change error: {e}")
 
     def on_team_box_change(self, *args):
         # Get the new value
@@ -363,7 +403,10 @@ class UiManager:
             self.previous_team2 = new_team2_value
             perform_update = True
         if perform_update:
-            self.update_ui()
+            try:
+                self.update_ui()
+            except (error) as e:
+                print(f"team_box_change error: {e}")
             
     
 
@@ -542,13 +585,20 @@ class UiManager:
         self.db_manager.execute_sql(f"DELETE FROM teams WHERE team_id={team_id}")
 
         messagebox.showinfo("Success", f"Team '{team_name}' and all related records have been deleted successfully.")
-        self.set_team_dropdowns()
+        try:
+            self.set_team_dropdowns()
+            self.update_ui
+        except (ValueError, IndexError) as e:
+            print(f"delete_team caused an error trying to update the UI: {e}")
 
     def import_xlsx(self):
         xslx_load_ui  = XlsxLoadUi()
         file_path, file_name = xslx_load_ui.load_xslx_file()
         excel_importer = ExcelImporter(db_manager=self.db_manager, file_path=file_path, file_name=file_name)
-        excel_importer.execute()
+        try:
+            excel_importer.execute()
+        except (ValueError,IndexError) as e:
+            print(f"import_xlsx error: {e}")
 
     def export_csvs(self):
         print(f"Exporting Matchups to CSV")
