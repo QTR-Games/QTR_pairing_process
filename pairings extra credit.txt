@@ -108,3 +108,36 @@ Part 2.
 2. As above
 
 Just leaving notes as I keep thinking through this.
+
+#########################################################
+
+20240726
+
+double pins against???
+
+present steve and jake into brinebloods.
+how do we find that?
+hold them as long as possible!
+
+of non-pinnable players the one with the most bad matchups is to be dropped first. This should "override" the floor column.
+
+If all players are unpinned, and they do not have a pin themselves, drop them early.
+
+get rid of oranges as much as possible?
+
+"select lower floor?"
+"How many other pins can I free up?"
+If I drop a player, how many good matchups does that free up?
+take a bullet question
+
+If you have more than one pin available, 
+
+If Pinned column is empty, then floor doesn't matter.
+• in that case, you want to look for the 
+
+Rick should go first because he's not bad into the double brinebloods. Everyone else has at least 1 bad matchup into brinebloods.
+
+Prioritze dropping the player with the best matchups against the lowest columns combined
+
+SUM COLUMNS AND COMPARE TO FLOOR
+• try to recommend or highlight dropping the player with the highest margin
