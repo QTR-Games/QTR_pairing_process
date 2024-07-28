@@ -247,8 +247,8 @@ class UiManager:
             self.update_display_fields(0,1,"PINNED?")
             self.update_display_fields(0,2,"CAN-PIN?")
             self.update_display_fields(0,3,"PROTECT")
-            self.update_display_fields(0,4,"+MARGIN")
-            self.update_display_fields(0,5,"-MARGIN")
+            self.update_display_fields(0,4,"MAX/MIN")
+            self.update_display_fields(0,5,"SUM MARG")
         except (ValueError, IndexError) as e:
             print(f"update_display_fields has failed with error:\n{e}")
 
@@ -271,8 +271,10 @@ class UiManager:
                     all_margins.append(diff)
                 max_margin = max(all_margins)
                 min_margin = min(all_margins)
-                self.update_display_fields(row, 4, max_margin)
-                self.update_display_fields(row, 5, min_margin)
+                margin_text = f"{max_margin} | {min_margin}"
+                self.update_display_fields(row, 4, margin_text)
+                sum_margins = sum(all_margins)
+                self.update_display_fields(row, 5, sum_margins)
             except (ValueError, IndexError) as e:
                 print(f"check_margins has failed for row {row} with error:\n{e}")
 
