@@ -247,15 +247,73 @@ class UiManager:
             self.update_display_fields(0,1,"PINNED?")
             self.update_display_fields(0,2,"CAN-PIN?")
             self.update_display_fields(0,3,"PROTECT")
-            # self.update_display_fields(0,4,"FLOOR 2")
+            self.update_display_fields(0,4,"MARGIN")
         except (ValueError, IndexError) as e:
             print(f"update_display_fields has failed with error:\n{e}")
+
+    # def on_scenario_calculations(self):
+    #     self.run_analysis()
+
+    # def run_analysis(self):
+    #     for row in range(1, 6):
+    #         try:
+    #             ratings = [int(self.grid_entries[row][col].get()) for col in range(1, 6)]
+    #             floor_rating_sum = sum(ratings)
+
+    #             num_bad_matchups = sum(1 for rating in ratings if rating < 3)
+    #             good_matchups = sum(1 for rating in ratings if rating > 3)
+    #             even_matchups = sum(1 for rating in ratings if rating == 3)
+
+    #             # Determine if the player is pinned
+    #             player_pinned = "PINNED!" if num_bad_matchups > 1 else "---"
+
+    #             # Determine if the player can pin others
+    #             can_pin = "PIN" if good_matchups > 1 else "---"
+
+    #             # Check for protection
+    #             row_pinned = self.grid_display_entries[row][1].get() != "---"
+    #             row_pinner = self.grid_display_entries[row][2].get() != "---"
+    #             protect = "Yes" if row_pinned or row_pinner else "No"
+
+    #             # Check Margins
+    #             player_margin = self.check_margins(floor_rating_sum)
+
+    #             # Update the display-only grid
+    #             self.update_display_fields(row, 0, floor_rating_sum)
+    #             self.update_display_fields(row, 1, player_pinned)
+    #             self.update_display_fields(row, 2, can_pin)
+    #             self.update_display_fields(row, 3, protect)
+    #             self.update_display_fields(row, 4, player_margin)
+
+    #         except (ValueError, IndexError) as e:
+    #             print(f"run_analysis failed for row {row} with error:\n{e}")
+
+    
+
 
     def on_scenario_calculations(self):
         self.set_floor_values() # info_col 0
         self.check_pinned_players() # info_col 1
         self.check_for_pins() # info_col 2
         self.check_protect() # info_col 3
+        self.check_margins() # info_col 4
+
+    # pretty sure this operation isn't providing useful information???
+    def check_margins(self):
+        for row in range(1,6):
+            try:
+                floor_rating_sum = int(self.grid_display_entries[row][0].get())
+                player_margin = 0
+                all_margins = []
+                
+                for col in range(1, 6):
+                    col_margin_sum = sum([int(self.grid_entries[row1][col].get()) for row1 in range(1, 6)])
+                    diff = floor_rating_sum - col_margin_sum
+                    all_margins.append(diff)
+                max_margin = max(all_margins)
+                self.update_display_fields(row, 4, max_margin)
+            except (ValueError, IndexError) as e:
+                    print(f"check_margins failed for col {col} with error:\n{e}")
 
     def check_protect(self): # Check each player to find if they have 2 or more ratings below 3.
         for row in range(1,6):
@@ -270,6 +328,7 @@ class UiManager:
                 
                 # Update the corresponding entry in the display-only grid
                 self.update_display_fields(row, 3, protect)
+                
 
             except (ValueError, IndexError) as e:
                 print(f"check_protect has failed with error:\n{e}")
