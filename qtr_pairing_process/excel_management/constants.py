@@ -1,4 +1,4 @@
-
+""" © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 SHEET_NAMES = [
     "Teams",
     "0 - Neutral",

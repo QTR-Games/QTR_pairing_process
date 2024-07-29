@@ -52,3 +52,92 @@ Instead of coloring the entire row, we want to highlight only the specific combi
 a 2/5 is orange a 3/5 yell etc
 
 inverting or sorting descending or ascending after the matchups are generated
+
+
+From Justin Du
+
+logic
+
+1A. never give a pin (cede late not early) if possible
+a. holding a pinned player allows the opponent to make a mistake(s)
+b. if no mistake(s); odds of mistake()s increased in 2nd selection (less players to select from)
+
+1B. pin earlier when possible
+a. capitolizes on mistakes; locks in your floor
+
+2A. when able reserve pin (never give up advantage)
+a. allows for mistake(s)
+b. if no mistake(s); odds of mistake(s) increased in 2nd selection (less players to select from)
+
+2B. take even match ups
+
+program
+
+part 1 - first response
+1. identify player(s) with the highest floor; show combinations tree for said player(s)
+2. ability to identify differences (eg. if oranges are on different players)
+
+part 2 - second response
+1. identify player(s) with the highest floor; show combinations tree for said player(s)
+2. ability to identify differences (eg. if oranges are on different players)
+
+end state
+pre-tournament data will show
+1. a plan of attack to bring match up into an optimized state (highest percentage win)
+2. (with manipulation) easily compute/help with what match up values need to change to have
+better pairing paths (identifying which match ups matter where).
+3. have a general picture of expected drops (frequency of drops in X by A is the most common through path to good match ups)
+
+###########
+
+Notes in response
+
+What pattern can identify a situation that creates a pin within a tree?
+
+What's "holding a pinned player"?
+
+2B. Take even matchups: we want to push branches with a decision point of a 3 up to the top when possible.
+
+1.Identify player(s) with the highest floor?
+How? Is this the player with the highest numbers across the board?
+
+2. Identifying differences: Not sure what this means? 
+
+Part 2.
+1. Recursive from part1. Solved. 
+2. As above
+
+Just leaving notes as I keep thinking through this.
+
+#########################################################
+
+20240726
+
+double pins against???
+
+present steve and jake into brinebloods.
+how do we find that?
+hold them as long as possible!
+
+of non-pinnable players the one with the most bad matchups is to be dropped first. This should "override" the floor column.
+
+If all players are unpinned, and they do not have a pin themselves, drop them early.
+
+get rid of oranges as much as possible?
+
+"select lower floor?"
+"How many other pins can I free up?"
+If I drop a player, how many good matchups does that free up?
+take a bullet question
+
+If you have more than one pin available, 
+
+If Pinned column is empty, then floor doesn't matter.
+• in that case, you want to look for the 
+
+Rick should go first because he's not bad into the double brinebloods. Everyone else has at least 1 bad matchup into brinebloods.
+
+Prioritze dropping the player with the best matchups against the lowest columns combined
+
+SUM COLUMNS AND COMPARE TO FLOOR
+• try to recommend or highlight dropping the player with the highest margin

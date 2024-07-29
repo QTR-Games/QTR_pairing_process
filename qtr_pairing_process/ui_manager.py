@@ -1,12 +1,17 @@
 """ © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 # native libraries
+from multiprocessing import Value
 import os
 import csv
 
 # installed libraries
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
+from urllib import error
 # repo libraries
+# from qtr_pairing_process import ui_db_funcs
+from qtr_pairing_process.db_management import db_manager
+from qtr_pairing_process.ui_db_funcs import UIDBFuncs
 from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_RANGES, SCENARIO_TO_CSV_MAP
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.tree_generator import TreeGenerator
@@ -15,6 +20,7 @@ from qtr_pairing_process.xlsx_load_ui import XlsxLoadUi
 from qtr_pairing_process.db_management.db_manager import DbManager
 from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
 from qtr_pairing_process.excel_management.excel_importer import ExcelImporter
+
 
 class UiManager:
     def __init__(
@@ -28,6 +34,8 @@ class UiManager:
     ):
         self.grid_entries = None
         self.grid_widgets = None
+        self.grid_display_entries = None
+        self.grid_display_widgets = None
         self.print_output = print_output
         self.directory = directory
         self.color_map = color_map
@@ -35,6 +43,7 @@ class UiManager:
         self.scenario_ranges = scenario_ranges
         self.scenario_to_csv_map = scenario_to_csv_map
         self.treeview = None
+        self.is_sorted = False  # State variable to track if the tree is sorted
 
 
         self.select_database()
@@ -103,18 +112,23 @@ class UiManager:
         self.tree_tab_right_frame = tk.Frame(self.matchup_tree_frame)
         self.tree_tab_right_frame.pack(side=tk.LEFT, expand=1, fill=tk.BOTH)
 
+        self.buttons_frame = tk.Frame(self.tree_tab_left_frame)
+        self.buttons_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
+
         self.grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
         self.grid_widgets = [[None for _ in range(6)] for _ in range(6)]
+        self.grid_display_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
+        self.grid_display_widgets = [[None for _ in range(6)] for _ in range(6)]
 
         self.team_b = tk.IntVar()
-        # pairingLead = tk.Checkbutton(self.tree_tab_left_frame, text="Our team first", variable=self.team_b)
-        # pairingLead.pack(fill=tk.X, pady=5)
-        # pairingLead.select()
+        pairingLead = tk.Checkbutton(self.buttons_frame, text="Our team first", variable=self.team_b)
+        pairingLead.pack(side=tk.BOTTOM,pady=5)
+        pairingLead.select()
 
         self.sort_alpha = tk.IntVar()
-        # alphaBox = tk.Checkbutton(self.tree_tab_left_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
-        # alphaBox.pack(fill=tk.X, pady=5)
-        # alphaBox.select()
+        alphaBox = tk.Checkbutton(self.buttons_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
+        alphaBox.pack(side=tk.BOTTOM,pady=5)
+        alphaBox.select()
 
         # create treeview and tree generator
         self.treeview = LazyTreeView(master=self.tree_tab_right_frame, print_output=self.print_output, columns=("Rating"))
@@ -128,17 +142,31 @@ class UiManager:
                 self.grid_widgets[r][c] = entry
                 self.grid_entries[r][c].trace_add('write', lambda name, index, mode, var=self.grid_entries[r][c], row=r, col=c: self.update_color_on_change(var, index, mode, row, col))
 
-		# create combobox for file selection
-        # create the label
+                display_entry = tk.Entry(self.right_frame, textvariable=self.grid_display_entries[r][c], width=10, state='readonly')
+                display_entry.grid(row=r+2, column=c, padx=5, pady=5)
+                self.grid_display_widgets[r][c] = display_entry
+
         tk.Label(self.drop_down_frame, text='Select Team 1:').pack(side=tk.LEFT, padx=5, pady=5)
+        # Use a StringVar to hold the value of the Combobox
+        self.team1_var = tk.StringVar()
         # create combobox
-        self.combobox_1 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
+        self.combobox_1 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20, textvariable=self.team1_var)
         self.combobox_1.pack(side=tk.LEFT, padx=5, pady=5)
+        # Set an instance variable to keep track of the previous value
+        self.previous_team1 = self.team1_var.get()
+        # Attach a trace to the StringVar
+        self.team1_var.trace_add('write', self.on_team_box_change)
 		
         tk.Label(self.drop_down_frame, text='Select Team 2:').pack(side=tk.LEFT, padx=5, pady=5)
+        # Use a StringVar to hold the value of the Combobox
+        self.team2_var = tk.StringVar()
         # create combobox
-        self.combobox_2 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20)
+        self.combobox_2 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20, textvariable=self.team2_var)
         self.combobox_2.pack(side=tk.LEFT, padx=5, pady=5)
+        # Set an instance variable to keep track of the previous value
+        self.previous_team2 = self.team2_var.get()
+        # Attach a trace to the StringVar
+        self.team2_var.trace_add('write', self.on_team_box_change)
 
         # create combobox for scenario selection
         # create the label
@@ -162,9 +190,10 @@ class UiManager:
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
 		# tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.on_delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="REFRESH", command=lambda: self.update_ui()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Import XSLX", command=lambda: self.import_xlsx()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="GET SCORE", command=lambda: self.on_scenario_calculations()).pack(side=tk.LEFT, padx=5, pady=5)
 
 		# Configure Treeview with style and maximize space
         style = ttk.Style()
@@ -178,45 +207,125 @@ class UiManager:
         self.treeview.tree.tag_configure('5', background="lime")
         self.treeview.pack(expand=1, fill='both')
 		
-        # Configure the bottom_frame for Matchup Tree tab
-        buttons_frame = tk.Frame(self.tree_tab_left_frame)
-        buttons_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
-
-        generateButton = tk.Button(buttons_frame, text="Generate\nCombinations", command=self.on_generate_combinations)
+        generateButton = tk.Button(self.buttons_frame, text="Generate\nCombinations", command=self.on_generate_combinations)
         generateButton.pack(fill=tk.X, pady=5)
 
-        math_button_0 = tk.Button(buttons_frame, text="Maximize\nMatchup Strength!", command=self.traverse_and_sum_values_0)
+        math_button_0 = tk.Button(self.buttons_frame, text="Maximize\nMatchup Strength!", command=self.traverse_and_sum_values_0)
         math_button_0.pack(fill=tk.X, pady=5)
 
-        math_button_1 = tk.Button(buttons_frame, text="Sum\nMatchup Strength!", command=self.traverse_and_sum_values_1)
+        math_button_1 = tk.Button(self.buttons_frame, text="Sum\nMatchup Strength!", command=self.traverse_and_sum_values_1)
         math_button_1.pack(fill=tk.X, pady=5)
 
-        optimize_button = tk.Button(buttons_frame, text="Optimize!", command=self.optimize_matchups)
-        optimize_button.pack(fill=tk.X, pady=5)
+        math_button_3 = tk.Button(self.buttons_frame, text="MEAN\nMatchup Strength!", command=self.traverse_and_sum_values_3)
+        math_button_3.pack(fill=tk.X, pady=5)
 
-        # self.team_b = tk.IntVar()
-        pairingLead = tk.Checkbutton(buttons_frame, text="Our team first", variable=self.team_b)
-        pairingLead.pack(side=tk.BOTTOM,pady=5)
-        pairingLead.select()
+        math_button_1 = tk.Button(self.buttons_frame, text="Avoid Poor Matchups!", command=self.traverse_and_sum_values_2)
+        math_button_1.pack(fill=tk.X, pady=5)
 
-        # self.sort_alpha = tk.IntVar()
-        alphaBox = tk.Checkbutton(buttons_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
-        alphaBox.pack(pady=5)
-        alphaBox.select()
+        self.sort_tree_button = tk.Button(self.buttons_frame, text="Sort Matchups!", command=self.toggle_sorting)
+        self.sort_tree_button.pack(fill=tk.X, pady=5)
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
-        self.create_tooltip(self.treeview, "Generated combinations will be displayed here")
+        self.create_tooltip(self.treeview, "Generated combinations will be displayed here\nNavigate the tree with arrow keys!")
 
         self.update_combobox_colors()
+        self.init_display_headers()
 
         self.root.mainloop()
+
+    # Add this method to update display-only fields
+    def update_display_fields(self, row, col, value):
+        try:
+            self.grid_display_entries[row][col].set(value)
+        except (ValueError, IndexError) as e:
+            print(f"update_display_fields has failed with error:\n{e}")
+
+    def init_display_headers(self):
+        try:
+            self.update_display_fields(0,0,"FLOOR")
+            self.update_display_fields(0,1,"PINNED?")
+            self.update_display_fields(0,2,"CAN-PIN?")
+            self.update_display_fields(0,3,"PROTECT")
+            self.update_display_fields(0,4,"MAX/MIN")
+            self.update_display_fields(0,5,"SUM MARG")
+        except (ValueError, IndexError) as e:
+            print(f"update_display_fields has failed with error:\n{e}")
+
+    def on_scenario_calculations(self):
+        self.set_floor_values() # info_col 0
+        self.check_pinned_players() # info_col 1
+        self.check_for_pins() # info_col 2
+        self.check_protect() # info_col 3
+        self.check_margins() # info_col 4 & 5
+
+    # Not sure if this data is actually useful to players?
+    def check_margins(self):
+        for row in range(1, 6):
+            try:
+                floor_rating_sum = int(self.grid_display_entries[row][0].get())
+                all_margins = []
+                for col in range(1, 6):
+                    col_margin_sum = sum(int(self.grid_entries[row1][col].get()) for row1 in range(1, 6))
+                    diff = floor_rating_sum - col_margin_sum
+                    all_margins.append(diff)
+                max_margin = max(all_margins)
+                min_margin = min(all_margins)
+                margin_text = f"{max_margin} | {min_margin}"
+                self.update_display_fields(row, 4, margin_text)
+                sum_margins = sum(all_margins)
+                self.update_display_fields(row, 5, sum_margins)
+            except (ValueError, IndexError) as e:
+                print(f"check_margins has failed for row {row} with error:\n{e}")
+
+    def check_protect(self):
+        for row in range(1, 6):
+            try:
+                # Sum the ratings for the current row
+                row_pinned = self.grid_display_entries[row][1].get() != "---"
+                row_pinner = self.grid_display_entries[row][2].get() != "---"
+                protect = "Yes" if row_pinned or row_pinner else "No"
+                self.update_display_fields(row, 3, protect)
+            except (ValueError, IndexError) as e:
+                print(f"check_protect has failed for row {row} with error:\n{e}")
+        
+    def check_for_pins(self):
+        for row in range(1, 6):
+            try:
+                good_matchups = sum(1 for col in range(1, 6) if int(self.grid_entries[row][col].get()) > 3)
+                can_pin = "PIN" if good_matchups > 1 else "---"
+                self.update_display_fields(row, 2, can_pin)
+            except (ValueError, IndexError) as e:
+                print(f"check_for_pins has failed for row {row} with error:\n{e}")
+        
+    def check_pinned_players(self):
+        for row in range(1, 6):
+            try:
+                num_bad_matchups = sum(1 for col in range(1, 6) if int(self.grid_entries[row][col].get()) < 3)
+                player_pinned = "PINNED!" if num_bad_matchups > 1 else "---"
+                self.update_display_fields(row, 1, player_pinned)
+            except (ValueError, IndexError) as e:
+                print(f"check_pinned_players has failed for row {row} with error:\n{e}")
+
+    def set_floor_values(self): # Calculate the sum of ratings for each player and update the second grid
+        for row in range(1,6):
+            try:
+                # Sum the ratings for the current row
+                floor_rating_sum = sum(int(self.grid_entries[row][col].get()) for col in range(1,6))
+                # Update the corresponding entry in the display-only grid
+                self.update_display_fields(row, 0, floor_rating_sum)
+            except (ValueError, IndexError) as e:
+                print(f"set_floor_values has failed with error:\n{e}")
 
     def switch_tab(self):
         current_tab = self.notebook.index(self.notebook.select())
         total_tabs = self.notebook.index('end')
         next_tab = (current_tab + 1) % total_tabs
         self.notebook.select(next_tab)
+
+    def on_delete_team(self):
+        self.delete_team()
+        self.update_ui()
     
     def on_generate_combinations(self):
         fNames, oNames = self.prep_names()
@@ -235,12 +344,25 @@ class UiManager:
 
     def traverse_and_sum_values_1(self):
         self.tree_generator.traverse_and_sum_values(1)
-                   
-    def traverse_and_sum_values(self):
-        self.tree_generator.traverse_and_sum_values()
 
-    def optimize_matchups(self):
-        self.tree_generator.optimize_matchups()
+    def traverse_and_sum_values_2(self):
+        self.tree_generator.traverse_and_sum_values(2)
+                   
+    def traverse_and_sum_values_3(self):
+        self.tree_generator.traverse_and_sum_values(3)
+
+    def sort_matchup_tree(self):
+        self.tree_generator.sort_matchup_value()
+
+    def toggle_sorting(self):
+        if self.is_sorted:
+            self.tree_generator.unsort_matchup_tree()
+            self.sort_tree_button.config(text="Sort Matchups!")
+        else:
+            self.tree_generator.sort_matchup_value()
+            self.sort_tree_button.config(text="Remove Sorting")
+        
+        self.is_sorted = not self.is_sorted  # Toggle the state
 
     def update_scenario_box(self):
         scenarios = []
@@ -259,9 +381,31 @@ class UiManager:
         if new_value != self.previous_value:
             # print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
             self.previous_value = new_value
+            try:
+                self.update_ui()
+            except (error) as e:
+                print(f"scenario_box_change error: {e}")
 
-            self.update_ui()
+    def on_team_box_change(self, *args):
+        # Get the new value
+        new_team1_value = self.team1_var.get()
+        new_team2_value = self.team2_var.get()
+        perform_update = False
+        # Compare with the previous value
+        if new_team1_value != self.previous_team1:
+            self.previous_team1 = new_team1_value
+            perform_update = True
+        if new_team2_value != self.previous_team2:
+            self.previous_team2 = new_team2_value
+            perform_update = True
+        if perform_update:
+            try:
+                self.update_ui()
+            except (error) as e:
+                print(f"team_box_change error: {e}")
             
+    
+
     ####################
     # DB Fill/Save Funcs
     ####################
@@ -270,6 +414,7 @@ class UiManager:
         # Update the team dropdowns and grid values
         self.set_team_dropdowns()
         self.load_grid_data_from_db()
+        # print(self.extract_ratings())
 
     def select_team_names(self):
         # Using this for testing.
@@ -303,8 +448,8 @@ class UiManager:
         team_2_id = team_2_row[0][0]
 
         # Do not assume that the lower team value is the home team
-        if team_1_id > team_2_id:
-            team_1_id, team_2_id = team_2_id, team_1_id
+        # if team_1_id > team_2_id:
+        #     team_1_id, team_2_id = team_2_id, team_1_id
 
         player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
         team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
@@ -364,8 +509,8 @@ class UiManager:
         team_2_id = team_2_row[0][0]
 
         # Do not assume that the lower team value is the home team
-        if team_1_id > team_2_id:
-            team_1_id, team_2_id = team_2_id, team_1_id
+        # if team_1_id > team_2_id:
+        #     team_1_id, team_2_id = team_2_id, team_1_id
 
         player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
         team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
@@ -436,13 +581,20 @@ class UiManager:
         self.db_manager.execute_sql(f"DELETE FROM teams WHERE team_id={team_id}")
 
         messagebox.showinfo("Success", f"Team '{team_name}' and all related records have been deleted successfully.")
-        self.set_team_dropdowns()
+        try:
+            self.set_team_dropdowns()
+            self.update_ui
+        except (ValueError, IndexError) as e:
+            print(f"delete_team caused an error trying to update the UI: {e}")
 
     def import_xlsx(self):
         xslx_load_ui  = XlsxLoadUi()
         file_path, file_name = xslx_load_ui.load_xslx_file()
         excel_importer = ExcelImporter(db_manager=self.db_manager, file_path=file_path, file_name=file_name)
-        excel_importer.execute()
+        try:
+            excel_importer.execute()
+        except (ValueError,IndexError) as e:
+            print(f"import_xlsx error: {e}")
 
     def export_csvs(self):
         print(f"Exporting Matchups to CSV")
@@ -643,12 +795,12 @@ class UiManager:
             oNames_sorted = oNames
         return fNames_sorted, oNames_sorted
     
-    def get_row_range(self):
-        current_scenario = self.get_scenario_num()
-        row_lo, row_hi = self.scenario_ranges.get(current_scenario, (1, 6))  # Default to (1, 6) if scenario is not found
-        if current_scenario < 1:
-            print("Scenario Agnostic Pairing...")
-        return row_lo, row_hi
+    # def get_row_range(self):
+    #     current_scenario = self.get_scenario_num()
+    #     row_lo, row_hi = self.scenario_ranges.get(current_scenario, (1, 6))  # Default to (1, 6) if scenario is not found
+    #     if current_scenario < 1:
+    #         print("Scenario Agnostic Pairing...")
+    #     return row_lo, row_hi
 
     def get_scenario_num(self):
         num_string = self.scenario_box.get()[:1]
@@ -658,7 +810,6 @@ class UiManager:
             if self.print_output: print(type(num))
         return num
 
-
     def validate_grid_data(self):
         for row in range(1, 6):
             for col in range(1, 6):
@@ -667,8 +818,6 @@ class UiManager:
                     messagebox.showerror("Error", f"Invalid rating at row {row+1}, column {col+1}. Ratings should be between 1 and 5.")
                     return False
         return True
-
-
 
     def create_tooltip(self, widget, text):
         tooltip = tk.Toplevel(widget)

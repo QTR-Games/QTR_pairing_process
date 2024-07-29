@@ -1,3 +1,4 @@
+""" © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 from setuptools import setup  # type: ignore
 
 setup(
