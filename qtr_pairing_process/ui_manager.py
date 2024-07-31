@@ -1,25 +1,21 @@
 """ © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 # native libraries
-from multiprocessing import Value
 import os
-import csv
 
 # installed libraries
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, simpledialog
-from urllib import error
+from tkinter import ttk, messagebox
+
 # repo libraries
-# from qtr_pairing_process import ui_db_funcs
-from qtr_pairing_process.db_management import db_manager
+from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
+from qtr_pairing_process.excel_management.excel_importer import ExcelImporter
 from qtr_pairing_process.ui_db_funcs import UIDBFuncs
-from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_RANGES, SCENARIO_TO_CSV_MAP
+from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.tree_generator import TreeGenerator
 from qtr_pairing_process.db_load_ui import DbLoadUi
-from qtr_pairing_process.xlsx_load_ui import XlsxLoadUi
 from qtr_pairing_process.db_management.db_manager import DbManager
-from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
-from qtr_pairing_process.excel_management.excel_importer import ExcelImporter
+from qtr_pairing_process.xlsx_load_ui import XlsxLoadUi
 
 
 class UiManager:
@@ -30,7 +26,9 @@ class UiManager:
         directory,
         scenario_ranges,
         scenario_to_csv_map,
-        print_output=False
+        print_output=False,
+        import_csv_header_and_ratings=False,
+        select_team_names=False
     ):
         self.grid_entries = None
         self.grid_widgets = None
@@ -44,7 +42,6 @@ class UiManager:
         self.scenario_to_csv_map = scenario_to_csv_map
         self.treeview = None
         self.is_sorted = False  # State variable to track if the tree is sorted
-
 
         self.select_database()
         self.initialize_ui_vars()
@@ -185,12 +182,12 @@ class UiManager:
         self.update_scenario_box()
 
         # Add Buttons to a row just above the pairing grid       
-        tk.Button(self.button_row_frame, text="Export CSV", command=lambda: self.export_csvs()).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(self.button_row_frame, text="Export CSV", command=lambda: self.on_export_csvs()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_data_from_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
-        tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
-		# tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.on_delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.on_import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.on_add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
+        tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="REFRESH", command=lambda: self.update_ui()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Import XSLX", command=lambda: self.import_xlsx()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="GET SCORE", command=lambda: self.on_scenario_calculations()).pack(side=tk.LEFT, padx=5, pady=5)
@@ -251,6 +248,15 @@ class UiManager:
             self.update_display_fields(0,5,"SUM MARG")
         except (ValueError, IndexError) as e:
             print(f"update_display_fields has failed with error:\n{e}")
+
+    def on_add_team_to_db(self):
+        UIDBFuncs.add_team_to_db(self)
+
+    def on_export_csvs(self):
+        UIDBFuncs.export_csvs(self)
+
+    def on_import_csvs(self):
+        UIDBFuncs.import_csvs(self)
 
     def on_scenario_calculations(self):
         self.set_floor_values() # info_col 0
@@ -323,10 +329,6 @@ class UiManager:
         next_tab = (current_tab + 1) % total_tabs
         self.notebook.select(next_tab)
 
-    def on_delete_team(self):
-        self.delete_team()
-        self.update_ui()
-    
     def on_generate_combinations(self):
         fNames, oNames = self.prep_names()
         fRatings, oRatings = self.prep_ratings(fNames,oNames)
@@ -383,7 +385,7 @@ class UiManager:
             self.previous_value = new_value
             try:
                 self.update_ui()
-            except (error) as e:
+            except (ValueError,IndexError) as e:
                 print(f"scenario_box_change error: {e}")
 
     def on_team_box_change(self, *args):
@@ -401,7 +403,7 @@ class UiManager:
         if perform_update:
             try:
                 self.update_ui()
-            except (error) as e:
+            except (ValueError,IndexError) as e:
                 print(f"team_box_change error: {e}")
             
     
@@ -416,18 +418,18 @@ class UiManager:
         self.load_grid_data_from_db()
         # print(self.extract_ratings())
 
-    def select_team_names(self):
-        # Using this for testing.
-        # Possibly remove this later.
-        sql = 'select team_name from teams'
-        teams = self.db_manager.query_sql(sql)
-        team_names = [t[0] for t in teams]
-        if not team_names:
-            team_names = ['No teams Found']
-        return team_names
+    # def select_team_names(self):
+    #     # Using this for testing.
+    #     # Possibly remove this later.
+    #     sql = 'select team_name from teams'
+    #     teams = self.db_manager.query_sql(sql)
+    #     team_names = [t[0] for t in teams]
+    #     if not team_names:
+    #         team_names = ['No teams Found']
+    #     return team_names
 
     def set_team_dropdowns(self):
-        team_names = self.select_team_names()
+        team_names = UIDBFuncs.select_team_names(self)
         self.combobox_1['values'] = team_names
         self.combobox_2['values'] = team_names
 
@@ -536,23 +538,23 @@ class UiManager:
                 except (ValueError, IndexError):
                     return 0 
 
-    def add_team_to_db(self):
-        # Create a popup window to enter the team name
-        popup = tk.Tk()
-        popup.withdraw()  # Hide the main window
+    # def add_team_to_db(self):
+    #     # Create a popup window to enter the team name
+    #     popup = tk.Tk()
+    #     popup.withdraw()  # Hide the main window
         
-        team_name = simpledialog.askstring("Input", "Enter the team name:", parent=popup)
-        if team_name:
-            self.db_manager.create_team(team_name)
-        popup.destroy()
-        self.update_ui()
+    #     team_name = simpledialog.askstring("Input", "Enter the team name:", parent=popup)
+    #     if team_name:
+    #         self.db_manager.create_team(team_name)
+    #     popup.destroy()
+    #     self.update_ui()
 
     def delete_team(self):
         popup = tk.Tk()
         popup.withdraw()  # Hide the main window
 
         # Fetch existing team names
-        team_names = self.select_team_names()
+        team_names = UIDBFuncs.select_team_names(self)
 
         # Create and display the delete team dialog
         dialog = DeleteTeamDialog(popup, team_names)
@@ -596,164 +598,164 @@ class UiManager:
         except (ValueError,IndexError) as e:
             print(f"import_xlsx error: {e}")
 
-    def export_csvs(self):
-        print(f"Exporting Matchups to CSV")
+    # def export_csvs(self):
+    #     print(f"Exporting Matchups to CSV")
 
-        # Prompt the user to select a file location to save the CSV
-        file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-        if not file_path:
-            return
+    #     # Prompt the user to select a file location to save the CSV
+    #     file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+    #     if not file_path:
+    #         return
 
-        # Retrieve data from the database
-        team1_name, team1_players = self.retrieve_team_data(self.combobox_1.get())
-        team2_name, team2_players = self.retrieve_team_data(self.combobox_2.get())
-        ratings = self.retrieve_ratings(team1_players, team2_players)
+    #     # Retrieve data from the database
+    #     team1_name, team1_players = self.retrieve_team_data(self.combobox_1.get())
+    #     team2_name, team2_players = self.retrieve_team_data(self.combobox_2.get())
+    #     ratings = self.retrieve_ratings(team1_players, team2_players)
 
-        # Write data to CSV
-        with open(file_path, mode='w', newline='') as csvfile:
-            writer = csv.writer(csvfile)
+    #     # Write data to CSV
+    #     with open(file_path, mode='w', newline='') as csvfile:
+    #         writer = csv.writer(csvfile)
 
-            # Write headers
-            writer.writerow([team1_name] + team1_players)
-            writer.writerow([team2_name] + team2_players)
+    #         # Write headers
+    #         writer.writerow([team1_name] + team1_players)
+    #         writer.writerow([team2_name] + team2_players)
 
-            # Write ratings
-            for scenario_id, rating_data in ratings.items():
-                writer.writerow([scenario_id] + team2_players)
-                for player, player_ratings in rating_data.items():
-                    writer.writerow([player] + player_ratings)
+    #         # Write ratings
+    #         for scenario_id, rating_data in ratings.items():
+    #             writer.writerow([scenario_id] + team2_players)
+    #             for player, player_ratings in rating_data.items():
+    #                 writer.writerow([player] + player_ratings)
 
-    def retrieve_team_data(self, team_name):
-        team_id = self.db_manager.query_team_id(team_name)
-        players = self.db_manager.query_sql(f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id")
-        player_names = [player[0] for player in players]
-        return team_name, player_names
+    # def retrieve_team_data(self, team_name):
+    #     team_id = self.db_manager.query_team_id(team_name)
+    #     players = self.db_manager.query_sql(f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id")
+    #     player_names = [player[0] for player in players]
+    #     return team_name, player_names
 
-    def retrieve_ratings(self, team1_players, team2_players):
-        ratings = {}
-        scenario_id = []        
-        for scenario in range(0,6):
+    # def retrieve_ratings(self, team1_players, team2_players):
+    #     ratings = {}
+    #     scenario_id = []        
+    #     for scenario in range(0,6):
             
-            scenario_id = scenario
-            ratings[scenario_id] = {}
-            for player1 in team1_players:
-                player1_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player1}'")[0][0]
-                # print(f"player1 - {player1_id}: {player1}")
-                player_ratings = []
-                for player2 in team2_players:
-                    player2_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player2}'")[0][0]
-                    rating = self.db_manager.query_sql(f"""
-                        SELECT rating FROM ratings
-                        WHERE team_1_player_id = {player1_id} AND team_2_player_id = {player2_id} AND scenario_id = {scenario_id}
-                    """)
-                    player_ratings.append(rating[0][0] if rating else 0)  # Default to 0 if no rating found
-                ratings[scenario_id][player1] = player_ratings
+    #         scenario_id = scenario
+    #         ratings[scenario_id] = {}
+    #         for player1 in team1_players:
+    #             player1_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player1}'")[0][0]
+    #             # print(f"player1 - {player1_id}: {player1}")
+    #             player_ratings = []
+    #             for player2 in team2_players:
+    #                 player2_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player2}'")[0][0]
+    #                 rating = self.db_manager.query_sql(f"""
+    #                     SELECT rating FROM ratings
+    #                     WHERE team_1_player_id = {player1_id} AND team_2_player_id = {player2_id} AND scenario_id = {scenario_id}
+    #                 """)
+    #                 player_ratings.append(rating[0][0] if rating else 0)  # Default to 0 if no rating found
+    #             ratings[scenario_id][player1] = player_ratings
 
-        return ratings
+    #     return ratings
 
 
     
-    def import_csvs(self):
-        file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-        with open(file_path, newline='') as csvfile:
-            reader = csv.reader(csvfile)
-            lines = list(reader)
+    # def import_csvs(self):
+    #     file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+    #     with open(file_path, newline='') as csvfile:
+    #         reader = csv.reader(csvfile)
+    #         lines = list(reader)
 
-        self.import_csv_header_and_ratings(lines)
-        # self.import_csv_ratings(lines)
-        self.update_ui()
+    #     self.import_csv_header_and_ratings(lines)
+    #     # self.import_csv_ratings(lines)
+    #     self.update_ui()
 
-    def import_csv_header_and_ratings(self, lines):
-        # Only take the first two lines from the file.
-        # CSV import should be exactly 44 lines if done correctly.
-        # Let's allow it to be short, in case we don't want to import all 6 scenarios
-        # print(f"file length={len(lines)}")
-        if len(lines) < 44:
-            raise ValueError("Insufficient number of lines")
+    # def import_csv_header_and_ratings(self, lines):
+    #     # Only take the first two lines from the file.
+    #     # CSV import should be exactly 44 lines if done correctly.
+    #     # Let's allow it to be short, in case we don't want to import all 6 scenarios
+    #     # print(f"file length={len(lines)}")
+    #     if len(lines) < 44:
+    #         raise ValueError("Insufficient number of lines")
 
-        team_lines = lines[:2]
-        rating_section = lines[2:]
+    #     team_lines = lines[:2]
+    #     rating_section = lines[2:]
 
-        team_names = []
-        team_name_1 = ""
-        team_name_2 = ""
-        player_names = []
-        team_players_1 = []
-        team_players_2 = []
+    #     team_names = []
+    #     team_name_1 = ""
+    #     team_name_2 = ""
+    #     player_names = []
+    #     team_players_1 = []
+    #     team_players_2 = []
 
-        team_2_players_ids = {}
+    #     team_2_players_ids = {}
 
-        for index, line in enumerate(team_lines):
-            team_names.append(line[0])
-            player_names.append(line[1:])
+    #     for index, line in enumerate(team_lines):
+    #         team_names.append(line[0])
+    #         player_names.append(line[1:])
 
-            # Try to upsert this team and the players.
-            try:
-                team_id = self.db_manager.upsert_team(line[0])
-                players = self.db_manager.upsert_and_validate_players(team_id, player_names[index])
-            except ValueError as e:
-                print(f"import_csv_header_and_ratings ERROR - {e}")
+    #         # Try to upsert this team and the players.
+    #         try:
+    #             team_id = self.db_manager.upsert_team(line[0])
+    #             players = self.db_manager.upsert_and_validate_players(team_id, player_names[index])
+    #         except ValueError as e:
+    #             print(f"import_csv_header_and_ratings ERROR - {e}")
 
-            # Set combobox values based on the index
-            if index == 0:
-                team_name_1 = team_names[index]
-                self.combobox_1.set(team_name_1)
-                team_id_1 = team_id
-                team_players_1 = player_names[index]
-            elif index == 1:
-                team_name_2 = team_names[index]
-                self.combobox_2.set(team_name_2)
-                team_id_2 = team_id
-                team_players_2 = player_names[index]
+    #         # Set combobox values based on the index
+    #         if index == 0:
+    #             team_name_1 = team_names[index]
+    #             self.combobox_1.set(team_name_1)
+    #             team_id_1 = team_id
+    #             team_players_1 = player_names[index]
+    #         elif index == 1:
+    #             team_name_2 = team_names[index]
+    #             self.combobox_2.set(team_name_2)
+    #             team_id_2 = team_id
+    #             team_players_2 = player_names[index]
 
-        for line in rating_section:
-            # if this line DOES NOT CONTAIN a friendly player followed by ratings
-            # this line must contain scenario number followed by enemy player names
-            rating_line = all(item.isdigit() for item in line[1:])
-            if not rating_line:
-                scenario_id = int(line[0])
+    #     for line in rating_section:
+    #         # if this line DOES NOT CONTAIN a friendly player followed by ratings
+    #         # this line must contain scenario number followed by enemy player names
+    #         rating_line = all(item.isdigit() for item in line[1:])
+    #         if not rating_line:
+    #             scenario_id = int(line[0])
 
-                # Retrieve player_ids for team_1
-                team_1_players_ids = {
-                    player_name: player_id
-                    for player_name, player_id in self.db_manager.query_sql(
-                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_players_1)}) and team_id={team_id_1} ORDER BY player_id"
-                    )
-                }
+    #             # Retrieve player_ids for team_1
+    #             team_1_players_ids = {
+    #                 player_name: player_id
+    #                 for player_name, player_id in self.db_manager.query_sql(
+    #                     f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_players_1)}) and team_id={team_id_1} ORDER BY player_id"
+    #                 )
+    #             }
 
-                # Retrieve player_ids for team_2
-                team_2_players_ids = {
-                    player_name: player_id
-                    for player_name, player_id in self.db_manager.query_sql(
-                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_players_2)}) and team_id={team_id_2} ORDER BY player_id"
-                    )
-                }
+    #             # Retrieve player_ids for team_2
+    #             team_2_players_ids = {
+    #                 player_name: player_id
+    #                 for player_name, player_id in self.db_manager.query_sql(
+    #                     f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_players_2)}) and team_id={team_id_2} ORDER BY player_id"
+    #                 )
+    #             }
 
-            elif len(line) > 1 and not line[0].isdigit():
-                # if this line DOES contain a friendly player followed by ratings
-                # this line must contain ratings to upsert
+    #         elif len(line) > 1 and not line[0].isdigit():
+    #             # if this line DOES contain a friendly player followed by ratings
+    #             # this line must contain ratings to upsert
 
-                if team_2_players_ids:
-                    player_1 = line[0]
-                    ratings = list(map(int, line[1:]))
-                    # Retrieve player_id and team_id for friendly team (team_1)
-                    result = self.db_manager.query_sql(f"SELECT player_id, team_id FROM players WHERE player_name='{player_1}' and team_id={team_id_1}")
-                    # if results are retrieved then we can continue.
-                    try: 
-                        if result:
-                            player_id_1, team_id_1 = result[0]
-                        else:
-                            raise ValueError(f'{player_1}')
-                    except (ValueError) as e:
-                        print(f"VALUE ERROR ON IMPORT: {e}\nThis name doesn't match any friendly player. Check the import file for mistakes based on this name: {e}")
+    #             if team_2_players_ids:
+    #                 player_1 = line[0]
+    #                 ratings = list(map(int, line[1:]))
+    #                 # Retrieve player_id and team_id for friendly team (team_1)
+    #                 result = self.db_manager.query_sql(f"SELECT player_id, team_id FROM players WHERE player_name='{player_1}' and team_id={team_id_1}")
+    #                 # if results are retrieved then we can continue.
+    #                 try: 
+    #                     if result:
+    #                         player_id_1, team_id_1 = result[0]
+    #                     else:
+    #                         raise ValueError(f'{player_1}')
+    #                 except (ValueError) as e:
+    #                     print(f"VALUE ERROR ON IMPORT: {e}\nThis name doesn't match any friendly player. Check the import file for mistakes based on this name: {e}")
 
-                    for i, rating in enumerate(ratings):
-                        try:
-                            player_name_2 = list(team_2_players_ids.keys())[i]
-                            player_id_2 = team_2_players_ids[player_name_2]
-                            self.db_manager.upsert_rating(player_id_1, player_id_2, team_id_1, team_id_2, scenario_id, rating)
-                        except (ValueError, IndexError) as e:
-                            print(f"import_csv_header_and_ratings ERROR - {e}")
+    #                 for i, rating in enumerate(ratings):
+    #                     try:
+    #                         player_name_2 = list(team_2_players_ids.keys())[i]
+    #                         player_id_2 = team_2_players_ids[player_name_2]
+    #                         self.db_manager.upsert_rating(player_id_1, player_id_2, team_id_1, team_id_2, scenario_id, rating)
+    #                     except (ValueError, IndexError) as e:
+    #                         print(f"import_csv_header_and_ratings ERROR - {e}")
 
     #############################################
 
