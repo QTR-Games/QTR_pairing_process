@@ -320,20 +320,23 @@ class UiManager:
             print(f"update_display_fields has failed with error:\n{e}")
 
     def on_scenario_calculations(self):
-        self.set_floor_values() # info_col 0
-        self.check_pinned_players() # info_col 1
-        self.check_for_pins() # info_col 2
-        self.check_protect() # info_col 3
-        self.check_margins() # info_col 4 & 5
+        self.set_floor_values()  # info_col 0
+        self.check_pinned_players()  # info_col 1
+        self.check_for_pins()  # info_col 2
+        self.check_protect()  # info_col 3
+        self.check_margins()  # info_col 4 & 5
 
-    # Not sure if this data is actually useful to players?
     def check_margins(self):
         for row in range(1, 6):
             try:
                 floor_rating_sum = int(self.grid_display_entries[row][0].get())
                 all_margins = []
                 for col in range(1, 6):
-                    col_margin_sum = sum(int(self.grid_entries[row1][col].get()) for row1 in range(1, 6))
+                    col_margin_sum = sum(
+                        int(self.grid_entries[row1][col].get())
+                        for row1 in range(1, 6)
+                        if self.grid_widgets[row1][col].cget('state') != 'disabled'
+                    )
                     diff = floor_rating_sum - col_margin_sum
                     all_margins.append(diff)
                 max_margin = max(all_margins)
@@ -348,38 +351,47 @@ class UiManager:
     def check_protect(self):
         for row in range(1, 6):
             try:
-                # Sum the ratings for the current row
                 row_pinned = self.grid_display_entries[row][1].get() != "---"
                 row_pinner = self.grid_display_entries[row][2].get() != "---"
                 protect = "Yes" if row_pinned or row_pinner else "No"
                 self.update_display_fields(row, 3, protect)
             except (ValueError, IndexError) as e:
                 print(f"check_protect has failed for row {row} with error:\n{e}")
-        
+
     def check_for_pins(self):
         for row in range(1, 6):
             try:
-                good_matchups = sum(1 for col in range(1, 6) if int(self.grid_entries[row][col].get()) > 3)
+                good_matchups = sum(
+                    1
+                    for col in range(1, 6)
+                    if self.grid_widgets[row][col].cget('state') != 'disabled' and int(self.grid_entries[row][col].get()) > 3
+                )
                 can_pin = "PIN" if good_matchups > 1 else "---"
                 self.update_display_fields(row, 2, can_pin)
             except (ValueError, IndexError) as e:
                 print(f"check_for_pins has failed for row {row} with error:\n{e}")
-        
+
     def check_pinned_players(self):
         for row in range(1, 6):
             try:
-                num_bad_matchups = sum(1 for col in range(1, 6) if int(self.grid_entries[row][col].get()) < 3)
+                num_bad_matchups = sum(
+                    1
+                    for col in range(1, 6)
+                    if self.grid_widgets[row][col].cget('state') != 'disabled' and int(self.grid_entries[row][col].get()) < 3
+                )
                 player_pinned = "PINNED!" if num_bad_matchups > 1 else "---"
                 self.update_display_fields(row, 1, player_pinned)
             except (ValueError, IndexError) as e:
                 print(f"check_pinned_players has failed for row {row} with error:\n{e}")
 
-    def set_floor_values(self): # Calculate the sum of ratings for each player and update the second grid
-        for row in range(1,6):
+    def set_floor_values(self):
+        for row in range(1, 6):
             try:
-                # Sum the ratings for the current row
-                floor_rating_sum = sum(int(self.grid_entries[row][col].get()) for col in range(1,6))
-                # Update the corresponding entry in the display-only grid
+                floor_rating_sum = sum(
+                    int(self.grid_entries[row][col].get())
+                    for col in range(1, 6)
+                    if self.grid_widgets[row][col].cget('state') != 'disabled'
+                )
                 self.update_display_fields(row, 0, floor_rating_sum)
             except (ValueError, IndexError) as e:
                 print(f"set_floor_values has failed with error:\n{e}")
