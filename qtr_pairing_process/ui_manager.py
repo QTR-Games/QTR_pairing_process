@@ -233,57 +233,56 @@ class UiManager:
         for r in range(6):
             for c in range(6):
                 entry = tk.Entry(self.left_frame, textvariable=self.grid_entries[r][c], width=10)
-                entry.grid(row=r+2, column=c, padx=5, pady=5)
+                entry.grid(row=r + 2, column=c, padx=5, pady=5)
                 self.grid_widgets[r][c] = entry
                 self.grid_entries[r][c].trace_add('write', lambda name, index, mode, var=self.grid_entries[r][c], row=r, col=c: self.update_color_on_change(var, index, mode, row, col))
-                
-            # Add row checkboxes in the new column (column index 6)
-            var = tk.IntVar()
-            checkbox = tk.Checkbutton(self.left_frame, variable=var)
-            checkbox.grid(row=r+2, column=6)  # Place the checkbox in the 6th column
-            var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
-            self.row_checkboxes.append(var)
 
-        # Add column checkboxes in the last row of the grid
-        for c in range(6):
-            var = tk.IntVar()
-            checkbox = tk.Checkbutton(self.left_frame, variable=var)
-            checkbox.grid(row=8, column=c)  # Shift column index by 1
-            var.trace_add('write', lambda name, index, mode, col=c, var=var: self.on_column_checkbox_change(col, var))
-            self.column_checkboxes.append(var)
+                # Add row checkboxes in the new column (column index 6)
+                if r != 0 and c == 5:
+                    var = tk.IntVar()
+                    entry = tk.Checkbutton(self.left_frame, variable=var)
+                    entry.grid(row=r + 2, column=6)  # Place the checkbox in the 6th column
+                    var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
+                    self.row_checkboxes.append(var)
+
+                # Add column checkboxes in the last row of the grid, skipping the first column
+                if c != 0:
+                    var = tk.IntVar()
+                    entry = tk.Checkbutton(self.left_frame, variable=var)
+                    entry.grid(row=8, column=c)  # Shift column index by 1
+                    var.trace_add('write', lambda name, index, mode, col=c, var=var: self.on_column_checkbox_change(col, var))
+                    self.column_checkboxes.append(var)
 
         for r in range(6):
             for c in range(6):
                 display_entry = tk.Entry(self.right_frame, textvariable=self.grid_display_entries[r][c], width=10, state='readonly')
-                display_entry.grid(row=r, column=c, padx=5, pady=5)
+                display_entry.grid(row=r, column=c, padx=5, pady=5, sticky="nw")
                 self.grid_display_widgets[r][c] = display_entry
 
-        # self.right_frame.pack(side=tk.LEFT, padx=10, pady=10)
 
     def on_row_checkbox_change(self, row, var):
-        # This function will handle the event when a row checkbox is toggled
         print(f"Row {row} checkbox changed to {var.get()}")
         for col in range(6):
             widget = self.grid_widgets[row][col]
             if var.get() == 1:  # Checkbox is checked
                 widget.config(state='disabled', bg='grey')
+                self.update_display_fields(row, col, "---")
             else:  # Checkbox is unchecked
-                if self.column_checkboxes[col].get() == 0:  # Column checkbox is also unchecked
+                if self.column_checkboxes[col-1].get() == 0:  # Column checkbox is also unchecked
                     widget.config(state='normal')
                     self.update_color_on_change(self.grid_entries[row][col], None, None, row, col)
+                    self.on_scenario_calculations()
 
     def on_column_checkbox_change(self, col, var):
-        # This function will handle the event when a column checkbox is toggled
         print(f"Column {col} checkbox changed to {var.get()}")
         for row in range(6):
             widget = self.grid_widgets[row][col]
             if var.get() == 1:  # Checkbox is checked
                 widget.config(state='disabled', bg='grey')
             else:  # Checkbox is unchecked
-                if self.row_checkboxes[row].get() == 0:  # Row checkbox is also unchecked
+                if self.row_checkboxes[row-1].get() == 0:  # Row checkbox is also unchecked
                     widget.config(state='normal')
                     self.update_color_on_change(self.grid_entries[row][col], None, None, row, col)
-
 
     def update_combobox_colors(self):
         for row in range(1, 6):
@@ -329,6 +328,10 @@ class UiManager:
     def check_margins(self):
         for row in range(1, 6):
             try:
+                if self.row_checkboxes[row - 1].get() == 1:
+                    for col in range(4, 6):
+                        self.update_display_fields(row, col, "---")
+                    continue
                 floor_rating_sum = int(self.grid_display_entries[row][0].get())
                 all_margins = []
                 for col in range(1, 6):
@@ -351,6 +354,9 @@ class UiManager:
     def check_protect(self):
         for row in range(1, 6):
             try:
+                if self.row_checkboxes[row - 1].get() == 1:
+                    self.update_display_fields(row, 3, "---")
+                    continue
                 row_pinned = self.grid_display_entries[row][1].get() != "---"
                 row_pinner = self.grid_display_entries[row][2].get() != "---"
                 protect = "Yes" if row_pinned or row_pinner else "No"
@@ -361,6 +367,9 @@ class UiManager:
     def check_for_pins(self):
         for row in range(1, 6):
             try:
+                if self.row_checkboxes[row - 1].get() == 1:
+                    self.update_display_fields(row, 2, "---")
+                    continue
                 good_matchups = sum(
                     1
                     for col in range(1, 6)
@@ -374,6 +383,9 @@ class UiManager:
     def check_pinned_players(self):
         for row in range(1, 6):
             try:
+                if self.row_checkboxes[row - 1].get() == 1:
+                    self.update_display_fields(row, 1, "---")
+                    continue
                 num_bad_matchups = sum(
                     1
                     for col in range(1, 6)
@@ -387,6 +399,9 @@ class UiManager:
     def set_floor_values(self):
         for row in range(1, 6):
             try:
+                if self.row_checkboxes[row - 1].get() == 1:
+                    self.update_display_fields(row, 0, "---")
+                    continue
                 floor_rating_sum = sum(
                     int(self.grid_entries[row][col].get())
                     for col in range(1, 6)
