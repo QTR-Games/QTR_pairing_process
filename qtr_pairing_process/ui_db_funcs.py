@@ -5,13 +5,13 @@ import sqlite3
 from os.path import expanduser
 import os
 
+from qtr_pairing_process import ui_manager
 from qtr_pairing_process.constants import SCENARIO_MAP
 
 # installed libraries
 import tkinter as tk
 from tkinter import messagebox, filedialog, simpledialog
 # repo libraries
-# from qtr_pairing_process.ui_manager import UiManager
 from qtr_pairing_process.xlsx_load_ui import XlsxLoadUi
 from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
 from qtr_pairing_process.excel_management.excel_importer import ExcelImporter
@@ -44,7 +44,7 @@ class UIDBFuncs:
         self.scenario_to_csv_map = scenario_to_csv_map
         self.treeview = None
         self.is_sorted = False  # State variable to track if the tree is sorted
-        self.set_team_dropdowns = None
+        
 
     def select_team_names(self):
         # Using this for testing.
@@ -56,10 +56,75 @@ class UIDBFuncs:
             team_names = ['No teams Found']
         return team_names
 
-    # def set_team_dropdowns(self):
-    #     team_names = self.select_team_names()
-    #     self.combobox_1['values'] = team_names
-    #     self.combobox_2['values'] = team_names
+    def set_team_dropdowns(self):
+        team_names = select_team_names()
+        self.combobox_1['values'] = team_names
+        self.combobox_2['values'] = team_names
+
+    def load_grid_data_from_db(self):
+        team_1 = ui_manager.combobox_1.get(self)
+        team_2 = ui_manager.combobox_2.get(self)
+        scenario = self.scenario_box.get()[:1]
+        if scenario == '':
+            self.scenario_box.set("0 - Neutral")
+            scenario = self.scenario_box.get()[:1]
+        scenario_id = int(scenario)
+
+        team_sql_template = "select team_id from teams where team_name='{team_name}'"
+        team_1_row = DbManager.query_sql(self,team_sql_template.format(team_name=team_1))
+        team_1_id = team_1_row[0][0]
+
+        team_2_row = DbManager.query_sql(self,team_sql_template.format(team_name=team_2))
+        team_2_id = team_2_row[0][0]
+
+        # Do not assume that the lower team value is the home team
+        # if team_1_id > team_2_id:
+        #     team_1_id, team_2_id = team_2_id, team_1_id
+
+        player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
+        team_1_players = DbManager.query_sql(self,player_sql_template.format(team_id=team_1_id))
+        team_2_players = DbManager.query_sql(self,player_sql_template.format(team_id=team_2_id))
+
+        team_1_dict = {row[0]:{'position':i+1,'name':row[1]} for i,row in enumerate(team_1_players)}
+        team_2_dict = {row[0]:{'position':i+1,'name':row[1]}for i,row in enumerate(team_2_players)}
+        # print(team_1_dict)
+        ratings_sql = f"""
+            SELECT
+                team_1_player_id,
+                team_2_player_id,
+                rating,
+                team_1_id,
+                team_2_id
+            FROM
+                ratings
+            WHERE
+                team_1_player_id IN ({','.join([str(x) for x in team_1_dict.keys()])})
+              AND
+                team_2_player_id IN ({','.join([str(x) for x in team_2_dict.keys()])})
+              AND
+                team_1_id = {team_1_id}
+              AND
+                team_2_id = {team_2_id}
+              AND
+                scenario_id = {scenario_id}
+            ORDER BY
+                team_1_player_id, team_2_player_id
+        """
+
+        ratings_rows = DbManager.query_sql(self,ratings_sql)
+        # print(ratings_rows)
+        # update usernames
+        for _, row_dict in team_2_dict.items():
+
+            self.grid_entries[0][row_dict['position']].set(row_dict['name'])
+        
+        for _, row_dict in team_1_dict.items():
+            self.grid_entries[row_dict['position']][0].set(row_dict['name'])
+
+        for r, row in enumerate(ratings_rows):
+            team_1_pos = team_1_dict[row[0]]['position']
+            team_2_pos = team_2_dict[row[1]]['position']
+            self.grid_entries[team_1_pos][team_2_pos].set(row[2])
 
     def add_team_to_db(self):
         # Create a popup window to enter the team name
@@ -72,47 +137,47 @@ class UIDBFuncs:
         popup.destroy()
         self.update_ui()
 
-    # def delete_team(self):
-    #     popup = tk.Tk()
-    #     popup.withdraw()  # Hide the main window
+    def delete_team(self):
+        popup = tk.Tk()
+        popup.withdraw()  # Hide the main window
 
-    #     # Fetch existing team names
-    #     team_names = self.select_team_names()
+        # Fetch existing team names
+        team_names = self.select_team_names()
 
-    #     # Create and display the delete team dialog
-    #     dialog = DeleteTeamDialog(popup, team_names)
-    #     popup.wait_window(dialog.top)
+        # Create and display the delete team dialog
+        dialog = DeleteTeamDialog(popup, team_names)
+        popup.wait_window(dialog.top)
 
-    #     team_name = dialog.selected_team
-    #     if team_name is None:
-    #         return  # User cancelled the operation
+        team_name = dialog.selected_team
+        if team_name is None:
+            return  # User cancelled the operation
 
-    #     # Validate the user's input
-    #     if team_name not in team_names:
-    #         messagebox.showerror("Error", f"Invalid team name: {team_name}")
-    #         return
+        # Validate the user's input
+        if team_name not in team_names:
+            messagebox.showerror("Error", f"Invalid team name: {team_name}")
+            return
 
-    #     # Retrieve the team_id of the selected team
-    #     team_id_row = self.db_manager.query_sql(f"SELECT team_id FROM teams WHERE team_name='{team_name}'")
-    #     if not team_id_row:
-    #         messagebox.showerror("Error", f"Team not found: '{team_name}'")
-    #         return
+        # Retrieve the team_id of the selected team
+        team_id_row = DbManager.query_sql(self,f"SELECT team_id FROM teams WHERE team_name='{team_name}'")
+        if not team_id_row:
+            messagebox.showerror("Error", f"Team not found: '{team_name}'")
+            return
 
-    #     team_id = team_id_row[0][0]
+        team_id = team_id_row[0][0]
 
-    #     # Delete related records
-    #     self.db_manager.execute_sql(f"DELETE FROM ratings WHERE team_1_id={team_id} OR team_2_id={team_id}")
-    #     self.db_manager.execute_sql(f"DELETE FROM players WHERE team_id={team_id}")
-    #     self.db_manager.execute_sql(f"DELETE FROM teams WHERE team_id={team_id}")
+        # Delete related records
+        DbManager.execute_sql(self,f"DELETE FROM ratings WHERE team_1_id={team_id} OR team_2_id={team_id}")
+        DbManager.execute_sql(self,f"DELETE FROM players WHERE team_id={team_id}")
+        DbManager.execute_sql(self,f"DELETE FROM teams WHERE team_id={team_id}")
 
-    #     messagebox.showinfo("Success", f"Team '{team_name}' and all related records have been deleted successfully.")
-    #     self.set_team_dropdowns()
+        messagebox.showinfo("Success", f"Team '{team_name}' and all related records have been deleted successfully.")
+        self.set_team_dropdowns()
 
-    # def import_xlsx(self):
-    #     xslx_load_ui  = XlsxLoadUi()
-    #     file_path, file_name = xslx_load_ui.load_xslx_file()
-    #     excel_importer = ExcelImporter(db_manager=self.db_manager, file_path=file_path, file_name=file_name)
-    #     excel_importer.execute()
+    def import_xlsx(self):
+        xslx_load_ui  = XlsxLoadUi()
+        file_path, file_name = xslx_load_ui.load_xslx_file()
+        excel_importer = ExcelImporter(db_manager=self.db_manager, file_path=file_path, file_name=file_name)
+        excel_importer.execute()
 
     def export_csvs(self):
         print(f"Exporting Matchups to CSV")
@@ -142,8 +207,8 @@ class UIDBFuncs:
                     writer.writerow([player] + player_ratings)
 
     def retrieve_team_data(self, team_name):
-        team_id = self.db_manager.query_team_id(team_name)
-        players = self.db_manager.query_sql(f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id")
+        team_id = DbManager.query_team_id(self,team_name)
+        players = DbManager.query_sql(self,f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id")
         player_names = [player[0] for player in players]
         return team_name, player_names
 
@@ -155,12 +220,12 @@ class UIDBFuncs:
             scenario_id = scenario
             ratings[scenario_id] = {}
             for player1 in team1_players:
-                player1_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player1}'")[0][0]
+                player1_id = DbManager.query_sql(self,f"SELECT player_id FROM players WHERE player_name = '{player1}'")[0][0]
                 # print(f"player1 - {player1_id}: {player1}")
                 player_ratings = []
                 for player2 in team2_players:
-                    player2_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player2}'")[0][0]
-                    rating = self.db_manager.query_sql(f"""
+                    player2_id = DbManager.query_sql(self,f"SELECT player_id FROM players WHERE player_name = '{player2}'")[0][0]
+                    rating = DbManager.query_sql(self,f"""
                         SELECT rating FROM ratings
                         WHERE team_1_player_id = {player1_id} AND team_2_player_id = {player2_id} AND scenario_id = {scenario_id}
                     """)
@@ -206,8 +271,8 @@ class UIDBFuncs:
 
             # Try to upsert this team and the players.
             try:
-                team_id = self.db_manager.upsert_team(line[0])
-                players = self.db_manager.upsert_and_validate_players(team_id, player_names[index])
+                team_id = DbManager.upsert_team(self,line[0])
+                players = DbManager.upsert_and_validate_players(self,team_id, player_names[index])
             except ValueError as e:
                 print(f"import_csv_header_and_ratings ERROR - {e}")
 
@@ -233,7 +298,7 @@ class UIDBFuncs:
                 # Retrieve player_ids for team_1
                 team_1_players_ids = {
                     player_name: player_id
-                    for player_name, player_id in self.db_manager.query_sql(
+                    for player_name, player_id in DbManager.query_sql(self,
                         f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_players_1)}) and team_id={team_id_1} ORDER BY player_id"
                     )
                 }
@@ -241,7 +306,7 @@ class UIDBFuncs:
                 # Retrieve player_ids for team_2
                 team_2_players_ids = {
                     player_name: player_id
-                    for player_name, player_id in self.db_manager.query_sql(
+                    for player_name, player_id in DbManager.query_sql(self,
                         f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_players_2)}) and team_id={team_id_2} ORDER BY player_id"
                     )
                 }
@@ -254,7 +319,7 @@ class UIDBFuncs:
                     player_1 = line[0]
                     ratings = list(map(int, line[1:]))
                     # Retrieve player_id and team_id for friendly team (team_1)
-                    result = self.db_manager.query_sql(f"SELECT player_id, team_id FROM players WHERE player_name='{player_1}' and team_id={team_id_1}")
+                    result = DbManager.query_sql(self,f"SELECT player_id, team_id FROM players WHERE player_name='{player_1}' and team_id={team_id_1}")
                     # if results are retrieved then we can continue.
                     try: 
                         if result:
@@ -268,7 +333,7 @@ class UIDBFuncs:
                         try:
                             player_name_2 = list(team_2_players_ids.keys())[i]
                             player_id_2 = team_2_players_ids[player_name_2]
-                            self.db_manager.upsert_rating(player_id_1, player_id_2, team_id_1, team_id_2, scenario_id, rating)
+                            DbManager.upsert_rating(self,player_id_1, player_id_2, team_id_1, team_id_2, scenario_id, rating)
                         except (ValueError, IndexError) as e:
                             print(f"import_csv_header_and_ratings ERROR - {e}")
 

@@ -28,7 +28,7 @@ class UiManager:
         scenario_to_csv_map,
         print_output=False,
         import_csv_header_and_ratings=False,
-        select_team_names=False
+        
     ):
         self.grid_entries = None
         self.grid_widgets = None
@@ -178,12 +178,12 @@ class UiManager:
         self.previous_value = self.scenario_var.get()
         # Attach a trace to the StringVar
         self.scenario_var.trace_add('write', self.on_scenario_box_change)
-        self.set_team_dropdowns()
+        UIDBFuncs.set_team_dropdowns(self)
         self.update_scenario_box()
 
         # Add Buttons to a row just above the pairing grid       
         tk.Button(self.button_row_frame, text="Export CSV", command=lambda: self.on_export_csvs()).pack(side=tk.LEFT, padx=5, pady=5)
-        tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_data_from_db()).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.on_load_grid_data_from_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.on_import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
         tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.on_add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
@@ -414,8 +414,8 @@ class UiManager:
 
     def update_ui(self):
         # Update the team dropdowns and grid values
-        self.set_team_dropdowns()
-        self.load_grid_data_from_db()
+        UIDBFuncs.set_team_dropdowns(self)
+        UIDBFuncs.load_grid_data_from_db(self)
         # print(self.extract_ratings())
 
     # def select_team_names(self):
@@ -428,12 +428,12 @@ class UiManager:
     #         team_names = ['No teams Found']
     #     return team_names
 
-    def set_team_dropdowns(self):
-        team_names = UIDBFuncs.select_team_names(self)
-        self.combobox_1['values'] = team_names
-        self.combobox_2['values'] = team_names
+    # def set_team_dropdowns(self):
+    #     team_names = UIDBFuncs.select_team_names(self)
+    #     self.combobox_1['values'] = team_names
+    #     self.combobox_2['values'] = team_names
 
-    def load_grid_data_from_db(self):
+    def on_load_grid_data_from_db(self):
         team_1 = self.combobox_1.get()
         team_2 = self.combobox_2.get()
         scenario = self.scenario_box.get()[:1]
@@ -549,45 +549,45 @@ class UiManager:
     #     popup.destroy()
     #     self.update_ui()
 
-    def delete_team(self):
-        popup = tk.Tk()
-        popup.withdraw()  # Hide the main window
+    # def delete_team(self):
+    #     popup = tk.Tk()
+    #     popup.withdraw()  # Hide the main window
 
-        # Fetch existing team names
-        team_names = UIDBFuncs.select_team_names(self)
+    #     # Fetch existing team names
+    #     team_names = UIDBFuncs.select_team_names(self)
 
-        # Create and display the delete team dialog
-        dialog = DeleteTeamDialog(popup, team_names)
-        popup.wait_window(dialog.top)
+    #     # Create and display the delete team dialog
+    #     dialog = DeleteTeamDialog(popup, team_names)
+    #     popup.wait_window(dialog.top)
 
-        team_name = dialog.selected_team
-        if team_name is None:
-            return  # User cancelled the operation
+    #     team_name = dialog.selected_team
+    #     if team_name is None:
+    #         return  # User cancelled the operation
 
-        # Validate the user's input
-        if team_name not in team_names:
-            messagebox.showerror("Error", f"Invalid team name: {team_name}")
-            return
+    #     # Validate the user's input
+    #     if team_name not in team_names:
+    #         messagebox.showerror("Error", f"Invalid team name: {team_name}")
+    #         return
 
-        # Retrieve the team_id of the selected team
-        team_id_row = self.db_manager.query_sql(f"SELECT team_id FROM teams WHERE team_name='{team_name}'")
-        if not team_id_row:
-            messagebox.showerror("Error", f"Team not found: '{team_name}'")
-            return
+    #     # Retrieve the team_id of the selected team
+    #     team_id_row = self.db_manager.query_sql(f"SELECT team_id FROM teams WHERE team_name='{team_name}'")
+    #     if not team_id_row:
+    #         messagebox.showerror("Error", f"Team not found: '{team_name}'")
+    #         return
 
-        team_id = team_id_row[0][0]
+    #     team_id = team_id_row[0][0]
 
-        # Delete related records
-        self.db_manager.execute_sql(f"DELETE FROM ratings WHERE team_1_id={team_id} OR team_2_id={team_id}")
-        self.db_manager.execute_sql(f"DELETE FROM players WHERE team_id={team_id}")
-        self.db_manager.execute_sql(f"DELETE FROM teams WHERE team_id={team_id}")
+    #     # Delete related records
+    #     self.db_manager.execute_sql(f"DELETE FROM ratings WHERE team_1_id={team_id} OR team_2_id={team_id}")
+    #     self.db_manager.execute_sql(f"DELETE FROM players WHERE team_id={team_id}")
+    #     self.db_manager.execute_sql(f"DELETE FROM teams WHERE team_id={team_id}")
 
-        messagebox.showinfo("Success", f"Team '{team_name}' and all related records have been deleted successfully.")
-        try:
-            self.set_team_dropdowns()
-            self.update_ui
-        except (ValueError, IndexError) as e:
-            print(f"delete_team caused an error trying to update the UI: {e}")
+    #     messagebox.showinfo("Success", f"Team '{team_name}' and all related records have been deleted successfully.")
+    #     try:
+    #         self.set_team_dropdowns()
+    #         self.update_ui
+    #     except (ValueError, IndexError) as e:
+    #         print(f"delete_team caused an error trying to update the UI: {e}")
 
     def import_xlsx(self):
         xslx_load_ui  = XlsxLoadUi()
