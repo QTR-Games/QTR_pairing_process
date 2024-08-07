@@ -134,17 +134,9 @@ class UiManager:
         self.treeview = LazyTreeView(master=self.tree_tab_right_frame, print_output=self.print_output, columns=("Rating"))
         self.tree_generator = TreeGenerator(treeview=self.treeview, sort_alpha=self.sort_alpha.get())
 
+    
     def create_ui(self):
-        for r in range(6):
-            for c in range(6):
-                entry = tk.Entry(self.left_frame, textvariable=self.grid_entries[r][c], width=10)
-                entry.grid(row=r+2, column=c, padx=5, pady=5)
-                self.grid_widgets[r][c] = entry
-                self.grid_entries[r][c].trace_add('write', lambda name, index, mode, var=self.grid_entries[r][c], row=r, col=c: self.update_color_on_change(var, index, mode, row, col))
-
-                display_entry = tk.Entry(self.right_frame, textvariable=self.grid_display_entries[r][c], width=10, state='readonly')
-                display_entry.grid(row=r+2, column=c, padx=5, pady=5)
-                self.grid_display_widgets[r][c] = display_entry
+        self.create_ui_grids()
 
         tk.Label(self.drop_down_frame, text='Select Team 1:').pack(side=tk.LEFT, padx=5, pady=5)
         # Use a StringVar to hold the value of the Combobox
@@ -234,6 +226,81 @@ class UiManager:
 
         self.root.mainloop()
 
+    def create_ui_grids(self):
+        self.row_checkboxes = []
+        self.column_checkboxes = []
+
+        for r in range(6):
+            for c in range(6):
+                entry = tk.Entry(self.left_frame, textvariable=self.grid_entries[r][c], width=10)
+                entry.grid(row=r+2, column=c, padx=5, pady=5)
+                self.grid_widgets[r][c] = entry
+                self.grid_entries[r][c].trace_add('write', lambda name, index, mode, var=self.grid_entries[r][c], row=r, col=c: self.update_color_on_change(var, index, mode, row, col))
+                
+            # Add row checkboxes in the new column (column index 6)
+            var = tk.IntVar()
+            checkbox = tk.Checkbutton(self.left_frame, variable=var)
+            checkbox.grid(row=r+2, column=6)  # Place the checkbox in the 6th column
+            var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
+            self.row_checkboxes.append(var)
+
+        # Add column checkboxes in the last row of the grid
+        for c in range(6):
+            var = tk.IntVar()
+            checkbox = tk.Checkbutton(self.left_frame, variable=var)
+            checkbox.grid(row=8, column=c)  # Shift column index by 1
+            var.trace_add('write', lambda name, index, mode, col=c, var=var: self.on_column_checkbox_change(col, var))
+            self.column_checkboxes.append(var)
+
+        for r in range(6):
+            for c in range(6):
+                display_entry = tk.Entry(self.right_frame, textvariable=self.grid_display_entries[r][c], width=10, state='readonly')
+                display_entry.grid(row=r, column=c, padx=5, pady=5)
+                self.grid_display_widgets[r][c] = display_entry
+
+        # self.right_frame.pack(side=tk.LEFT, padx=10, pady=10)
+
+    def on_row_checkbox_change(self, row, var):
+        # This function will handle the event when a row checkbox is toggled
+        print(f"Row {row} checkbox changed to {var.get()}")
+        for col in range(6):
+            widget = self.grid_widgets[row][col]
+            if var.get() == 1:  # Checkbox is checked
+                widget.config(state='disabled', bg='grey')
+            else:  # Checkbox is unchecked
+                if self.column_checkboxes[col].get() == 0:  # Column checkbox is also unchecked
+                    widget.config(state='normal')
+                    self.update_color_on_change(self.grid_entries[row][col], None, None, row, col)
+
+    def on_column_checkbox_change(self, col, var):
+        # This function will handle the event when a column checkbox is toggled
+        print(f"Column {col} checkbox changed to {var.get()}")
+        for row in range(6):
+            widget = self.grid_widgets[row][col]
+            if var.get() == 1:  # Checkbox is checked
+                widget.config(state='disabled', bg='grey')
+            else:  # Checkbox is unchecked
+                if self.row_checkboxes[row].get() == 0:  # Row checkbox is also unchecked
+                    widget.config(state='normal')
+                    self.update_color_on_change(self.grid_entries[row][col], None, None, row, col)
+
+
+    def update_combobox_colors(self):
+        for row in range(1, 6):
+            for col in range(1, 6):
+                value = self.grid_entries[row][col].get()
+                if value in self.color_map:
+                    self.grid_widgets[row][col].config(bg=self.color_map[value])
+
+    def update_color_on_change(self, var, index, mode, row, col):
+        if self.row_checkboxes[row-1].get() == 1 or self.column_checkboxes[col-1].get() == 1:
+            return  # Skip updating color if row or column checkbox is checked
+        value = var.get()
+        if value in self.color_map:
+            self.grid_widgets[row][col].config(bg=self.color_map[value])
+        else:
+            self.grid_widgets[row][col].config(bg='white')
+    
     # Add this method to update display-only fields
     def update_display_fields(self, row, col, value):
         try:
@@ -401,7 +468,7 @@ class UiManager:
         if perform_update:
             try:
                 self.update_ui()
-            except (error) as e:
+            except (ValueError,IndexError) as e:
                 print(f"team_box_change error: {e}")
             
     
