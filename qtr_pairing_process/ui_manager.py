@@ -237,8 +237,12 @@ class UiManager:
                 self.grid_widgets[r][c] = entry
                 self.grid_entries[r][c].trace_add('write', lambda name, index, mode, var=self.grid_entries[r][c], row=r, col=c: self.update_color_on_change(var, index, mode, row, col))
 
+                display_entry = tk.Entry(self.right_frame, textvariable=self.grid_display_entries[r][c], width=10, state='readonly')
+                display_entry.grid(row=r, column=c, padx=5, pady=5, sticky="nw")
+                self.grid_display_widgets[r][c] = display_entry
+
                 # Add row checkboxes in the new column (column index 6)
-                if r != 0 and c == 5:
+                if r != 0: # and c == 5: # original line if r != 0: # and c == 5:
                     var = tk.IntVar()
                     entry = tk.Checkbutton(self.left_frame, variable=var)
                     entry.grid(row=r + 2, column=6)  # Place the checkbox in the 6th column
@@ -253,11 +257,11 @@ class UiManager:
                     var.trace_add('write', lambda name, index, mode, col=c, var=var: self.on_column_checkbox_change(col, var))
                     self.column_checkboxes.append(var)
 
-        for r in range(6):
-            for c in range(6):
-                display_entry = tk.Entry(self.right_frame, textvariable=self.grid_display_entries[r][c], width=10, state='readonly')
-                display_entry.grid(row=r, column=c, padx=5, pady=5, sticky="nw")
-                self.grid_display_widgets[r][c] = display_entry
+        # for r in range(6):
+        #     for c in range(6):
+        #         display_entry = tk.Entry(self.right_frame, textvariable=self.grid_display_entries[r][c], width=10, state='readonly')
+        #         display_entry.grid(row=r, column=c, padx=5, pady=5, sticky="nw")
+        #         self.grid_display_widgets[r][c] = display_entry
 
 
     def on_row_checkbox_change(self, row, var):
@@ -268,7 +272,7 @@ class UiManager:
                 widget.config(state='disabled', bg='grey')
                 self.update_display_fields(row, col, "---")
             else:  # Checkbox is unchecked
-                if self.column_checkboxes[col-1].get() == 0:  # Column checkbox is also unchecked
+                if self.column_checkboxes[col].get() == 0:  # Column checkbox is also unchecked
                     widget.config(state='normal')
                     self.update_color_on_change(self.grid_entries[row][col], None, None, row, col)
                     self.on_scenario_calculations()
@@ -279,10 +283,12 @@ class UiManager:
             widget = self.grid_widgets[row][col]
             if var.get() == 1:  # Checkbox is checked
                 widget.config(state='disabled', bg='grey')
+                self.update_display_fields(row, col, "---")
             else:  # Checkbox is unchecked
                 if self.row_checkboxes[row-1].get() == 0:  # Row checkbox is also unchecked
                     widget.config(state='normal')
                     self.update_color_on_change(self.grid_entries[row][col], None, None, row, col)
+                    self.on_scenario_calculations()
 
     def update_combobox_colors(self):
         for row in range(1, 6):
@@ -339,12 +345,13 @@ class UiManager:
                         int(self.grid_entries[row1][col].get())
                         for row1 in range(1, 6)
                         if self.grid_widgets[row1][col].cget('state') != 'disabled'
-                    )
+                    ) # col_margin_sum = the sum of all the ratings in the current column. Do this for each col in left grid.
                     diff = floor_rating_sum - col_margin_sum
-                    all_margins.append(diff)
-                max_margin = max(all_margins)
-                min_margin = min(all_margins)
-                margin_text = f"{max_margin} | {min_margin}"
+                    all_margins.append(diff) # add the current col's sum to the all_margins list 
+                # MIN/MAX COLUMN = 
+                max_margin = max(all_margins) # MAX MARGIN is the max value of all the margins.
+                min_margin = min(all_margins) # MIN MARGIN is the min value of all the margins.
+                margin_text = f"{max_margin} | {min_margin}" # Col represents the buffer between your max possible benefit and worst possible outcome for this player's good and bad matchups.
                 self.update_display_fields(row, 4, margin_text)
                 sum_margins = sum(all_margins)
                 self.update_display_fields(row, 5, sum_margins)
@@ -399,7 +406,7 @@ class UiManager:
     def set_floor_values(self):
         for row in range(1, 6):
             try:
-                if self.row_checkboxes[row - 1].get() == 1:
+                if self.row_checkboxes[row].get() == 1:
                     self.update_display_fields(row, 0, "---")
                     continue
                 floor_rating_sum = sum(
@@ -477,7 +484,7 @@ class UiManager:
             self.previous_value = new_value
             try:
                 self.update_ui()
-            except (error) as e:
+            except (ValueError, IndexError) as e:
                 print(f"scenario_box_change error: {e}")
 
     def on_team_box_change(self, *args):
