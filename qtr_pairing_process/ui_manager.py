@@ -275,7 +275,7 @@ class UiManager:
                 if self.column_checkboxes[col-1].get() == 0:  # Column checkbox is also unchecked
                     widget.config(state='normal')
                     self.update_color_on_change(self.grid_entries[row][col], None, None, row, col)
-                    self.on_scenario_calculations()
+        self.on_scenario_calculations()
 
     def on_column_checkbox_change(self, col, var):
         print(f"Column {col} checkbox changed to {var.get()}")
@@ -288,7 +288,7 @@ class UiManager:
                 if self.row_checkboxes[row-1].get() == 0:  # Row checkbox is also unchecked
                     widget.config(state='normal')
                     self.update_color_on_change(self.grid_entries[row][col], None, None, row, col)
-                    self.on_scenario_calculations()
+        self.on_scenario_calculations()
 
     def update_combobox_colors(self):
         for row in range(1, 6):
@@ -406,7 +406,7 @@ class UiManager:
     def set_floor_values(self):
         for row in range(1, 6):
             try:
-                if self.row_checkboxes[row].get() == 1:
+                if self.row_checkboxes[row-1].get() == 1:
                     self.update_display_fields(row, 0, "---")
                     continue
                 floor_rating_sum = sum(
