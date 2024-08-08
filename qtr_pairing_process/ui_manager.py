@@ -242,20 +242,20 @@ class UiManager:
                 self.grid_display_widgets[r][c] = display_entry
 
                 # Add row checkboxes in the new column (column index 6)
-                if r != 0: # and c == 5: # original line if r != 0: # and c == 5:
-                    var = tk.IntVar()
-                    entry = tk.Checkbutton(self.left_frame, variable=var)
-                    entry.grid(row=r + 2, column=6)  # Place the checkbox in the 6th column
-                    var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
-                    self.row_checkboxes.append(var)
+        for r in range(1,6): # and c == 5: # original line if r != 0: # and c == 5:
+            var = tk.IntVar()
+            entry = tk.Checkbutton(self.left_frame, variable=var)
+            entry.grid(row=r + 2, column=6)  # Place the checkbox in the 6th column
+            var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
+            self.row_checkboxes.append(var)
 
-                # Add column checkboxes in the last row of the grid, skipping the first column
-                if c != 0:
-                    var = tk.IntVar()
-                    entry = tk.Checkbutton(self.left_frame, variable=var)
-                    entry.grid(row=8, column=c)  # Shift column index by 1
-                    var.trace_add('write', lambda name, index, mode, col=c, var=var: self.on_column_checkbox_change(col, var))
-                    self.column_checkboxes.append(var)
+        # Add column checkboxes in the last row of the grid, skipping the first column
+        for c in range(1,6):
+            var = tk.IntVar()
+            entry = tk.Checkbutton(self.left_frame, variable=var)
+            entry.grid(row=8, column=c)  # Shift column index by 1
+            var.trace_add('write', lambda name, index, mode, col=c, var=var: self.on_column_checkbox_change(col, var))
+            self.column_checkboxes.append(var)
 
         # for r in range(6):
         #     for c in range(6):
@@ -266,20 +266,20 @@ class UiManager:
 
     def on_row_checkbox_change(self, row, var):
         print(f"Row {row} checkbox changed to {var.get()}")
-        for col in range(6):
+        for col in range(1,6):
             widget = self.grid_widgets[row][col]
             if var.get() == 1:  # Checkbox is checked
                 widget.config(state='disabled', bg='grey')
                 self.update_display_fields(row, col, "---")
             else:  # Checkbox is unchecked
-                if self.column_checkboxes[col].get() == 0:  # Column checkbox is also unchecked
+                if self.column_checkboxes[col-1].get() == 0:  # Column checkbox is also unchecked
                     widget.config(state='normal')
                     self.update_color_on_change(self.grid_entries[row][col], None, None, row, col)
                     self.on_scenario_calculations()
 
     def on_column_checkbox_change(self, col, var):
         print(f"Column {col} checkbox changed to {var.get()}")
-        for row in range(6):
+        for row in range(1,6):
             widget = self.grid_widgets[row][col]
             if var.get() == 1:  # Checkbox is checked
                 widget.config(state='disabled', bg='grey')
@@ -818,7 +818,7 @@ class UiManager:
                 team_1_players_ids = {
                     player_name: player_id
                     for player_name, player_id in self.db_manager.query_sql(
-                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_players_1)}) and team_id={team_id_1} ORDER BY player_id"
+                        f"""SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'"{name}"' for name in team_players_1)}) and team_id={team_id_1} ORDER BY player_id"""
                     )
                 }
 
@@ -826,7 +826,7 @@ class UiManager:
                 team_2_players_ids = {
                     player_name: player_id
                     for player_name, player_id in self.db_manager.query_sql(
-                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_players_2)}) and team_id={team_id_2} ORDER BY player_id"
+                        f"""SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'"{name}"' for name in team_players_2)}) and team_id={team_id_2} ORDER BY player_id"""
                     )
                 }
 

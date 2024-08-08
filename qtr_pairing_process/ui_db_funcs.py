@@ -326,7 +326,7 @@ class UIDBFuncs:
                 team_1_players_ids = {
                     player_name: player_id
                     for player_name, player_id in self.db_manager.query_sql(
-                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_players_1)}) and team_id={team_id_1} ORDER BY player_id"
+                        f"""SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'"{name}"' for name in team_players_1)}) and team_id={team_id_1} ORDER BY player_id"""
                     )
                 }
 
@@ -334,7 +334,7 @@ class UIDBFuncs:
                 team_2_players_ids = {
                     player_name: player_id
                     for player_name, player_id in self.db_manager.query_sql(
-                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_players_2)}) and team_id={team_id_2} ORDER BY player_id"
+                        f"""SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'"{name}"' for name in team_players_2)}) and team_id={team_id_2} ORDER BY player_id"""
                     )
                 }
 
