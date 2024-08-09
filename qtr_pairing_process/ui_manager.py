@@ -538,57 +538,6 @@ class UiManager:
                 except (ValueError, IndexError):
                     return 0 
 
-    # def add_team_to_db(self):
-    #     # Create a popup window to enter the team name
-    #     popup = tk.Tk()
-    #     popup.withdraw()  # Hide the main window
-        
-    #     team_name = simpledialog.askstring("Input", "Enter the team name:", parent=popup)
-    #     if team_name:
-    #         self.db_manager.create_team(team_name)
-    #     popup.destroy()
-    #     self.update_ui()
-
-    # def delete_team(self):
-    #     popup = tk.Tk()
-    #     popup.withdraw()  # Hide the main window
-
-    #     # Fetch existing team names
-    #     team_names = UIDBFuncs.select_team_names(self)
-
-    #     # Create and display the delete team dialog
-    #     dialog = DeleteTeamDialog(popup, team_names)
-    #     popup.wait_window(dialog.top)
-
-    #     team_name = dialog.selected_team
-    #     if team_name is None:
-    #         return  # User cancelled the operation
-
-    #     # Validate the user's input
-    #     if team_name not in team_names:
-    #         messagebox.showerror("Error", f"Invalid team name: {team_name}")
-    #         return
-
-    #     # Retrieve the team_id of the selected team
-    #     team_id_row = self.db_manager.query_sql(f"SELECT team_id FROM teams WHERE team_name='{team_name}'")
-    #     if not team_id_row:
-    #         messagebox.showerror("Error", f"Team not found: '{team_name}'")
-    #         return
-
-    #     team_id = team_id_row[0][0]
-
-    #     # Delete related records
-    #     self.db_manager.execute_sql(f"DELETE FROM ratings WHERE team_1_id={team_id} OR team_2_id={team_id}")
-    #     self.db_manager.execute_sql(f"DELETE FROM players WHERE team_id={team_id}")
-    #     self.db_manager.execute_sql(f"DELETE FROM teams WHERE team_id={team_id}")
-
-    #     messagebox.showinfo("Success", f"Team '{team_name}' and all related records have been deleted successfully.")
-    #     try:
-    #         self.set_team_dropdowns()
-    #         self.update_ui
-    #     except (ValueError, IndexError) as e:
-    #         print(f"delete_team caused an error trying to update the UI: {e}")
-
     def import_xlsx(self):
         xslx_load_ui  = XlsxLoadUi()
         file_path, file_name = xslx_load_ui.load_xslx_file()
