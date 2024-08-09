@@ -134,17 +134,9 @@ class UiManager:
         self.treeview = LazyTreeView(master=self.tree_tab_right_frame, print_output=self.print_output, columns=("Rating"))
         self.tree_generator = TreeGenerator(treeview=self.treeview, sort_alpha=self.sort_alpha.get())
 
+    
     def create_ui(self):
-        for r in range(6):
-            for c in range(6):
-                entry = tk.Entry(self.left_frame, textvariable=self.grid_entries[r][c], width=10)
-                entry.grid(row=r+2, column=c, padx=5, pady=5)
-                self.grid_widgets[r][c] = entry
-                self.grid_entries[r][c].trace_add('write', lambda name, index, mode, var=self.grid_entries[r][c], row=r, col=c: self.update_color_on_change(var, index, mode, row, col))
-
-                display_entry = tk.Entry(self.right_frame, textvariable=self.grid_display_entries[r][c], width=10, state='readonly')
-                display_entry.grid(row=r+2, column=c, padx=5, pady=5)
-                self.grid_display_widgets[r][c] = display_entry
+        self.create_ui_grids()
 
         tk.Label(self.drop_down_frame, text='Select Team 1:').pack(side=tk.LEFT, padx=5, pady=5)
         # Use a StringVar to hold the value of the Combobox
@@ -234,6 +226,86 @@ class UiManager:
 
         self.root.mainloop()
 
+    def create_ui_grids(self):
+        self.row_checkboxes = []
+        self.column_checkboxes = []
+
+        for r in range(6):
+            for c in range(6):
+                entry = tk.Entry(self.left_frame, textvariable=self.grid_entries[r][c], width=10)
+                entry.grid(row=r + 2, column=c, padx=5, pady=5)
+                self.grid_widgets[r][c] = entry
+                self.grid_entries[r][c].trace_add('write', lambda name, index, mode, var=self.grid_entries[r][c], row=r, col=c: self.update_color_on_change(var, index, mode, row, col))
+
+                display_entry = tk.Entry(self.right_frame, textvariable=self.grid_display_entries[r][c], width=10, state='readonly')
+                display_entry.grid(row=r, column=c, padx=5, pady=5, sticky="nw")
+                self.grid_display_widgets[r][c] = display_entry
+
+                # Add row checkboxes in the new column (column index 6)
+        for r in range(1,6): # and c == 5: # original line if r != 0: # and c == 5:
+            var = tk.IntVar()
+            entry = tk.Checkbutton(self.left_frame, variable=var)
+            entry.grid(row=r + 2, column=6)  # Place the checkbox in the 6th column
+            var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
+            self.row_checkboxes.append(var)
+
+        # Add column checkboxes in the last row of the grid, skipping the first column
+        for c in range(1,6):
+            var = tk.IntVar()
+            entry = tk.Checkbutton(self.left_frame, variable=var)
+            entry.grid(row=8, column=c)  # Shift column index by 1
+            var.trace_add('write', lambda name, index, mode, col=c, var=var: self.on_column_checkbox_change(col, var))
+            self.column_checkboxes.append(var)
+
+        # for r in range(6):
+        #     for c in range(6):
+        #         display_entry = tk.Entry(self.right_frame, textvariable=self.grid_display_entries[r][c], width=10, state='readonly')
+        #         display_entry.grid(row=r, column=c, padx=5, pady=5, sticky="nw")
+        #         self.grid_display_widgets[r][c] = display_entry
+
+
+    def on_row_checkbox_change(self, row, var):
+        print(f"Row {row} checkbox changed to {var.get()}")
+        for col in range(1,6):
+            widget = self.grid_widgets[row][col]
+            if var.get() == 1:  # Checkbox is checked
+                widget.config(state='disabled', bg='grey')
+                self.update_display_fields(row, col, "---")
+            else:  # Checkbox is unchecked
+                if self.column_checkboxes[col-1].get() == 0:  # Column checkbox is also unchecked
+                    widget.config(state='normal')
+                    self.update_color_on_change(self.grid_entries[row][col], None, None, row, col)
+        self.on_scenario_calculations()
+
+    def on_column_checkbox_change(self, col, var):
+        print(f"Column {col} checkbox changed to {var.get()}")
+        for row in range(1,6):
+            widget = self.grid_widgets[row][col]
+            if var.get() == 1:  # Checkbox is checked
+                widget.config(state='disabled', bg='grey')
+                self.update_display_fields(row, col, "---")
+            else:  # Checkbox is unchecked
+                if self.row_checkboxes[row-1].get() == 0:  # Row checkbox is also unchecked
+                    widget.config(state='normal')
+                    self.update_color_on_change(self.grid_entries[row][col], None, None, row, col)
+        self.on_scenario_calculations()
+
+    def update_combobox_colors(self):
+        for row in range(1, 6):
+            for col in range(1, 6):
+                value = self.grid_entries[row][col].get()
+                if value in self.color_map:
+                    self.grid_widgets[row][col].config(bg=self.color_map[value])
+
+    def update_color_on_change(self, var, index, mode, row, col):
+        if self.row_checkboxes[row-1].get() == 1 or self.column_checkboxes[col-1].get() == 1:
+            return  # Skip updating color if row or column checkbox is checked
+        value = var.get()
+        if value in self.color_map:
+            self.grid_widgets[row][col].config(bg=self.color_map[value])
+        else:
+            self.grid_widgets[row][col].config(bg='white')
+    
     # Add this method to update display-only fields
     def update_display_fields(self, row, col, value):
         try:
@@ -253,25 +325,33 @@ class UiManager:
             print(f"update_display_fields has failed with error:\n{e}")
 
     def on_scenario_calculations(self):
-        self.set_floor_values() # info_col 0
-        self.check_pinned_players() # info_col 1
-        self.check_for_pins() # info_col 2
-        self.check_protect() # info_col 3
-        self.check_margins() # info_col 4 & 5
+        self.set_floor_values()  # info_col 0
+        self.check_pinned_players()  # info_col 1
+        self.check_for_pins()  # info_col 2
+        self.check_protect()  # info_col 3
+        self.check_margins()  # info_col 4 & 5
 
-    # Not sure if this data is actually useful to players?
     def check_margins(self):
         for row in range(1, 6):
             try:
+                if self.row_checkboxes[row - 1].get() == 1:
+                    for col in range(4, 6):
+                        self.update_display_fields(row, col, "---")
+                    continue
                 floor_rating_sum = int(self.grid_display_entries[row][0].get())
                 all_margins = []
                 for col in range(1, 6):
-                    col_margin_sum = sum(int(self.grid_entries[row1][col].get()) for row1 in range(1, 6))
+                    col_margin_sum = sum(
+                        int(self.grid_entries[row1][col].get())
+                        for row1 in range(1, 6)
+                        if self.grid_widgets[row1][col].cget('state') != 'disabled'
+                    ) # col_margin_sum = the sum of all the ratings in the current column. Do this for each col in left grid.
                     diff = floor_rating_sum - col_margin_sum
-                    all_margins.append(diff)
-                max_margin = max(all_margins)
-                min_margin = min(all_margins)
-                margin_text = f"{max_margin} | {min_margin}"
+                    all_margins.append(diff) # add the current col's sum to the all_margins list 
+                # MIN/MAX COLUMN = 
+                max_margin = max(all_margins) # MAX MARGIN is the max value of all the margins.
+                min_margin = min(all_margins) # MIN MARGIN is the min value of all the margins.
+                margin_text = f"{max_margin} | {min_margin}" # Col represents the buffer between your max possible benefit and worst possible outcome for this player's good and bad matchups.
                 self.update_display_fields(row, 4, margin_text)
                 sum_margins = sum(all_margins)
                 self.update_display_fields(row, 5, sum_margins)
@@ -281,38 +361,59 @@ class UiManager:
     def check_protect(self):
         for row in range(1, 6):
             try:
-                # Sum the ratings for the current row
+                if self.row_checkboxes[row - 1].get() == 1:
+                    self.update_display_fields(row, 3, "---")
+                    continue
                 row_pinned = self.grid_display_entries[row][1].get() != "---"
                 row_pinner = self.grid_display_entries[row][2].get() != "---"
                 protect = "Yes" if row_pinned or row_pinner else "No"
                 self.update_display_fields(row, 3, protect)
             except (ValueError, IndexError) as e:
                 print(f"check_protect has failed for row {row} with error:\n{e}")
-        
+
     def check_for_pins(self):
         for row in range(1, 6):
             try:
-                good_matchups = sum(1 for col in range(1, 6) if int(self.grid_entries[row][col].get()) > 3)
+                if self.row_checkboxes[row - 1].get() == 1:
+                    self.update_display_fields(row, 2, "---")
+                    continue
+                good_matchups = sum(
+                    1
+                    for col in range(1, 6)
+                    if self.grid_widgets[row][col].cget('state') != 'disabled' and int(self.grid_entries[row][col].get()) > 3
+                )
                 can_pin = "PIN" if good_matchups > 1 else "---"
                 self.update_display_fields(row, 2, can_pin)
             except (ValueError, IndexError) as e:
                 print(f"check_for_pins has failed for row {row} with error:\n{e}")
-        
+
     def check_pinned_players(self):
         for row in range(1, 6):
             try:
-                num_bad_matchups = sum(1 for col in range(1, 6) if int(self.grid_entries[row][col].get()) < 3)
+                if self.row_checkboxes[row - 1].get() == 1:
+                    self.update_display_fields(row, 1, "---")
+                    continue
+                num_bad_matchups = sum(
+                    1
+                    for col in range(1, 6)
+                    if self.grid_widgets[row][col].cget('state') != 'disabled' and int(self.grid_entries[row][col].get()) < 3
+                )
                 player_pinned = "PINNED!" if num_bad_matchups > 1 else "---"
                 self.update_display_fields(row, 1, player_pinned)
             except (ValueError, IndexError) as e:
                 print(f"check_pinned_players has failed for row {row} with error:\n{e}")
 
-    def set_floor_values(self): # Calculate the sum of ratings for each player and update the second grid
-        for row in range(1,6):
+    def set_floor_values(self):
+        for row in range(1, 6):
             try:
-                # Sum the ratings for the current row
-                floor_rating_sum = sum(int(self.grid_entries[row][col].get()) for col in range(1,6))
-                # Update the corresponding entry in the display-only grid
+                if self.row_checkboxes[row-1].get() == 1:
+                    self.update_display_fields(row, 0, "---")
+                    continue
+                floor_rating_sum = sum(
+                    int(self.grid_entries[row][col].get())
+                    for col in range(1, 6)
+                    if self.grid_widgets[row][col].cget('state') != 'disabled'
+                )
                 self.update_display_fields(row, 0, floor_rating_sum)
             except (ValueError, IndexError) as e:
                 print(f"set_floor_values has failed with error:\n{e}")
@@ -383,7 +484,7 @@ class UiManager:
             self.previous_value = new_value
             try:
                 self.update_ui()
-            except (error) as e:
+            except (ValueError, IndexError) as e:
                 print(f"scenario_box_change error: {e}")
 
     def on_team_box_change(self, *args):
@@ -401,7 +502,7 @@ class UiManager:
         if perform_update:
             try:
                 self.update_ui()
-            except (error) as e:
+            except (ValueError,IndexError) as e:
                 print(f"team_box_change error: {e}")
             
     
@@ -717,7 +818,7 @@ class UiManager:
                 team_1_players_ids = {
                     player_name: player_id
                     for player_name, player_id in self.db_manager.query_sql(
-                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_players_1)}) and team_id={team_id_1} ORDER BY player_id"
+                        f"""SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'"{name}"' for name in team_players_1)}) and team_id={team_id_1} ORDER BY player_id"""
                     )
                 }
 
@@ -725,7 +826,7 @@ class UiManager:
                 team_2_players_ids = {
                     player_name: player_id
                     for player_name, player_id in self.db_manager.query_sql(
-                        f"SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'\"{name}\"' for name in team_players_2)}) and team_id={team_id_2} ORDER BY player_id"
+                        f"""SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'"{name}"' for name in team_players_2)}) and team_id={team_id_2} ORDER BY player_id"""
                     )
                 }
 
