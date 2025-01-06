@@ -92,7 +92,7 @@ class UiManager:
         self.notebook.pack(expand=1, fill='both')
 
         # set frames for the team grid tab
-        
+        #commenting some changes.
 
         self.top_frame = tk.Frame(self.team_grid_frame)
         self.top_frame.pack(side=tk.TOP, fill=tk.X)
