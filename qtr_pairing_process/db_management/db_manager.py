@@ -133,9 +133,6 @@ class DbManager:
     def create_player(self, player_name, team_id):
         table = 'players'
         columns = ['player_name', 'team_id']
-        value_string = f"('{player_name}', {team_id})"
-        self.insert_row(value_string, columns, table)
-
     def query_players(self, team_id):
         sql = f"SELECT player_id, player_name FROM players WHERE team_id = '{team_id}' ORDER BY player_id"
         results = self.query_sql(sql)
