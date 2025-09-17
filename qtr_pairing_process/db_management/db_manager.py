@@ -31,10 +31,13 @@ class DbManager:
             db_conn.commit()
             return db_cur.rowcount
 
-    def query_sql(self, sql):
+    def query_sql(self, sql, parameters=None):
         with self.connect_db(self.path, self.name) as db_conn:
             db_cur = db_conn.cursor()
-            db_cur.execute(sql)
+            if parameters:
+                db_cur.execute(sql, parameters)
+            else:
+                db_cur.execute(sql)
             rows = db_cur.fetchall()
         return rows
     
@@ -70,12 +73,9 @@ class DbManager:
     def create_scenario(self, scenario_id, scenario_name):
         table = 'scenarios'
         columns = ['scenario_id', 'scenario_name']
-        value_string = f"({scenario_id}, '{scenario_name}')"
-        self.insert_row(value_string, columns, table)
-
     def query_scenario_id(self, scenario_name):
-        sql = f"SELECT scenario_id FROM scenarios WHERE scenario_name = '{scenario_name}'"
-        results = self.query_sql(sql)
+        sql = "SELECT scenario_id FROM scenarios WHERE scenario_name = ?"
+        results = self.query_sql(sql, (scenario_name,))
         print(f"query_scenario_id results {results}")
         if len(results) > 1:
             raise ValueError(f'Too Many Records for scenario {scenario_name}')
@@ -103,12 +103,9 @@ class DbManager:
     def create_team(self, team_name):
         table = 'teams'
         columns = ['team_name']
-        value_string = f"('{team_name}')"
-        self.insert_row(value_string, columns, table)
-
     def query_team_id(self, team_name):
-        sql = f"select team_id from teams where team_name = '{team_name}'"
-        results = self.query_sql(sql)
+        sql = "select team_id from teams where team_name = ?"
+        results = self.query_sql(sql, (team_name,))
         
         if len(results)>1:
             raise ValueError(f'Too Many Records for team {team_name}')
@@ -134,8 +131,8 @@ class DbManager:
         table = 'players'
         columns = ['player_name', 'team_id']
     def query_players(self, team_id):
-        sql = f"SELECT player_id, player_name FROM players WHERE team_id = '{team_id}' ORDER BY player_id"
-        results = self.query_sql(sql)
+        sql = "SELECT player_id, player_name FROM players WHERE team_id = ? ORDER BY player_id"
+        results = self.query_sql(sql, (team_id,))
         
         if len(results) > 5 or (len(results) > 0 and len(results) < 5):
             raise ValueError(f'Invalid Number of Player Records for team {team_id}')

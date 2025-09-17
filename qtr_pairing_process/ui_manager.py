@@ -9,8 +9,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
 from urllib import error
 # repo libraries
-# from qtr_pairing_process import ui_db_funcs
-from qtr_pairing_process.db_management import db_manager
+from qtr_pairing_process import ui_db_funcs
 from qtr_pairing_process.ui_db_funcs import UIDBFuncs
 from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_RANGES, SCENARIO_TO_CSV_MAP
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
