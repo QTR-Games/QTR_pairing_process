@@ -3,6 +3,7 @@
 from multiprocessing import Value
 import os
 import csv
+from typing import List, Optional, Dict, Any
 
 # installed libraries
 import tkinter as tk
@@ -12,39 +13,53 @@ from urllib import error
 # from qtr_pairing_process import ui_db_funcs
 from qtr_pairing_process.db_management import db_manager
 from qtr_pairing_process.ui_db_funcs import UIDBFuncs
-from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_RANGES, SCENARIO_TO_CSV_MAP
+from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_RANGES, SCENARIO_TO_CSV_MAP, RATING_SYSTEMS, DEFAULT_RATING_SYSTEM
+from qtr_pairing_process.settings_manager import SettingsManager
+from qtr_pairing_process.rating_system_dialog import RatingSystemDialog
+from qtr_pairing_process.data_validator import DataValidator
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.tree_generator import TreeGenerator
 from qtr_pairing_process.db_load_ui import DbLoadUi
 from qtr_pairing_process.xlsx_load_ui import XlsxLoadUi
 from qtr_pairing_process.db_management.db_manager import DbManager
 from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
+from qtr_pairing_process.create_team_dialog import CreateTeamDialog
 from qtr_pairing_process.excel_management.excel_importer import ExcelImporter
+from qtr_pairing_process.excel_management.simple_excel_importer import SimpleExcelImporter
 
 
 class UiManager:
     def __init__(
         self,
-        color_map,
-        scenario_map,
-        directory,
-        scenario_ranges,
-        scenario_to_csv_map,
-        print_output=False
+        color_map: Dict[str, str],
+        scenario_map: Dict[int, str],
+        directory: str,
+        scenario_ranges: Dict[int, tuple],
+        scenario_to_csv_map: Dict[int, str],
+        print_output: bool = False
     ):
-        self.grid_entries = None
-        self.grid_widgets = None
-        self.grid_display_entries = None
-        self.grid_display_widgets = None
         self.print_output = print_output
         self.directory = directory
-        self.color_map = color_map
         self.scenario_map = scenario_map
         self.scenario_ranges = scenario_ranges
         self.scenario_to_csv_map = scenario_to_csv_map
-        self.treeview = None
         self.is_sorted = False  # State variable to track if the tree is sorted
+        self.active_sort_mode = None  # Track which sort mode is currently active
+        
+        # Initialize settings manager
+        self.settings_manager = SettingsManager()
+        
+        # Initialize rating system (this may override the provided color_map)
+        self.current_rating_system = self.settings_manager.get_rating_system()
+        self.rating_config = RATING_SYSTEMS[self.current_rating_system]
+        self.color_map = self.rating_config['color_map']
+        self.rating_range = self.rating_config['range']
 
+        # Initialize other UI components
+        self.comment_tooltip: Optional[tk.Toplevel] = None
+        self.comment_indicators: Dict[tuple, tk.Label] = {}  # Store comment indicators
+        self.row_checkboxes: List[tk.IntVar] = []
+        self.column_checkboxes: List[tk.IntVar] = []
 
         self.select_database()
         self.initialize_ui_vars()
@@ -97,11 +112,9 @@ class UiManager:
         self.top_frame = tk.Frame(self.team_grid_frame)
         self.top_frame.pack(side=tk.TOP, fill=tk.X)
 
-        self.left_frame = tk.Frame(self.top_frame)
-        self.left_frame.pack(side=tk.LEFT, padx=10, pady=10)
-
-        self.right_frame = tk.Frame(self.top_frame)
-        self.right_frame.pack(side=tk.LEFT, padx=10, pady=10)
+        # Single unified grid frame
+        self.grid_frame = tk.Frame(self.top_frame, relief=tk.RIDGE, borderwidth=2)
+        self.grid_frame.pack(side=tk.TOP, padx=10, pady=10, fill=tk.BOTH, expand=True)
 
         self.button_row_frame = tk.Frame(self.team_grid_frame)
         self.button_row_frame.pack(side=tk.TOP, fill=tk.X)
@@ -116,9 +129,13 @@ class UiManager:
         self.buttons_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
 
         self.grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
-        self.grid_widgets = [[None for _ in range(6)] for _ in range(6)]
+        self.grid_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(6)] for _ in range(6)]
         self.grid_display_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
-        self.grid_display_widgets = [[None for _ in range(6)] for _ in range(6)]
+        self.grid_display_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(6)] for _ in range(6)]
+        
+        # Track grid flip state and store original data
+        self.grid_is_flipped = False
+        self.original_grid_data = None
 
         self.team_b = tk.IntVar()
         pairingLead = tk.Checkbutton(self.buttons_frame, text="Our team first", variable=self.team_b)
@@ -131,8 +148,14 @@ class UiManager:
         alphaBox.select()
 
         # create treeview and tree generator
-        self.treeview = LazyTreeView(master=self.tree_tab_right_frame, print_output=self.print_output, columns=("Rating"))
+        self.treeview = LazyTreeView(master=self.tree_tab_right_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
         self.tree_generator = TreeGenerator(treeview=self.treeview, sort_alpha=self.sort_alpha.get())
+        
+        # Create Matchup Output Panel
+        self.create_matchup_output_panel()
+        
+        # Track current sorting mode for column display
+        self.current_sort_mode = "none"
 
     
     def create_ui(self):
@@ -176,22 +199,37 @@ class UiManager:
         self.set_team_dropdowns()
         self.update_scenario_box()
 
-        # Add Buttons to a row just above the pairing grid       
-        tk.Button(self.button_row_frame, text="Export CSV", command=lambda: self.export_csvs()).pack(side=tk.LEFT, padx=5, pady=5)
-        tk.Button(self.button_row_frame, text="Load Grid", command=lambda: self.load_grid_data_from_db()).pack(side=tk.LEFT, padx=5, pady=5)
+        # Add essential buttons to a row just above the pairing grid       
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
-        tk.Button(self.button_row_frame, text="Import CSV", command=lambda: self.import_csvs()).pack(side=tk.LEFT, padx=5, pady=3)
-		# tk.Button(self.button_row_frame, text="Add Team", command=lambda: self.add_team_to_db()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Delete Team", command=lambda: self.on_delete_team()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="REFRESH", command=lambda: self.update_ui()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="Import XSLX", command=lambda: self.import_xlsx()).pack(side=tk.LEFT, padx=5, pady=3)
-        tk.Button(self.button_row_frame, text="GET SCORE", command=lambda: self.on_scenario_calculations()).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(self.button_row_frame, text="Flip Grid", command=lambda: self.flip_grid_perspective()).pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # Data Management menu button
+        data_mgmt_button = tk.Button(self.button_row_frame, text="Data Management", 
+                                   command=lambda: self.show_data_management_menu(),
+                                   bg="lightcyan", fg="darkgreen", font=("Arial", 9, "bold"),
+                                   relief=tk.RAISED, borderwidth=2)
+        data_mgmt_button.pack(side=tk.LEFT, padx=10, pady=5)
+
+        # Initialize round tracking variables first
+        self.round_dropdowns = []
+        self.round_vars = []
+        self.enemy_round_dropdowns = []
+        self.enemy_round_vars = []
+        self.selected_players_per_round = {}
+        
+        # Create Round Selection section for Team Grid tab only
+        self.create_team_grid_round_selection()
 
 		# Configure Treeview with style and maximize space
         style = ttk.Style()
         style.configure("Treeview", font=("Arial", 10))
         self.treeview.tree.heading("#0", text="Pairing")
         self.treeview.tree.heading("Rating", text="Rating")
+        self.treeview.tree.heading("Sort Value", text="Sort Value")
+        
+        # Configure column widths
+        self.treeview.tree.column("Rating", width=80, minwidth=50)
+        self.treeview.tree.column("Sort Value", width=100, minwidth=80)
         self.treeview.tree.tag_configure('1', background="orangered")
         self.treeview.tree.tag_configure('2', background="orange")
         self.treeview.tree.tag_configure('3', background="yellow")
@@ -202,20 +240,21 @@ class UiManager:
         generateButton = tk.Button(self.buttons_frame, text="Generate\nCombinations", command=self.on_generate_combinations)
         generateButton.pack(fill=tk.X, pady=5)
 
-        math_button_0 = tk.Button(self.buttons_frame, text="Maximize\nMatchup Strength!", command=self.traverse_and_sum_values_0)
-        math_button_0.pack(fill=tk.X, pady=5)
+        # Initialize sorting state tracking
+        self.active_sort_mode = None  # Track which sort is currently active
+        
+        # Create sorting buttons with active/inactive states
+        self.cumulative_button = tk.Button(self.buttons_frame, text="🔴 Cumulative\nSort", command=self.toggle_cumulative_sort)
+        self.cumulative_button.pack(fill=tk.X, pady=5)
 
-        math_button_1 = tk.Button(self.buttons_frame, text="Sum\nMatchup Strength!", command=self.traverse_and_sum_values_1)
-        math_button_1.pack(fill=tk.X, pady=5)
+        self.confidence_button = tk.Button(self.buttons_frame, text="🔴 Highest\nConfidence", command=self.toggle_confidence_sort)
+        self.confidence_button.pack(fill=tk.X, pady=5)
 
-        math_button_3 = tk.Button(self.buttons_frame, text="MEAN\nMatchup Strength!", command=self.traverse_and_sum_values_3)
-        math_button_3.pack(fill=tk.X, pady=5)
-
-        math_button_1 = tk.Button(self.buttons_frame, text="Avoid Poor Matchups!", command=self.traverse_and_sum_values_2)
-        math_button_1.pack(fill=tk.X, pady=5)
-
-        self.sort_tree_button = tk.Button(self.buttons_frame, text="Sort Matchups!", command=self.toggle_sorting)
-        self.sort_tree_button.pack(fill=tk.X, pady=5)
+        self.counter_button = tk.Button(self.buttons_frame, text="🔴 Counter\nPick", command=self.toggle_counter_sort)
+        self.counter_button.pack(fill=tk.X, pady=5)
+        
+        # Set initial button states (all inactive)
+        self.update_sort_button_states()
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
@@ -223,6 +262,9 @@ class UiManager:
 
         self.update_combobox_colors()
         self.init_display_headers()
+        
+        # Create status bar
+        self.create_status_bar()
 
         self.root.mainloop()
 
@@ -230,32 +272,82 @@ class UiManager:
         self.row_checkboxes = []
         self.column_checkboxes = []
 
+        # Single unified grid title
+        grid_label = tk.Label(self.grid_frame, text="Team Matchup Analysis Grid", font=("Arial", 14, "bold"), bg="lightcyan")
+        grid_label.grid(row=0, column=0, columnspan=13, pady=(0, 5), sticky="ew")
+
+        # Section headers
+        rating_header = tk.Label(self.grid_frame, text="Rating Matrix", font=("Arial", 11, "bold"), bg="lightblue")
+        rating_header.grid(row=1, column=0, columnspan=6, pady=(0, 2), sticky="ew")
+        
+        # Visual separator
+        separator = tk.Frame(self.grid_frame, width=3, bg="darkgray")
+        separator.grid(row=1, column=6, rowspan=7, sticky="ns", padx=5)
+        
+        calc_header = tk.Label(self.grid_frame, text="Calculations", font=("Arial", 11, "bold"), bg="lightgreen")
+        calc_header.grid(row=1, column=7, columnspan=6, pady=(0, 2), sticky="ew")
+
+        # Create the 6x6 rating grid (left side of unified grid)
         for r in range(6):
             for c in range(6):
-                entry = tk.Entry(self.left_frame, textvariable=self.grid_entries[r][c], width=10)
-                entry.grid(row=r + 2, column=c, padx=5, pady=5)
+                # Rating grid entries (columns 0-5)
+                entry = tk.Entry(self.grid_frame, textvariable=self.grid_entries[r][c], width=8, 
+                               font=("Arial", 10), relief=tk.SOLID, borderwidth=1)
+                entry.grid(row=r + 2, column=c, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
                 self.grid_widgets[r][c] = entry
                 self.grid_entries[r][c].trace_add('write', lambda name, index, mode, var=self.grid_entries[r][c], row=r, col=c: self.update_color_on_change(var, index, mode, row, col))
+                
+                # Add comment functionality to matchup cells (not header cells)
+                if r > 0 and c > 0:
+                    # Bind mouse events for comment tooltips and editing
+                    entry.bind("<Enter>", lambda event, row=r, col=c: self.show_comment_tooltip(event, row, col))
+                    entry.bind("<Leave>", self.hide_comment_tooltip)
+                    entry.bind("<Button-3>", lambda event, row=r, col=c: self.open_comment_editor(event, row, col))
 
-                display_entry = tk.Entry(self.right_frame, textvariable=self.grid_display_entries[r][c], width=10, state='readonly')
-                display_entry.grid(row=r, column=c, padx=5, pady=5, sticky="nw")
+        # Create the display grid (right side of unified grid, columns 7-12)
+        for r in range(6):
+            for c in range(6):
+                # Display grid entries (columns 7-12)
+                display_entry = tk.Entry(self.grid_frame, textvariable=self.grid_display_entries[r][c], width=8, 
+                                       state='readonly', font=("Arial", 10), relief=tk.SOLID, borderwidth=1,
+                                       readonlybackground="lightgray")
+                display_entry.grid(row=r + 2, column=c + 7, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
                 self.grid_display_widgets[r][c] = display_entry
 
-                # Add row checkboxes in the new column (column index 6)
-        for r in range(1,6): # and c == 5: # original line if r != 0: # and c == 5:
+        # Configure grid weights for the unified grid
+        for i in range(2, 8):  # rows 2-7 for grid data
+            self.grid_frame.grid_rowconfigure(i, weight=1)
+        for i in range(13):  # columns 0-12 (6 rating + separator + 6 display)
+            if i != 6:  # Don't expand separator column
+                self.grid_frame.grid_columnconfigure(i, weight=1)
+
+        # Add row checkboxes (column 13)
+        checkbox_label = tk.Label(self.grid_frame, text="Row\nSelect", font=("Arial", 9, "bold"))
+        checkbox_label.grid(row=1, column=13, pady=(0, 2))
+        
+        for r in range(1, 6):
             var = tk.IntVar()
-            entry = tk.Checkbutton(self.left_frame, variable=var)
-            entry.grid(row=r + 2, column=6)  # Place the checkbox in the 6th column
+            entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"R{r}")
+            entry.grid(row=r + 2, column=13, padx=2, pady=1, sticky="w")
             var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
             self.row_checkboxes.append(var)
 
-        # Add column checkboxes in the last row of the grid, skipping the first column
-        for c in range(1,6):
+        # Add column checkboxes (row 8, columns 1-5)
+        col_label = tk.Label(self.grid_frame, text="Column Select", font=("Arial", 9, "bold"))
+        col_label.grid(row=8, column=1, columnspan=5, pady=(5, 0))
+        
+        for c in range(1, 6):
             var = tk.IntVar()
-            entry = tk.Checkbutton(self.left_frame, variable=var)
-            entry.grid(row=8, column=c)  # Shift column index by 1
+            entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"C{c}")
+            entry.grid(row=9, column=c, padx=1, pady=2, sticky="n")
             var.trace_add('write', lambda name, index, mode, col=c, var=var: self.on_column_checkbox_change(col, var))
             self.column_checkboxes.append(var)
+
+        # Configure weights for checkbox and header areas
+        self.grid_frame.grid_rowconfigure(8, weight=0)  # Don't expand label row
+        self.grid_frame.grid_rowconfigure(9, weight=0)  # Don't expand checkbox row
+        self.grid_frame.grid_columnconfigure(6, weight=0)  # Don't expand separator
+        self.grid_frame.grid_columnconfigure(13, weight=0)  # Don't expand checkbox column
 
         # for r in range(6):
         #     for c in range(6):
@@ -263,6 +355,51 @@ class UiManager:
         #         display_entry.grid(row=r, column=c, padx=5, pady=5, sticky="nw")
         #         self.grid_display_widgets[r][c] = display_entry
 
+    def create_team_grid_round_selection(self):
+        """Create the Round Selection section for Team Grid tab with 75%/25% split"""
+        # Create main container for Round Selection with 75%/25% split
+        main_container = tk.Frame(self.team_grid_frame)
+        main_container.pack(fill=tk.BOTH, padx=10, pady=5)
+        main_container.grid_rowconfigure(0, weight=1)  # Allow vertical expansion
+        
+        # Configure main container for proper 75%/25% split
+        main_container.grid_columnconfigure(0, weight=3)  # 75% for Round Selection
+        main_container.grid_columnconfigure(1, weight=1)  # 25% for Matchup Output
+        
+        # Create 75% width frame for Round Selection
+        self.round_selection_frame = tk.Frame(main_container, relief=tk.RIDGE, borderwidth=1)
+        self.round_selection_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 2))
+        
+        # Create 25% width frame for future Matchup Output
+        self.matchup_output_frame = tk.Frame(main_container, bg='#f0f0f0', relief=tk.RIDGE, borderwidth=1)
+        self.matchup_output_frame.grid(row=0, column=1, sticky='nsew', padx=(2, 0))
+        
+        # Create "Our Team First" checkbox at the top center of Round Selection frame
+        self.team_b_duplicate = tk.IntVar()
+        # Sync with the original checkbox
+        self.team_b_duplicate.set(self.team_b.get())
+        # Add trace to keep them in sync
+        self.team_b_duplicate.trace_add("write", lambda *args: self.team_b.set(self.team_b_duplicate.get()))
+        self.team_b.trace_add("write", lambda *args: self.team_b_duplicate.set(self.team_b.get()))
+        
+        team_first_checkbox = tk.Checkbutton(self.round_selection_frame, text="Our Team First", variable=self.team_b_duplicate, font=("Arial", 10))
+        team_first_checkbox.pack(pady=(5, 10))  # Centered horizontally with padding
+        
+        # Create header frame for Round Selection title
+        header_frame = tk.Frame(self.round_selection_frame)
+        header_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
+        
+        # Centered "Round Selection" label
+        round_label = tk.Label(header_frame, text="Round Selection", font=("Arial", 10, "bold"))
+        round_label.pack()
+        
+        # Add placeholder label in matchup output area
+        placeholder_label = tk.Label(self.matchup_output_frame, text="Matchup Output\n(Future Feature)", 
+                                   bg='#f0f0f0', fg='gray', font=("Arial", 9))
+        placeholder_label.pack(expand=True)
+        
+        # Create round selection dropdowns in the main round selection frame
+        self.create_round_selection_dropdowns()
 
     def on_row_checkbox_change(self, row, var):
         print(f"Row {row} checkbox changed to {var.get()}")
@@ -294,17 +431,90 @@ class UiManager:
         for row in range(1, 6):
             for col in range(1, 6):
                 value = self.grid_entries[row][col].get()
-                if value in self.color_map:
-                    self.grid_widgets[row][col].config(bg=self.color_map[value])
+                widget = self.grid_widgets[row][col]
+                if widget and value in self.color_map:
+                    widget.config(bg=self.color_map[value])
 
     def update_color_on_change(self, var, index, mode, row, col):
-        if self.row_checkboxes[row-1].get() == 1 or self.column_checkboxes[col-1].get() == 1:
-            return  # Skip updating color if row or column checkbox is checked
+        if self.row_checkboxes and row-1 < len(self.row_checkboxes) and self.row_checkboxes[row-1].get() == 1:
+            return  # Skip updating color if row checkbox is checked
+        if self.column_checkboxes and col-1 < len(self.column_checkboxes) and self.column_checkboxes[col-1].get() == 1:
+            return  # Skip updating color if column checkbox is checked
         value = var.get()
-        if value in self.color_map:
-            self.grid_widgets[row][col].config(bg=self.color_map[value])
-        else:
-            self.grid_widgets[row][col].config(bg='white')
+        widget = self.grid_widgets[row][col]
+        if widget and value in self.color_map:
+            widget.config(bg=self.color_map[value])
+        elif widget:
+            widget.config(bg='white')
+    
+    def update_grid_colors(self):
+        """Update all grid cell colors based on current rating system"""
+        for row in range(1, 6):
+            for col in range(1, 6):
+                value = self.grid_entries[row][col].get()
+                widget = self.grid_widgets[row][col]
+                if widget and value in self.color_map:
+                    widget.config(bg=self.color_map[value])
+                elif widget:
+                    widget.config(bg='white')
+    
+    def create_status_bar(self):
+        """Create status bar showing current rating system"""
+        self.status_frame = tk.Frame(self.root, relief=tk.SUNKEN, bd=1)
+        self.status_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        # Database info
+        db_name = getattr(self, 'db_name', 'Unknown')
+        self.db_status = tk.Label(self.status_frame, text=f"Database: {db_name}", anchor=tk.W)
+        self.db_status.pack(side=tk.LEFT, padx=5)
+        
+        # Rating system info
+        system_info = f"Rating System: {self.rating_config['name']} ({self.rating_range[0]}-{self.rating_range[1]})"
+        self.rating_status = tk.Label(self.status_frame, text=system_info, anchor=tk.CENTER)
+        self.rating_status.pack(side=tk.LEFT, expand=True, padx=20)
+        
+        # Add color preview
+        color_frame = tk.Frame(self.status_frame)
+        color_frame.pack(side=tk.RIGHT, padx=5)
+        
+        tk.Label(color_frame, text="Colors:", font=("Arial", 8)).pack(side=tk.LEFT, padx=(0, 3))
+        
+        for rating in sorted(self.color_map.keys()):
+            color_box = tk.Label(color_frame, text=rating, bg=self.color_map[rating], 
+                               width=2, relief=tk.RAISED, borderwidth=1, font=("Arial", 7, "bold"))
+            color_box.pack(side=tk.LEFT, padx=1)
+    
+    def update_status_bar(self):
+        """Update status bar information"""
+        if hasattr(self, 'rating_status'):
+            system_info = f"Rating System: {self.rating_config['name']} ({self.rating_range[0]}-{self.rating_range[1]})"
+            self.rating_status.config(text=system_info)
+        
+        if hasattr(self, 'db_status'):
+            db_name = getattr(self, 'db_name', 'Unknown')
+            self.db_status.config(text=f"Database: {db_name}")
+        
+        # Recreate color preview with new colors
+        if hasattr(self, 'status_frame'):
+            # Remove old color frame
+            for widget in self.status_frame.winfo_children():
+                if isinstance(widget, tk.Frame) and widget.winfo_children():
+                    # Check if this frame contains color boxes
+                    for child in widget.winfo_children():
+                        if isinstance(child, tk.Label) and child.cget('text') in self.color_map:
+                            widget.destroy()
+                            break
+            
+            # Add new color frame
+            color_frame = tk.Frame(self.status_frame)
+            color_frame.pack(side=tk.RIGHT, padx=5)
+            
+            tk.Label(color_frame, text="Colors:", font=("Arial", 8)).pack(side=tk.LEFT, padx=(0, 3))
+            
+            for rating in sorted(self.color_map.keys()):
+                color_box = tk.Label(color_frame, text=rating, bg=self.color_map[rating], 
+                                   width=2, relief=tk.RAISED, borderwidth=1, font=("Arial", 7, "bold"))
+                color_box.pack(side=tk.LEFT, padx=1)
     
     # Add this method to update display-only fields
     def update_display_fields(self, row, col, value):
@@ -330,22 +540,23 @@ class UiManager:
         self.check_for_pins()  # info_col 2
         self.check_protect()  # info_col 3
         self.check_margins()  # info_col 4 & 5
+        self.update_comment_indicators()  # Update comment visual indicators
 
     def check_margins(self):
         for row in range(1, 6):
             try:
-                if self.row_checkboxes[row - 1].get() == 1:
+                if self.row_checkboxes and row - 1 < len(self.row_checkboxes) and self.row_checkboxes[row - 1].get() == 1:
                     for col in range(4, 6):
                         self.update_display_fields(row, col, "---")
                     continue
                 floor_rating_sum = int(self.grid_display_entries[row][0].get())
                 all_margins = []
                 for col in range(1, 6):
-                    col_margin_sum = sum(
-                        int(self.grid_entries[row1][col].get())
-                        for row1 in range(1, 6)
-                        if self.grid_widgets[row1][col].cget('state') != 'disabled'
-                    ) # col_margin_sum = the sum of all the ratings in the current column. Do this for each col in left grid.
+                    col_margin_sum = 0
+                    for row1 in range(1, 6):
+                        widget = self.grid_widgets[row1][col]
+                        if widget is not None and widget.cget('state') != 'disabled':
+                            col_margin_sum += int(self.grid_entries[row1][col].get())
                     diff = floor_rating_sum - col_margin_sum
                     all_margins.append(diff) # add the current col's sum to the all_margins list 
                 # MIN/MAX COLUMN = 
@@ -374,14 +585,14 @@ class UiManager:
     def check_for_pins(self):
         for row in range(1, 6):
             try:
-                if self.row_checkboxes[row - 1].get() == 1:
+                if self.row_checkboxes and row - 1 < len(self.row_checkboxes) and self.row_checkboxes[row - 1].get() == 1:
                     self.update_display_fields(row, 2, "---")
                     continue
-                good_matchups = sum(
-                    1
-                    for col in range(1, 6)
-                    if self.grid_widgets[row][col].cget('state') != 'disabled' and int(self.grid_entries[row][col].get()) > 3
-                )
+                good_matchups = 0
+                for col in range(1, 6):
+                    widget = self.grid_widgets[row][col]
+                    if widget is not None and widget.cget('state') != 'disabled' and int(self.grid_entries[row][col].get()) > 3:
+                        good_matchups += 1
                 can_pin = "PIN" if good_matchups > 1 else "---"
                 self.update_display_fields(row, 2, can_pin)
             except (ValueError, IndexError) as e:
@@ -390,14 +601,14 @@ class UiManager:
     def check_pinned_players(self):
         for row in range(1, 6):
             try:
-                if self.row_checkboxes[row - 1].get() == 1:
+                if self.row_checkboxes and row - 1 < len(self.row_checkboxes) and self.row_checkboxes[row - 1].get() == 1:
                     self.update_display_fields(row, 1, "---")
                     continue
-                num_bad_matchups = sum(
-                    1
-                    for col in range(1, 6)
-                    if self.grid_widgets[row][col].cget('state') != 'disabled' and int(self.grid_entries[row][col].get()) < 3
-                )
+                num_bad_matchups = 0
+                for col in range(1, 6):
+                    widget = self.grid_widgets[row][col]
+                    if widget is not None and widget.cget('state') != 'disabled' and int(self.grid_entries[row][col].get()) < 3:
+                        num_bad_matchups += 1
                 player_pinned = "PINNED!" if num_bad_matchups > 1 else "---"
                 self.update_display_fields(row, 1, player_pinned)
             except (ValueError, IndexError) as e:
@@ -406,14 +617,14 @@ class UiManager:
     def set_floor_values(self):
         for row in range(1, 6):
             try:
-                if self.row_checkboxes[row-1].get() == 1:
+                if self.row_checkboxes and row-1 < len(self.row_checkboxes) and self.row_checkboxes[row-1].get() == 1:
                     self.update_display_fields(row, 0, "---")
                     continue
-                floor_rating_sum = sum(
-                    int(self.grid_entries[row][col].get())
-                    for col in range(1, 6)
-                    if self.grid_widgets[row][col].cget('state') != 'disabled'
-                )
+                floor_rating_sum = 0
+                for col in range(1, 6):
+                    widget = self.grid_widgets[row][col]
+                    if widget is not None and widget.cget('state') != 'disabled':
+                        floor_rating_sum += int(self.grid_entries[row][col].get())
                 self.update_display_fields(row, 0, floor_rating_sum)
             except (ValueError, IndexError) as e:
                 print(f"set_floor_values has failed with error:\n{e}")
@@ -424,9 +635,233 @@ class UiManager:
         next_tab = (current_tab + 1) % total_tabs
         self.notebook.select(next_tab)
 
+    def on_create_team(self):
+        self.create_team()
+        
     def on_delete_team(self):
         self.delete_team()
         self.update_ui()
+    
+    def on_change_database(self):
+        """Allow user to select a different database or create a new one."""
+        from tkinter import messagebox
+        
+        try:
+            # Show confirmation dialog
+            result = messagebox.askyesno("Change Database", 
+                                       "This will close the current database and allow you to select a new one.\n\n"
+                                       "Any unsaved changes will be lost.\n\n"
+                                       "Do you want to continue?")
+            
+            if result:
+                # Clear current tree data
+                if hasattr(self, 'treeview') and self.treeview:
+                    self.treeview.tree.delete(*self.treeview.tree.get_children())
+                
+                # Reset sorting states
+                self.active_sort_mode = None
+                self.is_sorted = False
+                self.current_sort_mode = "none"
+                if hasattr(self, 'update_sort_button_states'):
+                    self.update_sort_button_states()
+                
+                # Clear grid data
+                for r in range(6):
+                    for c in range(6):
+                        self.grid_entries[r][c].set("")
+                        self.grid_display_entries[r][c].set("")
+                
+                # Trigger database selection
+                self.select_database()
+                
+                # Update UI with new database
+                self.update_ui()
+                
+                # Show success message
+                db_name = self.db_name if hasattr(self, 'db_name') and self.db_name else "Selected Database"
+                messagebox.showinfo("Database Changed", f"Successfully switched to: {db_name}")
+                
+        except Exception as e:
+            print(f"Error changing database: {e}")
+            messagebox.showerror("Error", f"Failed to change database: {e}")
+    
+    def on_configure_rating_system(self):
+        """Show dialog to configure rating system preference."""
+        try:
+            dialog = RatingSystemDialog(self.root, self.current_rating_system, self.db_manager)
+            new_system = dialog.show()
+            
+            if new_system and new_system != self.current_rating_system:
+                # Update current system
+                self.current_rating_system = new_system
+                self.rating_config = RATING_SYSTEMS[new_system]
+                self.color_map = self.rating_config['color_map']
+                self.rating_range = self.rating_config['range']
+                
+                # Save preference
+                self.settings_manager.set_rating_system(new_system)
+                
+                # Update grid colors immediately
+                self.update_grid_colors()
+                
+                # Update status bar
+                self.update_status_bar()
+                
+                # Show success message
+                messagebox.showinfo("Rating System Updated", 
+                                  f"Rating system changed to: {self.rating_config['name']}\n\n"
+                                  f"Range: {self.rating_range[0]}-{self.rating_range[1]}\n"
+                                  f"Colors updated throughout the application.")
+                
+        except Exception as e:
+            print(f"Error configuring rating system: {e}")
+            messagebox.showerror("Error", f"Failed to configure rating system: {e}")
+    
+    def show_data_management_menu(self):
+        """Show a popup menu with data management options."""
+        import tkinter as tk
+        from tkinter import messagebox
+        
+        try:
+            # Create popup menu window with wider layout for 2x2 grid
+            menu_window = tk.Toplevel(self.root)
+            menu_window.title("Data Management")
+            menu_window.geometry("650x550")
+            menu_window.resizable(False, False)
+            
+            # Center the window
+            menu_window.transient(self.root)
+            menu_window.grab_set()
+            
+            # Position relative to main window
+            x = self.root.winfo_x() + 50
+            y = self.root.winfo_y() + 50
+            menu_window.geometry(f"+{x}+{y}")
+            
+            # Title label
+            title_label = tk.Label(menu_window, text="Data Management", 
+                                 font=("Arial", 16, "bold"), bg="lightcyan", pady=10)
+            title_label.pack(fill=tk.X, padx=10, pady=(10, 15))
+            
+            # Create main frame for 2x2 grid layout
+            main_frame = tk.Frame(menu_window, bg="white")
+            main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+            
+            # Configure grid weights for equal distribution
+            main_frame.grid_columnconfigure(0, weight=1)
+            main_frame.grid_columnconfigure(1, weight=1)
+            main_frame.grid_rowconfigure(0, weight=1)
+            main_frame.grid_rowconfigure(1, weight=1)
+            
+            # TOP LEFT: Import & Export section
+            import_export_frame = tk.Frame(main_frame, bg="lightblue", relief=tk.RAISED, borderwidth=2)
+            import_export_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+            
+            import_export_label = tk.Label(import_export_frame, text="Import & Export", 
+                                         font=("Arial", 12, "bold"), fg="darkblue", bg="lightblue")
+            import_export_label.pack(pady=(10, 5))
+            
+            tk.Button(import_export_frame, text="Import CSV", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.import_csvs),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
+            tk.Button(import_export_frame, text="Export CSV", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.export_csvs),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
+            tk.Button(import_export_frame, text="Import XLSX", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.import_xlsx),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
+            tk.Button(import_export_frame, text="Export XLSX", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.export_xlsx),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
+            
+            # TOP RIGHT: Data Management section
+            data_mgmt_frame = tk.Frame(main_frame, bg="lightgreen", relief=tk.RAISED, borderwidth=2)
+            data_mgmt_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+            
+            data_mgmt_label = tk.Label(data_mgmt_frame, text="Data Management", 
+                                     font=("Arial", 12, "bold"), fg="darkgreen", bg="lightgreen")
+            data_mgmt_label.pack(pady=(10, 5))
+            
+            tk.Button(data_mgmt_frame, text="Load Grid", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.load_grid_data_from_db),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
+            tk.Button(data_mgmt_frame, text="Get Score", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.on_scenario_calculations),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
+            tk.Button(data_mgmt_frame, text="Refresh UI", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.update_ui),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
+            
+            # BOTTOM LEFT: Team Management section
+            team_mgmt_frame = tk.Frame(main_frame, bg="lightyellow", relief=tk.RAISED, borderwidth=2)
+            team_mgmt_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+            
+            team_mgmt_label = tk.Label(team_mgmt_frame, text="Team Management", 
+                                     font=("Arial", 12, "bold"), fg="darkorange", bg="lightyellow")
+            team_mgmt_label.pack(pady=(10, 5))
+            
+            tk.Button(team_mgmt_frame, text="Create Team", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.on_create_team),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
+            tk.Button(team_mgmt_frame, text="Delete Team", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.on_delete_team),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
+            
+            # BOTTOM RIGHT: Database section
+            database_frame = tk.Frame(main_frame, bg="mistyrose", relief=tk.RAISED, borderwidth=2)
+            database_frame.grid(row=1, column=1, padx=10, pady=10, sticky="nsew")
+            
+            print("Adding Database section to menu...")  # Debug output
+            db_label = tk.Label(database_frame, text="Database & Settings", 
+                              font=("Arial", 12, "bold"), fg="darkred", bg="mistyrose")
+            db_label.pack(pady=(10, 5))
+            
+            change_db_button = tk.Button(database_frame, text="Change Database", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.on_change_database),
+                     relief=tk.RAISED, borderwidth=1)
+            change_db_button.pack(pady=3)
+            
+            rating_system_button = tk.Button(database_frame, text="Rating System", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.on_configure_rating_system),
+                     relief=tk.RAISED, borderwidth=1, bg="lightpink")
+            rating_system_button.pack(pady=(3, 10))
+            print("Database section added successfully!")  # Debug output
+            
+            # Close button frame at the bottom
+            close_frame = tk.Frame(menu_window)
+            close_frame.pack(pady=10)
+            
+            close_button = tk.Button(close_frame, text="Close", width=30, height=2,
+                                   command=menu_window.destroy,
+                                   bg="lightcoral", fg="white", font=("Arial", 10, "bold"),
+                                   relief=tk.RAISED, borderwidth=2)
+            close_button.pack()
+            
+            print("Data Management menu created successfully with all sections!")  # Debug output
+            
+        except Exception as e:
+            print(f"Error showing data management menu: {e}")
+            messagebox.showerror("Error", f"Failed to show data management menu: {e}")
+    
+    def _menu_action(self, menu_window, action_func):
+        """Execute menu action and close menu window."""
+        try:
+            menu_window.destroy()  # Close menu first
+            action_func()  # Then execute the action
+        except Exception as e:
+            print(f"Error executing menu action: {e}")
+            from tkinter import messagebox
+            messagebox.showerror("Error", f"Failed to execute action: {e}")
+    
+    def export_xlsx(self):
+        """Export data to XLSX format - placeholder implementation."""
+        from tkinter import messagebox
+        try:
+            # TODO: Implement XLSX export functionality
+            messagebox.showinfo("Export XLSX", "XLSX export functionality will be implemented in a future update.")
+        except Exception as e:
+            print(f"Error exporting XLSX: {e}")
+            messagebox.showerror("Error", f"Failed to export XLSX: {e}")
     
     def on_generate_combinations(self):
         fNames, oNames = self.prep_names()
@@ -440,30 +875,89 @@ class UiManager:
         else:
             self.tree_generator.generate_combinations(oNames, fNames, oRatings, fRatings)
         
-    def traverse_and_sum_values_0(self):
-        self.tree_generator.traverse_and_sum_values(0)
-
-    def traverse_and_sum_values_1(self):
-        self.tree_generator.traverse_and_sum_values(1)
-
-    def traverse_and_sum_values_2(self):
-        self.tree_generator.traverse_and_sum_values(2)
-                   
-    def traverse_and_sum_values_3(self):
-        self.tree_generator.traverse_and_sum_values(3)
-
-    def sort_matchup_tree(self):
-        self.tree_generator.sort_matchup_value()
-
-    def toggle_sorting(self):
-        if self.is_sorted:
-            self.tree_generator.unsort_matchup_tree()
-            self.sort_tree_button.config(text="Sort Matchups!")
-        else:
-            self.tree_generator.sort_matchup_value()
-            self.sort_tree_button.config(text="Remove Sorting")
+        # Reset all sorting states when generating new combinations
+        self.active_sort_mode = None
+        self.is_sorted = False
+        self.current_sort_mode = "none"
+        self.treeview.tree.heading("Sort Value", text="Sort Value")
+        self.update_sort_value_column()
+        self.update_sort_button_states()
         
-        self.is_sorted = not self.is_sorted  # Toggle the state
+    def sort_by_confidence(self):
+        """Sort tree by risk-adjusted confidence scores"""
+        self.tree_generator.sort_by_risk_adjusted_confidence()
+        self.current_sort_mode = "confidence"
+        self.active_sort_mode = "confidence"
+        self.treeview.tree.heading("Sort Value", text="Confidence Score")
+        self.update_sort_value_column()
+        self.is_sorted = True
+        self.update_sort_button_states()
+
+    def sort_by_counter_resistance(self):
+        """Sort tree by counter-resistance against opponent strategies"""
+        self.tree_generator.sort_by_opponent_response_simulation()
+        self.current_sort_mode = "resistance"
+        self.active_sort_mode = "resistance"
+        self.treeview.tree.heading("Sort Value", text="Resistance Score")
+        self.update_sort_value_column()
+        self.is_sorted = True
+        self.update_sort_button_states()
+
+    def sort_by_cumulative(self):
+        """Sort tree by cumulative value"""
+        self.tree_generator.sort_by_cumulative_value()
+        self.current_sort_mode = "cumulative"
+        self.active_sort_mode = "cumulative"
+        self.treeview.tree.heading("Sort Value", text="Cumulative Value")
+        self.update_sort_value_column()
+        self.is_sorted = True
+        self.update_sort_button_states()
+    
+    def unsort_tree(self):
+        """Remove all sorting and return to default order"""
+        self.tree_generator.unsort_tree()
+        self.current_sort_mode = "none"
+        self.active_sort_mode = None
+        self.treeview.tree.heading("Sort Value", text="Sort Value")
+        self.update_sort_value_column()
+        self.is_sorted = False
+        self.update_sort_button_states()
+    
+    def toggle_cumulative_sort(self):
+        """Toggle cumulative sorting on/off"""
+        if self.active_sort_mode == "cumulative":
+            self.unsort_tree()
+        else:
+            self.sort_by_cumulative()
+    
+    def toggle_confidence_sort(self):
+        """Toggle confidence sorting on/off"""
+        if self.active_sort_mode == "confidence":
+            self.unsort_tree()
+        else:
+            self.sort_by_confidence()
+    
+    def toggle_counter_sort(self):
+        """Toggle counter-resistance sorting on/off"""
+        if self.active_sort_mode == "resistance":
+            self.unsort_tree()
+        else:
+            self.sort_by_counter_resistance()
+    
+    def update_sort_button_states(self):
+        """Update button appearance to show active/inactive states"""
+        # Reset all buttons to inactive state (dim red circle)
+        self.cumulative_button.config(text="⭕ Cumulative\nSort", relief=tk.RAISED, bg='SystemButtonFace')
+        self.confidence_button.config(text="⭕ Highest\nConfidence", relief=tk.RAISED, bg='SystemButtonFace')
+        self.counter_button.config(text="⭕ Counter\nPick", relief=tk.RAISED, bg='SystemButtonFace')
+        
+        # Set active button to bright red circle and pressed appearance
+        if self.active_sort_mode == "cumulative":
+            self.cumulative_button.config(text="🔴 Cumulative\nSort", relief=tk.SUNKEN, bg='lightcoral')
+        elif self.active_sort_mode == "confidence":
+            self.confidence_button.config(text="🔴 Highest\nConfidence", relief=tk.SUNKEN, bg='lightcoral')
+        elif self.active_sort_mode == "resistance":
+            self.counter_button.config(text="🔴 Counter\nPick", relief=tk.SUNKEN, bg='lightcoral')
 
     def update_scenario_box(self):
         scenarios = []
@@ -502,6 +996,10 @@ class UiManager:
         if perform_update:
             try:
                 self.update_ui()
+                # Update round dropdowns when team changes
+                self.update_round_dropdown_options()
+                # Trigger scenario calculations to populate the grid on the right
+                self.on_scenario_calculations()
             except (ValueError,IndexError) as e:
                 print(f"team_box_change error: {e}")
             
@@ -543,9 +1041,15 @@ class UiManager:
 
         team_sql_template = "select team_id from teams where team_name='{team_name}'"
         team_1_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_1))
+        if not team_1_row:
+            print(f"Team '{team_1}' not found in database")
+            return
         team_1_id = team_1_row[0][0]
 
         team_2_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_2))
+        if not team_2_row:
+            print(f"Team '{team_2}' not found in database")
+            return
         team_2_id = team_2_row[0][0]
 
         # Do not assume that the lower team value is the home team
@@ -586,27 +1090,48 @@ class UiManager:
         # print(ratings_rows)
         # update usernames
         for _, row_dict in team_2_dict.items():
-
-            self.grid_entries[0][row_dict['position']].set(row_dict['name'])
+            pos = row_dict['position']
+            if 0 <= pos < len(self.grid_entries[0]):
+                self.grid_entries[0][pos].set(row_dict['name'])
         
         for _, row_dict in team_1_dict.items():
-            self.grid_entries[row_dict['position']][0].set(row_dict['name'])
+            pos = row_dict['position']
+            if 0 <= pos < len(self.grid_entries):
+                self.grid_entries[pos][0].set(row_dict['name'])
 
         for r, row in enumerate(ratings_rows):
             team_1_pos = team_1_dict[row[0]]['position']
             team_2_pos = team_2_dict[row[1]]['position']
-            self.grid_entries[team_1_pos][team_2_pos].set(row[2])
+            if (0 <= team_1_pos < len(self.grid_entries) and 
+                0 <= team_2_pos < len(self.grid_entries[0])):
+                self.grid_entries[team_1_pos][team_2_pos].set(row[2])
+        
+        # Update comment indicators after loading grid data
+        self.update_comment_indicators()
         
     def save_grid_data_to_db(self):
+        # Prevent saving when grid is flipped to opponent's perspective
+        if self.grid_is_flipped:
+            messagebox.showwarning("Cannot Save", 
+                "Cannot save data while grid is flipped to opponent's perspective.\n"
+                "Please click 'Flip Grid' again to restore friendly perspective before saving.")
+            return
+            
         team_1 = self.combobox_1.get()
         team_2 = self.combobox_2.get()
         scenario_id = int(self.scenario_box.get()[:1])
 
         team_sql_template = "select team_id from teams where team_name='{team_name}'"
         team_1_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_1))
+        if not team_1_row:
+            print(f"Team '{team_1}' not found in database")
+            return
         team_1_id = team_1_row[0][0]
 
         team_2_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_2))
+        if not team_2_row:
+            print(f"Team '{team_2}' not found in database")
+            return
         team_2_id = team_2_row[0][0]
 
         # Do not assume that the lower team value is the home team
@@ -638,26 +1163,76 @@ class UiManager:
                     return 0 
 
     def add_team_to_db(self):
-        # Create a popup window to enter the team name
-        popup = tk.Tk()
-        popup.withdraw()  # Hide the main window
-        
-        team_name = simpledialog.askstring("Input", "Enter the team name:", parent=popup)
+        # Use the main window as parent for the dialog
+        team_name = simpledialog.askstring("Input", "Enter the team name:", parent=self.root)
         if team_name:
             self.db_manager.create_team(team_name)
-        popup.destroy()
         self.update_ui()
 
-    def delete_team(self):
-        popup = tk.Tk()
-        popup.withdraw()  # Hide the main window
+    def create_team(self):
+        """Create a new team using the Create Team Wizard dialog"""
+        # Fetch existing team names to check for duplicates
+        existing_team_names = self.select_team_names()
 
+        # Create and display the create team dialog using existing root
+        dialog = CreateTeamDialog(self.root, existing_team_names)
+        result = dialog.show()
+
+        if result is None:
+            return  # User cancelled the operation
+
+        team_name = result["team_name"]
+        player_names = result["player_names"]
+
+        try:
+            # Check if team already exists
+            team_exists = team_name in existing_team_names
+            
+            if team_exists:
+                # Update existing team's players
+                team_id = self.db_manager.query_team_id(team_name)
+                
+                if team_id is None:
+                    raise RuntimeError(f"Could not find team ID for existing team '{team_name}'")
+                
+                # Delete existing players for this team using secure method
+                secure_db = self.db_manager.get_secure_interface()
+                secure_db.delete_players_for_team_secure(team_id)
+                
+                # Insert new players
+                for player_name in player_names:
+                    self.db_manager.create_player(player_name, team_id)
+                    
+                messagebox.showinfo("Success", 
+                                  f"Team '{team_name}' has been updated successfully!\n\n"
+                                  f"Players updated:\n" + "\n".join([f"• {name}" for name in player_names]))
+            else:
+                # Create new team
+                team_id = self.db_manager.upsert_team(team_name)
+                
+                # Create players
+                for player_name in player_names:
+                    self.db_manager.create_player(player_name, team_id)
+                    
+                messagebox.showinfo("Success", 
+                                  f"Team '{team_name}' has been created successfully!\n\n"
+                                  f"Players added:\n" + "\n".join([f"• {name}" for name in player_names]))
+
+            # Update UI like successful CSV import
+            self.set_team_dropdowns()
+            self.update_ui()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to create/update team: {str(e)}")
+            print(f"create_team error: {e}")
+
+    def delete_team(self):
         # Fetch existing team names
         team_names = self.select_team_names()
 
-        # Create and display the delete team dialog
-        dialog = DeleteTeamDialog(popup, team_names)
-        popup.wait_window(dialog.top)
+        # Create and display the delete team dialog using existing root
+        dialog = DeleteTeamDialog(self.root, team_names)
+        self.root.wait_window(dialog.top)
 
         team_name = dialog.selected_team
         if team_name is None:
@@ -668,18 +1243,17 @@ class UiManager:
             messagebox.showerror("Error", f"Invalid team name: {team_name}")
             return
 
-        # Retrieve the team_id of the selected team
-        team_id_row = self.db_manager.query_sql(f"SELECT team_id FROM teams WHERE team_name='{team_name}'")
-        if not team_id_row:
-            messagebox.showerror("Error", f"Team not found: '{team_name}'")
+        # Use secure delete method
+        try:
+            secure_db = self.db_manager.get_secure_interface()
+            success = secure_db.delete_team_secure(team_name)
+            
+            if not success:
+                messagebox.showerror("Error", f"Team not found: '{team_name}'")
+                return
+        except (ValueError, RuntimeError) as e:
+            messagebox.showerror("Error", f"Failed to delete team: {e}")
             return
-
-        team_id = team_id_row[0][0]
-
-        # Delete related records
-        self.db_manager.execute_sql(f"DELETE FROM ratings WHERE team_1_id={team_id} OR team_2_id={team_id}")
-        self.db_manager.execute_sql(f"DELETE FROM players WHERE team_id={team_id}")
-        self.db_manager.execute_sql(f"DELETE FROM teams WHERE team_id={team_id}")
 
         messagebox.showinfo("Success", f"Team '{team_name}' and all related records have been deleted successfully.")
         try:
@@ -689,13 +1263,44 @@ class UiManager:
             print(f"delete_team caused an error trying to update the UI: {e}")
 
     def import_xlsx(self):
-        xslx_load_ui  = XlsxLoadUi()
-        file_path, file_name = xslx_load_ui.load_xslx_file()
-        excel_importer = ExcelImporter(db_manager=self.db_manager, file_path=file_path, file_name=file_name)
+        """Import Excel file using the new simple format"""
+        # Let user select the Excel file
+        file_path = filedialog.askopenfilename(
+            title="Select Excel File for Import",
+            filetypes=[("Excel files", "*.xlsx *.xls"), ("All files", "*.*")]
+        )
+        
+        if not file_path:
+            return
+            
         try:
-            excel_importer.execute()
-        except (ValueError,IndexError) as e:
-            print(f"import_xlsx error: {e}")
+            # Extract filename without extension for team name
+            file_name = os.path.splitext(os.path.basename(file_path))[0]
+            
+            # Create and execute the simple importer
+            simple_importer = SimpleExcelImporter(
+                db_manager=self.db_manager, 
+                file_path=file_path, 
+                scenario_id=0  # Default to neutral scenario
+            )
+            
+            teams_imported = simple_importer.execute()
+            
+            # Show success message
+            messagebox.showinfo(
+                "Import Successful", 
+                f"Successfully imported {teams_imported} teams from {file_name}"
+            )
+            
+            # Refresh the UI to show the new data
+            self.update_ui()
+            
+        except Exception as e:
+            messagebox.showerror(
+                "Import Error", 
+                f"Failed to import Excel file:\n{str(e)}"
+            )
+            print(f"Excel import error: {e}")
 
     def export_csvs(self):
         print(f"Exporting Matchups to CSV")
@@ -738,11 +1343,20 @@ class UiManager:
             scenario_id = scenario
             ratings[scenario_id] = {}
             for player1 in team1_players:
-                player1_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player1}'")[0][0]
+                player1_result = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player1}'")
+                if not player1_result:
+                    print(f"Player '{player1}' not found in database")
+                    continue
+                player1_id = player1_result[0][0]
                 # print(f"player1 - {player1_id}: {player1}")
                 player_ratings = []
                 for player2 in team2_players:
-                    player2_id = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player2}'")[0][0]
+                    player2_result = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player2}'")
+                    if not player2_result:
+                        print(f"Player '{player2}' not found in database")
+                        player_ratings.append(0)
+                        continue
+                    player2_id = player2_result[0][0]
                     rating = self.db_manager.query_sql(f"""
                         SELECT rating FROM ratings
                         WHERE team_1_player_id = {player1_id} AND team_2_player_id = {player2_id} AND scenario_id = {scenario_id}
@@ -781,6 +1395,8 @@ class UiManager:
         player_names = []
         team_players_1 = []
         team_players_2 = []
+        team_id_1 = 0
+        team_id_2 = 0
 
         team_2_players_ids = {}
 
@@ -792,20 +1408,24 @@ class UiManager:
             try:
                 team_id = self.db_manager.upsert_team(line[0])
                 players = self.db_manager.upsert_and_validate_players(team_id, player_names[index])
+                
+                # Set combobox values based on the index
+                if index == 0:
+                    team_name_1 = team_names[index]
+                    self.combobox_1.set(team_name_1)
+                    team_id_1 = team_id
+                    team_players_1 = player_names[index]
+                elif index == 1:
+                    team_name_2 = team_names[index]
+                    self.combobox_2.set(team_name_2)
+                    team_id_2 = team_id
+                    team_players_2 = player_names[index]
             except ValueError as e:
                 print(f"import_csv_header_and_ratings ERROR - {e}")
+                continue
 
-            # Set combobox values based on the index
-            if index == 0:
-                team_name_1 = team_names[index]
-                self.combobox_1.set(team_name_1)
-                team_id_1 = team_id
-                team_players_1 = player_names[index]
-            elif index == 1:
-                team_name_2 = team_names[index]
-                self.combobox_2.set(team_name_2)
-                team_id_2 = team_id
-                team_players_2 = player_names[index]
+        scenario_id = 0  # Initialize scenario_id
+        team_2_players_ids = {}
 
         for line in rating_section:
             # if this line DOES NOT CONTAIN a friendly player followed by ratings
@@ -834,12 +1454,13 @@ class UiManager:
                 # if this line DOES contain a friendly player followed by ratings
                 # this line must contain ratings to upsert
 
-                if team_2_players_ids:
+                if team_2_players_ids and 'scenario_id' in locals():
                     player_1 = line[0]
                     ratings = list(map(int, line[1:]))
                     # Retrieve player_id and team_id for friendly team (team_1)
                     result = self.db_manager.query_sql(f"SELECT player_id, team_id FROM players WHERE player_name='{player_1}' and team_id={team_id_1}")
                     # if results are retrieved then we can continue.
+                    player_id_1 = 0
                     try: 
                         if result:
                             player_id_1, team_id_1 = result[0]
@@ -847,6 +1468,7 @@ class UiManager:
                             raise ValueError(f'{player_1}')
                     except (ValueError) as e:
                         print(f"VALUE ERROR ON IMPORT: {e}\nThis name doesn't match any friendly player. Check the import file for mistakes based on this name: {e}")
+                        continue
 
                     for i, rating in enumerate(ratings):
                         try:
@@ -857,20 +1479,6 @@ class UiManager:
                             print(f"import_csv_header_and_ratings ERROR - {e}")
 
     #############################################
-
-    def update_combobox_colors(self):
-        for row in range(1, 6):
-            for col in range(1, 6):
-                value = self.grid_entries[row][col].get()
-                if value in self.color_map:
-                    self.grid_widgets[row][col].config(bg=self.color_map[value])
-                    
-    def update_color_on_change(self, var, index, mode, row, col):
-        value = var.get()
-        if value in self.color_map:
-            self.grid_widgets[row][col].config(bg=self.color_map[value])
-        else:
-            self.grid_widgets[row][col].config(bg='white')
 
     def prep_names(self):
         fNames = [self.grid_entries[i][0].get() for i in range(1, 6)]
@@ -912,11 +1520,19 @@ class UiManager:
         return num
 
     def validate_grid_data(self):
+        """Validate grid data based on current rating system"""
+        min_rating, max_rating = self.rating_range
+        valid_ratings = [str(i) for i in range(min_rating, max_rating + 1)]
+        
         for row in range(1, 6):
             for col in range(1, 6):
                 value = self.grid_entries[row][col].get()
-                if value not in ['1', '2', '3', '4', '5']:
-                    messagebox.showerror("Error", f"Invalid rating at row {row+1}, column {col+1}. Ratings should be between 1 and 5.")
+                if value and value not in valid_ratings:
+                    system_name = self.rating_config['name']
+                    messagebox.showerror("Error", 
+                                       f"Invalid rating at row {row+1}, column {col+1}.\n\n"
+                                       f"Current system: {system_name}\n"
+                                       f"Valid ratings: {min_rating}-{max_rating}")
                     return False
         return True
 
@@ -956,6 +1572,1233 @@ class UiManager:
                 ratings[player][opponent] = rating
         return ratings
 
+    # Comment functionality methods
+    def check_comment_exists(self, row, col):
+        """Check if a comment exists for a specific cell without showing tooltip"""
+        try:
+            # Get current team and scenario information
+            team1_name = self.team1_var.get()
+            team2_name = self.team2_var.get()
+            scenario_name = self.scenario_var.get()
+            
+            # Get player names from grid
+            friendly_player = self.grid_entries[row][0].get()
+            opponent_player = self.grid_entries[0][col].get()
+            
+            if not all([team1_name, team2_name, scenario_name, friendly_player, opponent_player]):
+                return False
+            
+            # Query comment from database
+            comment = self.db_manager.query_comment_by_name(
+                team1_name, team2_name, scenario_name, 
+                friendly_player, opponent_player
+            )
+            
+            return comment is not None and comment.strip() != ""
+        except Exception:
+            return False
+
+    def clear_comment_indicators(self):
+        """Clear all existing comment indicators"""
+        if hasattr(self, 'comment_indicators'):
+            for indicator in self.comment_indicators.values():
+                indicator.destroy()
+            self.comment_indicators.clear()
+        else:
+            self.comment_indicators = {}
+
+    def update_comment_indicators(self):
+        """Update corner indicators for cells that have comments"""
+        # Clear existing indicators first
+        self.clear_comment_indicators()
+        
+        for row in range(1, 6):
+            for col in range(1, 6):
+                if self.check_comment_exists(row, col):
+                    self.add_comment_indicator(row, col)
+
+    def add_comment_indicator(self, row, col):
+        """Add a small corner indicator for comments"""
+        try:
+            # Create a small triangle indicator
+            indicator = tk.Label(
+                self.grid_frame,
+                text="▲",  # Small triangle
+                font=("Arial", 6),
+                fg="#FF6B35",  # Orange-red color for visibility
+                bg=self.grid_frame.cget('bg'),
+                relief=tk.FLAT,
+                borderwidth=0
+            )
+            
+            # Store the indicator for cleanup later
+            self.comment_indicators[(row, col)] = indicator
+            
+            # Schedule positioning after the widget is drawn
+            self.root.after_idle(lambda: self.position_comment_indicator(indicator, row, col))
+            
+        except Exception as e:
+            print(f"Error adding comment indicator at ({row}, {col}): {e}")
+
+    def position_comment_indicator(self, indicator, row, col):
+        """Position the comment indicator in the top-right corner of the cell"""
+        try:
+            widget = self.grid_widgets[row][col]
+            if widget is not None and widget.winfo_exists():
+                # Position the indicator in the top-right corner
+                indicator.place(
+                    in_=widget,
+                    anchor="ne",
+                    relx=1.0,  # Right edge
+                    rely=0.0,  # Top edge
+                    x=-2,      # Slight offset from edge
+                    y=2        # Slight offset from edge
+                )
+        except Exception as e:
+            print(f"Error positioning comment indicator at ({row}, {col}): {e}")
+            # If positioning fails, destroy the indicator
+            if indicator.winfo_exists():
+                indicator.destroy()
+
+    def show_comment_tooltip(self, event, row, col):
+        """Show tooltip with comment text when hovering over a matchup cell"""
+        try:
+            # Get current team and scenario information
+            team1_name = self.team1_var.get()
+            team2_name = self.team2_var.get()
+            scenario_name = self.scenario_var.get()
+            
+            # Get player names from grid
+            friendly_player = self.grid_entries[row][0].get()
+            opponent_player = self.grid_entries[0][col].get()
+            
+            if not all([team1_name, team2_name, scenario_name, friendly_player, opponent_player]):
+                return
+            
+            # Query comment from database
+            comment = self.db_manager.query_comment_by_name(
+                team1_name, team2_name, scenario_name, 
+                friendly_player, opponent_player
+            )
+            
+            if comment:
+                # Create tooltip window
+                self.comment_tooltip = tk.Toplevel(self.root)
+                self.comment_tooltip.wm_overrideredirect(True)
+                
+                # Position tooltip near cursor
+                x = event.widget.winfo_rootx() + 20
+                y = event.widget.winfo_rooty() + event.widget.winfo_height() + 5
+                self.comment_tooltip.wm_geometry(f"+{x}+{y}")
+                
+                # Create label with comment text
+                label = tk.Label(
+                    self.comment_tooltip, 
+                    text=comment, 
+                    justify=tk.LEFT,
+                    background="#ffffe0", 
+                    relief=tk.SOLID, 
+                    borderwidth=1,
+                    wraplength=300,
+                    padx=5,
+                    pady=5
+                )
+                label.pack()
+                
+        except Exception as e:
+            print(f"Error showing comment tooltip: {e}")
+
+    def hide_comment_tooltip(self, event=None):
+        """Hide the comment tooltip"""
+        if hasattr(self, 'comment_tooltip') and self.comment_tooltip:
+            self.comment_tooltip.destroy()
+            self.comment_tooltip = None
+
+    def open_comment_editor(self, event, row, col):
+        """Open a dialog to edit/add comments for a specific matchup"""
+        try:
+            # Get current team and scenario information
+            team1_name = self.team1_var.get()
+            team2_name = self.team2_var.get()
+            scenario_name = self.scenario_var.get()
+            
+            # Get player names from grid
+            friendly_player = self.grid_entries[row][0].get()
+            opponent_player = self.grid_entries[0][col].get()
+            
+            if not all([team1_name, team2_name, scenario_name, friendly_player, opponent_player]):
+                messagebox.showwarning("Missing Information", 
+                                     "Please select teams, scenario, and ensure player names are filled in.")
+                return
+            
+            # Get existing comment
+            existing_comment = self.db_manager.query_comment_by_name(
+                team1_name, team2_name, scenario_name, 
+                friendly_player, opponent_player
+            ) or ""
+            
+            # Create comment editor dialog
+            self.create_comment_dialog(
+                team1_name, team2_name, scenario_name, 
+                friendly_player, opponent_player, existing_comment
+            )
+            
+        except Exception as e:
+            print(f"Error opening comment editor: {e}")
+            messagebox.showerror("Error", f"Failed to open comment editor: {e}")
+
+    def create_comment_dialog(self, team1_name, team2_name, scenario_name, 
+                            friendly_player, opponent_player, existing_comment):
+        """Create a dialog window for editing comments"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Edit Matchup Comment")
+        dialog.geometry("500x400")
+        dialog.resizable(True, True)
+        
+        # Make dialog modal
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Title label
+        title_text = f"Comment for {friendly_player} vs {opponent_player}\nScenario: {scenario_name}"
+        title_label = tk.Label(dialog, text=title_text, font=("Arial", 12, "bold"))
+        title_label.pack(pady=10)
+        
+        # Character count frame
+        count_frame = tk.Frame(dialog)
+        count_frame.pack(fill=tk.X, padx=10)
+        
+        char_count_label = tk.Label(count_frame, text="Characters: 0/2000", anchor="e")
+        char_count_label.pack(side=tk.RIGHT)
+        
+        # Text area for comment
+        text_frame = tk.Frame(dialog)
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        comment_text = tk.Text(
+            text_frame, 
+            height=15, 
+            width=60, 
+            wrap=tk.WORD,
+            font=("Arial", 10)
+        )
+        
+        # Scrollbar for text area
+        scrollbar = tk.Scrollbar(text_frame, orient=tk.VERTICAL, command=comment_text.yview)
+        comment_text.configure(yscrollcommand=scrollbar.set)
+        
+        comment_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Insert existing comment
+        if existing_comment:
+            comment_text.insert(tk.END, existing_comment)
+            
+        # Update character count
+        def update_char_count(event=None):
+            content = comment_text.get("1.0", tk.END).strip()
+            char_count = len(content)
+            char_count_label.config(text=f"Characters: {char_count}/2000")
+            
+            # Change color if approaching or exceeding limit
+            if char_count > 2000:
+                char_count_label.config(fg="red")
+            elif char_count > 1800:
+                char_count_label.config(fg="orange")
+            else:
+                char_count_label.config(fg="black")
+        
+        # Bind character count update
+        comment_text.bind('<KeyRelease>', update_char_count)
+        comment_text.bind('<ButtonRelease>', update_char_count)
+        update_char_count()  # Initial count
+        
+        # Button frame
+        button_frame = tk.Frame(dialog)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        def save_comment():
+            try:
+                comment_content = comment_text.get("1.0", tk.END).strip()
+                
+                # Validate length
+                if len(comment_content) > 2000:
+                    messagebox.showerror("Comment Too Long", 
+                                       "Comment must be 2000 characters or less.")
+                    return
+                
+                # Save to database
+                if comment_content:
+                    self.db_manager.upsert_comment_by_name(
+                        team1_name, team2_name, scenario_name,
+                        friendly_player, opponent_player, comment_content
+                    )
+                    messagebox.showinfo("Success", "Comment saved successfully!")
+                else:
+                    # Delete comment if empty
+                    self.db_manager.delete_comment_by_name(
+                        team1_name, team2_name, scenario_name,
+                        friendly_player, opponent_player
+                    )
+                    messagebox.showinfo("Success", "Comment deleted successfully!")
+                
+                dialog.destroy()
+                
+            except Exception as e:
+                print(f"Error saving comment: {e}")
+                messagebox.showerror("Error", f"Failed to save comment: {e}")
+        
+        def delete_comment():
+            if messagebox.askyesno("Delete Comment", "Are you sure you want to delete this comment?"):
+                try:
+                    self.db_manager.delete_comment_by_name(
+                        team1_name, team2_name, scenario_name,
+                        friendly_player, opponent_player
+                    )
+                    messagebox.showinfo("Success", "Comment deleted successfully!")
+                    dialog.destroy()
+                except Exception as e:
+                    print(f"Error deleting comment: {e}")
+                    messagebox.showerror("Error", f"Failed to delete comment: {e}")
+        
+        # Buttons
+        tk.Button(button_frame, text="Save", command=save_comment, bg="lightgreen").pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Delete", command=delete_comment, bg="lightcoral").pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        
+        # Focus on text area
+        comment_text.focus_set()
+
+    def update_sort_value_column(self):
+        """Update the Sort Value column based on current sorting mode"""
+        self.update_sort_value_recursive("")
+
+    def update_sort_value_recursive(self, node):
+        """Recursively update sort values for all nodes in tree"""
+        children = self.treeview.tree.get_children(node)
+        
+        for child in children:
+            # Get the appropriate sort value based on current mode
+            sort_value = str(self.get_sort_value_for_node(child))
+            
+            # Update the Sort Value column (second column, index 1)
+            current_values = list(self.treeview.tree.item(child, 'values'))
+            if len(current_values) < 2:
+                current_values.append(sort_value)
+            else:
+                current_values[1] = sort_value
+            
+            self.treeview.tree.item(child, values=current_values)
+            
+            # Recursively update children
+            self.update_sort_value_recursive(child)
+
+    def get_sort_value_for_node(self, node):
+        """Extract the appropriate sort value from node tags based on current sort mode"""
+        if self.current_sort_mode == "none":
+            return ""
+        elif self.current_sort_mode == "confidence":
+            return self.tree_generator.get_confidence_from_tags(node)
+        elif self.current_sort_mode == "resistance":
+            return self.tree_generator.get_resistance_from_tags(node)
+        elif self.current_sort_mode == "cumulative":
+            return self.tree_generator.get_cumulative_from_tags(node)
+        else:
+            return ""
+
+    def flip_grid_perspective(self):
+        """Flip the grid to show opponent's perspective of matchup ratings."""
+        try:
+            if not self.grid_is_flipped:
+                # Store original data before flipping (use grid_entries, not grid_display_entries)
+                self.original_grid_data = {}
+                for row in range(6):
+                    for col in range(6):
+                        self.original_grid_data[(row, col)] = self.grid_entries[row][col].get()
+                
+                # 1. Swap team player names
+                # Store friendly team names (column 0, rows 1-5)
+                friendly_names = []
+                for row in range(1, 6):
+                    friendly_names.append(self.grid_entries[row][0].get())
+                
+                # Store enemy team names (row 0, columns 1-5)  
+                enemy_names = []
+                for col in range(1, 6):
+                    enemy_names.append(self.grid_entries[0][col].get())
+                
+                # Swap the names - put enemy names where friendly names were
+                for row in range(1, 6):
+                    if row - 1 < len(enemy_names):
+                        self.grid_entries[row][0].set(enemy_names[row - 1])
+                
+                # Put friendly names where enemy names were
+                for col in range(1, 6):
+                    if col - 1 < len(friendly_names):
+                        self.grid_entries[0][col].set(friendly_names[col - 1])
+                
+                # 2. Flip ratings around 3 (1↔5, 2↔4, 3 stays 3)
+                for row in range(1, 6):
+                    for col in range(1, 6):
+                        current_value = self.grid_entries[row][col].get()
+                        if current_value.isdigit():
+                            rating = int(current_value)
+                            # Flip around 3: new_rating = 6 - old_rating
+                            flipped_rating = 6 - rating
+                            self.grid_entries[row][col].set(str(flipped_rating))
+                
+                self.grid_is_flipped = True
+                print("Grid flipped to opponent's perspective")
+                
+            else:
+                # Restore original data
+                if self.original_grid_data:
+                    for row in range(6):
+                        for col in range(6):
+                            original_value = self.original_grid_data.get((row, col), "")
+                            self.grid_entries[row][col].set(original_value)
+                
+                self.grid_is_flipped = False
+                self.original_grid_data = None
+                print("Grid restored to friendly perspective")
+                
+        except Exception as e:
+            print(f"Error flipping grid perspective: {e}")
+            messagebox.showerror("Error", f"Failed to flip grid perspective: {e}")
+
+    def create_round_selection_dropdowns(self):
+        """Create dropdowns for tracking player selections across tournament rounds."""
+        try:
+            # Clear existing content (but skip the header frame that was created in parent method)
+            for widget in self.round_selection_frame.winfo_children():
+                if widget.winfo_class() != 'Frame' or len(widget.winfo_children()) == 0:
+                    continue  # Skip the header frame
+                widget.destroy()
+            
+            self.round_dropdowns.clear()
+            self.round_vars.clear()
+            self.enemy_round_dropdowns = []
+            self.enemy_round_vars = []
+            
+            # Create grid container for the dropdowns directly in round_selection_frame
+            grid_container = tk.Frame(self.round_selection_frame)
+            grid_container.pack(fill=tk.X, padx=10, pady=5)
+            
+            # Column headers
+            header_frame = tk.Frame(grid_container)
+            header_frame.pack(fill=tk.X, pady=(0, 8))
+            
+            # Configure header column layout to match round frames
+            header_frame.grid_columnconfigure(0, weight=0, minsize=80)
+            header_frame.grid_columnconfigure(1, weight=1, minsize=150)
+            header_frame.grid_columnconfigure(2, weight=1, minsize=150)
+            
+            tk.Label(header_frame, text="Round", font=("Arial", 10, "bold")).grid(row=0, column=0, padx=5, sticky='w')
+            tk.Label(header_frame, text="Friendly", font=("Arial", 10, "bold")).grid(row=0, column=1, padx=5, sticky='w')
+            tk.Label(header_frame, text="Enemy", font=("Arial", 10, "bold")).grid(row=0, column=2, padx=5, sticky='w')
+            
+            # Create 5 rounds of dropdowns (ante system: 1 ante + 2 responses per round)
+            for round_num in range(1, 6):
+                round_frame = tk.Frame(grid_container)
+                round_frame.pack(fill=tk.X, pady=2)
+                
+                # Configure consistent column layout
+                round_frame.grid_columnconfigure(0, weight=0, minsize=80)  # Round label
+                round_frame.grid_columnconfigure(1, weight=1, minsize=150)  # Friendly column
+                round_frame.grid_columnconfigure(2, weight=1, minsize=150)  # Enemy column
+                
+                # Round number label
+                tk.Label(round_frame, text=f"Round {round_num}:", font=("Arial", 9), width=8).grid(row=0, column=0, padx=5, sticky='w')
+                
+                # Determine who antes this round (alternating: friendly odd rounds, enemy even rounds)
+                friendly_antes = (round_num % 2 == 1)
+                
+                if friendly_antes:
+                    # Friendly team antes (1 dropdown), Enemy responds (2 dropdowns)
+                    friendly_var = tk.StringVar()
+                    friendly_dropdown = ttk.Combobox(round_frame, state='readonly', width=18, textvariable=friendly_var)
+                    friendly_dropdown.grid(row=0, column=1, padx=5, pady=2, sticky='ew')
+                    
+                    # Create a sub-frame for enemy responses to maintain alignment
+                    enemy_response_frame = tk.Frame(round_frame)
+                    enemy_response_frame.grid(row=0, column=2, rowspan=2, padx=5, pady=2, sticky='nsew')
+                    
+                    # Enemy response dropdowns - vertically stacked
+                    enemy_var1 = tk.StringVar()
+                    enemy_dropdown1 = ttk.Combobox(enemy_response_frame, state='readonly', width=18, textvariable=enemy_var1)
+                    enemy_dropdown1.pack(fill=tk.X, pady=(0, 2))
+                    
+                    enemy_var2 = tk.StringVar()
+                    enemy_dropdown2 = ttk.Combobox(enemy_response_frame, state='readonly', width=18, textvariable=enemy_var2)
+                    enemy_dropdown2.pack(fill=tk.X, pady=(0, 0))
+                    
+                    # Bind events
+                    friendly_var.trace_add('write', lambda *args, r=round_num, v=friendly_var: self.on_ante_selection_change_direct(r, v))
+                    enemy_var1.trace_add('write', lambda *args, r=round_num, p=1, v=enemy_var1: self.on_response_selection_change_direct(r, p, v))
+                    enemy_var2.trace_add('write', lambda *args, r=round_num, p=2, v=enemy_var2: self.on_response_selection_change_direct(r, p, v))
+                    
+                    # Store references
+                    self.round_vars.append(friendly_var)
+                    self.round_dropdowns.append(friendly_dropdown)
+                    self.enemy_round_vars.extend([enemy_var1, enemy_var2])
+                    self.enemy_round_dropdowns.extend([enemy_dropdown1, enemy_dropdown2])
+                    self.selected_players_per_round[round_num] = {
+                        'ante': None, 'ante_team': 'friendly',
+                        'response1': None, 'response2': None, 'response_team': 'enemy'
+                    }
+                    
+                else:
+                    # Enemy team antes (1 dropdown), Friendly responds (2 dropdowns)
+                    enemy_var = tk.StringVar()
+                    enemy_dropdown = ttk.Combobox(round_frame, state='readonly', width=18, textvariable=enemy_var)
+                    enemy_dropdown.grid(row=0, column=2, padx=5, pady=2, sticky='ew')
+                    
+                    # Create a sub-frame for friendly responses to maintain alignment
+                    friendly_response_frame = tk.Frame(round_frame)
+                    friendly_response_frame.grid(row=0, column=1, rowspan=2, padx=5, pady=2, sticky='nsew')
+                    
+                    # Friendly response dropdowns - vertically stacked
+                    friendly_var1 = tk.StringVar()
+                    friendly_dropdown1 = ttk.Combobox(friendly_response_frame, state='readonly', width=18, textvariable=friendly_var1)
+                    friendly_dropdown1.pack(fill=tk.X, pady=(0, 2))
+                    
+                    friendly_var2 = tk.StringVar()
+                    friendly_dropdown2 = ttk.Combobox(friendly_response_frame, state='readonly', width=18, textvariable=friendly_var2)
+                    friendly_dropdown2.pack(fill=tk.X, pady=(0, 0))
+                    
+                    # Bind events
+                    enemy_var.trace_add('write', lambda *args, r=round_num, v=enemy_var: self.on_ante_selection_change_direct(r, v))
+                    friendly_var1.trace_add('write', lambda *args, r=round_num, p=1, v=friendly_var1: self.on_response_selection_change_direct(r, p, v))
+                    friendly_var2.trace_add('write', lambda *args, r=round_num, p=2, v=friendly_var2: self.on_response_selection_change_direct(r, p, v))
+                    
+                    # Store references
+                    self.enemy_round_vars.append(enemy_var)
+                    self.enemy_round_dropdowns.append(enemy_dropdown)
+                    self.round_vars.extend([friendly_var1, friendly_var2])
+                    self.round_dropdowns.extend([friendly_dropdown1, friendly_dropdown2])
+                    self.selected_players_per_round[round_num] = {
+                        'ante': None, 'ante_team': 'enemy',
+                        'response1': None, 'response2': None, 'response_team': 'friendly'
+                    }
+            
+            # Update dropdown options
+            self.update_round_dropdown_options()
+            
+        except Exception as e:
+            print(f"Error creating round selection dropdowns: {e}")
+            messagebox.showerror("Error", f"Failed to create round selection dropdowns: {e}")
+
+    def update_round_dropdown_options(self):
+        """Update the options in round dropdowns based on current team selection."""
+        try:
+            # Get current friendly team players from database
+            friendly_players = []
+            if self.team1_var.get():
+                team_name = self.team1_var.get()
+                # Get team ID
+                team_id_query = f"SELECT team_id FROM teams WHERE team_name = '{team_name}'"
+                team_result = self.db_manager.query_sql(team_id_query)
+                
+                if team_result:
+                    team_id = team_result[0][0]
+                    # Get player names for this team
+                    player_query = f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id"
+                    player_results = self.db_manager.query_sql(player_query)
+                    friendly_players = [row[0] for row in player_results]
+            
+            # Get current enemy team players from database
+            enemy_players = []
+            if self.team2_var.get():
+                team_name = self.team2_var.get()
+                # Get team ID
+                team_id_query = f"SELECT team_id FROM teams WHERE team_name = '{team_name}'"
+                team_result = self.db_manager.query_sql(team_id_query)
+                
+                if team_result:
+                    team_id = team_result[0][0]
+                    # Get player names for this team
+                    player_query = f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id"
+                    player_results = self.db_manager.query_sql(player_query)
+                    enemy_players = [row[0] for row in player_results]
+            
+            # Update all dropdowns with ante/response system and matchup logic
+            if hasattr(self, 'round_dropdowns') and hasattr(self, 'enemy_round_dropdowns'):
+                self._update_ante_response_dropdowns(friendly_players, enemy_players)
+                    
+        except Exception as e:
+            print(f"Error updating round dropdown options: {e}")
+
+    def on_ante_selection_change(self, round_num):
+        """Handle ante selection changes."""
+        try:
+            # The lambda captures the round_num correctly, but we need to find the right variable
+            # by examining which dropdown triggered this event
+            round_data = self.selected_players_per_round.get(round_num, {})
+            ante_team = round_data.get('ante_team')
+            selected_player = None
+            
+            # Get the actual selected value from the dropdown that triggered this
+            if ante_team == 'friendly':
+                # For friendly ante rounds (1, 3, 5), find the friendly dropdown for this round
+                for i, var in enumerate(self.round_vars):
+                    if var.get():  # If this dropdown has a value, it might be the one that changed
+                        # Map dropdown index to round number based on our layout
+                        if self._is_ante_dropdown_for_round(i, round_num, 'friendly'):
+                            selected_player = var.get()
+                            break
+            else:
+                # For enemy ante rounds (2, 4), find the enemy dropdown for this round
+                for i, var in enumerate(self.enemy_round_vars):
+                    if var.get():  # If this dropdown has a value, it might be the one that changed
+                        if self._is_ante_dropdown_for_round(i, round_num, 'enemy'):
+                            selected_player = var.get()
+                            break
+            
+            self.selected_players_per_round[round_num]['ante'] = selected_player if selected_player else None
+            
+            # Update all dropdown options to reflect new availability
+            self.update_round_dropdown_options()
+            
+            print(f"Round {round_num} ante selection ({ante_team}): {selected_player}")
+            
+        except Exception as e:
+            print(f"Error handling ante selection change: {e}")
+
+    def on_response_selection_change(self, round_num, position):
+        """Handle response selection changes."""
+        try:
+            round_data = self.selected_players_per_round.get(round_num, {})
+            response_team = round_data.get('response_team')
+            selected_player = None
+            
+            # Find the correct dropdown that corresponds to this round and position
+            if response_team == 'friendly':
+                # Find the friendly response dropdown for this round and position
+                for i, var in enumerate(self.round_vars):
+                    if self._is_response_dropdown_for_round_position(i, round_num, position, 'friendly'):
+                        selected_player = var.get()
+                        break
+            else:
+                # Find the enemy response dropdown for this round and position
+                for i, var in enumerate(self.enemy_round_vars):
+                    if self._is_response_dropdown_for_round_position(i, round_num, position, 'enemy'):
+                        selected_player = var.get()
+                        break
+            
+            # Update tracking
+            response_key = f'response{position}'
+            self.selected_players_per_round[round_num][response_key] = selected_player if selected_player else None
+            
+            # Update all dropdown options to reflect new availability
+            self.update_round_dropdown_options()
+            
+            print(f"Round {round_num} response {position} ({response_team}): {selected_player}")
+            
+        except Exception as e:
+            print(f"Error handling response selection change: {e}")
+
+    def _is_ante_dropdown_for_round(self, dropdown_index, round_num, team):
+        """Check if dropdown index corresponds to ante dropdown for specific round and team."""
+        # This is a simplified check - you may need to adjust based on actual dropdown ordering
+        if team == 'friendly' and round_num % 2 == 1:  # Friendly antes on odd rounds
+            expected_index = (round_num - 1) // 2
+            return dropdown_index == expected_index
+        elif team == 'enemy' and round_num % 2 == 0:  # Enemy antes on even rounds
+            expected_index = (round_num - 2) // 2
+            return dropdown_index == expected_index
+        return False
+
+    def _is_response_dropdown_for_round_position(self, dropdown_index, round_num, position, team):
+        """Check if dropdown index corresponds to response dropdown for specific round, position and team."""
+        # This is a simplified check - you may need to adjust based on actual dropdown ordering
+        # The logic here depends on how dropdowns are stored in the arrays
+        return False  # Placeholder - needs proper implementation based on dropdown layout
+
+    def on_ante_selection_change_direct(self, round_num, var):
+        """Handle ante selection changes with direct variable access."""
+        try:
+            selected_player = var.get()
+            self.selected_players_per_round[round_num]['ante'] = selected_player if selected_player else None
+            
+            # Update all dropdown options to reflect new availability
+            self.update_round_dropdown_options()
+            
+            round_data = self.selected_players_per_round.get(round_num, {})
+            ante_team = round_data.get('ante_team', 'unknown')
+            print(f"Round {round_num} ante selection ({ante_team}): {selected_player}")
+            
+        except Exception as e:
+            print(f"Error handling ante selection change: {e}")
+
+    def on_response_selection_change_direct(self, round_num, position, var):
+        """Handle response selection changes with direct variable access."""
+        try:
+            selected_player = var.get()
+            response_key = f'response{position}'
+            self.selected_players_per_round[round_num][response_key] = selected_player if selected_player else None
+            
+            # Update all dropdown options to reflect new availability
+            self.update_round_dropdown_options()
+            
+            round_data = self.selected_players_per_round.get(round_num, {})
+            response_team = round_data.get('response_team', 'unknown')
+            print(f"Round {round_num} response {position} ({response_team}): {selected_player}")
+            
+        except Exception as e:
+            print(f"Error handling response selection change: {e}")
+
+    def _get_ante_dropdown_index(self, round_num, team):
+        """Get the dropdown index for the ante selection of a specific round and team."""
+        # This is a simplified index calculation - you may need to adjust based on actual storage
+        return round_num - 1
+
+    def _get_response_dropdown_index(self, round_num, team, position):
+        """Get the dropdown index for the response selection of a specific round, team, and position."""
+        # This is a simplified index calculation - you may need to adjust based on actual storage
+        base_index = (round_num - 1) * 2
+        return base_index + (position - 1)
+
+    def _update_ante_response_dropdowns(self, friendly_players, enemy_players):
+        """Update dropdowns with proper ante/response logic and matchup correlation."""
+        try:
+            dropdown_index = 0
+            enemy_dropdown_index = 0
+            
+            for round_num in range(1, 6):
+                round_data = self.selected_players_per_round.get(round_num, {})
+                friendly_antes = (round_num % 2 == 1)
+                
+                if friendly_antes:
+                    # Round 1, 3, 5: Friendly antes, Enemy responds
+                    # Update friendly ante dropdown with special logic for matchup correlation
+                    if dropdown_index < len(self.round_dropdowns):
+                        if round_num == 1:
+                            # Round 1: Normal available players
+                            available_friendly = self._get_available_friendly_players(round_num, friendly_players)
+                        else:
+                            # Round 3, 5: Only players who responded in previous round
+                            available_friendly = self._get_friendly_ante_options(round_num)
+                        
+                        self.round_dropdowns[dropdown_index]['values'] = [""] + available_friendly
+                        dropdown_index += 1
+                    
+                    # Update enemy response dropdowns
+                    available_enemy = self._get_available_enemy_players(round_num, enemy_players)
+                    if enemy_dropdown_index < len(self.enemy_round_dropdowns):
+                        self.enemy_round_dropdowns[enemy_dropdown_index]['values'] = [""] + available_enemy
+                        enemy_dropdown_index += 1
+                    
+                    if enemy_dropdown_index < len(self.enemy_round_dropdowns):
+                        self.enemy_round_dropdowns[enemy_dropdown_index]['values'] = [""] + available_enemy
+                        enemy_dropdown_index += 1
+                        
+                else:
+                    # Round 2, 4: Enemy antes, Friendly responds
+                    # Enemy ante dropdown - special logic for matchup correlation
+                    if enemy_dropdown_index < len(self.enemy_round_dropdowns):
+                        ante_options = self._get_enemy_ante_options(round_num)
+                        self.enemy_round_dropdowns[enemy_dropdown_index]['values'] = [""] + ante_options
+                        enemy_dropdown_index += 1
+                    
+                    # Update friendly response dropdowns
+                    available_friendly = self._get_available_friendly_players(round_num, friendly_players)
+                    if dropdown_index < len(self.round_dropdowns):
+                        self.round_dropdowns[dropdown_index]['values'] = [""] + available_friendly
+                        dropdown_index += 1
+                    
+                    if dropdown_index < len(self.round_dropdowns):
+                        self.round_dropdowns[dropdown_index]['values'] = [""] + available_friendly
+                        dropdown_index += 1
+                        
+        except Exception as e:
+            print(f"Error updating ante/response dropdowns: {e}")
+
+    def _get_enemy_ante_options(self, round_num):
+        """Get valid ante options for enemy based on previous round's responses."""
+        if round_num <= 1:
+            return []
+        
+        # For round 2, 4, etc., the ante options are the enemy players who responded in the previous round
+        previous_round = round_num - 1
+        previous_round_data = self.selected_players_per_round.get(previous_round, {})
+        
+        # The ante options are the enemy players from the previous round's responses
+        ante_options = []
+        if previous_round_data.get('response_team') == 'enemy':
+            if previous_round_data.get('response1'):
+                ante_options.append(previous_round_data['response1'])
+            if previous_round_data.get('response2'):
+                ante_options.append(previous_round_data['response2'])
+        
+        return ante_options
+
+    def _get_friendly_ante_options(self, round_num):
+        """Get valid ante options for friendly based on previous round's responses."""
+        if round_num <= 1:
+            return []
+        
+        # For round 3, 5, etc., the ante options are the friendly players who responded in the previous round
+        previous_round = round_num - 1
+        previous_round_data = self.selected_players_per_round.get(previous_round, {})
+        
+        # The ante options are the friendly players from the previous round's responses
+        ante_options = []
+        if previous_round_data.get('response_team') == 'friendly':
+            if previous_round_data.get('response1'):
+                ante_options.append(previous_round_data['response1'])
+            if previous_round_data.get('response2'):
+                ante_options.append(previous_round_data['response2'])
+        
+        return ante_options
+
+    def _get_available_friendly_players(self, round_num, all_friendly_players):
+        """Get available friendly players for the current round."""
+        used_players = set()
+        
+        # Collect all used friendly players from previous rounds
+        for r in range(1, round_num):
+            round_data = self.selected_players_per_round.get(r, {})
+            if round_data.get('ante_team') == 'friendly' and round_data.get('ante'):
+                used_players.add(round_data['ante'])
+            if round_data.get('response_team') == 'friendly':
+                if round_data.get('response1'):
+                    used_players.add(round_data['response1'])
+                if round_data.get('response2'):
+                    used_players.add(round_data['response2'])
+        
+        return [player for player in all_friendly_players if player not in used_players]
+
+    def _get_available_enemy_players(self, round_num, all_enemy_players):
+        """Get available enemy players for the current round."""
+        used_players = set()
+        
+        # Collect all used enemy players from previous rounds
+        for r in range(1, round_num):
+            round_data = self.selected_players_per_round.get(r, {})
+            if round_data.get('ante_team') == 'enemy' and round_data.get('ante'):
+                used_players.add(round_data['ante'])
+            if round_data.get('response_team') == 'enemy':
+                if round_data.get('response1'):
+                    used_players.add(round_data['response1'])
+                if round_data.get('response2'):
+                    used_players.add(round_data['response2'])
+        
+        return [player for player in all_enemy_players if player not in used_players]
+
+    def create_matchup_output_panel(self):
+        """Create a panel to display the final 5 matchups in a simple format."""
+        try:
+            # Create output panel frame at the bottom of the tree tab right frame
+            self.output_panel_frame = tk.Frame(self.tree_tab_right_frame, relief=tk.RIDGE, borderwidth=2, bg="lightyellow")
+            self.output_panel_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
+            
+            # Panel title
+            title_label = tk.Label(self.output_panel_frame, text="Final Matchups Output", 
+                                 font=("Arial", 12, "bold"), bg="lightyellow")
+            title_label.pack(pady=(5, 0))
+            
+            # Instructions
+            instructions = tk.Label(self.output_panel_frame, 
+                                  text="Select a pairing from the tree above, then click 'Extract Matchups' to display the 5 final matchups:",
+                                  font=("Arial", 9), bg="lightyellow", fg="darkblue")
+            instructions.pack(pady=(0, 5))
+            
+            # Extract button
+            extract_button = tk.Button(self.output_panel_frame, text="Extract Matchups", 
+                                     command=self.extract_final_matchups, font=("Arial", 10, "bold"),
+                                     bg="lightgreen", relief=tk.RAISED)
+            extract_button.pack(pady=5)
+            
+            # Text area for matchups display
+            self.matchups_text = tk.Text(self.output_panel_frame, height=8, width=80, 
+                                       font=("Consolas", 10), bg="white", relief=tk.SUNKEN,
+                                       borderwidth=2, wrap=tk.WORD)
+            self.matchups_text.pack(padx=10, pady=(0, 10), fill=tk.BOTH, expand=True)
+            
+            # Add scrollbar
+            scrollbar = tk.Scrollbar(self.matchups_text)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            self.matchups_text.config(yscrollcommand=scrollbar.set)
+            scrollbar.config(command=self.matchups_text.yview)
+            
+            # Copy button
+            copy_button = tk.Button(self.output_panel_frame, text="Copy to Clipboard", 
+                                  command=self.copy_matchups_to_clipboard, font=("Arial", 9),
+                                  bg="lightblue", relief=tk.RAISED)
+            copy_button.pack(pady=(0, 5))
+            
+        except Exception as e:
+            print(f"Error creating matchup output panel: {e}")
+            messagebox.showerror("Error", f"Failed to create matchup output panel: {e}")
+
+    def extract_final_matchups(self):
+        """Extract the final 5 matchups from the currently selected tree item."""
+        try:
+            # Get selected item from tree
+            selected_item = self.treeview.tree.selection()
+            
+            if not selected_item:
+                messagebox.showwarning("No Selection", "Please select a pairing from the tree above.")
+                return
+            
+            # Get the selected item's data
+            item = selected_item[0]
+            item_text = self.treeview.tree.item(item, 'text')
+            item_values = self.treeview.tree.item(item, 'values')
+            
+            print(f"Selected item text: {item_text}")
+            print(f"Selected item values: {item_values}")
+            
+            # Parse the matchup information
+            matchups = self.parse_matchups_from_tree_item(item)
+            
+            print(f"Parsed matchups: {matchups}")
+            
+            if not matchups:
+                # Provide more detailed debugging information
+                children_count = len(self.treeview.tree.get_children(item))
+                debug_info = f"Debug Info:\n"
+                debug_info += f"- Selected item: {item_text}\n"
+                debug_info += f"- Item values: {item_values}\n"
+                debug_info += f"- Children count: {children_count}\n"
+                debug_info += f"- Tree structure analysis required\n"
+                
+                messagebox.showwarning("No Matchups", f"No matchup data found for the selected item.\n\n{debug_info}")
+                return
+            
+            # Format matchups for display in the requested format
+            output_text = f"Complete Decision Path - {item_text}\n"
+            output_text += "=" * 70 + "\n\n"
+            
+            for matchup in matchups:
+                round_num = matchup.get('round', '?')
+                choice = matchup.get('choice', 'Unknown choice')
+                decision = matchup.get('decision', 'Unknown decision')
+                rating = matchup.get('rating', 'N/A')
+                
+                output_text += f"Matchup {round_num}: {choice}\n"
+                output_text += f"\tDecision: {decision} (Rating: {rating})\n\n"
+            
+            output_text += "=" * 70 + "\n"
+            output_text += f"Total Decision Points: {len(matchups)}\n"
+            output_text += f"Generated at: {self.get_current_timestamp()}\n"
+            output_text += "\nThis shows the complete path of decisions made to reach the selected tree position."
+            
+            # Display in text widget
+            self.matchups_text.delete(1.0, tk.END)
+            self.matchups_text.insert(1.0, output_text)
+            
+            print(f"Successfully extracted {len(matchups)} matchups from selected tree item")
+            
+        except Exception as e:
+            print(f"Error extracting final matchups: {e}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Error", f"Failed to extract matchups: {e}")
+
+    def parse_matchups_from_tree_item(self, item):
+        """Parse the complete decision path leading to the selected tree item."""
+        try:
+            # Build the complete path from root to selected item
+            decision_path = self.build_decision_path(item)
+            
+            if not decision_path:
+                return []
+                
+            # Convert path items to matchup decisions
+            matchups = self.convert_path_to_matchups(decision_path)
+            
+            return matchups
+            
+        except Exception as e:
+            print(f"Error parsing matchups from tree item: {e}")
+            return []
+    
+    def build_decision_path(self, target_item):
+        """Build the complete path from root to the target item."""
+        try:
+            path = []
+            current_item = target_item
+            
+            # Traverse up the tree to build the complete path
+            while current_item:
+                item_text = self.treeview.tree.item(current_item, 'text')
+                item_values = self.treeview.tree.item(current_item, 'values')
+                
+                path.insert(0, {
+                    'item_id': current_item,
+                    'text': item_text,
+                    'values': item_values,
+                    'level': len(path)
+                })
+                
+                # Get parent item
+                parent = self.treeview.tree.parent(current_item)
+                current_item = parent if parent else None
+            
+            print(f"Built decision path with {len(path)} levels:")
+            for i, step in enumerate(path):
+                print(f"  Level {i}: {step['text']}")
+            
+            return path
+            
+        except Exception as e:
+            print(f"Error building decision path: {e}")
+            return []
+    
+    def convert_path_to_matchups(self, decision_path):
+        """Convert the decision path into individual matchup decisions."""
+        try:
+            matchups = []
+            
+            # Skip the root "Pairings" node and focus on actual decision nodes
+            decision_nodes = [node for node in decision_path if 'vs' in node['text'] or 'rating' in node['text']]
+            
+            print(f"Processing {len(decision_nodes)} decision nodes:")
+            
+            for i, node in enumerate(decision_nodes):
+                text = node['text']
+                values = node['values']
+                rating = values[0] if values else 'N/A'
+                
+                print(f"  Processing node {i+1}: {text}")
+                
+                if ' vs ' in text and ' OR ' in text:
+                    # This is a choice node like "HABIBI vs Pete (3/5) OR Bokur (3/5)"
+                    matchup_info = self.parse_choice_node(text, decision_nodes, i)
+                    if matchup_info:
+                        matchup_info['rating'] = rating
+                        matchup_info['round'] = i + 1
+                        matchups.append(matchup_info)
+                        
+                elif ' rating ' in text:
+                    # This is a decision node like "Pete rating 3"
+                    # The decision was made in the parent choice node
+                    continue
+                    
+                elif ' vs ' in text and ' OR ' not in text:
+                    # This is a final decision like "Kyle vs STEVE (3/5)"
+                    parts = text.split(' vs ')
+                    if len(parts) == 2:
+                        friendly = parts[0].strip()
+                        opponent_with_rating = parts[1].strip()
+                        # Extract opponent name (remove rating in parentheses)
+                        opponent = opponent_with_rating.split('(')[0].strip()
+                        
+                        matchups.append({
+                            'round': i + 1,
+                            'friendly': friendly,
+                            'opponent': opponent,
+                            'rating': rating,
+                            'choice': text,
+                            'decision': text
+                        })
+            
+            # Now identify the actual decisions made by looking at the tree structure
+            return self.identify_actual_decisions(decision_path, matchups)
+            
+        except Exception as e:
+            print(f"Error converting path to matchups: {e}")
+            return []
+    
+    def parse_choice_node(self, text, all_nodes, current_index):
+        """Parse a choice node to extract the options and determine the decision made."""
+        try:
+            # Extract the base matchup and options
+            # Format: "Player1 vs Player2 (X/Y) OR Player3 (X/Y)"
+            if ' vs ' not in text or ' OR ' not in text:
+                return None
+                
+            parts = text.split(' vs ', 1)
+            friendly = parts[0].strip()
+            
+            options_part = parts[1]
+            options = [opt.strip() for opt in options_part.split(' OR ')]
+            
+            # Look at the next node in the path to determine which option was chosen
+            decision_made = None
+            if current_index + 1 < len(all_nodes):
+                next_node = all_nodes[current_index + 1]
+                next_text = next_node['text']
+                
+                # Determine which option was selected
+                for option in options:
+                    option_name = option.split('(')[0].strip()
+                    if option_name in next_text or next_text.startswith(option_name):
+                        decision_made = f"{friendly} vs {option}"
+                        break
+            
+            return {
+                'friendly': friendly,
+                'options': options,
+                'choice': text,
+                'decision': decision_made or f"{friendly} vs {options[0]}"  # Default to first option
+            }
+            
+        except Exception as e:
+            print(f"Error parsing choice node: {e}")
+            return None
+    
+    def identify_actual_decisions(self, decision_path, preliminary_matchups):
+        """Identify the actual decisions made by analyzing the tree traversal path."""
+        try:
+            final_matchups = []
+            
+            # Group nodes by their position in the decision tree
+            choice_nodes = []
+            decision_nodes = []
+            
+            for node in decision_path:
+                text = node['text']
+                if ' vs ' in text and ' OR ' in text:
+                    choice_nodes.append(node)
+                elif ' rating ' in text:
+                    decision_nodes.append(node)
+            
+            print(f"Found {len(choice_nodes)} choice nodes and {len(decision_nodes)} decision nodes")
+            
+            # Match each choice with its corresponding decision
+            for i, choice_node in enumerate(choice_nodes):
+                choice_text = choice_node['text']
+                rating = choice_node['values'][0] if choice_node['values'] else 'N/A'
+                
+                # Find the corresponding decision node
+                decision_text = None
+                if i < len(decision_nodes):
+                    decision_text = decision_nodes[i]['text']
+                
+                # Parse the choice and decision
+                matchup = self.create_matchup_from_choice_and_decision(choice_text, decision_text, rating, i + 1)
+                if matchup:
+                    final_matchups.append(matchup)
+            
+            return final_matchups
+            
+        except Exception as e:
+            print(f"Error identifying actual decisions: {e}")
+            return preliminary_matchups  # Return preliminary results as fallback
+    
+    def create_matchup_from_choice_and_decision(self, choice_text, decision_text, rating, round_num):
+        """Create a matchup entry from choice and decision texts."""
+        try:
+            if not choice_text or ' vs ' not in choice_text:
+                return None
+                
+            # Parse choice: "Player1 vs Player2 (X/Y) OR Player3 (X/Y)"
+            parts = choice_text.split(' vs ', 1)
+            friendly = parts[0].strip()
+            
+            options_part = parts[1]
+            options = [opt.strip() for opt in options_part.split(' OR ')]
+            
+            # Determine which option was chosen based on decision_text
+            chosen_option = options[0]  # Default
+            if decision_text:
+                for option in options:
+                    option_name = option.split('(')[0].strip()
+                    if option_name in decision_text:
+                        chosen_option = option
+                        break
+            
+            # Clean up the chosen option (remove rating info)
+            opponent = chosen_option.split('(')[0].strip()
+            
+            return {
+                'round': round_num,
+                'friendly': friendly,
+                'opponent': opponent,
+                'rating': rating,
+                'choice': f"{friendly} vs {' or '.join([opt.split('(')[0].strip() for opt in options])}",
+                'decision': f"{friendly} vs {opponent}"
+            }
+            
+        except Exception as e:
+            print(f"Error creating matchup from choice and decision: {e}")
+            return None
+    
+    def extract_opponent_from_context(self, context_text, player):
+        """Extract opponent name from context text."""
+        try:
+            # Handle formats like "Player1 vs Player2 (X/Y) OR Player3 (X/Y)"
+            if ' vs ' in context_text and ' OR ' in context_text:
+                vs_part = context_text.split(' vs ')[1]  # Get everything after " vs "
+                or_parts = vs_part.split(' OR ')  # Split on " OR "
+                
+                for part in or_parts:
+                    # Extract player name (remove rating info in parentheses)
+                    clean_name = part.split('(')[0].strip()
+                    if clean_name != player:
+                        return clean_name
+            
+            return "Unknown"
+            
+        except Exception as e:
+            print(f"Error extracting opponent from context: {e}")
+            return "Unknown"
+    
+    def extract_matchups_from_tree_structure(self, item):
+        """Alternative method to extract matchups by analyzing tree structure."""
+        try:
+            matchups = []
+            
+            # Get the item text and try to understand the matchup structure
+            item_text = self.treeview.tree.item(item, 'text')
+            item_values = self.treeview.tree.item(item, 'values')
+            
+            print(f"Analyzing tree item: {item_text}")
+            print(f"Item values: {item_values}")
+            
+            # For now, create a basic structure based on what we can extract
+            if item_text and item_values:
+                rating = item_values[0] if item_values else 'N/A'
+                
+                # Try to extract player names from the text
+                if ' vs ' in item_text:
+                    parts = item_text.split(' vs ')
+                    friendly = parts[0].strip()
+                    opponent_part = parts[1].strip()
+                    
+                    # Clean up opponent name (remove rating info)
+                    opponent = opponent_part.split('(')[0].strip()
+                    
+                    matchups.append({
+                        'friendly': friendly,
+                        'opponent': opponent,
+                        'rating': rating,
+                        'path': item_text
+                    })
+            
+            return matchups
+            
+        except Exception as e:
+            print(f"Error in alternative matchup extraction: {e}")
+            return []
+
+    def copy_matchups_to_clipboard(self):
+        """Copy the matchups text to clipboard."""
+        try:
+            text_content = self.matchups_text.get(1.0, tk.END).strip()
+            if text_content:
+                self.root.clipboard_clear()
+                self.root.clipboard_append(text_content)
+                messagebox.showinfo("Copied", "Matchups copied to clipboard!")
+            else:
+                messagebox.showwarning("No Content", "No matchup data to copy.")
+        except Exception as e:
+            print(f"Error copying to clipboard: {e}")
+            messagebox.showerror("Error", f"Failed to copy to clipboard: {e}")
+
+    def get_current_timestamp(self):
+        """Get current timestamp as a formatted string."""
+        from datetime import datetime
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 if __name__ == '__main__':
-    ui_manager = UiManager(color_map=DEFAULT_COLOR_MAP, scenario_map=SCENARIO_MAP, directory=os.getcwd())
+    ui_manager = UiManager(
+        color_map=DEFAULT_COLOR_MAP, 
+        scenario_map=SCENARIO_MAP, 
+        directory=os.getcwd(),
+        scenario_ranges=SCENARIO_RANGES,
+        scenario_to_csv_map=SCENARIO_TO_CSV_MAP
+    )
     ui_manager.create_ui()
