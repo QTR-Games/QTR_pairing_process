@@ -32,7 +32,7 @@ This application is designed for tournaments following the **World Team Champion
 - **Scenarios**: 7 predefined scenarios with different tactical objectives
 - **Rating System**: 1-5 scale where:
   - **1**: Extremely unfavorable matchup (near-certain loss)
-  - **2**: Unfavorable matchup 
+  - **2**: Unfavorable matchup
   - **3**: Even/neutral matchup
   - **4**: Favorable matchup
   - **5**: Extremely favorable matchup (near-certain win)
@@ -44,6 +44,7 @@ This application is designed for tournaments following the **World Team Champion
 - Python 3.7 or higher
 - tkinter (usually included with Python)
 - Required Python packages:
+
   ```bash
   pip install openpyxl sqlite3
   ```
@@ -51,17 +52,20 @@ This application is designed for tournaments following the **World Team Champion
 ### Setup
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/QTR-Games/QTR_pairing_process.git
    cd QTR_pairing_process
    ```
 
 2. Install dependencies:
+
    ```bash
    pip install -r requirements.txt
    ```
 
 3. Run the application:
+
    ```bash
    python main.py
    ```
@@ -106,7 +110,7 @@ For detailed information about the comments system, see [Comments System Documen
 
 ### Key Modules
 
-```
+```text
 qtr_pairing_process/
 ├── constants.py          # Application constants and configuration
 ├── ui_manager.py         # Main UI and application logic
@@ -126,21 +130,25 @@ qtr_pairing_process/
 The application supports multiple algorithms for evaluating pairing decisions:
 
 ### 1. MAX Mode (Default)
+
 - **Strategy**: Maximize best-case scenarios
 - **Logic**: Prioritizes the highest single rating in each pairing branch
 - **Best For**: Aggressive, opportunity-seeking strategies
 
-### 2. MIN Mode  
+### 2. MIN Mode
+
 - **Strategy**: Risk-averse approach
 - **Logic**: Avoids poor matchups by prioritizing minimum ratings
 - **Best For**: Conservative strategies, avoiding disasters
 
 ### 3. SUM Mode
+
 - **Strategy**: Maximize total advantage
 - **Logic**: Sums all ratings across the entire pairing tree
 - **Best For**: Balanced team strategies
 
 ### 4. AVG Mode
+
 - **Strategy**: Consistent performance
 - **Logic**: Averages ratings for steady, predictable outcomes
 - **Best For**: Well-rounded team compositions
@@ -148,6 +156,7 @@ The application supports multiple algorithms for evaluating pairing decisions:
 ## File Formats
 
 ### CSV Import Format
+
 ```csv
 Team Name,Player1,Player2,Player3,Player4,Player5
 Enemy Team,Enemy1,Enemy2,Enemy3,Enemy4,Enemy5
@@ -158,6 +167,7 @@ Player2,2,3,3,4,2
 ```
 
 ### Excel Import Format
+
 - **Teams Sheet**: Team names and player rosters
 - **Scenario Sheets**: Individual sheets for each scenario (0-6)
 - **Rating Matrix**: 5x5 grid of matchup ratings per scenario
@@ -165,10 +175,11 @@ Player2,2,3,3,4,2
 ## Configuration
 
 ### Color Scheme (constants.py)
+
 ```python
 DEFAULT_COLOR_MAP = {
     '1': 'orangered',  # Very unfavorable
-    '2': 'orange',     # Unfavorable  
+    '2': 'orange',     # Unfavorable
     '3': 'yellow',     # Neutral
     '4': 'greenyellow',# Favorable
     '5': 'lime'        # Very favorable
@@ -176,9 +187,10 @@ DEFAULT_COLOR_MAP = {
 ```
 
 ### Scenarios
+
 - **0**: Scenario Agnostic (general matchups)
 - **1**: Recon
-- **2**: Battle Lines  
+- **2**: Battle Lines
 - **3**: Wolves At Our Heels
 - **4**: Payload
 - **5**: Two Fronts
@@ -203,11 +215,7 @@ For questions, issues, or feature requests, please contact the development team 
 
 ## Future Roadmap
 
-- Expanded rating systems (1-10 scale)
 - Battlefield advantage modifiers
-- Advanced strategic analysis tools
-- Tournament history tracking
-- Multi-team tournament support
 - Web-based interface option
 
 ---

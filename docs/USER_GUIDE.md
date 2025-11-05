@@ -1,6 +1,7 @@
 # QTR Pairing Process - User Guide
 
 ## Table of Contents
+
 1. [Getting Started](#getting-started)
 2. [Tournament Preparation](#tournament-preparation)
 3. [Strategic Pairing Concepts](#strategic-pairing-concepts)
@@ -44,13 +45,17 @@ The application uses a **1-5 rating scale** for matchup analysis:
 ### Pre-Tournament Workflow
 
 #### 1. Gather Opponent Data
+
 When tournament teams are announced, you'll receive:
+
 - Complete list of all participating teams
 - Player names for each team
 - Army/faction information (e.g., "Sea Raiders - Hor / Sab")
 
 #### 2. Team Analysis Session
+
 **Recommended Process:**
+
 1. **Individual Analysis**: Each team member rates their personal matchups against ALL opposing players
 2. **Team Discussion**: Review ratings collectively, discuss strategy
 3. **Data Entry**: Input final agreed-upon ratings into the application
@@ -58,17 +63,20 @@ When tournament teams are announced, you'll receive:
 
 #### 3. Data Collection Methods
 
-**Option A: Collaborative Spreadsheet**
+#### Option A: Collaborative Spreadsheet
+
 - Create Excel template with all teams/players
 - Each team member fills their ratings
 - Import completed spreadsheet into application
 
-**Option B: Round-Robin Input**
+#### Option B: Round-Robin Input
+
 - Pass database file between team members
 - Each person inputs their own ratings directly
 - Combine all individual databases
 
-**Option C: Captain-Led Entry**
+#### Option C: Captain-Led Entry
+
 - Team captain facilitates rating discussion
 - Real-time entry during team meeting
 - Immediate tree analysis for strategy refinement
@@ -76,7 +84,8 @@ When tournament teams are announced, you'll receive:
 ### Rating Guidelines
 
 #### Faction Matchup Considerations
-```
+
+```text
 Army Format: "Faction - Leader1 / Leader2"
 Example: "Sea Raiders - Hor / Sab"
 - Faction: Sea Raiders (overall army type)
@@ -84,12 +93,14 @@ Example: "Sea Raiders - Hor / Sab"
 ```
 
 #### Rating Accuracy Tips
+
 1. **Be Honest**: Overconfidence leads to poor strategic decisions
 2. **Consider Experience**: Rate based on actual play experience when possible
 3. **Factor in Meta**: Account for current tournament trends
 4. **Scenario Impact**: Most ratings use Scenario 0 (Agnostic), adjust others only if significantly different
 
 #### Common Rating Mistakes
+
 - **Overrating Comfort Picks**: Don't inflate ratings for armies you enjoy fighting
 - **Underrating Unknowns**: Research unfamiliar matchups rather than defaulting to 2-3
 - **Ignoring Player Skill**: Consider opponent skill level, not just army matchup
@@ -104,31 +115,37 @@ Understanding the "snaked pairing" system is crucial for strategy:
 #### Phase-by-Phase Breakdown
 
 **Initial Setup:**
+
 - Captains dice off to determine Team A vs Team B roles
 - Team B goes first, Team A gets more control over final matchups
 
 **Pairing Sequence:**
+
 1. **Round 1**: Team B presents player → Team A offers 2 options → Team B chooses → Team A picks table
-2. **Round 2**: Team B offers 2 players → Team A chooses → Team B picks table  
+2. **Round 2**: Team B offers 2 players → Team A chooses → Team B picks table
 3. **Rounds 3-5**: Pattern continues, alternating control
 
 **Final Outcome:**
+
 - Team B: Chooses 2 matchups, picks 3 tables
 - Team A: Chooses 3 matchups, picks 2 tables
 
 ### Core Strategic Concepts
 
 #### 1. Pinning Strategy
+
 **Definition**: Forcing opponent into choosing between two unfavorable options
 
 **How to Execute:**
+
 - Hold your high-rated players until late in pairing
 - Present opponent with only poor matchup choices
 - Force them to pick "bad" vs "worse"
 
 **Example Scenario:**
-```
-Your remaining players: Alice (5 vs their remaining), Bob (4 vs their remaining)  
+
+```text
+Your remaining players: Alice (5 vs their remaining), Bob (4 vs their remaining)
 Their remaining players: Charlie (your ratings: Alice=1, Bob=2), Dave (Alice=2, Bob=1)
 
 By holding Alice and Bob, you've created a pin:
@@ -138,32 +155,39 @@ By holding Alice and Bob, you've created a pin:
 ```
 
 #### 2. Floor Strategy (Conservative Approach)
+
 **Definition**: Choosing the player with highest minimum ratings across all remaining opponents
 
 **When to Use:**
+
 - When ahead in overall matchups
-- Risk-averse team compositions  
+- Risk-averse team compositions
 - Protecting against worst-case scenarios
 
 **Calculation:**
-```
+
+```text
 Remaining opponents: Enemy1, Enemy2, Enemy3
 Player A ratings: 2, 4, 3 → Floor = 2
 Player B ratings: 3, 3, 3 → Floor = 3 (choose Player B)
 ```
 
-#### 3. Ceiling Strategy (Aggressive Approach)  
+#### 3. Ceiling Strategy (Aggressive Approach)
+
 **Definition**: Prioritizing players with potential for exceptional matchups
 
 **When to Use:**
+
 - When behind and need high-value wins
 - Gambling for optimal outcomes
 - Strong individual players available
 
 #### 4. Table Selection Strategy
+
 Remember: The team that doesn't choose the matchup gets to pick the table.
 
 **Table Advantages:**
+
 - Terrain favoring your army type
 - Strategic positioning benefits
 - Scenario-specific advantages
@@ -175,7 +199,8 @@ Remember: The team that doesn't choose the matchup gets to pick the table.
 #### Setting Up a Matchup Analysis
 
 1. **Select Teams**
-   ```
+
+   ```text
    Team 1: [Your Team]
    Team 2: [Opponent Team]
    Scenario: [Usually "0 - Scenario Agnostic"]
@@ -194,16 +219,18 @@ Remember: The team that doesn't choose the matchup gets to pick the table.
 #### Interpreting the Decision Tree
 
 **Tree Structure:**
-```
+
+```text
 Root
 ├── Your Player 1 vs Enemy Option A (Rating X/5) OR Enemy Option B (Rating Y/5)
 │   ├── Remaining matchups based on Enemy choosing Option A
-│   └── Remaining matchups based on Enemy choosing Option B  
+│   └── Remaining matchups based on Enemy choosing Option B
 ├── Your Player 2 vs Enemy Options...
 └── Your Player 3 vs Enemy Options...
 ```
 
 **Strategic Reading:**
+
 - Each branch shows one possible pairing sequence
 - Ratings indicate your expected performance
 - Deeper branches show future implications of early choices
@@ -213,12 +240,14 @@ Root
 #### Import/Export Workflow
 
 **Importing Team Data:**
+
 1. Use "Import CSV" or "Import XLSX" buttons
 2. Follow standard format (see Technical Documentation)
 3. Verify import success in dropdown menus
 4. Review imported ratings in grid
 
 **Exporting Analysis:**
+
 1. Complete your ratings grid
 2. Use "Export CSV" to save current analysis
 3. Share exported files with team members
@@ -227,12 +256,14 @@ Root
 #### Database Management
 
 **Sharing Your Database:**
+
 - Database files are small enough to email
 - Send `.db` file to team members
 - Each person can have their own copy
 - Merge analyses through export/import process
 
 **Team Management:**
+
 - Use "Delete Team" to remove old opponents
 - "REFRESH" button updates all dropdowns
 - "Load Grid" retrieves saved ratings
@@ -243,12 +274,14 @@ Root
 #### When to Use Non-Agnostic Scenarios
 
 Most analysis uses **Scenario 0 (Agnostic)**, but consider specific scenarios when:
+
 - Certain armies drastically change performance on specific scenarios
 - You have detailed knowledge of scenario-specific matchup shifts
 - Tournament format requires scenario-specific preparation
 
 #### Scenario Impact Examples
-```
+
+```text
 Normal Rating vs Caster X: 3/5 (even matchup)
 Scenario 4 (Payload): 4/5 (your army excels at objective control)
 Scenario 2 (Battle Lines): 2/5 (their army dominates symmetric deployment)
@@ -259,6 +292,7 @@ Scenario 2 (Battle Lines): 2/5 (their army dominates symmetric deployment)
 ### Team Captain Decision Making
 
 #### Pre-Pairing Preparation
+
 1. **Identify Your Aces**: Players with multiple 4-5 ratings
 2. **Know Your Pins**: Combinations that trap opponents
 3. **Calculate Floors**: Conservative fallback options
@@ -267,23 +301,27 @@ Scenario 2 (Battle Lines): 2/5 (their army dominates symmetric deployment)
 #### In-Tournament Execution
 
 **As Team B (First Presenter):**
+
 - Lead with versatile players who handle multiple responses well
 - Avoid presenting your best matchups too early
 - Force Team A into difficult decisions with balanced options
 
 **As Team A (Responder):**
+
 - Look for pin opportunities immediately
-- Use your 3-matchup advantage to control favorable pairings  
+- Use your 3-matchup advantage to control favorable pairings
 - Save strongest players for guaranteed good matchups
 
 #### Reading Opponent Strategy
 
 **Opponent Patterns:**
+
 - **Conservative opponents**: Present floor players early, avoid risks
 - **Aggressive opponents**: Fish for optimal matchups, take calculated risks
 - **Experienced captains**: Multi-layered strategies, think several moves ahead
 
 **Counter-Strategies:**
+
 - Against conservative: Apply pressure with pin threats
 - Against aggressive: Offer bait matchups to waste their good players
 - Against experienced: Simplify to reduce their strategic advantage
@@ -291,7 +329,8 @@ Scenario 2 (Battle Lines): 2/5 (their army dominates symmetric deployment)
 ### Mathematical Analysis
 
 #### Expected Value Calculation
-```
+
+```text
 Team Matchup Example:
 Your ratings: 4, 3, 3, 2, 5 = Average 3.4/5
 Enemy optimal response: 2, 2, 3, 4, 1 = Average 2.4/5 for you
@@ -300,29 +339,33 @@ Net advantage: +1.0 point average
 ```
 
 #### Risk Assessment
-```
+
+```text
 High Variance Strategy: 5, 5, 1, 1, 3 (boom or bust)
 Low Variance Strategy: 3, 3, 3, 4, 2 (consistent)
 
 Choose based on:
 - Current tournament standing
-- Team confidence levels  
+- Team confidence levels
 - Opponent skill assessment
 ```
 
 ### Common Tactical Patterns
 
 #### The "Sacrificial Lamb"
+
 - Present a player you're willing to lose poorly
 - Forces opponent to "waste" a good player on beating you badly
 - Preserves your strong options for crucial matchups
 
 #### The "False Floor"
+
 - Present what appears to be your safest option
 - Actually has hidden vulnerabilities opponent may exploit
 - Baits opponent into overconfident responses
 
 #### The "Double Threat"
+
 - Hold two players who both counter opponent's remaining options
 - Guarantees at least one excellent matchup regardless of their choice
 - Forces opponent into damage control mode
@@ -332,32 +375,40 @@ Choose based on:
 ### Common Issues
 
 #### Database Problems
+
 **Symptom**: "No teams found" or empty dropdowns
 **Solutions:**
+
 1. Check database file location and permissions
 2. Use "REFRESH" button to reload data
 3. Restart application if database connection is lost
 4. Import fresh team data if database is corrupted
 
 #### Import/Export Issues
+
 **Symptom**: Data doesn't import correctly
 **Solutions:**
+
 1. Verify file format matches specification
 2. Check for special characters in player names (use escape characters)
 3. Ensure team names match exactly between files
 4. Validate CSV structure before importing
 
-#### UI Display Problems  
+#### UI Display Problems
+
 **Symptom**: Grids don't align properly or display incorrectly
 **Solutions:**
+
 1. Restart application to reset UI state
 2. Check screen resolution and scaling settings
 3. Resize window to refresh layout
 4. Update Python/tkinter if using older versions
 
 #### Performance Issues
+
 **Symptom**: Slow tree generation or UI responsiveness
 **Solutions:**
+
 1. Close unnecessary applications to free memory
 2. Reduce tree complexity by limiting analysis scope
 3. Use incremental tree expansion instead of full generation
@@ -366,12 +417,14 @@ Choose based on:
 ### Getting Help
 
 #### Self-Diagnosis Steps
+
 1. **Check Error Messages**: Note exact wording for troubleshooting
 2. **Verify Data Integrity**: Ensure ratings are in valid 1-5 range
 3. **Test with Fresh Database**: Rule out data corruption issues
 4. **Document Reproduction Steps**: Help developers identify bugs
 
 #### Support Resources
+
 - Check documentation for common solutions
 - Review example files for proper format guidance
 - Contact development team with detailed error reports

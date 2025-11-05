@@ -149,5 +149,8 @@ Tournament success often comes from making **good decisions consistently** rathe
 • Optimize the application by reducing calls to the database.
 
 • LINK the matchup tree navigation with what is selected in the first page.
+NEEDS TESTING
+
+• Implement the bottom right panel on the Grid page.
 
 *These features transform the QTR Pairing Process from a calculation tool into a strategic intelligence system, giving you the analytical edge needed for competitive tournament play.*

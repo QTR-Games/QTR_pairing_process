@@ -11,7 +11,7 @@ Please see the **[Developer Guide](docs/DEVELOPER_GUIDE.md)** for complete devel
 ### Reporting Issues
 
 1. **Search Existing Issues**: Check if the issue has already been reported
-2. **Use Issue Templates**: Follow the provided templates for bugs and feature requests  
+2. **Use Issue Templates**: Follow the provided templates for bugs and feature requests
 3. **Provide Details**: Include steps to reproduce, expected behavior, and system information
 4. **Add Labels**: Help categorize the issue (bug, enhancement, documentation, etc.)
 
@@ -29,7 +29,7 @@ Please see the **[Developer Guide](docs/DEVELOPER_GUIDE.md)** for complete devel
 Based on user feedback, we're particularly interested in contributions to:
 
 1. **Improved Sorting Algorithms** - Enhanced tree evaluation methods
-2. **Comments/Tooltips System** - Matchup annotation functionality  
+2. **Comments/Tooltips System** - Matchup annotation functionality
 3. **UI Alignment Fixes** - Grid layout and visual improvements
 4. **Performance Optimization** - Tree generation and UI responsiveness
 
@@ -46,22 +46,25 @@ Based on user feedback, we're particularly interested in contributions to:
 ### Commit Messages
 
 Use conventional commit format:
-```
+
+```text
 type(scope): description
 
 feat(ui): add comments field to matchup grid
 fix(db): resolve foreign key constraint error
-docs(readme): update installation instructions  
+docs(readme): update installation instructions
 refactor(tree): optimize combination generation
 ```
 
 ### Branch Naming
+
 - `feature/feature-name` - New features
-- `fix/issue-description` - Bug fixes  
+- `fix/issue-description` - Bug fixes
 - `docs/update-description` - Documentation updates
 - `refactor/component-name` - Code refactoring
 
 ### Testing Requirements
+
 - All new features must include unit tests
 - Bug fixes should include regression tests
 - Integration tests for workflows spanning multiple components
@@ -93,12 +96,14 @@ See the **[Project Scope](docs/PROJECT_SCOPE.md)** for long-term roadmap and pla
 ## Community Guidelines
 
 ### Communication
+
 - Be respectful and constructive in all interactions
-- Focus on the technical merits of ideas and implementations  
+- Focus on the technical merits of ideas and implementations
 - Help newcomers get started with clear guidance and patience
 - Share knowledge and tournament experiences to improve the tool
 
 ### Tournament Context
+
 - Remember this tool serves competitive gaming teams under pressure
 - Prioritize reliability and ease of use over complex features
 - Consider the workflow of tournament day usage in design decisions
@@ -107,6 +112,7 @@ See the **[Project Scope](docs/PROJECT_SCOPE.md)** for long-term roadmap and pla
 ## Recognition
 
 Contributors will be recognized in:
+
 - Project README credits section
 - Release notes for significant contributions
 - Documentation acknowledgments

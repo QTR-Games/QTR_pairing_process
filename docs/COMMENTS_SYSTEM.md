@@ -7,6 +7,7 @@ The QTR Pairing Process application now includes a comprehensive comments system
 ## Features Implemented
 
 ### 1. Database Layer
+
 - **New Table**: `matchup_comments` with foreign key relationships to players and scenarios
 - **Character Limit**: 2000 characters per comment
 - **Unique Constraints**: One comment per player-vs-player-per-scenario combination
@@ -16,12 +17,14 @@ The QTR Pairing Process application now includes a comprehensive comments system
 ### 2. User Interface Integration
 
 #### Tooltip Display (Hover)
+
 - **Trigger**: Hover mouse over any matchup cell in the left grid
 - **Behavior**: Displays existing comment in a tooltip popup
 - **Visual**: Yellow background with wrapped text (300px max width)
 - **Requirements**: Teams, scenario, and player names must be selected/filled
 
 #### Comment Editor (Right-Click)
+
 - **Trigger**: Right-click on any matchup cell in the left grid
 - **Dialog Features**:
   - Modal dialog with team/player/scenario context displayed
@@ -32,6 +35,7 @@ The QTR Pairing Process application now includes a comprehensive comments system
   - Three action buttons: Save, Delete, Cancel
 
 #### Grid Restrictions
+
 - **Compatible**: Only left grid (matchup ratings) supports comments
 - **Incompatible**: Right grid (display grid) does not support comments
 - **Header Cells**: Comments only work on actual matchup cells (row > 0, col > 0)
@@ -39,11 +43,12 @@ The QTR Pairing Process application now includes a comprehensive comments system
 ### 3. Database Integration Methods
 
 #### Name-Based Wrapper Methods
+
 ```python
 # Insert/Update comment
 db_manager.upsert_comment_by_name(
     team1_name, team2_name, scenario_name,
-    friendly_player_name, opponent_player_name, 
+    friendly_player_name, opponent_player_name,
     comment_text
 )
 
@@ -61,6 +66,7 @@ db_manager.delete_comment_by_name(
 ```
 
 #### Core Database Methods
+
 - `upsert_comment()`: Insert or update using IDs
 - `query_comment()`: Retrieve single comment using IDs
 - `query_all_comments()`: Get all comments for team matchup
@@ -105,16 +111,19 @@ db_manager.delete_comment_by_name(
 ## Technical Notes
 
 ### Character Limit Implementation
+
 - **UI Validation**: Real-time character counting with visual feedback
 - **Database Constraint**: TEXT(2000) column type enforces hard limit
 - **User Experience**: Clear indication when approaching or exceeding limit
 
 ### Comment Scope
+
 - **Per Individual Matchup**: One comment per friendly player vs opponent player
 - **Per Scenario**: Comments are scenario-specific (0-6 scenarios)
 - **Per Team Pairing**: Comments are tied to specific team combinations
 
 ### Performance Considerations
+
 - **Lazy Loading**: Comments only queried when tooltip is triggered
 - **Efficient Indexing**: Database indexes on common query patterns
 - **Minimal UI Impact**: Comment functionality doesn't affect existing grid performance
@@ -122,13 +131,16 @@ db_manager.delete_comment_by_name(
 ## Testing
 
 ### Automated Tests
+
 - Database CRUD operations
 - Name-to-ID resolution
 - Error handling for invalid data
 - Character limit validation
 
 ### Manual UI Testing
+
 Use `test_ui_comments.py` to launch the application and manually test:
+
 - Comment tooltips on hover
 - Right-click comment editing
 - Character limit enforcement
@@ -137,6 +149,7 @@ Use `test_ui_comments.py` to launch the application and manually test:
 ## Future Enhancements
 
 ### Potential Improvements
+
 1. **Comment Export**: Include comments in CSV/Excel exports
 2. **Comment Search**: Find matchups by comment content
 3. **Comment History**: Track comment changes over time
@@ -146,6 +159,7 @@ Use `test_ui_comments.py` to launch the application and manually test:
 7. **Team Sharing**: Export/import comment sets between users
 
 ### Integration Points
+
 - Export functionality (CSV/Excel) could include comment columns
 - Tree generation could factor in comment flags
 - Import systems could support comment data
@@ -162,9 +176,9 @@ CREATE TABLE matchup_comments (
     comment TEXT(2000),
     created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
+
     UNIQUE (team_1_player_id, team_2_player_id, scenario_id),
-    
+
     FOREIGN KEY (team_1_player_id) REFERENCES players(player_id) ON DELETE CASCADE,
     FOREIGN KEY (team_2_player_id) REFERENCES players(player_id) ON DELETE CASCADE,
     FOREIGN KEY (scenario_id) REFERENCES scenarios(scenario_id) ON DELETE CASCADE

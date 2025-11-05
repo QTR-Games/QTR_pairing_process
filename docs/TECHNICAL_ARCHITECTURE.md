@@ -8,7 +8,7 @@ The QTR Pairing Process is a desktop application built with Python and tkinter, 
 
 ### Core Components
 
-```
+```text
 QTR Pairing Process
 ├── Presentation Layer (UI)
 │   ├── ui_manager.py - Main application interface
@@ -32,7 +32,7 @@ QTR Pairing Process
 - **Language**: Python 3.7+
 - **GUI Framework**: tkinter (cross-platform desktop UI)
 - **Database**: SQLite3 (embedded, portable)
-- **File Processing**: 
+- **File Processing**:
   - CSV: Python built-in `csv` module
   - Excel: `openpyxl` library
 - **Data Structures**: Native Python collections
@@ -42,6 +42,7 @@ QTR Pairing Process
 ### Tables Overview
 
 #### Teams Table
+
 ```sql
 CREATE TABLE teams (
     team_id INTEGER PRIMARY KEY ASC,
@@ -49,7 +50,8 @@ CREATE TABLE teams (
 );
 ```
 
-#### Players Table  
+#### Players Table
+
 ```sql
 CREATE TABLE players (
     player_id INTEGER PRIMARY KEY ASC,
@@ -60,6 +62,7 @@ CREATE TABLE players (
 ```
 
 #### Scenarios Table
+
 ```sql
 CREATE TABLE scenarios(
     scenario_id INTEGER,
@@ -68,6 +71,7 @@ CREATE TABLE scenarios(
 ```
 
 #### Ratings Table
+
 ```sql
 CREATE TABLE IF NOT EXISTS ratings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,7 +92,7 @@ CREATE TABLE IF NOT EXISTS ratings (
 
 ### Data Relationships
 
-```
+```text
 Teams (1) ──── (Many) Players
    │                    │
    │                    │
@@ -116,22 +120,26 @@ Teams (1) ──── (Many) Players
 ### Core Workflows
 
 #### 1. Team Setup Workflow
-```
+
+```text
 Load Teams → Select Team 1 & 2 → Choose Scenario → Load Existing Ratings
 ```
 
 #### 2. Rating Input Workflow
-```
+
+```text
 Select Grid Cell → Enter Rating (1-5) → Color Updates → Auto-save to Database
 ```
 
 #### 3. Analysis Workflow
-```
+
+```text
 Generate Tree → Apply Sorting Algorithm → Review Decision Paths → Export Results
 ```
 
 #### 4. Data Import Workflow
-```
+
+```text
 Select File → Validate Format → Parse Teams/Players → Import Ratings → Update Database
 ```
 
@@ -142,7 +150,8 @@ Select File → Validate Format → Parse Teams/Players → Import Ratings → U
 The core algorithm generates all possible pairing combinations following WTC tournament rules:
 
 #### Tree Structure
-```
+
+```text
 Root
 ├── Team A Player 1 vs [Team B Options]
 │   ├── Remaining Player A vs Remaining Team B
@@ -161,21 +170,25 @@ Root
 ### Evaluation Modes
 
 #### MAX Mode (Primary)
+
 - **Logic**: `max(rating_0, rating_1)` for each decision node
 - **Strategy**: Aggressive, opportunity-seeking
 - **Use Case**: When you have strong players who can exploit good matchups
 
 #### MIN Mode (Risk-Averse)
+
 - **Logic**: `min(match_ratings)` across all child nodes
 - **Strategy**: Conservative, avoid disasters
 - **Use Case**: When avoiding bad matchups is more important than maximizing good ones
 
 #### SUM Mode (Comprehensive)
+
 - **Logic**: Sum all ratings in pairing branch
 - **Strategy**: Balanced team approach
 - **Use Case**: When overall team strength matters most
 
 #### AVG Mode (Consistent)
+
 - **Logic**: Average ratings for steady outcomes
 - **Strategy**: Predictable performance
 - **Use Case**: Well-rounded team compositions
@@ -185,12 +198,14 @@ Root
 ### CSV Import Format
 
 #### Header Structure
+
 ```csv
 Team Name,Player1,Player2,Player3,Player4,Player5
 Opponent Team,Opponent1,Opponent2,Opponent3,Opponent4,Opponent5
 ```
 
 #### Rating Sections (Per Scenario)
+
 ```csv
 0,Opponent1,Opponent2,Opponent3,Opponent4,Opponent5
 Player1,3,2,4,3,5
@@ -205,15 +220,17 @@ Player5,2,2,3,3,4
 ### Excel Import Format
 
 #### Required Sheets
+
 - **Teams**: Team names and player rosters
 - **Scenario_0** through **Scenario_6**: Rating matrices
 
 #### Sheet Structure
-```
+
+```text
      A        B        C        D        E        F
 1  Team1    Team2
 2  Player1  Opponent1
-3  Player2  Opponent2  
+3  Player2  Opponent2
 4  Player3  Opponent3
 5  Player4  Opponent4
 6  Player5  Opponent5
@@ -222,6 +239,7 @@ Player5,2,2,3,3,4
 ## Configuration Management
 
 ### Scenario Configuration
+
 Scenarios are stored in database and configurable without code changes:
 
 ```python
@@ -229,7 +247,7 @@ SCENARIO_MAP = {
     0: "0 - Scenario Agnostic",
     1: "1 - Recon",
     2: "2 - Battle Lines",
-    3: "3 - Wolves At Our Heels", 
+    3: "3 - Wolves At Our Heels",
     4: "4 - Payload",
     5: "5 - Two Fronts",
     6: "6 - Invasion"
@@ -237,12 +255,13 @@ SCENARIO_MAP = {
 ```
 
 ### Color Coding System
+
 ```python
 DEFAULT_COLOR_MAP = {
     '1': 'orangered',    # Extremely unfavorable
     '2': 'orange',       # Unfavorable
     '3': 'yellow',       # Even/Neutral
-    '4': 'greenyellow',  # Favorable  
+    '4': 'greenyellow',  # Favorable
     '5': 'lime'          # Extremely favorable
 }
 ```
@@ -250,16 +269,19 @@ DEFAULT_COLOR_MAP = {
 ## Performance Considerations
 
 ### Database Optimization
+
 - **Indexing**: Primary keys and foreign key constraints
 - **Query Patterns**: Optimized for team-vs-team scenario queries
 - **File Size**: Designed to remain email-friendly (< 25MB typical)
 
 ### Memory Management
+
 - **Lazy Loading**: TreeView loads nodes on-demand
 - **Data Caching**: Recently accessed ratings cached in memory
 - **Garbage Collection**: Explicit cleanup of large tree structures
 
 ### UI Responsiveness
+
 - **Progressive Rendering**: Large trees render incrementally
 - **Background Processing**: Tree generation doesn't block UI
 - **Scrolling Optimization**: Virtual scrolling for large datasets
@@ -267,17 +289,20 @@ DEFAULT_COLOR_MAP = {
 ## Security & Data Integrity
 
 ### Data Validation
+
 - **Rating Bounds**: Enforced 1-5 range (configurable for future expansion)
 - **Team Size**: Strict 5-player validation
 - **SQL Injection**: Parameterized queries throughout
 - **File Validation**: Schema validation for imports
 
 ### Database Integrity
+
 - **Foreign Key Constraints**: Maintain referential integrity
 - **Unique Constraints**: Prevent duplicate ratings
 - **Transaction Safety**: Database operations are atomic
 
 ### Backup & Recovery
+
 - **Portable Files**: SQLite databases are self-contained
 - **Export Options**: CSV/Excel exports serve as backups
 - **Version Control**: Database schema versioning for future updates
@@ -285,12 +310,14 @@ DEFAULT_COLOR_MAP = {
 ## Error Handling
 
 ### Common Error Scenarios
+
 1. **Database Connection Issues**: Graceful fallback to file-based storage
 2. **Import Format Errors**: Detailed validation messages
 3. **Missing Data**: Default values and user notifications
 4. **Tree Generation Failures**: Partial results with error reporting
 
 ### Logging Strategy
+
 - **User Actions**: Key operations logged for debugging
 - **Error Details**: Stack traces preserved for development
 - **Performance Metrics**: Tree generation timing tracked
@@ -298,12 +325,14 @@ DEFAULT_COLOR_MAP = {
 ## Future Architecture Considerations
 
 ### Planned Enhancements
+
 1. **Comments System**: Database schema ready for matchup annotations
-2. **Rating Scale Expansion**: Database supports 1-10 scale migration  
+2. **Rating Scale Expansion**: Database supports 1-10 scale migration
 3. **Battlefield Advantages**: Framework for modifiable ratings
 4. **Web Interface**: API layer preparation for future web version
 
 ### Scalability Preparations
+
 - **Modular Design**: Clean separation of concerns
 - **Plugin Architecture**: Extensible evaluation algorithms
 - **Configuration Management**: External configuration files

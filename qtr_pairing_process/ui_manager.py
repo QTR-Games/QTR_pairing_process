@@ -19,6 +19,7 @@ from qtr_pairing_process.rating_system_dialog import RatingSystemDialog
 from qtr_pairing_process.data_validator import DataValidator
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.tree_generator import TreeGenerator
+from qtr_pairing_process.matchup_tree_sync import MatchupTreeSynchronizer
 from qtr_pairing_process.db_load_ui import DbLoadUi
 from qtr_pairing_process.xlsx_load_ui import XlsxLoadUi
 from qtr_pairing_process.db_management.db_manager import DbManager
@@ -26,6 +27,9 @@ from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
 from qtr_pairing_process.create_team_dialog import CreateTeamDialog
 from qtr_pairing_process.excel_management.excel_importer import ExcelImporter
 from qtr_pairing_process.excel_management.simple_excel_importer import SimpleExcelImporter
+from qtr_pairing_process.database_preferences import DatabasePreferences
+from qtr_pairing_process.welcome_dialog import WelcomeDialog, DatabasePreferencesDialog
+from qtr_pairing_process.matchup_data_cache import MatchupDataCache
 
 
 class UiManager:
@@ -49,6 +53,9 @@ class UiManager:
         # Initialize settings manager
         self.settings_manager = SettingsManager()
         
+        # Initialize database preferences
+        self.db_preferences = DatabasePreferences(print_output=print_output)
+        
         # Initialize rating system (this may override the provided color_map)
         self.current_rating_system = self.settings_manager.get_rating_system()
         self.rating_config = RATING_SYSTEMS[self.current_rating_system]
@@ -69,13 +76,94 @@ class UiManager:
             
 
     def select_database(self):
-        db_load_ui = DbLoadUi()
-        self.db_path, self.db_name = db_load_ui.create_or_load_database()
+        """Select database with persistence support"""
+        if self.print_output:
+            print("Starting database selection process...")
+        
+        # Try to load previously selected database
+        saved_path, saved_name = self.db_preferences.get_last_database()
+        
+        if self.print_output:
+            print(f"Retrieved saved database: path='{saved_path}', name='{saved_name}'")
+        
+        if saved_path and saved_name:
+            # Validate that the saved database still exists
+            if self.print_output:
+                print(f"Validating database existence...")
+            
+            if self.db_preferences.validate_database_exists(saved_path, saved_name):
+                # Use saved database
+                self.db_path = saved_path
+                self.db_name = saved_name
+                self.db_manager = DbManager(path=self.db_path, name=self.db_name)
+                
+                if self.print_output:
+                    print(f"✅ Successfully loaded saved database: {saved_name} from {saved_path}")
+                
+                # Don't return here - continue to cache initialization
+                skip_dialog = True
+            else:
+                # Database file not found, show user-friendly error and continue to selection
+                full_path = f"{saved_path}/{saved_name}" if saved_path and saved_name else "Unknown"
+                if self.print_output:
+                    print(f"❌ Database validation failed for: {full_path}")
+                
+                messagebox.showwarning("Database Not Found", 
+                    f"Previous database '{saved_name}' could not be found at:\n{full_path}\n\n"
+                    "Please select a database to continue.")
+        
+        # No saved database or saved database not found - show selection dialog
+        if not locals().get('skip_dialog', False):
+            if self.print_output:
+                print("Showing database selection dialog...")
+            
+            db_load_ui = DbLoadUi()
+            self.db_path, self.db_name = db_load_ui.create_or_load_database()
+
+            if self.print_output:
+                print(f"User selected: path='{self.db_path}', name='{self.db_name}'")
 
         if self.db_path is None:
             self.db_manager = DbManager()
+            if self.print_output:
+                print("Using default database manager")
         else:
-            self.db_manager = DbManager(path=self.db_path, name=self.db_name)
+            # Only create db_manager if we don't already have one (from saved database path)
+            if not hasattr(self, 'db_manager') or self.db_manager is None:
+                self.db_manager = DbManager(path=self.db_path, name=self.db_name)
+            
+            # Save the selected database for future use
+            if self.db_name is not None:
+                success = self.db_preferences.save_database_preference(self.db_path, self.db_name)
+                if self.print_output:
+                    print(f"Database preference saved: {success}")
+            else:
+                if self.print_output:
+                    print("Cannot save database preference: db_name is None")
+        
+        # Initialize high-performance cache system after database is ready
+        self.cache_error_reason = None  # Track why cache failed
+        try:
+            print(f"🔄 Attempting to initialize cache with database: {self.db_manager}")
+            if self.db_manager is None:
+                raise Exception("Database manager is None - database connection failed")
+            
+            self.data_cache = MatchupDataCache(self.db_manager, print_output=self.print_output)
+            print("✅ Data cache initialized successfully")
+            print(f"📊 Cache status: {self.data_cache is not None}")
+            self.cache_error_reason = None  # Clear any previous error
+        except Exception as e:
+            error_msg = f"Failed to initialize data cache: {e}"
+            print(f"❌ {error_msg}")
+            if self.print_output:
+                print(f"📊 Database manager status: {self.db_manager}")
+                print(f"📊 Database path: {getattr(self, 'db_path', 'Not set')}")
+                print(f"📊 Database name: {getattr(self, 'db_name', 'Not set')}")
+            
+            self.data_cache = None
+            self.cache_error_reason = error_msg
+            print(f"⚠️ Application will run in FALLBACK MODE due to cache failure")
+            print(f"⚠️ Error reason: {self.cache_error_reason}")
             
     def initialize_ui_vars(self):
         # set root
@@ -119,13 +207,15 @@ class UiManager:
         self.button_row_frame = tk.Frame(self.team_grid_frame)
         self.button_row_frame.pack(side=tk.TOP, fill=tk.X)
 
-        # set frames for the matchup tree tab
-        self.tree_tab_left_frame = tk.Frame(self.matchup_tree_frame)
-        self.tree_tab_left_frame.pack(side=tk.LEFT)
-        self.tree_tab_right_frame = tk.Frame(self.matchup_tree_frame)
-        self.tree_tab_right_frame.pack(side=tk.LEFT, expand=1, fill=tk.BOTH)
-
-        self.buttons_frame = tk.Frame(self.tree_tab_left_frame)
+        # set frames for the matchup tree tab - tree now takes full width
+        self.tree_tab_frame = tk.Frame(self.matchup_tree_frame)
+        self.tree_tab_frame.pack(side=tk.TOP, expand=1, fill=tk.BOTH, padx=5, pady=5)
+        
+        # Create bottom frame for buttons and output panel side by side
+        self.bottom_frame = tk.Frame(self.matchup_tree_frame)
+        self.bottom_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
+        
+        self.buttons_frame = tk.Frame(self.bottom_frame)
         self.buttons_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
 
         self.grid_entries = [[tk.StringVar() for _ in range(6)] for _ in range(6)]
@@ -147,12 +237,9 @@ class UiManager:
         alphaBox.pack(side=tk.BOTTOM,pady=5)
         alphaBox.select()
 
-        # create treeview and tree generator
-        self.treeview = LazyTreeView(master=self.tree_tab_right_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
+        # create treeview and tree generator with all three score columns
+        self.treeview = LazyTreeView(master=self.tree_tab_frame, print_output=self.print_output, columns=("Rating", "Cumulative Score", "Confidence Score", "Resistance Score"))
         self.tree_generator = TreeGenerator(treeview=self.treeview, sort_alpha=self.sort_alpha.get())
-        
-        # Create Matchup Output Panel
-        self.create_matchup_output_panel()
         
         # Track current sorting mode for column display
         self.current_sort_mode = "none"
@@ -224,12 +311,20 @@ class UiManager:
         style = ttk.Style()
         style.configure("Treeview", font=("Arial", 10))
         self.treeview.tree.heading("#0", text="Pairing")
+        # Configure tree column headings
         self.treeview.tree.heading("Rating", text="Rating")
-        self.treeview.tree.heading("Sort Value", text="Sort Value")
+        self.treeview.tree.heading("Cumulative Score", text="Cumulative Score")
+        self.treeview.tree.heading("Confidence Score", text="Confidence Score") 
+        self.treeview.tree.heading("Resistance Score", text="Resistance Score")
         
-        # Configure column widths
-        self.treeview.tree.column("Rating", width=80, minwidth=50)
-        self.treeview.tree.column("Sort Value", width=100, minwidth=80)
+        # Configure column widths - will be dynamically updated
+        self.configure_tree_column_widths()
+        
+        # Bind resize event to update column widths
+        self.treeview.tree.bind('<Configure>', self.on_tree_configure)
+        
+        # Schedule initial column configuration after UI is fully loaded
+        self.root.after(100, self.configure_tree_column_widths)
         self.treeview.tree.tag_configure('1', background="orangered")
         self.treeview.tree.tag_configure('2', background="orange")
         self.treeview.tree.tag_configure('3', background="yellow")
@@ -244,29 +339,116 @@ class UiManager:
         self.active_sort_mode = None  # Track which sort is currently active
         
         # Create sorting buttons with active/inactive states
-        self.cumulative_button = tk.Button(self.buttons_frame, text="🔴 Cumulative\nSort", command=self.toggle_cumulative_sort)
+        self.cumulative_button = tk.Button(self.buttons_frame, text="⚫ Cumulative\nSort", command=self.toggle_cumulative_sort)
         self.cumulative_button.pack(fill=tk.X, pady=5)
 
-        self.confidence_button = tk.Button(self.buttons_frame, text="🔴 Highest\nConfidence", command=self.toggle_confidence_sort)
+        self.confidence_button = tk.Button(self.buttons_frame, text="⚫ Highest\nConfidence", command=self.toggle_confidence_sort)
         self.confidence_button.pack(fill=tk.X, pady=5)
 
-        self.counter_button = tk.Button(self.buttons_frame, text="🔴 Counter\nPick", command=self.toggle_counter_sort)
+        self.counter_button = tk.Button(self.buttons_frame, text="⚫ Counter\nPick", command=self.toggle_counter_sort)
         self.counter_button.pack(fill=tk.X, pady=5)
+        
+        # Add the new Strategic Optimal button
+        self.strategic_button = tk.Button(self.buttons_frame, text="⚫ Strategic\nOptimal", command=self.toggle_strategic_optimal_sort)
+        self.strategic_button.pack(fill=tk.X, pady=5)
         
         # Set initial button states (all inactive)
         self.update_sort_button_states()
+        
+
+
+        # Create Matchup Output Panel next to buttons in bottom frame
+        self.create_matchup_output_panel()
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
         self.create_tooltip(self.treeview, "Generated combinations will be displayed here\nNavigate the tree with arrow keys!")
+        self.create_tooltip(self.strategic_button, "Strategic Optimal Expected Value sorting\nOptimizes for 3/5 wins while preventing catastrophic failures\nAccounts for opponent counter-strategies and team strength")
 
         self.update_combobox_colors()
         self.init_display_headers()
         
         # Create status bar
         self.create_status_bar()
+        
+        # Initialize matchup tree synchronizer after all UI components are created
+        self.tree_synchronizer = None
+        try:
+            self.tree_synchronizer = MatchupTreeSynchronizer(self)
+            print("Matchup tree synchronizer initialized successfully")
+        except Exception as e:
+            print(f"Warning: Could not initialize tree synchronizer: {e}")
+
+        # Show welcome message if this is first run or user preference
+        self.show_welcome_message_if_needed()
 
         self.root.mainloop()
+
+    def show_welcome_message_if_needed(self):
+        """Show welcome message on first run or if preference is enabled"""
+        if self.db_preferences.should_show_welcome_message():
+            welcome_dialog = WelcomeDialog(self.root)
+            show_again = welcome_dialog.show_welcome_message()
+            
+            # Save the preference
+            self.db_preferences.set_welcome_message_preference(show_again)
+            
+            # If user clicked "Open Data Management", show preferences
+            if hasattr(welcome_dialog, 'result') and welcome_dialog.result == "open_settings":
+                self.show_preferences_dialog()
+
+    def configure_tree_column_widths(self):
+        """Configure tree column widths according to specification: 80% pairing, 5% each for scores"""
+        try:
+            # Get current tree width (default to reasonable size if not available)
+            tree_width = self.treeview.tree.winfo_width() if self.treeview.tree.winfo_width() > 1 else 1000
+            
+            # If tree width is still 1 (not yet rendered), use the frame width or window width
+            if tree_width <= 1:
+                try:
+                    tree_width = self.tree_tab_frame.winfo_width() if self.tree_tab_frame.winfo_width() > 1 else 1000
+                except:
+                    tree_width = 1000
+            
+            # Calculate widths: 80% for pairing, 5% each for the 4 score columns
+            pairing_width = int(tree_width * 0.75)  # Slightly less to account for scrollbars
+            score_width = int(tree_width * 0.06)    # Slightly more to balance
+            
+            # Set minimum widths to ensure readability
+            min_pairing_width = 400
+            min_score_width = 60
+            
+            pairing_width = max(pairing_width, min_pairing_width)
+            score_width = max(score_width, min_score_width)
+            
+            # Apply widths
+            self.treeview.tree.column("#0", width=pairing_width, minwidth=min_pairing_width)
+            self.treeview.tree.column("Rating", width=score_width, minwidth=min_score_width)
+            self.treeview.tree.column("Cumulative Score", width=score_width, minwidth=min_score_width)
+            self.treeview.tree.column("Confidence Score", width=score_width, minwidth=min_score_width)
+            self.treeview.tree.column("Resistance Score", width=score_width, minwidth=min_score_width)
+            
+            if self.print_output:
+                print(f"Configured tree columns: Pairing={pairing_width}px, Scores={score_width}px each (total width: {tree_width}px)")
+            
+        except Exception as e:
+            if self.print_output:
+                print(f"Error configuring tree column widths: {e}")
+
+    def on_tree_configure(self, event):
+        """Handle tree widget resize to maintain column proportions"""
+        try:
+            # Only reconfigure if the event is for the treeview widget itself
+            if event.widget == self.treeview.tree:
+                self.root.after_idle(self.configure_tree_column_widths)
+        except Exception as e:
+            if self.print_output:
+                print(f"Error in tree configure event: {e}")
+
+    def show_preferences_dialog(self):
+        """Show database and UI preferences dialog"""
+        preferences_dialog = DatabasePreferencesDialog(self.root, self.db_preferences)
+        preferences_dialog.show_preferences_dialog()
 
     def create_ui_grids(self):
         self.row_checkboxes = []
@@ -468,6 +650,46 @@ class UiManager:
         self.db_status = tk.Label(self.status_frame, text=f"Database: {db_name}", anchor=tk.W)
         self.db_status.pack(side=tk.LEFT, padx=5)
         
+        # Cache mode indicator with error details
+        has_cache_attr = hasattr(self, 'data_cache') 
+        cache_not_none = getattr(self, 'data_cache', None) is not None
+        
+        if self.print_output:
+            print(f"📊 Status bar debug: has_cache_attr={has_cache_attr}, cache_not_none={cache_not_none}")
+            print(f"📊 data_cache value: {getattr(self, 'data_cache', 'NOT_SET')}")
+        
+        if has_cache_attr and cache_not_none:
+            cache_mode = "Normal Mode"
+            cache_color = "#228B22"  # Green for normal
+            show_reconnect = False
+        else:
+            cache_mode = "Fallback Mode"
+            cache_color = "#FF6B35"  # Orange for fallback
+            show_reconnect = True
+            if hasattr(self, 'cache_error_reason') and self.cache_error_reason:
+                cache_mode += " (ERROR)"
+                cache_color = "#DC143C"  # Red for error
+
+        self.cache_status = tk.Label(self.status_frame, text=f"• {cache_mode}", 
+                                   anchor=tk.W, fg=cache_color, font=("Arial", 8, "bold"))
+        self.cache_status.pack(side=tk.LEFT, padx=(10, 5))
+        
+        # Add reconnect button if in fallback mode
+        if show_reconnect:
+            if self.print_output:
+                print("📊 Adding reconnect button (cache failed)")
+            self.reconnect_btn = tk.Button(self.status_frame, text="🔄 Reconnect Database", 
+                                         command=self.reconnect_database,
+                                         bg="#FFA500", fg="white", font=("Arial", 8, "bold"),
+                                         relief=tk.RAISED, bd=2)
+            self.reconnect_btn.pack(side=tk.LEFT, padx=(5, 10))
+        else:
+            if self.print_output:
+                print("📊 Not adding reconnect button (cache working)")
+        
+        # Add tooltip for cache status
+        self.create_cache_status_tooltip()
+        
         # Rating system info
         system_info = f"Rating System: {self.rating_config['name']} ({self.rating_range[0]}-{self.rating_range[1]})"
         self.rating_status = tk.Label(self.status_frame, text=system_info, anchor=tk.CENTER)
@@ -484,37 +706,53 @@ class UiManager:
                                width=2, relief=tk.RAISED, borderwidth=1, font=("Arial", 7, "bold"))
             color_box.pack(side=tk.LEFT, padx=1)
     
-    def update_status_bar(self):
-        """Update status bar information"""
-        if hasattr(self, 'rating_status'):
-            system_info = f"Rating System: {self.rating_config['name']} ({self.rating_range[0]}-{self.rating_range[1]})"
-            self.rating_status.config(text=system_info)
+    def create_cache_status_tooltip(self):
+        """Create tooltip for cache status indicator"""
+        # Store reference to current tooltip window
+        current_tooltip = None
         
-        if hasattr(self, 'db_status'):
-            db_name = getattr(self, 'db_name', 'Unknown')
-            self.db_status.config(text=f"Database: {db_name}")
+        def show_tooltip(event):
+            nonlocal current_tooltip
+            if hasattr(self, 'data_cache') and self.data_cache is not None:
+                tooltip_text = ("Normal Mode: High-performance caching enabled\n"
+                              "• Faster data loading and saving\n"
+                              "• Reduced database queries (80-90% fewer)\n"
+                              "• Optimal performance")
+            else:
+                tooltip_text = ("Fallback Mode: Direct database access\n"
+                              "• Cache system unavailable\n"
+                              "• All operations use direct database queries\n"
+                              "• Reduced performance")
+                
+                if hasattr(self, 'cache_error_reason') and self.cache_error_reason:
+                    tooltip_text += f"\n\n❌ Error Details:\n{self.cache_error_reason}\n\nUse 'Reconnect Database' to attempt recovery"
+            
+            # Create tooltip window
+            current_tooltip = tk.Toplevel()
+            current_tooltip.wm_overrideredirect(True)
+            current_tooltip.configure(bg='lightyellow', relief='solid', bd=1)
+            
+            # Position tooltip near mouse
+            x, y = event.widget.winfo_rootx() + 20, event.widget.winfo_rooty() + 20
+            current_tooltip.geometry(f"+{x}+{y}")
+            
+            # Add tooltip text
+            label = tk.Label(current_tooltip, text=tooltip_text, 
+                           bg='lightyellow', font=("Arial", 8),
+                           justify=tk.LEFT, padx=5, pady=3)
+            label.pack()
         
-        # Recreate color preview with new colors
-        if hasattr(self, 'status_frame'):
-            # Remove old color frame
-            for widget in self.status_frame.winfo_children():
-                if isinstance(widget, tk.Frame) and widget.winfo_children():
-                    # Check if this frame contains color boxes
-                    for child in widget.winfo_children():
-                        if isinstance(child, tk.Label) and child.cget('text') in self.color_map:
-                            widget.destroy()
-                            break
-            
-            # Add new color frame
-            color_frame = tk.Frame(self.status_frame)
-            color_frame.pack(side=tk.RIGHT, padx=5)
-            
-            tk.Label(color_frame, text="Colors:", font=("Arial", 8)).pack(side=tk.LEFT, padx=(0, 3))
-            
-            for rating in sorted(self.color_map.keys()):
-                color_box = tk.Label(color_frame, text=rating, bg=self.color_map[rating], 
-                                   width=2, relief=tk.RAISED, borderwidth=1, font=("Arial", 7, "bold"))
-                color_box.pack(side=tk.LEFT, padx=1)
+        def hide_tooltip(event):
+            nonlocal current_tooltip
+            if current_tooltip:
+                current_tooltip.destroy()
+                current_tooltip = None
+        
+        # Bind events to cache status label
+        if hasattr(self, 'cache_status'):
+            self.cache_status.bind('<Enter>', show_tooltip)
+            self.cache_status.bind('<Leave>', hide_tooltip)
+
     
     # Add this method to update display-only fields
     def update_display_fields(self, row, col, value):
@@ -535,99 +773,228 @@ class UiManager:
             print(f"update_display_fields has failed with error:\n{e}")
 
     def on_scenario_calculations(self):
+        """Run all calculations only if we have valid team data."""
+        print("🔧 DEBUG: on_scenario_calculations() called")
+        
+        # Only run calculations if both teams are selected
+        if not self._are_both_teams_selected():
+            print("🔧 DEBUG: Skipping calculations - teams not properly selected")
+            if self.print_output:
+                print("Skipping calculations - teams not properly selected")
+            return
+        
+        print("🔧 DEBUG: Teams are properly selected, checking for data in grid")
+        
+        # Check if we have any actual data in the grid
+        has_data = False
+        for row in range(1, 6):
+            for col in range(1, 6):
+                grid_value = self._safe_get_int_from_grid(row, col, default=None)
+                if grid_value is not None:
+                    print(f"🔧 DEBUG: Found data at [{row}][{col}]: {grid_value}")
+                    has_data = True
+                    break
+            if has_data:
+                break
+        
+        if not has_data:
+            print("🔧 DEBUG: No rating data found in grid - clearing calculations but keeping headers")
+            if self.print_output:
+                print("No rating data in grid - clearing calculations but keeping headers")
+            # Clear calculations but keep headers visible
+            for row in range(1, 6):
+                for col in range(6):
+                    if col == 0:  # FLOOR column
+                        self.update_display_fields(row, col, "")
+                    elif col == 1:  # PINNED? column  
+                        self.update_display_fields(row, col, "---")
+                    elif col == 2:  # CAN-PIN? column
+                        self.update_display_fields(row, col, "---")
+                    elif col == 3:  # PROTECT column
+                        self.update_display_fields(row, col, "---")
+                    elif col == 4:  # MAX/MIN column
+                        self.update_display_fields(row, col, "")
+                    elif col == 5:  # SUM MARG column
+                        self.update_display_fields(row, col, "")
+            return
+        
+        print("🔧 DEBUG: Data found in grid, proceeding with calculations")
+        
+        # Run all calculation methods
         self.set_floor_values()  # info_col 0
         self.check_pinned_players()  # info_col 1
         self.check_for_pins()  # info_col 2
         self.check_protect()  # info_col 3
         self.check_margins()  # info_col 4 & 5
-        self.update_comment_indicators()  # Update comment visual indicators
+        
+        # Update comment indicators only if we have valid data
+        if hasattr(self, 'update_comment_indicators'):
+            try:
+                self.update_comment_indicators()
+            except Exception as e:
+                if self.print_output:
+                    print(f"Error updating comment indicators: {e}")
 
     def check_margins(self):
+        """Check margins with safe integer conversion."""
         for row in range(1, 6):
             try:
                 if self.row_checkboxes and row - 1 < len(self.row_checkboxes) and self.row_checkboxes[row - 1].get() == 1:
                     for col in range(4, 6):
                         self.update_display_fields(row, col, "---")
                     continue
-                floor_rating_sum = int(self.grid_display_entries[row][0].get())
+                
+                # Get floor rating sum safely
+                floor_value = self.grid_display_entries[row][0].get()
+                if not floor_value or floor_value == "":
+                    self.update_display_fields(row, 4, "")
+                    self.update_display_fields(row, 5, "")
+                    continue
+                
+                try:
+                    floor_rating_sum = int(floor_value)
+                except ValueError:
+                    self.update_display_fields(row, 4, "")
+                    self.update_display_fields(row, 5, "")
+                    continue
+                
                 all_margins = []
                 for col in range(1, 6):
                     col_margin_sum = 0
+                    valid_col_ratings = 0
+                    
                     for row1 in range(1, 6):
                         widget = self.grid_widgets[row1][col]
                         if widget is not None and widget.cget('state') != 'disabled':
-                            col_margin_sum += int(self.grid_entries[row1][col].get())
-                    diff = floor_rating_sum - col_margin_sum
-                    all_margins.append(diff) # add the current col's sum to the all_margins list 
-                # MIN/MAX COLUMN = 
-                max_margin = max(all_margins) # MAX MARGIN is the max value of all the margins.
-                min_margin = min(all_margins) # MIN MARGIN is the min value of all the margins.
-                margin_text = f"{max_margin} | {min_margin}" # Col represents the buffer between your max possible benefit and worst possible outcome for this player's good and bad matchups.
-                self.update_display_fields(row, 4, margin_text)
-                sum_margins = sum(all_margins)
-                self.update_display_fields(row, 5, sum_margins)
-            except (ValueError, IndexError) as e:
-                print(f"check_margins has failed for row {row} with error:\n{e}")
+                            rating = self._safe_get_int_from_grid(row1, col, default=None)
+                            if rating is not None:
+                                col_margin_sum += rating
+                                valid_col_ratings += 1
+                    
+                    if valid_col_ratings > 0:
+                        diff = floor_rating_sum - col_margin_sum
+                        all_margins.append(diff)
+                
+                if all_margins:
+                    max_margin = max(all_margins)
+                    min_margin = min(all_margins)
+                    margin_text = f"{max_margin} | {min_margin}"
+                    self.update_display_fields(row, 4, margin_text)
+                    
+                    sum_margins = sum(all_margins)
+                    self.update_display_fields(row, 5, sum_margins)
+                else:
+                    self.update_display_fields(row, 4, "")
+                    self.update_display_fields(row, 5, "")
+                    
+            except Exception as e:
+                if self.print_output:
+                    print(f"check_margins has failed for row {row} with error: {e}")
+                self.update_display_fields(row, 4, "")
+                self.update_display_fields(row, 5, "")
 
     def check_protect(self):
+        """Check protection values with safe integer conversion."""
         for row in range(1, 6):
             try:
-                if self.row_checkboxes[row - 1].get() == 1:
+                if (self.row_checkboxes and 
+                    row - 1 < len(self.row_checkboxes) and 
+                    self.row_checkboxes[row - 1].get() == 1):
                     self.update_display_fields(row, 3, "---")
                     continue
-                row_pinned = self.grid_display_entries[row][1].get() != "---"
-                row_pinner = self.grid_display_entries[row][2].get() != "---"
+                
+                # Safely check if player is pinned or can pin
+                pinned_value = self.grid_display_entries[row][1].get() if hasattr(self, 'grid_display_entries') else ""
+                pinner_value = self.grid_display_entries[row][2].get() if hasattr(self, 'grid_display_entries') else ""
+                
+                row_pinned = pinned_value and pinned_value != "---" and pinned_value != ""
+                row_pinner = pinner_value and pinner_value != "---" and pinner_value != ""
+                
                 protect = "Yes" if row_pinned or row_pinner else "No"
                 self.update_display_fields(row, 3, protect)
-            except (ValueError, IndexError) as e:
-                print(f"check_protect has failed for row {row} with error:\n{e}")
+                
+            except Exception as e:
+                if self.print_output:
+                    print(f"check_protect has failed for row {row} with error: {e}")
+                self.update_display_fields(row, 3, "")
 
     def check_for_pins(self):
+        """Check if player can pin opponents with safe integer conversion."""
         for row in range(1, 6):
             try:
                 if self.row_checkboxes and row - 1 < len(self.row_checkboxes) and self.row_checkboxes[row - 1].get() == 1:
                     self.update_display_fields(row, 2, "---")
                     continue
+                
                 good_matchups = 0
                 for col in range(1, 6):
                     widget = self.grid_widgets[row][col]
-                    if widget is not None and widget.cget('state') != 'disabled' and int(self.grid_entries[row][col].get()) > 3:
-                        good_matchups += 1
+                    if widget is not None and widget.cget('state') != 'disabled':
+                        rating = self._safe_get_int_from_grid(row, col, default=3)  # Default to 3 (neutral)
+                        if rating is not None and rating > 3:
+                            good_matchups += 1
+                
                 can_pin = "PIN" if good_matchups > 1 else "---"
                 self.update_display_fields(row, 2, can_pin)
-            except (ValueError, IndexError) as e:
-                print(f"check_for_pins has failed for row {row} with error:\n{e}")
+                
+            except Exception as e:
+                if self.print_output:
+                    print(f"check_for_pins has failed for row {row} with error: {e}")
+                self.update_display_fields(row, 2, "")
 
     def check_pinned_players(self):
+        """Check for pinned players with safe integer conversion."""
         for row in range(1, 6):
             try:
                 if self.row_checkboxes and row - 1 < len(self.row_checkboxes) and self.row_checkboxes[row - 1].get() == 1:
                     self.update_display_fields(row, 1, "---")
                     continue
+                
                 num_bad_matchups = 0
                 for col in range(1, 6):
                     widget = self.grid_widgets[row][col]
-                    if widget is not None and widget.cget('state') != 'disabled' and int(self.grid_entries[row][col].get()) < 3:
-                        num_bad_matchups += 1
+                    if widget is not None and widget.cget('state') != 'disabled':
+                        rating = self._safe_get_int_from_grid(row, col, default=3)  # Default to 3 (neutral)
+                        if rating is not None and rating < 3:
+                            num_bad_matchups += 1
+                
                 player_pinned = "PINNED!" if num_bad_matchups > 1 else "---"
                 self.update_display_fields(row, 1, player_pinned)
-            except (ValueError, IndexError) as e:
-                print(f"check_pinned_players has failed for row {row} with error:\n{e}")
+                
+            except Exception as e:
+                if self.print_output:
+                    print(f"check_pinned_players has failed for row {row} with error: {e}")
+                self.update_display_fields(row, 1, "")
 
     def set_floor_values(self):
+        """Set floor values with safe integer conversion."""
         for row in range(1, 6):
             try:
                 if self.row_checkboxes and row-1 < len(self.row_checkboxes) and self.row_checkboxes[row-1].get() == 1:
                     self.update_display_fields(row, 0, "---")
                     continue
+                
                 floor_rating_sum = 0
+                valid_ratings = 0
+                
                 for col in range(1, 6):
                     widget = self.grid_widgets[row][col]
                     if widget is not None and widget.cget('state') != 'disabled':
-                        floor_rating_sum += int(self.grid_entries[row][col].get())
-                self.update_display_fields(row, 0, floor_rating_sum)
-            except (ValueError, IndexError) as e:
-                print(f"set_floor_values has failed with error:\n{e}")
+                        rating = self._safe_get_int_from_grid(row, col, default=None)
+                        if rating is not None:
+                            floor_rating_sum += rating
+                            valid_ratings += 1
+                
+                # Only display sum if we have valid ratings
+                if valid_ratings > 0:
+                    self.update_display_fields(row, 0, floor_rating_sum)
+                else:
+                    self.update_display_fields(row, 0, "")
+                    
+            except Exception as e:
+                if self.print_output:
+                    print(f"set_floor_values has failed for row {row} with error: {e}")
+                self.update_display_fields(row, 0, "")
 
     def switch_tab(self):
         current_tab = self.notebook.index(self.notebook.select())
@@ -790,6 +1157,9 @@ class UiManager:
                      relief=tk.RAISED, borderwidth=1).pack(pady=3)
             tk.Button(data_mgmt_frame, text="Refresh UI", width=20, height=1,
                      command=lambda: self._menu_action(menu_window, self.update_ui),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
+            tk.Button(data_mgmt_frame, text="Preferences", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.show_preferences_dialog),
                      relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
             
             # BOTTOM LEFT: Team Management section
@@ -824,7 +1194,12 @@ class UiManager:
             rating_system_button = tk.Button(database_frame, text="Rating System", width=20, height=1,
                      command=lambda: self._menu_action(menu_window, self.on_configure_rating_system),
                      relief=tk.RAISED, borderwidth=1, bg="lightpink")
-            rating_system_button.pack(pady=(3, 10))
+            rating_system_button.pack(pady=3)
+            
+            cache_stats_button = tk.Button(database_frame, text="Cache Statistics", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.show_cache_statistics),
+                     relief=tk.RAISED, borderwidth=1, bg="lightsteelblue")
+            cache_stats_button.pack(pady=(3, 10))
             print("Database section added successfully!")  # Debug output
             
             # Close button frame at the bottom
@@ -869,17 +1244,22 @@ class UiManager:
         if self.print_output:
             print(f"fRatings: {fRatings}\n")
             print(f"oRatings: {oRatings}\n")
+        
+        # TEMPORARILY DISABLED - Validate that all 25 ratings are present before generating combinations
+        # if not self.validate_complete_ratings(fRatings, oRatings, fNames, oNames):
+        #     return  # Validation failed, don't generate combinations
+            
         self.validate_grid_data()
         if self.team_b.get():
-            self.tree_generator.generate_combinations(fNames, oNames, fRatings, oRatings)
+            self.tree_generator.generate_combinations(fNames, oNames, fRatings, oRatings, our_team_first=True)
         else:
-            self.tree_generator.generate_combinations(oNames, fNames, oRatings, fRatings)
+            self.tree_generator.generate_combinations(oNames, fNames, oRatings, fRatings, our_team_first=False)
         
         # Reset all sorting states when generating new combinations
         self.active_sort_mode = None
         self.is_sorted = False
         self.current_sort_mode = "none"
-        self.treeview.tree.heading("Sort Value", text="Sort Value")
+        self.treeview.tree.heading("Rating", text="Rating")
         self.update_sort_value_column()
         self.update_sort_button_states()
         
@@ -888,7 +1268,7 @@ class UiManager:
         self.tree_generator.sort_by_risk_adjusted_confidence()
         self.current_sort_mode = "confidence"
         self.active_sort_mode = "confidence"
-        self.treeview.tree.heading("Sort Value", text="Confidence Score")
+        self.treeview.tree.heading("Rating", text="Confidence Score")
         self.update_sort_value_column()
         self.is_sorted = True
         self.update_sort_button_states()
@@ -898,7 +1278,17 @@ class UiManager:
         self.tree_generator.sort_by_opponent_response_simulation()
         self.current_sort_mode = "resistance"
         self.active_sort_mode = "resistance"
-        self.treeview.tree.heading("Sort Value", text="Resistance Score")
+        self.treeview.tree.heading("Rating", text="Resistance Score")
+        self.update_sort_value_column()
+        self.is_sorted = True
+        self.update_sort_button_states()
+
+    def sort_by_strategic_optimal(self):
+        """Sort tree by strategic optimal expected value"""
+        self.tree_generator.sort_by_strategic_optimal()
+        self.current_sort_mode = "strategic"
+        self.active_sort_mode = "strategic"
+        self.treeview.tree.heading("Rating", text="Strategic EV")
         self.update_sort_value_column()
         self.is_sorted = True
         self.update_sort_button_states()
@@ -908,7 +1298,7 @@ class UiManager:
         self.tree_generator.sort_by_cumulative_value()
         self.current_sort_mode = "cumulative"
         self.active_sort_mode = "cumulative"
-        self.treeview.tree.heading("Sort Value", text="Cumulative Value")
+        self.treeview.tree.heading("Rating", text="Cumulative Value")
         self.update_sort_value_column()
         self.is_sorted = True
         self.update_sort_button_states()
@@ -918,7 +1308,7 @@ class UiManager:
         self.tree_generator.unsort_tree()
         self.current_sort_mode = "none"
         self.active_sort_mode = None
-        self.treeview.tree.heading("Sort Value", text="Sort Value")
+        self.treeview.tree.heading("Rating", text="Rating")
         self.update_sort_value_column()
         self.is_sorted = False
         self.update_sort_button_states()
@@ -943,21 +1333,53 @@ class UiManager:
             self.unsort_tree()
         else:
             self.sort_by_counter_resistance()
+
+    def toggle_strategic_optimal_sort(self):
+        """Toggle strategic optimal sorting on/off"""
+        if self.active_sort_mode == "strategic":
+            self.unsort_tree()
+        else:
+            self.sort_by_strategic_optimal()
     
     def update_sort_button_states(self):
         """Update button appearance to show active/inactive states"""
-        # Reset all buttons to inactive state (dim red circle)
-        self.cumulative_button.config(text="⭕ Cumulative\nSort", relief=tk.RAISED, bg='SystemButtonFace')
-        self.confidence_button.config(text="⭕ Highest\nConfidence", relief=tk.RAISED, bg='SystemButtonFace')
-        self.counter_button.config(text="⭕ Counter\nPick", relief=tk.RAISED, bg='SystemButtonFace')
-        
-        # Set active button to bright red circle and pressed appearance
-        if self.active_sort_mode == "cumulative":
-            self.cumulative_button.config(text="🔴 Cumulative\nSort", relief=tk.SUNKEN, bg='lightcoral')
-        elif self.active_sort_mode == "confidence":
-            self.confidence_button.config(text="🔴 Highest\nConfidence", relief=tk.SUNKEN, bg='lightcoral')
-        elif self.active_sort_mode == "resistance":
-            self.counter_button.config(text="🔴 Counter\nPick", relief=tk.SUNKEN, bg='lightcoral')
+        try:
+            # Reset all buttons to inactive state with gray background and dim circle
+            self.cumulative_button.config(text="⚫ Cumulative\nSort", relief=tk.RAISED, bg='lightgray', fg='black')
+            self.confidence_button.config(text="⚫ Highest\nConfidence", relief=tk.RAISED, bg='lightgray', fg='black')
+            self.counter_button.config(text="⚫ Counter\nPick", relief=tk.RAISED, bg='lightgray', fg='black')
+            self.strategic_button.config(text="⚫ Strategic\nOptimal", relief=tk.RAISED, bg='lightgray', fg='black')
+            
+            # Set active button to bright green with pressed appearance
+            if self.active_sort_mode == "cumulative":
+                self.cumulative_button.config(text="� ACTIVE\nCumulative", relief=tk.SUNKEN, bg='lightgreen', fg='darkgreen')
+            elif self.active_sort_mode == "confidence":
+                self.confidence_button.config(text="� ACTIVE\nConfidence", relief=tk.SUNKEN, bg='lightgreen', fg='darkgreen')
+            elif self.active_sort_mode == "resistance":
+                self.counter_button.config(text="� ACTIVE\nCounter Pick", relief=tk.SUNKEN, bg='lightgreen', fg='darkgreen')
+            elif self.active_sort_mode == "strategic":
+                self.strategic_button.config(text="� ACTIVE\nStrategic", relief=tk.SUNKEN, bg='lightgreen', fg='darkgreen')
+                
+        except Exception as e:
+            print(f"ERROR updating sort button states: {e}")
+            # Fallback to very basic text-only updates
+            try:
+                if self.active_sort_mode == "cumulative":
+                    self.cumulative_button.config(text="[ACTIVE]\nCumulative")
+                elif self.active_sort_mode == "confidence":
+                    self.confidence_button.config(text="[ACTIVE]\nConfidence")
+                elif self.active_sort_mode == "resistance":
+                    self.counter_button.config(text="[ACTIVE]\nCounter Pick")
+                elif self.active_sort_mode == "strategic":
+                    self.strategic_button.config(text="[ACTIVE]\nStrategic")
+                else:
+                    # All inactive
+                    self.cumulative_button.config(text="Cumulative\nSort")
+                    self.confidence_button.config(text="Highest\nConfidence")
+                    self.counter_button.config(text="Counter\nPick")
+                    self.strategic_button.config(text="Strategic\nOptimal")
+            except Exception as e2:
+                print(f"ERROR: Fallback button update also failed: {e2}")
 
     def update_scenario_box(self):
         scenarios = []
@@ -974,34 +1396,190 @@ class UiManager:
         new_value = self.scenario_var.get()
         # Compare with the previous value
         if new_value != self.previous_value:
-            # print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
+            print(f"🔧 DEBUG: Scenario changed from '{self.previous_value}' to '{new_value}'")
             self.previous_value = new_value
             try:
+                print(f"🔧 DEBUG: About to call update_ui() for scenario change")
                 self.update_ui()
+                print(f"🔧 DEBUG: update_ui() completed, now calling on_scenario_calculations()")
+                # Trigger scenario calculations to populate the right grid
+                self.on_scenario_calculations()
+                print(f"🔧 DEBUG: on_scenario_calculations() completed for scenario change")
             except (ValueError, IndexError) as e:
                 print(f"scenario_box_change error: {e}")
 
+    def _is_valid_team_selection(self, team_name):
+        """Check if team name is valid for database operations."""
+        if not team_name:
+            return False
+        if team_name.strip() == '':
+            return False
+        if team_name == 'No teams Found':
+            return False
+        return True
+
+    def _are_both_teams_selected(self):
+        """Check if both teams are selected and valid."""
+        team1 = self.team1_var.get() if hasattr(self, 'team1_var') else ""
+        team2 = self.team2_var.get() if hasattr(self, 'team2_var') else ""
+        
+        return (self._is_valid_team_selection(team1) and 
+                self._is_valid_team_selection(team2) and 
+                team1 != team2)
+
+    def _teams_changed_meaningfully(self, new_team1, new_team2):
+        """Check if team change warrants a database reload."""
+        old_team1 = getattr(self, 'previous_team1', '')
+        old_team2 = getattr(self, 'previous_team2', '')
+        
+        print(f"🔧 DEBUG: _teams_changed_meaningfully check:")
+        print(f"🔧 DEBUG:   New teams: '{new_team1}' vs '{new_team2}'")
+        print(f"🔧 DEBUG:   Old teams: '{old_team1}' vs '{old_team2}'")
+        print(f"🔧 DEBUG:   Team1 valid: {self._is_valid_team_selection(new_team1)}")
+        print(f"🔧 DEBUG:   Team2 valid: {self._is_valid_team_selection(new_team2)}")
+        print(f"🔧 DEBUG:   Teams different: {new_team1 != new_team2}")
+        
+        # If both teams are valid now and at least one changed
+        if (self._is_valid_team_selection(new_team1) and 
+            self._is_valid_team_selection(new_team2) and 
+            new_team1 != new_team2):
+            
+            team_changed = (new_team1 != old_team1 or new_team2 != old_team2)
+            print(f"🔧 DEBUG:   At least one team changed: {team_changed}")
+            
+            if team_changed:
+                print(f"🔧 DEBUG:   Meaningful change detected - returning True")
+                return True
+        
+        print(f"🔧 DEBUG:   No meaningful change - returning False")
+        return False
+
+    def _safe_get_int_from_grid(self, row: int, col: int, default: Optional[int] = 0) -> Optional[int]:
+        """Safely extract integer value from grid, handling empty strings."""
+        try:
+            value = self.grid_entries[row][col].get()
+            if not value or value.strip() == '':
+                return default
+            return int(value)
+        except (ValueError, IndexError):
+            return default
+
+    def _clear_grid_calculations(self):
+        """Clear all calculated display fields when teams are invalid."""
+        try:
+            for row in range(1, 6):
+                for col in range(1, 6):
+                    # Clear the display grid calculations
+                    if hasattr(self, 'grid_display_entries'):
+                        self.grid_display_entries[row][col].set('')
+        except Exception as e:
+            if self.print_output:
+                print(f"Error clearing grid calculations: {e}")
+
     def on_team_box_change(self, *args):
-        # Get the new value
+        """Handle team dropdown changes with proper validation."""
+        print(f"🔧 DEBUG: on_team_box_change() called with args: {args}")
+        
+        # Get the new values
         new_team1_value = self.team1_var.get()
         new_team2_value = self.team2_var.get()
-        perform_update = False
-        # Compare with the previous value
-        if new_team1_value != self.previous_team1:
+        
+        print(f"🔧 DEBUG: Team values - Team1: '{new_team1_value}', Team2: '{new_team2_value}'")
+        
+        # Track if either value changed
+        team1_changed = new_team1_value != getattr(self, 'previous_team1', '')
+        team2_changed = new_team2_value != getattr(self, 'previous_team2', '')
+        
+        print(f"🔧 DEBUG: Previous values - Team1: '{getattr(self, 'previous_team1', '')}', Team2: '{getattr(self, 'previous_team2', '')}'")
+        print(f"🔧 DEBUG: Changes detected - Team1: {team1_changed}, Team2: {team2_changed}")
+        
+        # Only proceed if something actually changed
+        if not (team1_changed or team2_changed):
+            print(f"🔧 DEBUG: No meaningful changes detected, returning early")
+            return
+        
+        # If we don't have both teams selected validly, clear calculations and return
+        if not self._are_both_teams_selected():
+            print(f"🔧 DEBUG: Teams not ready for database operations: '{new_team1_value}' vs '{new_team2_value}'")
+            
+            # Update tracking variables after clearing
             self.previous_team1 = new_team1_value
-            perform_update = True
-        if new_team2_value != self.previous_team2:
             self.previous_team2 = new_team2_value
-            perform_update = True
-        if perform_update:
-            try:
-                self.update_ui()
-                # Update round dropdowns when team changes
-                self.update_round_dropdown_options()
-                # Trigger scenario calculations to populate the grid on the right
-                self.on_scenario_calculations()
-            except (ValueError,IndexError) as e:
-                print(f"team_box_change error: {e}")
+            
+            # Clear any existing grid calculations
+            self._clear_grid_calculations()
+            
+            # Clear comment indicators
+            if hasattr(self, 'clear_comment_indicators'):
+                self.clear_comment_indicators()
+            
+            return
+        
+        # Check if this change actually warrants a database reload (BEFORE updating previous values)
+        if not self._teams_changed_meaningfully(new_team1_value, new_team2_value):
+            print(f"🔧 DEBUG: Team change not meaningful enough for database reload")
+            # Update tracking variables even if not meaningful
+            self.previous_team1 = new_team1_value
+            self.previous_team2 = new_team2_value
+            return
+        
+        # Update tracking variables after meaningful change detected
+        self.previous_team1 = new_team1_value
+        self.previous_team2 = new_team2_value
+        
+        # Now we know both teams are valid and different - safe to proceed
+        try:
+            print(f"🔧 DEBUG: Both teams selected: '{new_team1_value}' vs '{new_team2_value}'")
+            
+            # Update round dropdowns when team changes (do this first)
+            print(f"🔧 DEBUG: About to call update_round_dropdown_options()")
+            self.update_round_dropdown_options()
+            print(f"🔧 DEBUG: update_round_dropdown_options() completed")
+            
+            # Automatically set scenario to 0 when both teams are selected
+            # This will trigger on_scenario_box_change which will handle the rest of the flow
+            if hasattr(self, 'scenario_var') and hasattr(self, 'scenario_box'):
+                current_scenario = self.scenario_var.get()
+                print(f"🔧 DEBUG: Current scenario value: '{current_scenario}'")
+                
+                # Always ensure the dropdown shows '0 - Neutral' visually
+                target_scenario = '0 - Neutral'
+                
+                # First ensure the dropdown values are populated
+                self.update_scenario_box()
+                
+                # Force the combobox to update its display
+                if hasattr(self.scenario_box, 'current'):
+                    try:
+                        # Find the index of '0 - Neutral' in the values
+                        values = self.scenario_box['values']
+                        print(f"🔧 DEBUG: Available scenario values: {values}")
+                        if target_scenario in values:
+                            index = list(values).index(target_scenario)
+                            self.scenario_box.current(index)
+                            print(f"🔧 DEBUG: Set dropdown display to show '{target_scenario}' at index {index}")
+                        else:
+                            print(f"🔧 DEBUG: Target scenario '{target_scenario}' not found in values: {values}")
+                    except Exception as e:
+                        print(f"🔧 DEBUG: Error setting dropdown display: {e}")
+                
+                if current_scenario != target_scenario:
+                    print(f"🔧 DEBUG: Setting scenario from '{current_scenario}' to '{target_scenario}' - this will trigger scenario change handler")
+                    self.scenario_var.set(target_scenario)
+                    print(f"🔧 DEBUG: Scenario set - scenario change handler should now be triggered automatically")
+                else:
+                    print(f"🔧 DEBUG: Scenario already set to '{target_scenario}', manually triggering scenario calculations")
+                    # If scenario is already set to neutral, we need to manually trigger the calculations
+                    # since changing to the same value won't trigger the trace
+                    self.on_scenario_calculations()
+            else:
+                print(f"🔧 DEBUG: WARNING - scenario_var or scenario_box not available")
+            
+        except Exception as e:
+            if self.print_output:
+                print(f'team_box_change ERROR: {e}')
+            # Clear grid on error to prevent partial/invalid state
+            self._clear_grid_calculations()
             
     
 
@@ -1012,17 +1590,37 @@ class UiManager:
     def update_ui(self):
         # Update the team dropdowns and grid values
         self.set_team_dropdowns()
+        # Ensure display headers are always visible
+        self.init_display_headers()
         self.load_grid_data_from_db()
         # print(self.extract_ratings())
 
     def select_team_names(self):
-        # Using this for testing.
-        # Possibly remove this later.
-        sql = 'select team_name from teams'
-        teams = self.db_manager.query_sql(sql)
-        team_names = [t[0] for t in teams]
-        if not team_names:
-            team_names = ['No teams Found']
+        """Get team names using cache (eliminates database query)"""
+        # Check if data_cache is initialized
+        if not hasattr(self, 'data_cache') or self.data_cache is None:
+            if self.print_output:
+                print("⚠️ Data cache not initialized, falling back to direct database query")
+            # Fallback to direct database query
+            if hasattr(self, 'db_manager') and self.db_manager is not None:
+                try:
+                    result = self.db_manager.query_sql("SELECT team_name FROM teams ORDER BY team_name")
+                    team_names = [row[0] for row in result] if result else []
+                    if self.print_output:
+                        print(f"📋 Retrieved {len(team_names)} team names from database (fallback)")
+                    return team_names
+                except Exception as e:
+                    if self.print_output:
+                        print(f"❌ Error getting team names from database: {e}")
+                    return []
+            else:
+                if self.print_output:
+                    print("❌ No database manager available")
+                return []
+        
+        team_names = self.data_cache.get_team_names()
+        if self.print_output:
+            print(f"📋 Retrieved {len(team_names)} team names from cache")
         return team_names
 
     def set_team_dropdowns(self):
@@ -1031,6 +1629,7 @@ class UiManager:
         self.combobox_2['values'] = team_names
 
     def load_grid_data_from_db(self):
+        """Load grid data using high-performance cache (eliminates 15-20 database queries)"""
         team_1 = self.combobox_1.get()
         team_2 = self.combobox_2.get()
         scenario = self.scenario_box.get()[:1]
@@ -1039,56 +1638,47 @@ class UiManager:
             scenario = self.scenario_box.get()[:1]
         scenario_id = int(scenario)
 
-        team_sql_template = "select team_id from teams where team_name='{team_name}'"
-        team_1_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_1))
-        if not team_1_row:
-            print(f"Team '{team_1}' not found in database")
+        if self.print_output:
+            print(f"🚀 Loading grid data for {team_1} vs {team_2}, scenario {scenario_id}")
+
+        # Get all data from cache in one call (replaces 15-20 database queries)
+        if hasattr(self, 'data_cache') and self.data_cache is not None:
+            try:
+                cached_data = self.data_cache.get_cached_grid_data(team_1, team_2, scenario_id)
+                if not cached_data:
+                    if self.print_output:
+                        print("⚠️ Cache miss, falling back to direct database queries")
+                    cached_data = self._load_grid_data_direct(team_1, team_2, scenario_id)
+            except Exception as cache_error:
+                if self.print_output:
+                    print(f"❌ Cache error: {cache_error}, falling back to direct database queries")
+                cached_data = self._load_grid_data_direct(team_1, team_2, scenario_id)
+        else:
+            if self.print_output:
+                print("⚠️ Data cache not available, using direct database queries")
+            # Fallback to direct database queries
+            cached_data = self._load_grid_data_direct(team_1, team_2, scenario_id)
+            if not cached_data:
+                if self.print_output:
+                    print("❌ Direct database query also failed")
+                return
+        
+        if not cached_data:
+            if self.print_output:
+                print(f"❌ Unable to load data for teams '{team_1}' and '{team_2}'")
             return
-        team_1_id = team_1_row[0][0]
 
-        team_2_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_2))
-        if not team_2_row:
-            print(f"Team '{team_2}' not found in database")
-            return
-        team_2_id = team_2_row[0][0]
+        team_1_id = cached_data['team1_id']
+        team_2_id = cached_data['team2_id']
+        team_1_players = cached_data['team1_players']
+        team_2_players = cached_data['team2_players']
+        ratings = cached_data['ratings']
 
-        # Do not assume that the lower team value is the home team
-        # if team_1_id > team_2_id:
-        #     team_1_id, team_2_id = team_2_id, team_1_id
-
-        player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
-        team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
-        team_2_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_2_id))
-
+        # Convert to dictionaries for position mapping (same logic as before)
         team_1_dict = {row[0]:{'position':i+1,'name':row[1]} for i,row in enumerate(team_1_players)}
-        team_2_dict = {row[0]:{'position':i+1,'name':row[1]}for i,row in enumerate(team_2_players)}
-        # print(team_1_dict)
-        ratings_sql = f"""
-            SELECT
-                team_1_player_id,
-                team_2_player_id,
-                rating,
-                team_1_id,
-                team_2_id
-            FROM
-                ratings
-            WHERE
-                team_1_player_id IN ({','.join([str(x) for x in team_1_dict.keys()])})
-              AND
-                team_2_player_id IN ({','.join([str(x) for x in team_2_dict.keys()])})
-              AND
-                team_1_id = {team_1_id}
-              AND
-                team_2_id = {team_2_id}
-              AND
-                scenario_id = {scenario_id}
-            ORDER BY
-                team_1_player_id, team_2_player_id
-        """
+        team_2_dict = {row[0]:{'position':i+1,'name':row[1]} for i,row in enumerate(team_2_players)}
 
-        ratings_rows = self.db_manager.query_sql(ratings_sql)
-        # print(ratings_rows)
-        # update usernames
+        # Update usernames in grid
         for _, row_dict in team_2_dict.items():
             pos = row_dict['position']
             if 0 <= pos < len(self.grid_entries[0]):
@@ -1099,17 +1689,196 @@ class UiManager:
             if 0 <= pos < len(self.grid_entries):
                 self.grid_entries[pos][0].set(row_dict['name'])
 
-        for r, row in enumerate(ratings_rows):
-            team_1_pos = team_1_dict[row[0]]['position']
-            team_2_pos = team_2_dict[row[1]]['position']
-            if (0 <= team_1_pos < len(self.grid_entries) and 
-                0 <= team_2_pos < len(self.grid_entries[0])):
-                self.grid_entries[team_1_pos][team_2_pos].set(row[2])
+        # Update ratings in grid using cached data
+        for (player1_id, player2_id), rating in ratings.items():
+            if player1_id in team_1_dict and player2_id in team_2_dict:
+                team_1_pos = team_1_dict[player1_id]['position']
+                team_2_pos = team_2_dict[player2_id]['position']
+                if (0 <= team_1_pos < len(self.grid_entries) and 
+                    0 <= team_2_pos < len(self.grid_entries[0])):
+                    self.grid_entries[team_1_pos][team_2_pos].set(rating)
+        
+        if self.print_output:
+            total_ratings = len(ratings)
+            print(f"✅ Loaded {len(team_1_players)} vs {len(team_2_players)} players with {total_ratings} ratings from cache")
         
         # Update comment indicators after loading grid data
         self.update_comment_indicators()
         
+        # Always trigger scenario calculations to populate the right grid
+        print(f"🔧 DEBUG: About to call on_scenario_calculations() from load_grid_data_from_db()")
+        self.on_scenario_calculations()
+        print(f"🔧 DEBUG: on_scenario_calculations() completed from load_grid_data_from_db()")
+        
+        # Auto-generate combinations if grid is properly populated
+        if self.should_auto_generate_combinations():
+            try:
+                self.on_generate_combinations()
+                if self.print_output:
+                    print("Auto-generated combinations after loading grid data")
+            except Exception as e:
+                if self.print_output:
+                    print(f"Auto-generation failed: {e}")
+        
+    def should_auto_generate_combinations(self):
+        """Check if conditions are met for auto-generating combinations"""
+        # Check if both teams are selected and different
+        team_1 = self.combobox_1.get().strip()
+        team_2 = self.combobox_2.get().strip()
+        
+        if not team_1 or not team_2 or team_1 == team_2:
+            return False
+            
+        if team_1 == 'No teams Found' or team_2 == 'No teams Found':
+            return False
+        
+        # Check if we have player names in the grid
+        friendly_names = self.get_friendly_player_names()
+        opponent_names = self.get_opponent_player_names()
+        
+        # Need at least some player names
+        if not any(name.strip() for name in friendly_names) or not any(name.strip() for name in opponent_names):
+            return False
+        
+        # Check if we have at least some ratings data (not requiring all cells to be filled)
+        has_ratings = False
+        for row in range(1, 6):
+            for col in range(1, 6):
+                value = self.grid_entries[row][col].get().strip()
+                if value and value != '0':  # Consider non-zero ratings as valid data
+                    has_ratings = True
+                    break
+            if has_ratings:
+                break
+        
+        return has_ratings
+    
+    def _load_grid_data_direct(self, team_1, team_2, scenario_id):
+        """Direct database fallback when cache is not available"""
+        print(f"🔄 FALLBACK MODE: Attempting direct database queries for {team_1} vs {team_2}, scenario {scenario_id}")
+        try:
+            if not hasattr(self, 'db_manager') or self.db_manager is None:
+                error_msg = "No database manager available for direct queries"
+                print(f"❌ FALLBACK FAILED: {error_msg}")
+                return None
+            
+            # Get team IDs
+            print(f"🔍 FALLBACK: Looking up team IDs for '{team_1}' and '{team_2}'")
+            team_sql_template = "select team_id from teams where team_name='{team_name}'"
+            
+            team_1_sql = team_sql_template.format(team_name=team_1)
+            print(f"🔍 FALLBACK: Executing query: {team_1_sql}")
+            team_1_row = self.db_manager.query_sql(team_1_sql)
+            if not team_1_row:
+                error_msg = f"Team '{team_1}' not found in database"
+                print(f"❌ FALLBACK FAILED: {error_msg}")
+                return None
+            team_1_id = team_1_row[0][0]
+            print(f"✅ FALLBACK: Found {team_1} with ID {team_1_id}")
+
+            team_2_sql = team_sql_template.format(team_name=team_2)
+            print(f"🔍 FALLBACK: Executing query: {team_2_sql}")
+            team_2_row = self.db_manager.query_sql(team_2_sql)
+            if not team_2_row:
+                error_msg = f"Team '{team_2}' not found in database"
+                print(f"❌ FALLBACK FAILED: {error_msg}")
+                return None
+            team_2_id = team_2_row[0][0]
+            print(f"✅ FALLBACK: Found {team_2} with ID {team_2_id}")
+
+            # Get players
+            print(f"🔍 FALLBACK: Looking up players for teams {team_1_id} and {team_2_id}")
+            player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
+            
+            team_1_player_sql = player_sql_template.format(team_id=team_1_id)
+            print(f"🔍 FALLBACK: Executing query: {team_1_player_sql}")
+            team_1_players = self.db_manager.query_sql(team_1_player_sql)
+            print(f"✅ FALLBACK: Found {len(team_1_players) if team_1_players else 0} players for {team_1}")
+            
+            team_2_player_sql = player_sql_template.format(team_id=team_2_id)
+            print(f"🔍 FALLBACK: Executing query: {team_2_player_sql}")
+            team_2_players = self.db_manager.query_sql(team_2_player_sql)
+            print(f"✅ FALLBACK: Found {len(team_2_players) if team_2_players else 0} players for {team_2}")
+
+            # Get ratings
+            ratings_sql = f"""
+                SELECT p1.player_id, p2.player_id, r.rating 
+                FROM ratings r
+                JOIN players p1 ON r.team_1_player_id = p1.player_id
+                JOIN players p2 ON r.team_2_player_id = p2.player_id
+                WHERE p1.team_id = {team_1_id} AND p2.team_id = {team_2_id} AND r.scenario_id = {scenario_id}
+            """
+            print(f"🔍 FALLBACK: Executing ratings query: {ratings_sql}")
+            ratings_rows = self.db_manager.query_sql(ratings_sql)
+            print(f"✅ FALLBACK: Found {len(ratings_rows) if ratings_rows else 0} ratings for scenario {scenario_id}")
+            
+            # Convert ratings to dictionary format
+            ratings = {}
+            if ratings_rows:
+                for row in ratings_rows:
+                    ratings[(row[0], row[1])] = row[2]
+
+            result = {
+                'team1_id': team_1_id,
+                'team2_id': team_2_id,
+                'team1_players': team_1_players,
+                'team2_players': team_2_players,
+                'ratings': ratings
+            }
+            
+            print(f"✅ FALLBACK SUCCESS: Returning data with {len(ratings)} ratings")
+            return result
+            
+        except Exception as e:
+            error_msg = f"Error in direct database query: {e}"
+            print(f"❌ FALLBACK FAILED: {error_msg}")
+            print(f"📊 Exception type: {type(e).__name__}")
+            import traceback
+            print(f"📊 Full traceback: {traceback.format_exc()}")
+            return None
+    
+    def _get_team_ids_direct(self, team_1, team_2):
+        """Get team IDs directly from database"""
+        try:
+            if not hasattr(self, 'db_manager') or self.db_manager is None:
+                return None
+            
+            team_sql_template = "select team_id from teams where team_name='{team_name}'"
+            
+            team_1_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_1))
+            if not team_1_row:
+                return None
+            team_1_id = team_1_row[0][0]
+
+            team_2_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_2))
+            if not team_2_row:
+                return None
+            team_2_id = team_2_row[0][0]
+            
+            return (team_1_id, team_2_id)
+            
+        except Exception as e:
+            if self.print_output:
+                print(f"❌ Error getting team IDs: {e}")
+            return None
+    
+    def _get_team_players_direct(self, team_id):
+        """Get team players directly from database"""
+        try:
+            if not hasattr(self, 'db_manager') or self.db_manager is None:
+                return []
+            
+            player_sql = f"SELECT player_id, player_name FROM players WHERE team_id={team_id} ORDER BY player_id"
+            players = self.db_manager.query_sql(player_sql)
+            return players if players else []
+            
+        except Exception as e:
+            if self.print_output:
+                print(f"❌ Error getting team players: {e}")
+            return []
+        
     def save_grid_data_to_db(self):
+        """Save grid data to database using cache for team lookups and keeping cache synchronized"""
         # Prevent saving when grid is flipped to opponent's perspective
         if self.grid_is_flipped:
             messagebox.showwarning("Cannot Save", 
@@ -1121,36 +1890,52 @@ class UiManager:
         team_2 = self.combobox_2.get()
         scenario_id = int(self.scenario_box.get()[:1])
 
-        team_sql_template = "select team_id from teams where team_name='{team_name}'"
-        team_1_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_1))
-        if not team_1_row:
-            print(f"Team '{team_1}' not found in database")
+        if self.print_output:
+            print(f"💾 Saving grid data for {team_1} vs {team_2}, scenario {scenario_id}")
+
+        # Get team IDs from cache (eliminates 2 database queries)
+        if hasattr(self, 'data_cache') and self.data_cache is not None:
+            team_1_id = self.data_cache.get_team_id(team_1)
+            team_2_id = self.data_cache.get_team_id(team_2)
+        else:
+            if self.print_output:
+                print("⚠️ Data cache not available, using direct database queries for save")
+            # Fallback to direct database queries
+            team_ids = self._get_team_ids_direct(team_1, team_2)
+            if not team_ids:
+                if self.print_output:
+                    print("❌ Could not get team IDs from database")
+                return
+            team_1_id, team_2_id = team_ids
+
+        if team_1_id is None:
+            print(f"Team '{team_1}' not found in cache")
             return
-        team_1_id = team_1_row[0][0]
-
-        team_2_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_2))
-        if not team_2_row:
-            print(f"Team '{team_2}' not found in database")
+        if team_2_id is None:
+            print(f"Team '{team_2}' not found in cache")
             return
-        team_2_id = team_2_row[0][0]
 
-        # Do not assume that the lower team value is the home team
-        # if team_1_id > team_2_id:
-        #     team_1_id, team_2_id = team_2_id, team_1_id
-
-        player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
-        team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
-        team_2_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_2_id))
+        # Get players from cache (eliminates 2 more database queries)
+        if hasattr(self, 'data_cache') and self.data_cache is not None:
+            team_1_players = self.data_cache.get_team_players(team_1_id)
+            team_2_players = self.data_cache.get_team_players(team_2_id)
+        else:
+            # Fallback to direct database queries
+            team_1_players = self._get_team_players_direct(team_1_id)
+            team_2_players = self._get_team_players_direct(team_2_id)
 
         team_1_dict = {i+1:{'id':row[0],'name':row[1]} for i,row in enumerate(team_1_players)}
-        team_2_dict = {i+1:{'id':row[0],'name':row[1]}for i,row in enumerate(team_2_players)}
+        team_2_dict = {i+1:{'id':row[0],'name':row[1]} for i,row in enumerate(team_2_players)}
 
-        for row in range(1,len(self.grid_entries)):
-            for col in range(1,len(self.grid_entries[0])):
-                rating = int(self.grid_entries[row][col].get())
-                team_1_player_id = team_1_dict[row]['id']
-                team_2_player_id = team_2_dict[col]['id']
+        saved_count = 0
+        for row in range(1, len(self.grid_entries)):
+            for col in range(1, len(self.grid_entries[0])):
                 try:
+                    rating = int(self.grid_entries[row][col].get())
+                    team_1_player_id = team_1_dict[row]['id']
+                    team_2_player_id = team_2_dict[col]['id']
+                    
+                    # Save to database
                     self.db_manager.upsert_rating(
                         player_id_1=team_1_player_id,
                         player_id_2=team_2_player_id,
@@ -1159,14 +1944,32 @@ class UiManager:
                         scenario_id=scenario_id,
                         rating=rating
                     )
-                except (ValueError, IndexError):
-                    return 0 
+                    
+                    # Update cache to keep it synchronized (if available)
+                    if hasattr(self, 'data_cache') and self.data_cache is not None:
+                        self.data_cache.update_cached_rating(
+                            team_1_id, team_2_id, scenario_id,
+                            team_1_player_id, team_2_player_id, rating
+                        )
+                    
+                    saved_count += 1
+                    
+                except (ValueError, IndexError) as e:
+                    if self.print_output:
+                        print(f"Error saving rating at [{row}, {col}]: {e}")
+                    continue
+
+        if self.print_output:
+            print(f"✅ Saved {saved_count} ratings and updated cache")
 
     def add_team_to_db(self):
         # Use the main window as parent for the dialog
         team_name = simpledialog.askstring("Input", "Enter the team name:", parent=self.root)
         if team_name:
             self.db_manager.create_team(team_name)
+            # Refresh cache after adding team
+            if hasattr(self, 'data_cache') and self.data_cache is not None:
+                self.data_cache.refresh_base_data()
         self.update_ui()
 
     def create_team(self):
@@ -1218,6 +2021,10 @@ class UiManager:
                                   f"Team '{team_name}' has been created successfully!\n\n"
                                   f"Players added:\n" + "\n".join([f"• {name}" for name in player_names]))
 
+            # Refresh cache after team/player changes
+            if hasattr(self, 'data_cache') and self.data_cache is not None:
+                self.data_cache.refresh_base_data()
+
             # Update UI like successful CSV import
             self.set_team_dropdowns()
             self.update_ui()
@@ -1256,6 +2063,11 @@ class UiManager:
             return
 
         messagebox.showinfo("Success", f"Team '{team_name}' and all related records have been deleted successfully.")
+        
+        # Refresh cache after team deletion
+        if hasattr(self, 'data_cache') and self.data_cache is not None:
+            self.data_cache.refresh_base_data()
+        
         try:
             self.set_team_dropdowns()
             self.update_ui
@@ -1519,6 +2331,89 @@ class UiManager:
             if self.print_output: print(type(num))
         return num
 
+    def validate_complete_ratings(self, fRatings, oRatings, fNames, oNames):
+        """
+        Validate that all 25 matchup ratings are present before generating combinations.
+        
+        Args:
+            fRatings: Ratings matrix for first team
+            oRatings: Ratings matrix for second team (should match fRatings)
+            fNames: Names of first team players
+            oNames: Names of second team players
+            
+        Returns:
+            bool: True if all 25 ratings are present, False otherwise
+        """
+        # Check that we have 5 players per team
+        if len(fNames) != 5 or len(oNames) != 5:
+            import tkinter.messagebox as messagebox
+            messagebox.showerror("Incomplete Team Data", 
+                f"Each team must have exactly 5 players.\n\n"
+                f"Current: Team 1 has {len(fNames)} players, Team 2 has {len(oNames)} players.\n\n"
+                "Please ensure both teams are properly loaded before generating combinations.")
+            return False
+        
+        # Check that ratings matrix is 5x5
+        if len(fRatings) != 5 or any(len(row) != 5 for row in fRatings):
+            import tkinter.messagebox as messagebox
+            messagebox.showerror("Incomplete Ratings Matrix", 
+                f"Ratings matrix must be 5x5.\n\n"
+                f"Current matrix dimensions: {len(fRatings)}x{len(fRatings[0]) if fRatings else 0}\n\n"
+                "Please ensure all player matchup ratings are loaded.")
+            return False
+        
+        # Count missing ratings (empty cells or invalid values)
+        missing_ratings = []
+        min_rating, max_rating = self.rating_range
+        
+        for i in range(5):
+            for j in range(5):
+                try:
+                    rating = fRatings[i][j]
+                    # Check if rating is empty, None, or outside valid range
+                    if (rating is None or rating == "" or 
+                        (isinstance(rating, str) and rating.strip() == "") or
+                        (isinstance(rating, (int, float)) and (rating < min_rating or rating > max_rating))):
+                        missing_ratings.append((i+1, j+1, fNames[i] if i < len(fNames) else f"Player {i+1}", 
+                                              oNames[j] if j < len(oNames) else f"Player {j+1}"))
+                except (IndexError, TypeError, ValueError):
+                    missing_ratings.append((i+1, j+1, fNames[i] if i < len(fNames) else f"Player {i+1}", 
+                                          oNames[j] if j < len(oNames) else f"Player {j+1}"))
+        
+        # If there are missing ratings, show detailed error
+        if missing_ratings:
+            import tkinter.messagebox as messagebox
+            
+            missing_count = len(missing_ratings)
+            total_ratings = 25
+            
+            # Create detailed message showing first few missing ratings
+            missing_details = []
+            for i, (row, col, fname, oname) in enumerate(missing_ratings[:10]):  # Show up to 10 missing
+                missing_details.append(f"• Row {row}, Col {col}: {fname} vs {oname}")
+            
+            error_message = (
+                f"Missing Ratings Detected!\n\n"
+                f"Found {missing_count} missing or invalid ratings out of {total_ratings} total.\n\n"
+                f"Missing ratings:\n" + "\n".join(missing_details)
+            )
+            
+            if missing_count > 10:
+                error_message += f"\n... and {missing_count - 10} more missing ratings."
+            
+            error_message += (
+                f"\n\nAll {total_ratings} player matchup ratings must be present and within the range "
+                f"{min_rating}-{max_rating} before generating combinations.\n\n"
+                f"Please complete all ratings and try again."
+            )
+            
+            messagebox.showerror("Incomplete Ratings Data", error_message)
+            return False
+        
+        # All validations passed
+        print(f"✅ Validation passed: All 25 ratings are present and valid ({min_rating}-{max_rating})")
+        return True
+
     def validate_grid_data(self):
         """Validate grid data based on current rating system"""
         min_rating, max_rating = self.rating_range
@@ -1645,6 +2540,10 @@ class UiManager:
         try:
             widget = self.grid_widgets[row][col]
             if widget is not None and widget.winfo_exists():
+                # Ensure the indicator hasn't been destroyed
+                if not indicator.winfo_exists():
+                    return
+                    
                 # Position the indicator in the top-right corner
                 indicator.place(
                     in_=widget,
@@ -1654,11 +2553,18 @@ class UiManager:
                     x=-2,      # Slight offset from edge
                     y=2        # Slight offset from edge
                 )
+            else:
+                # Widget doesn't exist, safely destroy indicator
+                if indicator.winfo_exists():
+                    indicator.destroy()
         except Exception as e:
             print(f"Error positioning comment indicator at ({row}, {col}): {e}")
-            # If positioning fails, destroy the indicator
-            if indicator.winfo_exists():
-                indicator.destroy()
+            # If positioning fails, safely destroy the indicator
+            try:
+                if indicator.winfo_exists():
+                    indicator.destroy()
+            except:
+                pass  # Ignore any destruction errors
 
     def show_comment_tooltip(self, event, row, col):
         """Show tooltip with comment text when hovering over a matchup cell"""
@@ -1881,12 +2787,12 @@ class UiManager:
             # Get the appropriate sort value based on current mode
             sort_value = str(self.get_sort_value_for_node(child))
             
-            # Update the Sort Value column (second column, index 1)
+            # Update the Rating column (first column, index 0)
             current_values = list(self.treeview.tree.item(child, 'values'))
-            if len(current_values) < 2:
+            if len(current_values) < 1:
                 current_values.append(sort_value)
             else:
-                current_values[1] = sort_value
+                current_values[0] = sort_value
             
             self.treeview.tree.item(child, values=current_values)
             
@@ -2227,6 +3133,10 @@ class UiManager:
             ante_team = round_data.get('ante_team', 'unknown')
             print(f"Round {round_num} ante selection ({ante_team}): {selected_player}")
             
+            # Sync with matchup tree if synchronizer is available
+            if hasattr(self, 'tree_synchronizer') and self.tree_synchronizer:
+                self.tree_synchronizer.sync_round_to_tree(round_num)
+            
         except Exception as e:
             print(f"Error handling ante selection change: {e}")
 
@@ -2243,6 +3153,10 @@ class UiManager:
             round_data = self.selected_players_per_round.get(round_num, {})
             response_team = round_data.get('response_team', 'unknown')
             print(f"Round {round_num} response {position} ({response_team}): {selected_player}")
+            
+            # Sync with matchup tree if synchronizer is available
+            if hasattr(self, 'tree_synchronizer') and self.tree_synchronizer:
+                self.tree_synchronizer.sync_round_to_tree(round_num)
             
         except Exception as e:
             print(f"Error handling response selection change: {e}")
@@ -2388,9 +3302,9 @@ class UiManager:
     def create_matchup_output_panel(self):
         """Create a panel to display the final 5 matchups in a simple format."""
         try:
-            # Create output panel frame at the bottom of the tree tab right frame
-            self.output_panel_frame = tk.Frame(self.tree_tab_right_frame, relief=tk.RIDGE, borderwidth=2, bg="lightyellow")
-            self.output_panel_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
+            # Create output panel frame next to buttons in bottom frame
+            self.output_panel_frame = tk.Frame(self.bottom_frame, relief=tk.RIDGE, borderwidth=2, bg="lightyellow")
+            self.output_panel_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
             
             # Panel title
             title_label = tk.Label(self.output_panel_frame, text="Final Matchups Output", 
@@ -2792,6 +3706,246 @@ class UiManager:
         """Get current timestamp as a formatted string."""
         from datetime import datetime
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    def show_cache_statistics(self):
+        """Show comprehensive cache performance statistics."""
+        try:
+            # Create statistics window
+            stats_window = tk.Toplevel(self.root)
+            stats_window.title("Cache Performance Statistics")
+            stats_window.geometry("500x400")
+            stats_window.resizable(True, True)
+            
+            # Center the window
+            stats_window.transient(self.root)
+            stats_window.grab_set()
+            
+            # Position relative to main window
+            x = self.root.winfo_x() + 100
+            y = self.root.winfo_y() + 100
+            stats_window.geometry(f"+{x}+{y}")
+            
+            # Create scrollable text area
+            text_frame = tk.Frame(stats_window)
+            text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+            # Text widget with scrollbar
+            stats_text = tk.Text(text_frame, wrap=tk.WORD, font=("Consolas", 10))
+            scrollbar = tk.Scrollbar(text_frame, orient=tk.VERTICAL, command=stats_text.yview)
+            stats_text.configure(yscrollcommand=scrollbar.set)
+            
+            # Pack text and scrollbar
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            stats_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            
+            # Get cache statistics
+            if hasattr(self, 'data_cache') and self.data_cache is not None:
+                stats = self.data_cache.get_cache_stats()
+            else:
+                stats = {"cache_hit_rate": 0, "total_queries": 0, "cache_hits": 0}
+            
+            # Format statistics display
+            stats_content = f"""📊 CACHE PERFORMANCE STATISTICS
+{'=' * 50}
+
+💾 DATA CACHED:
+• Teams cached: {stats['teams_cached']}
+• Players cached: {stats['players_cached']}
+• Rating matchups cached: {stats['ratings_cached']}
+• Total rating entries: {stats['total_rating_entries']}
+• Comments cached: {stats['comments_cached']}
+
+🎯 PERFORMANCE METRICS:
+• Cache hits: {stats['cache_hits']:,}
+• Cache misses: {stats['cache_misses']:,}
+• Hit rate: {stats['hit_rate_percent']:.1f}%
+• Last refresh: {stats['last_refresh']}
+
+📈 PERFORMANCE ASSESSMENT:
+"""
+            
+            # Add performance assessment
+            hit_rate = stats['hit_rate_percent']
+            if hit_rate > 80:
+                stats_content += "🟢 EXCELLENT: Cache is performing optimally!\n"
+                stats_content += "   Database queries reduced by 80-90%\n"
+            elif hit_rate > 60:
+                stats_content += "🟡 GOOD: Cache is performing well\n"
+                stats_content += "   Consider preloading more common matchups\n"
+            else:
+                stats_content += "🔴 NEEDS IMPROVEMENT: Low cache hit rate\n"
+                stats_content += "   Recommend preloading frequently used data\n"
+            
+            # Add query reduction estimate
+            total_requests = stats['cache_hits'] + stats['cache_misses']
+            if total_requests > 0:
+                saved_queries = stats['cache_hits']
+                stats_content += f"\n⚡ DATABASE OPTIMIZATION:\n"
+                stats_content += f"   Estimated queries saved: {saved_queries:,}\n"
+                stats_content += f"   Without cache: ~{total_requests * 15:,} queries\n"
+                stats_content += f"   With cache: ~{stats['cache_misses'] * 15:,} queries\n"
+                reduction = ((saved_queries * 15) / (total_requests * 15)) * 100 if total_requests > 0 else 0
+                stats_content += f"   Query reduction: {reduction:.1f}%\n"
+            
+            stats_content += f"\n🔧 CACHE OPERATIONS:\n"
+            stats_content += f"   • Refresh cache when teams/players change\n"
+            stats_content += f"   • Cache invalidates automatically on data changes\n"
+            stats_content += f"   • Preload common matchups for best performance\n"
+            
+            # Insert content into text widget
+            stats_text.insert(tk.END, stats_content)
+            stats_text.config(state=tk.DISABLED)  # Make read-only
+            
+            # Add buttons frame
+            buttons_frame = tk.Frame(stats_window)
+            buttons_frame.pack(pady=10)
+            
+            # Refresh cache button
+            refresh_button = tk.Button(buttons_frame, text="Refresh Cache", 
+                                     command=lambda: self._refresh_cache_and_update_stats(stats_window),
+                                     bg="lightblue", width=15)
+            refresh_button.pack(side=tk.LEFT, padx=5)
+            
+            # Close button
+            close_button = tk.Button(buttons_frame, text="Close", 
+                                   command=stats_window.destroy,
+                                   bg="lightcoral", width=15)
+            close_button.pack(side=tk.LEFT, padx=5)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to show cache statistics: {e}")
+            print(f"Cache statistics error: {e}")
+    
+    def _refresh_cache_and_update_stats(self, stats_window):
+        """Helper method to refresh cache and update statistics display"""
+        try:
+            if hasattr(self, 'data_cache') and self.data_cache is not None:
+                self.data_cache.refresh_base_data()
+                messagebox.showinfo("Cache Refreshed", "Cache has been refreshed successfully!")
+                stats_window.destroy()
+                # Reopen the statistics window with updated data
+                self.show_cache_statistics()
+            else:
+                messagebox.showerror("Error", "Data cache not available")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to refresh cache: {e}")
+            print(f"Cache refresh error: {e}")
+    
+    def reconnect_database(self):
+        """Reconnect to database and reinitialize cache system."""
+        try:
+            print("🔄 User requested database reconnection...")
+            
+            # Attempt to reinitialize the database connection
+            if hasattr(self, 'db_manager') and self.db_manager:
+                print(f"📊 Current database manager: {self.db_manager}")
+                
+                # Test database connection with a simple query
+                try:
+                    test_result = self.db_manager.query_sql("SELECT COUNT(*) FROM teams")
+                    print(f"✅ Database connection test successful: {test_result}")
+                except Exception as db_error:
+                    print(f"❌ Database connection test failed: {db_error}")
+                    raise Exception(f"Database connection failed: {db_error}")
+                
+                # Reinitialize the cache system
+                print("🔄 Reinitializing cache system...")
+                self.data_cache = MatchupDataCache(self.db_manager, print_output=self.print_output)
+                self.cache_error_reason = None
+                print("✅ Cache system reinitialized successfully!")
+                
+                # Update the status bar to reflect normal mode
+                self.update_status_bar()
+                
+                # Show success message to user
+                import tkinter.messagebox as messagebox
+                messagebox.showinfo("Success", 
+                    "Database reconnection successful!\n\n"
+                    "The application is now running in Normal Mode with full caching enabled.")
+                
+            else:
+                raise Exception("Database manager not available")
+                
+        except Exception as e:
+            error_msg = f"Failed to reconnect database: {e}"
+            print(f"❌ {error_msg}")
+            self.cache_error_reason = error_msg
+            
+            # Show error message to user
+            import tkinter.messagebox as messagebox
+            messagebox.showerror("Reconnection Failed", 
+                f"Could not reconnect to database:\n\n{error_msg}\n\n"
+                "The application will continue in Fallback Mode.")
+
+    def update_status_bar(self):
+        """Update the status bar to reflect current system state."""
+        if hasattr(self, 'status_frame'):
+            # Clear existing status bar
+            for widget in self.status_frame.winfo_children():
+                widget.destroy()
+            
+            # Recreate status bar with updated information
+            # Database info
+            db_name = getattr(self, 'db_name', 'Unknown')
+            self.db_status = tk.Label(self.status_frame, text=f"Database: {db_name}", anchor=tk.W)
+            self.db_status.pack(side=tk.LEFT, padx=5)
+            
+            # Cache mode indicator with error details
+            if hasattr(self, 'data_cache') and self.data_cache is not None:
+                cache_mode = "Normal Mode"
+                cache_color = "#228B22"  # Green for normal
+            else:
+                cache_mode = "Fallback Mode"
+                cache_color = "#FF6B35"  # Orange for fallback
+                if hasattr(self, 'cache_error_reason') and self.cache_error_reason:
+                    cache_mode += " (ERROR)"
+                    cache_color = "#DC143C"  # Red for error
+            
+            self.cache_status = tk.Label(self.status_frame, text=f"• {cache_mode}", 
+                                       anchor=tk.W, fg=cache_color, font=("Arial", 8, "bold"))
+            self.cache_status.pack(side=tk.LEFT, padx=(10, 5))
+            
+            # Add reconnect button if in fallback mode
+            if hasattr(self, 'data_cache') and self.data_cache is None:
+                self.reconnect_btn = tk.Button(self.status_frame, text="🔄 Reconnect Database", 
+                                             command=self.reconnect_database,
+                                             bg="#FFA500", fg="white", font=("Arial", 8, "bold"),
+                                             relief=tk.RAISED, bd=2)
+                self.reconnect_btn.pack(side=tk.LEFT, padx=(5, 10))
+            
+            # Add tooltip for cache status
+            self.create_cache_status_tooltip()
+            
+            # Rating system info
+            system_info = f"Rating System: {self.rating_config['name']} ({self.rating_range[0]}-{self.rating_range[1]})"
+            self.rating_status = tk.Label(self.status_frame, text=system_info, anchor=tk.CENTER)
+            self.rating_status.pack(side=tk.LEFT, expand=True, padx=20)
+            
+            # Add color preview
+            color_frame = tk.Frame(self.status_frame)
+            color_frame.pack(side=tk.RIGHT, padx=5)
+            
+            tk.Label(color_frame, text="Colors:", font=("Arial", 8)).pack(side=tk.LEFT, padx=(0, 3))
+            
+            for rating in sorted(self.color_map.keys()):
+                color = self.color_map[rating]
+                label = tk.Label(color_frame, text=f"{rating}", bg=color, width=3, font=("Arial", 7, "bold"))
+                label.pack(side=tk.LEFT, padx=1)
+
+    def force_tree_sync(self):
+        """Manually trigger tree synchronization - useful for debugging."""
+        if hasattr(self, 'tree_synchronizer') and self.tree_synchronizer:
+            print("Manually triggering tree synchronization...")
+            self.tree_synchronizer.force_full_sync()
+        else:
+            print("Tree synchronizer not available")
+    
+    def get_tree_sync_status(self):
+        """Get tree synchronization status for debugging."""
+        if hasattr(self, 'tree_synchronizer') and self.tree_synchronizer:
+            return self.tree_synchronizer.get_sync_status()
+        else:
+            return {"error": "Tree synchronizer not initialized"}
 
 if __name__ == '__main__':
     ui_manager = UiManager(

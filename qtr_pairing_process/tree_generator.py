@@ -15,9 +15,11 @@ class TreeGenerator:
         self.sort_alpha = sort_alpha
         self.original_order = {}
         self.fRatings = None
+        self.our_team_first = True  # Will be set during generation
 
-    def generate_combinations(self, fNames, oNames, fRatings, oRatings):
+    def generate_combinations(self, fNames, oNames, fRatings, oRatings, our_team_first=True):
         self.fRatings = fRatings
+        self.our_team_first = our_team_first
         self.treeview.tree.delete(*self.treeview.tree.get_children())
         # Reset sorting state for new generation
         self.original_order_saved = False
@@ -43,14 +45,32 @@ class TreeGenerator:
         for comb in combs_sorted:
             rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
             rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
-            item_id = self.treeview.tree.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=(max(rating_0, rating_1), ""), tags=max(rating_0, rating_1))
+            # Calculate all three score types for this pairing
+            base_rating = max(rating_0, rating_1)
+            cumulative_score = 0  # Will be calculated later during sort operations
+            confidence_score = self.calculate_confidence_for_rating(base_rating)
+            resistance_score = self.calculate_resistance_for_rating(base_rating, rating_0, rating_1)
+            
+            item_id = self.treeview.tree.insert(parent, 'end', 
+                                              text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", 
+                                              values=(base_rating, cumulative_score, confidence_score, resistance_score), 
+                                              tags=base_rating)
             
             if fNames:
                 opponent_perms = list(permutations(comb, 2))
                 for opponent, next_fName in opponent_perms:                    
                     nested_oNames = [name for name in oNames if name != opponent and name!=next_fName]
                     nested_fNames = [name for name in fNames if name != first_fName]
-                    child_id = self.treeview.tree.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=(fRatings[first_fName].get(opponent), ""), tags=fRatings[first_fName].get(opponent))                    
+                    # Calculate scores for child node
+                    child_rating = fRatings[first_fName].get(opponent, 0)
+                    child_cumulative = 0  # Will be calculated during sort operations
+                    child_confidence = self.calculate_confidence_for_rating(child_rating)
+                    child_resistance = self.calculate_resistance_for_rating(child_rating, child_rating, child_rating)
+                    
+                    child_id = self.treeview.tree.insert(item_id, 'end', 
+                                                        text=f"{opponent} rating {child_rating}", 
+                                                        values=(child_rating, child_cumulative, child_confidence, child_resistance), 
+                                                        tags=child_rating)                    
                     self.generate_nested_combinations(next_fName,nested_oNames, fNames, oRatings, fRatings, child_id)
 
     def sort_by_cumulative_value(self):
@@ -77,13 +97,16 @@ class TreeGenerator:
             if node:  # Skip empty root
                 try:
                     leaf_value = int(self.treeview.tree.item(node, 'values')[0])
-                    # Store cumulative value in the item's tags for easy access
+                    # Store cumulative value in the item's tags and update display column
                     item_data = self.treeview.tree.item(node)
                     current_tags = list(item_data.get('tags', []))
                     # Remove any existing cumulative tag and add new one
                     current_tags = [tag for tag in current_tags if not str(tag).startswith('cumulative_')]
                     current_tags.append(f'cumulative_{leaf_value}')
                     self.treeview.tree.item(node, tags=current_tags)
+                    
+                    # Update the cumulative score column (index 1)
+                    self.update_node_cumulative_display(node, leaf_value)
                     return leaf_value
                 except (ValueError, IndexError):
                     item_data = self.treeview.tree.item(node)
@@ -109,12 +132,15 @@ class TreeGenerator:
                     max_cumulative = max(max_cumulative, child_cumulative)
             
             if node:  # Skip empty root
-                # Store cumulative value in tags
+                # Store cumulative value in tags and update display
                 item_data = self.treeview.tree.item(node)
                 current_tags = list(item_data.get('tags', []))
                 current_tags = [tag for tag in current_tags if not str(tag).startswith('cumulative_')]
                 current_tags.append(f'cumulative_{max_cumulative}')
                 self.treeview.tree.item(node, tags=current_tags)
+                
+                # Update the cumulative score column (index 1)
+                self.update_node_cumulative_display(node, max_cumulative)
             return max_cumulative
 
     def sort_children_by_cumulative(self, node):
@@ -129,8 +155,16 @@ class TreeGenerator:
             cumulative_value = self.get_cumulative_value_from_tags(child)
             children_with_scores.append((child, cumulative_value))
         
-        # Sort by cumulative value (highest first - best outcomes at top)
-        children_with_scores.sort(key=lambda x: x[1], reverse=True)
+        # Determine if this is an opponent decision level or our choice level
+        # Use the first child to determine the level, since all children are at the same level
+        is_opponent_choice_level = self._is_opponent_choice_level(children[0])
+        
+        if is_opponent_choice_level:
+            # Opponent choice level: Sort by LOWEST cumulative value first (opponent picks what's worst for us)
+            children_with_scores.sort(key=lambda x: x[1], reverse=False)
+        else:
+            # Our choice level: Sort by HIGHEST cumulative value first (we pick what's best for us)
+            children_with_scores.sort(key=lambda x: x[1], reverse=True)
         
         # Reorder children in the tree
         for child, _ in children_with_scores:
@@ -273,6 +307,9 @@ class TreeGenerator:
             ])
             
             self.treeview.tree.item(node, tags=current_tags)
+            
+            # Update the confidence score column (index 2)
+            self.update_node_confidence_display(node, confidence)
         except Exception:
             pass
 
@@ -288,8 +325,16 @@ class TreeGenerator:
             confidence_score = self.get_confidence_from_tags(child)
             children_with_scores.append((child, confidence_score))
         
-        # Sort by confidence score (highest first - most reliable outcomes at top)
-        children_with_scores.sort(key=lambda x: x[1], reverse=True)
+        # Determine if this is an opponent decision level or our choice level
+        # Use the first child to determine the level, since all children are at the same level
+        is_opponent_choice_level = self._is_opponent_choice_level(children[0])
+        
+        if is_opponent_choice_level:
+            # Opponent choice level: Sort by LOWEST confidence first (opponent picks what's least confident for us)
+            children_with_scores.sort(key=lambda x: x[1], reverse=False)
+        else:
+            # Our choice level: Sort by HIGHEST confidence first (we pick what's most confident)
+            children_with_scores.sort(key=lambda x: x[1], reverse=True)
         
         # Reorder children in the tree
         for child, _ in children_with_scores:
@@ -415,6 +460,9 @@ class TreeGenerator:
             current_tags.append(f'resistance_{int(resistance)}')
             
             self.treeview.tree.item(node, tags=current_tags)
+            
+            # Update the resistance score column (index 3)
+            self.update_node_resistance_display(node, resistance)
         except Exception:
             pass
 
@@ -430,8 +478,16 @@ class TreeGenerator:
             resistance_score = self.get_resistance_from_tags(child)
             children_with_scores.append((child, resistance_score))
         
-        # Sort by resistance score (highest first - most counter-resistant at top)
-        children_with_scores.sort(key=lambda x: x[1], reverse=True)
+        # Determine if this is an opponent decision level or our choice level
+        # Use the first child to determine the level, since all children are at the same level
+        is_opponent_choice_level = self._is_opponent_choice_level(children[0])
+        
+        if is_opponent_choice_level:
+            # Opponent choice level: Sort by LOWEST resistance first (opponent picks what's least resistant for us)
+            children_with_scores.sort(key=lambda x: x[1], reverse=False)
+        else:
+            # Our choice level: Sort by HIGHEST resistance first (we pick what's most counter-resistant)
+            children_with_scores.sort(key=lambda x: x[1], reverse=True)
         
         # Reorder children in the tree
         for child, _ in children_with_scores:
@@ -521,3 +577,370 @@ class TreeGenerator:
                     self.treeview.tree.move(child_id, root, 'end')
                 except tkinter.TclError as e:
                     print(f"Error moving child {child_id} to root {root}: {e}")
+
+    def calculate_confidence_for_rating(self, rating):
+        """Calculate confidence score based on rating value"""
+        try:
+            rating_val = int(rating) if rating != 'N/A' else 0
+            return self.calculate_rating_confidence(rating_val)
+        except (ValueError, TypeError):
+            return 0
+
+    def calculate_resistance_for_rating(self, base_rating, rating_0, rating_1):
+        """Calculate resistance score based on rating spread and values"""
+        try:
+            r0 = int(rating_0) if rating_0 != 'N/A' else 0
+            r1 = int(rating_1) if rating_1 != 'N/A' else 0
+            base = int(base_rating) if base_rating != 'N/A' else 0
+            
+            # Resistance is based on:
+            # 1. Lower of the two ratings (how bad worst case is)  
+            # 2. Spread between ratings (consistency)
+            min_rating = min(r0, r1)
+            spread = abs(r0 - r1)
+            
+            # Base resistance from minimum rating (0-50 points)
+            base_resistance = min_rating * 10
+            
+            # Penalty for large spread (inconsistency) (0-25 points penalty)
+            spread_penalty = spread * 5
+            
+            # Final score: base resistance minus spread penalty
+            resistance_score = max(0, base_resistance - spread_penalty)
+            
+            return resistance_score
+        except (ValueError, TypeError):
+            return 0
+
+    def sort_by_strategic_optimal(self):
+        """
+        Strategic Optimal Expected Value sorting - combines multi-objective optimization
+        with intelligent weighting to maximize 3/5 win probability while preventing 
+        catastrophic failures and accounting for opponent counter-strategies.
+        """
+        root_nodes = self.treeview.tree.get_children()
+        if root_nodes:
+            # Save original order before first sort
+            if not hasattr(self, 'original_order_saved') or not self.original_order_saved:
+                self.save_original_order()
+                self.original_order_saved = True
+            
+            # Calculate strategic optimal scores for all paths
+            self.calculate_strategic_optimal_scores("")
+            # Sort recursively from root
+            for root in root_nodes:
+                self.sort_children_by_strategic_optimal(root)
+
+    def calculate_strategic_optimal_scores(self, node):
+        """
+        Calculate strategic optimal expected value scores using multi-objective optimization.
+        
+        Key factors:
+        1. Expected value considering opponent responses
+        2. 3/5 win probability optimization  
+        3. Catastrophic failure prevention (floor protection)
+        4. Counter-pick resistance (front-loaded)
+        5. Team strength adaptive weighting
+        """
+        children = self.treeview.tree.get_children(node)
+        
+        if not children:
+            # Leaf node - calculate base strategic value
+            if node:
+                try:
+                    rating = int(self.treeview.tree.item(node, 'values')[0])
+                    
+                    # Core Expected Value Calculation
+                    base_ev = self.calculate_base_expected_value(rating)
+                    
+                    # Win Probability for 3/5 context
+                    win_probability = self.calculate_win_probability(rating)
+                    
+                    # Catastrophic Failure Protection 
+                    floor_protection = self.calculate_floor_protection(rating)
+                    
+                    # Counter-pick Resistance (front-loaded weighting)
+                    counter_resistance = self.calculate_counter_resistance_value(rating)
+                    
+                    # Multi-objective score combination
+                    strategic_score = self.combine_strategic_factors(
+                        base_ev, win_probability, floor_protection, counter_resistance
+                    )
+                    
+                    self.store_strategic_optimal_data(node, strategic_score)
+                    return strategic_score
+                    
+                except (ValueError, IndexError):
+                    self.store_strategic_optimal_data(node, 0)
+                    return 0
+            return 0
+        else:
+            # Branch node - aggregate strategic values from children
+            path_scores = []
+            for child in children:
+                child_score = self.calculate_strategic_optimal_scores(child)
+                if node:
+                    try:
+                        node_rating = int(self.treeview.tree.item(node, 'values')[0])
+                        node_base_ev = self.calculate_base_expected_value(node_rating)
+                        node_win_prob = self.calculate_win_probability(node_rating)
+                        node_floor = self.calculate_floor_protection(node_rating)
+                        node_counter = self.calculate_counter_resistance_value(node_rating)
+                        
+                        node_strategic = self.combine_strategic_factors(
+                            node_base_ev, node_win_prob, node_floor, node_counter
+                        )
+                        
+                        # Combine node score with best child path
+                        total_strategic = self.aggregate_path_scores(node_strategic, child_score)
+                        path_scores.append(total_strategic)
+                        
+                    except (ValueError, IndexError):
+                        path_scores.append(child_score)
+                else:
+                    path_scores.append(child_score)
+            
+            if node:
+                # Use best (maximum) strategic score for this branch
+                best_strategic = max(path_scores) if path_scores else 0
+                self.store_strategic_optimal_data(node, best_strategic)
+                return best_strategic
+            return max(path_scores) if path_scores else 0
+
+    def calculate_base_expected_value(self, rating):
+        """Calculate base expected value from rating with win probability conversion"""
+        try:
+            r = int(rating) if rating != 'N/A' else 0
+            # Convert 1-5 rating to win probability and then to expected value
+            # Rating 5 = ~90% win = 0.9 EV, Rating 1 = ~10% win = 0.1 EV
+            win_prob_map = {5: 0.90, 4: 0.75, 3: 0.50, 2: 0.25, 1: 0.10, 0: 0.05}
+            win_probability = win_prob_map.get(r, 0.50)
+            # Scale to 0-100 for easier manipulation
+            return win_probability * 100
+        except (ValueError, TypeError):
+            return 50  # Neutral expected value
+
+    def calculate_win_probability(self, rating):
+        """Calculate probability of winning this specific matchup for 3/5 optimization"""
+        try:
+            r = int(rating) if rating != 'N/A' else 0
+            # Optimized for 3/5 win context - emphasizes ratings 3+ more heavily
+            win_weights = {5: 100, 4: 85, 3: 65, 2: 30, 1: 10, 0: 5}
+            return win_weights.get(r, 50)
+        except (ValueError, TypeError):
+            return 50
+
+    def calculate_floor_protection(self, rating):
+        """Calculate protection against catastrophic matchup failures"""
+        try:
+            r = int(rating) if rating != 'N/A' else 0
+            # Heavily penalize ratings 1-2, neutral on 3+
+            # This prevents catastrophic trap scenarios
+            floor_scores = {5: 100, 4: 95, 3: 80, 2: 40, 1: 10, 0: 0}
+            return floor_scores.get(r, 50)
+        except (ValueError, TypeError):
+            return 50
+
+    def calculate_counter_resistance_value(self, rating):
+        """Calculate resistance to opponent counter-picks (front-loaded weighting)"""
+        try:
+            r = int(rating) if rating != 'N/A' else 0
+            # High ratings are harder to counter, but diminishing returns after initial protection
+            resistance_scores = {5: 90, 4: 80, 3: 60, 2: 35, 1: 15, 0: 5}
+            return resistance_scores.get(r, 50)
+        except (ValueError, TypeError):
+            return 50
+
+    def combine_strategic_factors(self, base_ev, win_prob, floor_protect, counter_resist):
+        """
+        Combine strategic factors using multi-objective optimization weights
+        
+        Priority weighting based on user requirements:
+        1. Floor Protection (40%) - Prevent catastrophic failures
+        2. Win Probability (30%) - Optimize for 3/5 wins  
+        3. Base Expected Value (20%) - General expected value
+        4. Counter Resistance (10%) - Front-loaded but diminishing returns
+        """
+        # Weighted combination with strategic priorities
+        strategic_score = (
+            floor_protect * 0.40 +      # Highest priority: avoid disasters
+            win_prob * 0.30 +           # High priority: win 3/5 matches
+            base_ev * 0.20 +            # Medium priority: general EV
+            counter_resist * 0.10       # Lower priority: counter resistance
+        )
+        
+        return strategic_score
+
+    def aggregate_path_scores(self, node_score, child_score):
+        """Aggregate node and child strategic scores for complete paths"""
+        # Use weighted average that emphasizes path consistency
+        # 60% current node, 40% best child path
+        return (node_score * 0.60) + (child_score * 0.40)
+
+    def store_strategic_optimal_data(self, node, strategic_score):
+        """Store strategic optimal data in node tags and update display"""
+        try:
+            item_data = self.treeview.tree.item(node)
+            current_tags = list(item_data.get('tags', []))
+            
+            # Remove existing strategic tags
+            current_tags = [tag for tag in current_tags if not str(tag).startswith('strategic_')]
+            
+            # Add new strategic data
+            current_tags.append(f'strategic_{int(strategic_score)}')
+            
+            self.treeview.tree.item(node, tags=current_tags)
+            
+            # Update the sort value column with strategic score  
+            self.update_node_strategic_display(node, strategic_score)
+        except Exception:
+            pass
+
+    def update_node_strategic_display(self, node, strategic_value):
+        """Update the sort value column display for strategic optimal scores"""
+        try:
+            current_values = list(self.treeview.tree.item(node, 'values'))
+            if len(current_values) >= 2:
+                # Update the sort value column (index 1) with strategic score
+                current_values[1] = int(strategic_value)
+                self.treeview.tree.item(node, values=current_values)
+        except Exception as e:
+            print(f"Error updating strategic display for node {node}: {e}")
+
+    def sort_children_by_strategic_optimal(self, node):
+        """Recursively sort children by their strategic optimal scores"""
+        children = self.treeview.tree.get_children(node)
+        if not children:
+            return
+        
+        # Get strategic scores for all children
+        children_with_scores = []
+        for child in children:
+            strategic_score = self.get_strategic_score_from_tags(child)
+            children_with_scores.append((child, strategic_score))
+        
+        # Determine if this is an opponent decision level or our choice level
+        # Use the first child to determine the level, since all children are at the same level
+        is_opponent_choice_level = self._is_opponent_choice_level(children[0])
+        
+        if is_opponent_choice_level:
+            # Opponent choice level: Sort by LOWEST strategic score first (opponent picks what's worst for us)
+            children_with_scores.sort(key=lambda x: x[1], reverse=False)
+        else:
+            # Our choice level: Sort by HIGHEST strategic score first (we pick what's best for us)
+            children_with_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        # Reorder children in the tree
+        for child, _ in children_with_scores:
+            self.treeview.tree.detach(child)
+        for child, _ in children_with_scores:
+            self.treeview.tree.move(child, node, 'end')
+        
+        # Recursively sort grandchildren
+        for child, _ in children_with_scores:
+            self.sort_children_by_strategic_optimal(child)
+
+    def get_strategic_score_from_tags(self, node):
+        """Extract strategic score from node tags"""
+        try:
+            item_data = self.treeview.tree.item(node)
+            tags = item_data.get('tags', [])
+            for tag in tags:
+                if str(tag).startswith('strategic_'):
+                    return int(str(tag).replace('strategic_', ''))
+        except (ValueError, TypeError):
+            pass
+        return 0
+
+    def _is_opponent_choice_level(self, node):
+        """
+        Determine if this node represents an opponent choice level based on tree depth
+        and the "Our Team First" setting.
+        
+        Rules:
+        1. If "Our Team First" is checked: Level 1=Us, 2=Them, 3=Us, 4&5=Them  
+        2. If "Our Team First" is unchecked: Level 1=Them, 2=Us, 3=Them, 4&5=Us
+        3. The team that doesn't go first controls both decisions 4 & 5
+        
+        Args:
+            node: Node ID to check
+            
+        Returns:
+            True if this is an opponent choice level, False if it's our choice level
+        """
+        if not node:
+            return False
+        
+        # Calculate the depth of this node (1-based)
+        depth = self._calculate_node_depth(node)
+        
+        if self.our_team_first:
+            # Our team goes first
+            if depth == 1 or depth == 3:
+                return False  # Our choice
+            elif depth == 2 or depth == 4 or depth == 5:
+                return True   # Opponent choice
+        else:
+            # Opponent team goes first  
+            if depth == 1 or depth == 3:
+                return True   # Opponent choice
+            elif depth == 2 or depth == 4 or depth == 5:
+                return False  # Our choice
+        
+        # Default for unexpected depths - alternate starting from our_team_first
+        return (depth % 2) != (1 if self.our_team_first else 0)
+    
+    def _calculate_node_depth(self, node):
+        """
+        Calculate the depth of a node in the tree (1-based, root children are depth 1)
+        
+        Args:
+            node: Node ID
+            
+        Returns:
+            Depth as integer (1-based)
+        """
+        depth = 0
+        current = node
+        
+        while current:
+            parent = self.treeview.tree.parent(current) 
+            if not parent:  # Reached root
+                break
+            depth += 1
+            current = parent
+        
+        return depth
+
+    def update_node_cumulative_display(self, node, cumulative_value):
+        """Update the cumulative score column display for a node"""
+        try:
+            current_values = list(self.treeview.tree.item(node, 'values'))
+            if len(current_values) >= 2:
+                # Update the cumulative score column (index 1)
+                current_values[1] = cumulative_value
+                self.treeview.tree.item(node, values=current_values)
+        except Exception as e:
+            print(f"Error updating cumulative display for node {node}: {e}")
+
+    def update_node_confidence_display(self, node, confidence_value):
+        """Update the confidence score column display for a node"""
+        try:
+            current_values = list(self.treeview.tree.item(node, 'values'))
+            if len(current_values) >= 3:
+                # Update the confidence score column (index 2)
+                current_values[2] = int(confidence_value)
+                self.treeview.tree.item(node, values=current_values)
+        except Exception as e:
+            print(f"Error updating confidence display for node {node}: {e}")
+
+    def update_node_resistance_display(self, node, resistance_value):
+        """Update the resistance score column display for a node"""
+        try:
+            current_values = list(self.treeview.tree.item(node, 'values'))
+            if len(current_values) >= 4:
+                # Update the resistance score column (index 3)
+                current_values[3] = int(resistance_value)
+                self.treeview.tree.item(node, values=current_values)
+        except Exception as e:
+            print(f"Error updating resistance display for node {node}: {e}")
