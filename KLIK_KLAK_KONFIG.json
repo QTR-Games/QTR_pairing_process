@@ -1,0 +1,18 @@
+{
+  "version": "1.0",
+  "database": {
+    "path": "C:/Users/Daniel.Raven",
+    "name": "dapper badgers.db",
+    "last_used": "2025-11-05T09:24:59.629226"
+  },
+  "ui_preferences": {
+    "show_welcome_message": false,
+    "rating_system": "1-5"
+  },
+  "logging": {
+    "level": "verbose",
+    "enabled": true
+  },
+  "created": "2025-10-23T09:31:34.469763",
+  "last_modified": "2025-11-05T09:24:59.629226"
+}

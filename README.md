@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/23993019/README.md)
 # QTR Pairing Process
 
 ![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-red)

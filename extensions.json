@@ -1,0 +1,13 @@
+{
+    "recommendations": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        "ms-toolsai.jupyter"
+    ],
+    "unwantedRecommendations": [
+        "davidanson.vscode-markdownlint",
+        "ms-vscode.vscode-markdown",
+        "yzhang.markdown-all-in-one"
+    ]
+}
