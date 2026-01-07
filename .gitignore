@@ -167,3 +167,10 @@ notebook_jobs/nylas/nylas_local.py
 .DS_Store
 **/.DS_Store
 .idea/*
+
+# Local workflow files
+GIT_WORKFLOW.md
+QTR_pairing_process.code-workspace
+cleanup-feature.ps1
+finish-feature.ps1
+new-feature.ps1
