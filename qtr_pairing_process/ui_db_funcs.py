@@ -6,16 +6,7 @@ import csv
 import tkinter as tk
 from tkinter import messagebox, filedialog, simpledialog
 # repo libraries
-# from qtr_pairing_process.xlsx_load_ui import XlsxLoadUi
-try:
-    from qtr_pairing_process.xlsx_load_ui import XlsxLoadUi
-except ModuleNotFoundError:
-    # Try relative import if running as a module
-    try:
-        from .xlsx_load_ui import XlsxLoadUi
-    except ImportError:
-        XlsxLoadUi = None
-        print("Warning: Could not import XlsxLoadUi. Please check the file path.")
+from qtr_pairing_process.xlsx_load_ui import XlsxLoadUi
 from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
 from qtr_pairing_process.excel_management.excel_importer import ExcelImporter
 
