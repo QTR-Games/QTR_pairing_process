@@ -1,0 +1,5 @@
+# Exclude learning documentation from markdown linting
+docs/learning/**
+docs/learning/*.md
+
+# These are reference documents for personal learning and don't need style enforcement

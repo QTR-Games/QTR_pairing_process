@@ -70,7 +70,8 @@
         "**/DATA_VALIDATOR*.md",
         "**/TREE_SYNC*.md",
         "**/CONTRIBUTING.md",
-        "**/SECURITY.md"
+        "**/SECURITY.md",
+        "**/docs/learning/**/*.md"
     ],
     // Configure problem matchers to ignore documentation files
     "problems.decorations.enabled": true,
@@ -130,7 +131,8 @@
         "**/*.pyc": true,
         "**/*.log": true,
         "**/*.backup*": true,
-        "**/7-19/**": true
+        "**/7-19/**": true,
+        "**/docs/learning/**": true
     },
     // Search exclusions
     "search.exclude": {
@@ -140,7 +142,8 @@
         "**/__pycache__": true,
         "**/*.pyc": true,
         "**/*.log": true,
-        "**/*.backup*": true
+        "**/*.backup*": true,
+        "**/docs/learning/**": true
     },
     // Disable specific extensions for documentation files
     "emmet.excludeLanguages": [
