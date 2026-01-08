@@ -99,6 +99,16 @@ This application is designed for tournaments following the **World Team Champion
 
 For detailed information about the comments system, see [Comments System Documentation](docs/COMMENTS_SYSTEM.md).
 
+### Tree Sorting Strategies
+
+The Matchup Tree tab includes three advanced sorting algorithms to analyze pairings from different strategic perspectives:
+
+- **Cumulative Sort**: Maximizes total matchup strength - sorts by sum of all ratings in a path
+- **Highest Confidence**: Identifies reliable high-scoring paths - balances quality with consistency
+- **Counter Pick**: Finds counter-resistant matchups - defensive strategy against opponent counters
+
+For detailed explanations of each sorting strategy, see [Tree Sorting Guide](docs/SORTING_ANALYSIS.md).
+
 ## Application Structure
 
 ### Main Components
