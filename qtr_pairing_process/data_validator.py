@@ -19,8 +19,15 @@ class DataValidator:
         r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]",  # Control characters
     ]
     
-    # Allowed characters for names (including international)
-    SAFE_NAME_PATTERN = re.compile(r"^[\w\s\-'\.àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ\u0100-\u017f\u0180-\u024f\u1e00-\u1eff]+$", re.IGNORECASE | re.UNICODE)
+    # Allowed characters for names (including international and special characters)
+    # Supports: letters, numbers, spaces, hyphens, apostrophes, periods, hash/pound (#),
+    # parentheses, underscores, plus signs, ampersands, and various international characters
+    # (accents, umlauts, cedillas, etc.)
+    SAFE_NAME_PATTERN = re.compile(
+        r"^[\w\s\-'\.#\(\)\+&àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ"
+        r"\u0100-\u017f\u0180-\u024f\u1e00-\u1eff\u0370-\u03ff\u0400-\u04ff]+$",
+        re.IGNORECASE | re.UNICODE
+    )
     
     @staticmethod
     def sanitize_text_input(text: str, max_length: int = 255, allow_empty: bool = False) -> Optional[str]:
@@ -59,7 +66,11 @@ class DataValidator:
                 
         # Validate against safe character pattern
         if not DataValidator.SAFE_NAME_PATTERN.match(text):
-            raise ValueError("Input contains invalid characters. Only letters, numbers, spaces, hyphens, apostrophes, and periods are allowed.")
+            raise ValueError(
+                "Input contains invalid characters. "
+                "Only letters, numbers, spaces, hyphens, apostrophes, periods, "
+                "hash symbols (#), parentheses, plus signs, ampersands, and international characters are allowed."
+            )
             
         return text
     

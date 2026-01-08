@@ -20,6 +20,9 @@ from qtr_pairing_process.data_validator import DataValidator
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.tree_generator import TreeGenerator
 from qtr_pairing_process.db_load_ui import DbLoadUi
+from qtr_pairing_process.database_preferences import DatabasePreferences
+from qtr_pairing_process.welcome_dialog import WelcomeDialog
+from qtr_pairing_process.app_logger import get_logger
 from qtr_pairing_process.xlsx_load_ui import XlsxLoadUi
 from qtr_pairing_process.db_management.db_manager import DbManager
 from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
@@ -49,8 +52,14 @@ class UiManager:
         # Initialize settings manager
         self.settings_manager = SettingsManager()
         
-        # Initialize rating system (this may override the provided color_map)
-        self.current_rating_system = self.settings_manager.get_rating_system()
+        # Initialize rating system from unified config (KLIK_KLAK_KONFIG.json)
+        # First check the new config, fallback to old settings manager if not found
+        config_rating_system = None
+        if hasattr(self, 'db_preferences'):
+            ui_prefs = self.db_preferences.get_ui_preferences()
+            config_rating_system = ui_prefs.get('rating_system')
+        
+        self.current_rating_system = config_rating_system or self.settings_manager.get_rating_system()
         self.rating_config = RATING_SYSTEMS[self.current_rating_system]
         self.color_map = self.rating_config['color_map']
         self.rating_range = self.rating_config['range']
@@ -58,9 +67,17 @@ class UiManager:
         # Initialize other UI components
         self.comment_tooltip: Optional[tk.Toplevel] = None
         self.comment_indicators: Dict[tuple, tk.Label] = {}  # Store comment indicators
+        self.comment_indicator_callbacks: Dict[tuple, str] = {}  # Store after_idle callback IDs
         self.row_checkboxes: List[tk.IntVar] = []
         self.column_checkboxes: List[tk.IntVar] = []
 
+        # Initialize database preferences manager
+        self.db_preferences = DatabasePreferences(print_output=print_output)
+        
+        # Initialize logger
+        self.logger = get_logger(__name__)
+        self.logger.info("UiManager initializing...")
+        
         self.select_database()
         self.initialize_ui_vars()
 
@@ -69,6 +86,24 @@ class UiManager:
             
 
     def select_database(self):
+        """Select database - automatically loads last used database if available"""
+        # Try to load the last used database from config
+        last_path, last_name = self.db_preferences.get_last_database()
+        
+        if last_path and last_name:
+            # Validate that the saved database still exists
+            if self.db_preferences.validate_database_exists(last_path, last_name):
+                # Use the saved database
+                self.db_path = last_path
+                self.db_name = last_name
+                self.db_manager = DbManager(path=self.db_path, name=self.db_name)
+                self.logger.info(f"Auto-loaded last database: {self.db_name} from {self.db_path}")
+                return
+            else:
+                self.logger.warning(f"Last used database not found: {last_name} at {last_path}")
+                self.logger.info("Showing database selector...")
+        
+        # No saved database or it doesn't exist - show the selector
         db_load_ui = DbLoadUi()
         self.db_path, self.db_name = db_load_ui.create_or_load_database()
 
@@ -76,6 +111,10 @@ class UiManager:
             self.db_manager = DbManager()
         else:
             self.db_manager = DbManager(path=self.db_path, name=self.db_name)
+            # Save this database as the preferred one
+            if self.db_path and self.db_name:
+                self.db_preferences.save_database_preference(self.db_path, self.db_name)
+                self.logger.info(f"Saved database preference: {self.db_name} at {self.db_path}")
             
     def initialize_ui_vars(self):
         # set root
@@ -265,6 +304,10 @@ class UiManager:
         
         # Create status bar
         self.create_status_bar()
+        
+        # Show welcome dialog if this is first time or user hasn't disabled it
+        if self.db_preferences.should_show_welcome_message():
+            self.root.after(500, self.show_welcome_dialog)  # Delay to ensure UI is ready
 
         self.root.mainloop()
 
@@ -535,6 +578,17 @@ class UiManager:
             print(f"update_display_fields has failed with error:\n{e}")
 
     def on_scenario_calculations(self):
+        # Guard: Don't run calculations if teams are not selected
+        team_1 = self.combobox_1.get().strip()
+        team_2 = self.combobox_2.get().strip()
+        
+        if not team_1 or not team_2:
+            # Clear display fields when no teams are selected
+            for row in range(1, 6):
+                for col in range(0, 6):
+                    self.update_display_fields(row, col, "---")
+            return
+        
         self.set_floor_values()  # info_col 0
         self.check_pinned_players()  # info_col 1
         self.check_for_pins()  # info_col 2
@@ -549,14 +603,24 @@ class UiManager:
                     for col in range(4, 6):
                         self.update_display_fields(row, col, "---")
                     continue
-                floor_rating_sum = int(self.grid_display_entries[row][0].get())
+                
+                # Get floor rating sum, check for empty string
+                floor_value = self.grid_display_entries[row][0].get()
+                if not floor_value or floor_value == "---" or floor_value.strip() == "":
+                    for col in range(4, 6):
+                        self.update_display_fields(row, col, "---")
+                    continue
+                floor_rating_sum = int(floor_value)
+                
                 all_margins = []
                 for col in range(1, 6):
                     col_margin_sum = 0
                     for row1 in range(1, 6):
                         widget = self.grid_widgets[row1][col]
                         if widget is not None and widget.cget('state') != 'disabled':
-                            col_margin_sum += int(self.grid_entries[row1][col].get())
+                            cell_value = self.grid_entries[row1][col].get()
+                            if cell_value and cell_value.strip() and cell_value != "---":
+                                col_margin_sum += int(cell_value)
                     diff = floor_rating_sum - col_margin_sum
                     all_margins.append(diff) # add the current col's sum to the all_margins list 
                 # MIN/MAX COLUMN = 
@@ -591,8 +655,11 @@ class UiManager:
                 good_matchups = 0
                 for col in range(1, 6):
                     widget = self.grid_widgets[row][col]
-                    if widget is not None and widget.cget('state') != 'disabled' and int(self.grid_entries[row][col].get()) > 3:
-                        good_matchups += 1
+                    if widget is not None and widget.cget('state') != 'disabled':
+                        cell_value = self.grid_entries[row][col].get()
+                        if cell_value and cell_value.strip() and cell_value != "---":
+                            if int(cell_value) > 3:
+                                good_matchups += 1
                 can_pin = "PIN" if good_matchups > 1 else "---"
                 self.update_display_fields(row, 2, can_pin)
             except (ValueError, IndexError) as e:
@@ -607,8 +674,11 @@ class UiManager:
                 num_bad_matchups = 0
                 for col in range(1, 6):
                     widget = self.grid_widgets[row][col]
-                    if widget is not None and widget.cget('state') != 'disabled' and int(self.grid_entries[row][col].get()) < 3:
-                        num_bad_matchups += 1
+                    if widget is not None and widget.cget('state') != 'disabled':
+                        cell_value = self.grid_entries[row][col].get()
+                        if cell_value and cell_value.strip() and cell_value != "---":
+                            if int(cell_value) < 3:
+                                num_bad_matchups += 1
                 player_pinned = "PINNED!" if num_bad_matchups > 1 else "---"
                 self.update_display_fields(row, 1, player_pinned)
             except (ValueError, IndexError) as e:
@@ -624,11 +694,28 @@ class UiManager:
                 for col in range(1, 6):
                     widget = self.grid_widgets[row][col]
                     if widget is not None and widget.cget('state') != 'disabled':
-                        floor_rating_sum += int(self.grid_entries[row][col].get())
+                        cell_value = self.grid_entries[row][col].get()
+                        if cell_value and cell_value.strip() and cell_value != "---":
+                            floor_rating_sum += int(cell_value)
                 self.update_display_fields(row, 0, floor_rating_sum)
             except (ValueError, IndexError) as e:
                 print(f"set_floor_values has failed with error:\n{e}")
 
+    def show_welcome_dialog(self):
+        """Show welcome dialog on first startup"""
+        try:
+            welcome = WelcomeDialog(self.root)
+            show_again = welcome.show_welcome_message()
+            
+            # Save preference
+            self.db_preferences.set_welcome_message_preference(show_again)
+            
+            # If user chose to open settings, show data management menu
+            if hasattr(welcome, 'result') and welcome.result == "open_settings":
+                self.show_data_management_menu()
+        except Exception as e:
+            self.logger.error(f"Error showing welcome dialog: {e}", exc_info=True)
+    
     def switch_tab(self):
         current_tab = self.notebook.index(self.notebook.select())
         total_tabs = self.notebook.index('end')
@@ -679,7 +766,7 @@ class UiManager:
                 
                 # Show success message
                 db_name = self.db_name if hasattr(self, 'db_name') and self.db_name else "Selected Database"
-                messagebox.showinfo("Database Changed", f"Successfully switched to: {db_name}")
+                messagebox.showinfo("Database Changed", f"Successfully switched to: {db_name}\n\nThis database will be loaded automatically on next startup.")
                 
         except Exception as e:
             print(f"Error changing database: {e}")
@@ -698,7 +785,10 @@ class UiManager:
                 self.color_map = self.rating_config['color_map']
                 self.rating_range = self.rating_config['range']
                 
-                # Save preference
+                # Save to unified config (KLIK_KLAK_KONFIG.json)
+                self.db_preferences.update_ui_preferences({'rating_system': new_system})
+                
+                # Also save to old settings for backward compatibility
                 self.settings_manager.set_rating_system(new_system)
                 
                 # Update grid colors immediately
@@ -1031,8 +1121,13 @@ class UiManager:
         self.combobox_2['values'] = team_names
 
     def load_grid_data_from_db(self):
-        team_1 = self.combobox_1.get()
-        team_2 = self.combobox_2.get()
+        team_1 = self.combobox_1.get().strip()
+        team_2 = self.combobox_2.get().strip()
+        
+        # Guard: Don't try to load data if teams are not selected
+        if not team_1 or not team_2:
+            return
+        
         scenario = self.scenario_box.get()[:1]
         if scenario == '':
             self.scenario_box.set("0 - Neutral")
@@ -1116,9 +1211,16 @@ class UiManager:
                 "Cannot save data while grid is flipped to opponent's perspective.\n"
                 "Please click 'Flip Grid' again to restore friendly perspective before saving.")
             return
-            
-        team_1 = self.combobox_1.get()
-        team_2 = self.combobox_2.get()
+        
+        team_1 = self.combobox_1.get().strip()
+        team_2 = self.combobox_2.get().strip()
+        
+        # Guard: Don't try to save data if teams are not selected
+        if not team_1 or not team_2:
+            messagebox.showwarning("Cannot Save", 
+                "Please select both teams before saving.")
+            return
+        
         scenario_id = int(self.scenario_box.get()[:1])
 
         team_sql_template = "select team_id from teams where team_name='{team_name}'"
@@ -1600,9 +1702,25 @@ class UiManager:
 
     def clear_comment_indicators(self):
         """Clear all existing comment indicators"""
+        # Cancel all pending callbacks first
+        if hasattr(self, 'comment_indicator_callbacks'):
+            for callback_id in self.comment_indicator_callbacks.values():
+                try:
+                    self.root.after_cancel(callback_id)
+                except:
+                    pass  # Callback may have already executed
+            self.comment_indicator_callbacks.clear()
+        else:
+            self.comment_indicator_callbacks = {}
+        
+        # Now destroy the indicator widgets
         if hasattr(self, 'comment_indicators'):
             for indicator in self.comment_indicators.values():
-                indicator.destroy()
+                try:
+                    if indicator.winfo_exists():
+                        indicator.destroy()
+                except:
+                    pass  # Widget may already be destroyed
             self.comment_indicators.clear()
         else:
             self.comment_indicators = {}
@@ -1634,8 +1752,9 @@ class UiManager:
             # Store the indicator for cleanup later
             self.comment_indicators[(row, col)] = indicator
             
-            # Schedule positioning after the widget is drawn
-            self.root.after_idle(lambda: self.position_comment_indicator(indicator, row, col))
+            # Schedule positioning after the widget is drawn and store callback ID
+            callback_id = self.root.after_idle(lambda: self.position_comment_indicator(indicator, row, col))
+            self.comment_indicator_callbacks[(row, col)] = callback_id
             
         except Exception as e:
             print(f"Error adding comment indicator at ({row}, {col}): {e}")
@@ -1643,6 +1762,10 @@ class UiManager:
     def position_comment_indicator(self, indicator, row, col):
         """Position the comment indicator in the top-right corner of the cell"""
         try:
+            # First check if indicator still exists (might have been cleared)
+            if not indicator.winfo_exists():
+                return
+            
             widget = self.grid_widgets[row][col]
             if widget is not None and widget.winfo_exists():
                 # Position the indicator in the top-right corner
@@ -1655,10 +1778,12 @@ class UiManager:
                     y=2        # Slight offset from edge
                 )
         except Exception as e:
-            print(f"Error positioning comment indicator at ({row}, {col}): {e}")
-            # If positioning fails, destroy the indicator
-            if indicator.winfo_exists():
-                indicator.destroy()
+            # Silently handle errors - widget may have been destroyed
+            try:
+                if indicator.winfo_exists():
+                    indicator.destroy()
+            except:
+                pass  # Widget already destroyed
 
     def show_comment_tooltip(self, event, row, col):
         """Show tooltip with comment text when hovering over a matchup cell"""
