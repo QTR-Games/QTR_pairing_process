@@ -965,6 +965,11 @@ class UiManager:
         else:
             self.tree_generator.generate_combinations(oNames, fNames, oRatings, fRatings)
         
+        # Automatically expand the root "Pairings" node
+        root_nodes = self.treeview.tree.get_children()
+        if root_nodes:
+            self.treeview.tree.item(root_nodes[0], open=True)
+        
         # Reset all sorting states when generating new combinations
         self.active_sort_mode = None
         self.is_sorted = False
@@ -1119,6 +1124,54 @@ class UiManager:
         team_names = self.select_team_names()
         self.combobox_1['values'] = team_names
         self.combobox_2['values'] = team_names
+        
+        # DEBUG MODE AUTO-POPULATION:
+        # When running under a debugger, automatically load the first two teams to reduce
+        # manual clicking during development testing.
+        # 
+        # Detection Method: sys.gettrace() returns a trace function when Python's trace/debug
+        # mechanism is active. This works with most Python debuggers including:
+        # - VS Code's debugpy (current development environment)
+        # - PyCharm debugger
+        # - pdb (Python's built-in debugger)
+        # - Most IDE debuggers that use Python's trace mechanism
+        #
+        # Known Limitations:
+        # - May also trigger when code coverage tools or profilers are running
+        # - Some custom debuggers might not use Python's trace mechanism
+        # - Not 100% universal across all debugging environments
+        #
+        # Alternative Implementation (if needed):
+        # If more explicit control is needed, could use environment variable:
+        #   if os.getenv('DEBUG_MODE') == 'true':
+        # Then set in launch.json: "env": {"DEBUG_MODE": "true"}
+        #
+        # Decision: Current approach sufficient for single-developer workflow.
+        import sys
+        
+        # Check if debugpy (VS Code debugger) is loaded
+        # This is more reliable than sys.gettrace() for VS Code debugging
+        # since gettrace() may not be active during early initialization
+        is_debugging = 'debugpy' in sys.modules or sys.gettrace() is not None
+        
+        print(f"DEBUG: debugpy in sys.modules = {'debugpy' in sys.modules}")
+        print(f"DEBUG: sys.gettrace() = {sys.gettrace()}")
+        print(f"DEBUG: is_debugging = {is_debugging}")
+        print(f"DEBUG: Number of teams available: {len(team_names)}")
+        print(f"DEBUG: Teams: {team_names[:5] if len(team_names) > 5 else team_names}")
+        
+        if is_debugging:
+            print("DEBUG: Debugger detected - auto-populating teams")
+            if len(team_names) >= 2:
+                self.combobox_1.set(team_names[0])
+                self.combobox_2.set(team_names[1])
+                print(f"DEBUG: Set Team 1: {team_names[0]}, Team 2: {team_names[1]}")
+                # Trigger data load after setting teams (100ms delay ensures UI is ready)
+                self.root.after(100, self.load_grid_data_from_db)
+            else:
+                print("DEBUG: Not enough teams in database to auto-populate")
+        else:
+            print("DEBUG: No debugger detected - skipping auto-population")
 
     def load_grid_data_from_db(self):
         team_1 = self.combobox_1.get().strip()
@@ -2528,11 +2581,27 @@ class UiManager:
                                   font=("Arial", 9), bg="lightyellow", fg="darkblue")
             instructions.pack(pady=(0, 5))
             
+            # Button and checkbox frame
+            button_frame = tk.Frame(self.output_panel_frame, bg="lightyellow")
+            button_frame.pack(pady=5)
+            
             # Extract button
-            extract_button = tk.Button(self.output_panel_frame, text="Extract Matchups", 
+            extract_button = tk.Button(button_frame, text="Extract Matchups", 
                                      command=self.extract_final_matchups, font=("Arial", 10, "bold"),
                                      bg="lightgreen", relief=tk.RAISED)
-            extract_button.pack(pady=5)
+            extract_button.pack(side=tk.LEFT, padx=(0, 10))
+            
+            # Verbose mode checkbox
+            self.verbose_matchup_var = tk.BooleanVar()
+            # Initialize from config: verbose=True if format is "verbose", else False
+            current_format = self.db_preferences.get_matchup_output_format()
+            self.verbose_matchup_var.set(current_format == "verbose")
+            
+            verbose_checkbox = tk.Checkbutton(button_frame, text="Verbose Output",
+                                            variable=self.verbose_matchup_var,
+                                            command=self.on_verbose_mode_changed,
+                                            font=("Arial", 9), bg="lightyellow")
+            verbose_checkbox.pack(side=tk.LEFT)
             
             # Text area for matchups display
             self.matchups_text = tk.Text(self.output_panel_frame, height=8, width=80, 
@@ -2556,6 +2625,57 @@ class UiManager:
             print(f"Error creating matchup output panel: {e}")
             messagebox.showerror("Error", f"Failed to create matchup output panel: {e}")
 
+    def on_verbose_mode_changed(self):
+        """Handle verbose mode checkbox changes and save to config."""
+        try:
+            is_verbose = self.verbose_matchup_var.get()
+            format_type = "verbose" if is_verbose else "standard"
+            
+            # Save to config
+            success = self.db_preferences.set_matchup_output_format(format_type)
+            
+            if success:
+                print(f"Matchup output format updated to: {format_type}")
+            else:
+                print(f"Warning: Failed to save matchup output format preference")
+                
+        except Exception as e:
+            print(f"Error updating verbose mode preference: {e}")
+    
+    def format_matchups_verbose(self, matchups, item_text):
+        """Format matchups in verbose mode with complete decision path details."""
+        output_text = f"Complete Decision Path - {item_text}\n"
+        output_text += "=" * 70 + "\n\n"
+        
+        for matchup in matchups:
+            round_num = matchup.get('round', '?')
+            choice = matchup.get('choice', 'Unknown choice')
+            decision = matchup.get('decision', 'Unknown decision')
+            rating = matchup.get('rating', 'N/A')
+            
+            output_text += f"Matchup {round_num}: {choice}\n"
+            output_text += f"\tDecision: {decision} (Rating: {rating})\n\n"
+        
+        output_text += "=" * 70 + "\n"
+        output_text += f"Total Decision Points: {len(matchups)}\n"
+        output_text += f"Generated at: {self.get_current_timestamp()}\n"
+        output_text += "\nThis shows the complete path of decisions made to reach the selected tree position."
+        
+        return output_text
+    
+    def format_matchups_concise(self, matchups, item_text):
+        """Format matchups in concise mode with brief summary."""
+        output_text = ""
+        
+        for i, matchup in enumerate(matchups, 1):
+            decision = matchup.get('decision', 'Unknown decision')
+            rating = matchup.get('rating', 'N/A')
+            output_text += f"{i}. {decision} ({rating})\n"
+        
+        output_text += f"\nGenerated: {self.get_current_timestamp()}"
+        
+        return output_text
+    
     def extract_final_matchups(self):
         """Extract the final 5 matchups from the currently selected tree item."""
         try:
@@ -2591,23 +2711,17 @@ class UiManager:
                 messagebox.showwarning("No Matchups", f"No matchup data found for the selected item.\n\n{debug_info}")
                 return
             
-            # Format matchups for display in the requested format
-            output_text = f"Complete Decision Path - {item_text}\n"
-            output_text += "=" * 70 + "\n\n"
+            # Format matchups based on config preference
+            output_format = self.db_preferences.get_matchup_output_format()
             
-            for matchup in matchups:
-                round_num = matchup.get('round', '?')
-                choice = matchup.get('choice', 'Unknown choice')
-                decision = matchup.get('decision', 'Unknown decision')
-                rating = matchup.get('rating', 'N/A')
-                
-                output_text += f"Matchup {round_num}: {choice}\n"
-                output_text += f"\tDecision: {decision} (Rating: {rating})\n\n"
+            if output_format == "verbose":
+                output_text = self.format_matchups_verbose(matchups, item_text)
+            else:  # Default to standard
+                output_text = self.format_matchups_concise(matchups, item_text)
             
-            output_text += "=" * 70 + "\n"
-            output_text += f"Total Decision Points: {len(matchups)}\n"
-            output_text += f"Generated at: {self.get_current_timestamp()}\n"
-            output_text += "\nThis shows the complete path of decisions made to reach the selected tree position."
+            # Always log the verbose version to file, regardless of UI display format
+            verbose_output = self.format_matchups_verbose(matchups, item_text)
+            self.logger.info(f"Matchup Extraction:\n{verbose_output}")
             
             # Display in text widget
             self.matchups_text.delete(1.0, tk.END)
