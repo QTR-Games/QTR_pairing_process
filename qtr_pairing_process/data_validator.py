@@ -21,10 +21,10 @@ class DataValidator:
     
     # Allowed characters for names (including international and special characters)
     # Supports: letters, numbers, spaces, hyphens, apostrophes, periods, hash/pound (#),
-    # parentheses, underscores, plus signs, ampersands, and various international characters
+    # parentheses, underscores, plus signs, ampersands, forward slashes, and various international characters
     # (accents, umlauts, cedillas, etc.)
     SAFE_NAME_PATTERN = re.compile(
-        r"^[\w\s\-'\.#\(\)\+&àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ"
+        r"^[\w\s\-'\.#\(\)\+&/àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ"
         r"\u0100-\u017f\u0180-\u024f\u1e00-\u1eff\u0370-\u03ff\u0400-\u04ff]+$",
         re.IGNORECASE | re.UNICODE
     )
@@ -69,7 +69,7 @@ class DataValidator:
             raise ValueError(
                 "Input contains invalid characters. "
                 "Only letters, numbers, spaces, hyphens, apostrophes, periods, "
-                "hash symbols (#), parentheses, plus signs, ampersands, and international characters are allowed."
+                "hash symbols (#), parentheses, plus signs, ampersands, forward slashes (/), and international characters are allowed."
             )
             
         return text
