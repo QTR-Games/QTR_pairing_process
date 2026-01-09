@@ -70,6 +70,7 @@ class UiManager:
         self.comment_indicator_callbacks: Dict[tuple, str] = {}  # Store after_idle callback IDs
         self.row_checkboxes: List[tk.IntVar] = []
         self.column_checkboxes: List[tk.IntVar] = []
+        self._updating_dropdowns = False  # Flag to prevent recursive updates
 
         # Initialize database preferences manager
         self.db_preferences = DatabasePreferences(print_output=print_output)
@@ -248,6 +249,13 @@ class UiManager:
                                    bg="lightcyan", fg="darkgreen", font=("Arial", 9, "bold"),
                                    relief=tk.RAISED, borderwidth=2)
         data_mgmt_button.pack(side=tk.LEFT, padx=10, pady=5)
+        
+        # Clear button for round dropdowns
+        clear_button = tk.Button(self.button_row_frame, text="Clear",
+                               command=lambda: self.clear_round_dropdowns(),
+                               bg="lightyellow", fg="darkred", font=("Arial", 9, "bold"),
+                               relief=tk.RAISED, borderwidth=2)
+        clear_button.pack(side=tk.LEFT, padx=5, pady=5)
 
         # Initialize round tracking variables first
         self.round_dropdowns = []
@@ -2147,6 +2155,11 @@ class UiManager:
     def create_round_selection_dropdowns(self):
         """Create dropdowns for tracking player selections across tournament rounds."""
         try:
+            # Get team size from config to determine dropdown structure
+            ui_prefs = self.db_preferences.get_ui_preferences()
+            team_size = ui_prefs.get('team_size', 5)  # Default to 5 if not set
+            print(f"Creating dropdowns for {team_size}-player teams")
+            
             # Clear existing content (but skip the header frame that was created in parent method)
             for widget in self.round_selection_frame.winfo_children():
                 if widget.winfo_class() != 'Frame' or len(widget.winfo_children()) == 0:
@@ -2201,25 +2214,30 @@ class UiManager:
                     enemy_response_frame = tk.Frame(round_frame)
                     enemy_response_frame.grid(row=0, column=2, rowspan=2, padx=5, pady=2, sticky='nsew')
                     
-                    # Enemy response dropdowns - vertically stacked
+                    # Enemy response dropdown 1
                     enemy_var1 = tk.StringVar()
                     enemy_dropdown1 = ttk.Combobox(enemy_response_frame, state='readonly', width=18, textvariable=enemy_var1)
                     enemy_dropdown1.pack(fill=tk.X, pady=(0, 2))
                     
-                    enemy_var2 = tk.StringVar()
-                    enemy_dropdown2 = ttk.Combobox(enemy_response_frame, state='readonly', width=18, textvariable=enemy_var2)
-                    enemy_dropdown2.pack(fill=tk.X, pady=(0, 0))
+                    # Enemy response dropdown 2 - only create if not the last round
+                    if round_num < team_size:
+                        enemy_var2 = tk.StringVar()
+                        enemy_dropdown2 = ttk.Combobox(enemy_response_frame, state='readonly', width=18, textvariable=enemy_var2)
+                        enemy_dropdown2.pack(fill=tk.X, pady=(0, 0))
+                        enemy_var2.trace_add('write', lambda *args, r=round_num, p=2, v=enemy_var2: self.on_response_selection_change_direct(r, p, v))
+                        self.enemy_round_vars.extend([enemy_var1, enemy_var2])
+                        self.enemy_round_dropdowns.extend([enemy_dropdown1, enemy_dropdown2])
+                    else:
+                        self.enemy_round_vars.append(enemy_var1)
+                        self.enemy_round_dropdowns.append(enemy_dropdown1)
                     
                     # Bind events
                     friendly_var.trace_add('write', lambda *args, r=round_num, v=friendly_var: self.on_ante_selection_change_direct(r, v))
                     enemy_var1.trace_add('write', lambda *args, r=round_num, p=1, v=enemy_var1: self.on_response_selection_change_direct(r, p, v))
-                    enemy_var2.trace_add('write', lambda *args, r=round_num, p=2, v=enemy_var2: self.on_response_selection_change_direct(r, p, v))
                     
                     # Store references
                     self.round_vars.append(friendly_var)
                     self.round_dropdowns.append(friendly_dropdown)
-                    self.enemy_round_vars.extend([enemy_var1, enemy_var2])
-                    self.enemy_round_dropdowns.extend([enemy_dropdown1, enemy_dropdown2])
                     self.selected_players_per_round[round_num] = {
                         'ante': None, 'ante_team': 'friendly',
                         'response1': None, 'response2': None, 'response_team': 'enemy'
@@ -2235,25 +2253,30 @@ class UiManager:
                     friendly_response_frame = tk.Frame(round_frame)
                     friendly_response_frame.grid(row=0, column=1, rowspan=2, padx=5, pady=2, sticky='nsew')
                     
-                    # Friendly response dropdowns - vertically stacked
+                    # Friendly response dropdown 1
                     friendly_var1 = tk.StringVar()
                     friendly_dropdown1 = ttk.Combobox(friendly_response_frame, state='readonly', width=18, textvariable=friendly_var1)
                     friendly_dropdown1.pack(fill=tk.X, pady=(0, 2))
                     
-                    friendly_var2 = tk.StringVar()
-                    friendly_dropdown2 = ttk.Combobox(friendly_response_frame, state='readonly', width=18, textvariable=friendly_var2)
-                    friendly_dropdown2.pack(fill=tk.X, pady=(0, 0))
+                    # Friendly response dropdown 2 - only create if not the last round
+                    if round_num < team_size:
+                        friendly_var2 = tk.StringVar()
+                        friendly_dropdown2 = ttk.Combobox(friendly_response_frame, state='readonly', width=18, textvariable=friendly_var2)
+                        friendly_dropdown2.pack(fill=tk.X, pady=(0, 0))
+                        friendly_var2.trace_add('write', lambda *args, r=round_num, p=2, v=friendly_var2: self.on_response_selection_change_direct(r, p, v))
+                        self.round_vars.extend([friendly_var1, friendly_var2])
+                        self.round_dropdowns.extend([friendly_dropdown1, friendly_dropdown2])
+                    else:
+                        self.round_vars.append(friendly_var1)
+                        self.round_dropdowns.append(friendly_dropdown1)
                     
                     # Bind events
                     enemy_var.trace_add('write', lambda *args, r=round_num, v=enemy_var: self.on_ante_selection_change_direct(r, v))
                     friendly_var1.trace_add('write', lambda *args, r=round_num, p=1, v=friendly_var1: self.on_response_selection_change_direct(r, p, v))
-                    friendly_var2.trace_add('write', lambda *args, r=round_num, p=2, v=friendly_var2: self.on_response_selection_change_direct(r, p, v))
                     
                     # Store references
                     self.enemy_round_vars.append(enemy_var)
                     self.enemy_round_dropdowns.append(enemy_dropdown)
-                    self.round_vars.extend([friendly_var1, friendly_var2])
-                    self.round_dropdowns.extend([friendly_dropdown1, friendly_dropdown2])
                     self.selected_players_per_round[round_num] = {
                         'ante': None, 'ante_team': 'enemy',
                         'response1': None, 'response2': None, 'response_team': 'friendly'
@@ -2395,14 +2418,56 @@ class UiManager:
     def on_ante_selection_change_direct(self, round_num, var):
         """Handle ante selection changes with direct variable access."""
         try:
+            # Skip if we're updating dropdowns programmatically
+            if self._updating_dropdowns:
+                return
+            
             selected_player = var.get()
+            old_ante = self.selected_players_per_round[round_num].get('ante')
             self.selected_players_per_round[round_num]['ante'] = selected_player if selected_player else None
+            
+            # If the ante changed (including being cleared), clear all subsequent rounds
+            if old_ante != (selected_player if selected_player else None):
+                self.clear_subsequent_rounds(round_num)
+            
+            round_data = self.selected_players_per_round.get(round_num, {})
+            ante_team = round_data.get('ante_team', 'unknown')
+            
+            # Check if this is round 2, 4 (enemy antes, so check previous round's friendly responses)
+            # or round 3, 5 (friendly antes, so check previous round's enemy responses)
+            if round_num in [2, 3, 4, 5] and selected_player:
+                previous_round = round_num - 1
+                previous_round_data = self.selected_players_per_round.get(previous_round, {})
+                
+                # Get the two responses from the previous round
+                response1 = previous_round_data.get('response1')
+                response2 = previous_round_data.get('response2')
+                response_team = previous_round_data.get('response_team')
+                
+                # The response that was NOT selected as ante is the one that "played"
+                # So we need to mark it as implicitly selected
+                if response1 and response2:
+                    if selected_player == response1:
+                        # Response2 was the one that played - mark it in tracking
+                        previous_round_data['implicit_selection'] = response2
+                    elif selected_player == response2:
+                        # Response1 was the one that played - mark it in tracking
+                        previous_round_data['implicit_selection'] = response1
+            else:
+                # Clear any implicit selection if ante is cleared
+                if round_num >= 2:
+                    previous_round = round_num - 1
+                    previous_round_data = self.selected_players_per_round.get(previous_round, {})
+                    if 'implicit_selection' in previous_round_data:
+                        previous_round_data['implicit_selection'] = None
+            
+            # Recalculate ALL checkboxes from scratch based on current selections
+            self.update_all_checkboxes_from_selections()
+            self.update_all_column_checkboxes_from_selections()
             
             # Update all dropdown options to reflect new availability
             self.update_round_dropdown_options()
             
-            round_data = self.selected_players_per_round.get(round_num, {})
-            ante_team = round_data.get('ante_team', 'unknown')
             print(f"Round {round_num} ante selection ({ante_team}): {selected_player}")
             
         except Exception as e:
@@ -2411,12 +2476,50 @@ class UiManager:
     def on_response_selection_change_direct(self, round_num, position, var):
         """Handle response selection changes with direct variable access."""
         try:
+            # Skip if we're updating dropdowns programmatically
+            if self._updating_dropdowns:
+                return
+            
             selected_player = var.get()
             response_key = f'response{position}'
+            old_response = self.selected_players_per_round[round_num].get(response_key)
             self.selected_players_per_round[round_num][response_key] = selected_player if selected_player else None
+            
+            # If this response was cleared, also clear the other response in the same round
+            # AND clear any implicit selection that may have been set by a future round
+            if not selected_player and old_response:
+                # Clear the other response in this round
+                other_position = 2 if position == 1 else 1
+                other_key = f'response{other_position}'
+                self.selected_players_per_round[round_num][other_key] = None
+                
+                # Clear implicit selection from this round (set by future rounds)
+                if 'implicit_selection' in self.selected_players_per_round[round_num]:
+                    self.selected_players_per_round[round_num]['implicit_selection'] = None
+                    print(f"DEBUG: Cleared implicit selection from Round {round_num}")
+            
+            # If the response changed (including being cleared), clear all subsequent rounds
+            if old_response != (selected_player if selected_player else None):
+                self.clear_subsequent_rounds(round_num)
+                # Refresh UI to show all cleared responses
+                self.refresh_dropdown_ui_from_tracking()
             
             # Update all dropdown options to reflect new availability
             self.update_round_dropdown_options()
+            
+            # Recalculate checkboxes AFTER all clearing and UI updates are done
+            self.update_all_checkboxes_from_selections()
+            self.update_all_column_checkboxes_from_selections()
+            
+            # Get team size from config to check if this is the last round
+            ui_prefs = self.db_preferences.get_ui_preferences()
+            team_size = ui_prefs.get('team_size', 5)
+            
+            # In the last round (round N for N-player teams), treat the first response like an ante
+            # since it's the only remaining player and should check the box
+            if round_num == team_size and position == 1:
+                round_data = self.selected_players_per_round.get(round_num, {})
+                response_team = round_data.get('response_team')
             
             round_data = self.selected_players_per_round.get(round_num, {})
             response_team = round_data.get('response_team', 'unknown')
@@ -2435,10 +2538,282 @@ class UiManager:
         # This is a simplified index calculation - you may need to adjust based on actual storage
         base_index = (round_num - 1) * 2
         return base_index + (position - 1)
+    
+    def clear_subsequent_rounds(self, from_round):
+        """Clear all dropdown selections in rounds after the specified round."""
+        try:
+            # Clear all rounds after from_round
+            for round_num in range(from_round + 1, 6):
+                if round_num in self.selected_players_per_round:
+                    round_data = self.selected_players_per_round[round_num]
+                    
+                    # Clear the tracking data
+                    round_data['ante'] = None
+                    round_data['response1'] = None
+                    round_data['response2'] = None
+                    if 'implicit_selection' in round_data:
+                        round_data['implicit_selection'] = None
+            
+            # After clearing tracking data, refresh ALL dropdowns to reflect the cleared state
+            # This will properly clear only the dropdowns for rounds > from_round
+            # while preserving the current round's selection
+            self.refresh_dropdown_ui_from_tracking()
+            
+            print(f"Cleared all rounds after round {from_round}")
+            
+        except Exception as e:
+            print(f"Error clearing subsequent rounds: {e}")
+    
+    def refresh_dropdown_ui_from_tracking(self):
+        """Refresh all dropdown UI elements to match the tracking dictionary."""
+        try:
+            # Set flag to prevent recursive calls
+            self._updating_dropdowns = True
+            
+            # Update friendly dropdowns
+            friendly_dropdown_idx = 0
+            for round_num in range(1, 6):
+                round_data = self.selected_players_per_round.get(round_num, {})
+                ante_team = round_data.get('ante_team')
+                response_team = round_data.get('response_team')
+                
+                if ante_team == 'friendly':
+                    # Set friendly ante dropdown
+                    if friendly_dropdown_idx < len(self.round_vars):
+                        ante_value = round_data.get('ante', '')
+                        self.round_vars[friendly_dropdown_idx].set(ante_value if ante_value else "")
+                        friendly_dropdown_idx += 1
+                
+                if response_team == 'friendly':
+                    # Set friendly response dropdowns
+                    if friendly_dropdown_idx < len(self.round_vars):
+                        response1_value = round_data.get('response1', '')
+                        self.round_vars[friendly_dropdown_idx].set(response1_value if response1_value else "")
+                        friendly_dropdown_idx += 1
+                    
+                    if friendly_dropdown_idx < len(self.round_vars):
+                        response2_value = round_data.get('response2', '')
+                        self.round_vars[friendly_dropdown_idx].set(response2_value if response2_value else "")
+                        friendly_dropdown_idx += 1
+            
+            # Update enemy dropdowns
+            enemy_dropdown_idx = 0
+            for round_num in range(1, 6):
+                round_data = self.selected_players_per_round.get(round_num, {})
+                ante_team = round_data.get('ante_team')
+                response_team = round_data.get('response_team')
+                
+                if ante_team == 'enemy':
+                    # Set enemy ante dropdown
+                    if enemy_dropdown_idx < len(self.enemy_round_vars):
+                        ante_value = round_data.get('ante', '')
+                        self.enemy_round_vars[enemy_dropdown_idx].set(ante_value if ante_value else "")
+                        enemy_dropdown_idx += 1
+                
+                if response_team == 'enemy':
+                    # Set enemy response dropdowns
+                    if enemy_dropdown_idx < len(self.enemy_round_vars):
+                        response1_value = round_data.get('response1', '')
+                        self.enemy_round_vars[enemy_dropdown_idx].set(response1_value if response1_value else "")
+                        enemy_dropdown_idx += 1
+                    
+                    # Check if second response dropdown exists (not in last round)
+                    ui_prefs = self.db_preferences.get_ui_preferences()
+                    team_size = ui_prefs.get('team_size', 5)
+                    if round_num < team_size and enemy_dropdown_idx < len(self.enemy_round_vars):
+                        response2_value = round_data.get('response2', '')
+                        self.enemy_round_vars[enemy_dropdown_idx].set(response2_value if response2_value else "")
+                        enemy_dropdown_idx += 1
+            
+            # Clear flag after update
+            self._updating_dropdowns = False
+            
+        except Exception as e:
+            self._updating_dropdowns = False
+            print(f"Error refreshing dropdown UI: {e}")
+    
+    def clear_round_dropdowns(self):
+        """Clear all values from round selection dropdowns."""
+        try:
+            # Clear all friendly dropdown values
+            for var in self.round_vars:
+                var.set("")
+            
+            # Clear all enemy dropdown values
+            for var in self.enemy_round_vars:
+                var.set("")
+            
+            # Clear tracking dictionary
+            for round_num in self.selected_players_per_round:
+                self.selected_players_per_round[round_num]['ante'] = None
+                self.selected_players_per_round[round_num]['response1'] = None
+                self.selected_players_per_round[round_num]['response2'] = None
+            
+            # Uncheck all row checkboxes
+            for checkbox_var in self.row_checkboxes:
+                checkbox_var.set(0)
+            
+            # Uncheck all column checkboxes
+            for checkbox_var in self.column_checkboxes:
+                checkbox_var.set(0)
+            
+            print("All round dropdowns cleared")
+            
+        except Exception as e:
+            print(f"Error clearing round dropdowns: {e}")
+    
+    def sync_checkbox_with_player_selection(self, player_name):
+        """Check or uncheck the row checkbox corresponding to the selected player."""
+        try:
+            if not player_name:
+                # If player name is empty, we need to check if this player is used anywhere else
+                # If not, uncheck their box
+                self.update_all_checkboxes_from_selections()
+                return
+            
+            # Get friendly player names from grid
+            friendly_players = self.get_friendly_player_names()
+            
+            # Find which row this player is in (1-5)
+            for row_idx, friendly_player in enumerate(friendly_players):
+                if friendly_player == player_name:
+                    # Check the checkbox for this row (row_idx is 0-based, checkbox is 1-based)
+                    if row_idx < len(self.row_checkboxes):
+                        self.row_checkboxes[row_idx].set(1)
+                        print(f"Checked box for {player_name} at row {row_idx + 1}")
+                    break
+            
+        except Exception as e:
+            print(f"Error syncing checkbox with player selection: {e}")
+    
+    def sync_column_checkbox_with_player_selection(self, player_name):
+        """Check or uncheck the column checkbox corresponding to the selected enemy player."""
+        try:
+            if not player_name:
+                # If player name is empty, recalculate all column checkboxes
+                self.update_all_column_checkboxes_from_selections()
+                return
+            
+            # Get enemy player names from grid
+            enemy_players = self.get_opponent_player_names()
+            
+            # Find which column this player is in (1-5)
+            for col_idx, enemy_player in enumerate(enemy_players):
+                if enemy_player == player_name:
+                    # Check the checkbox for this column (col_idx is 0-based, checkbox is 1-based)
+                    if col_idx < len(self.column_checkboxes):
+                        self.column_checkboxes[col_idx].set(1)
+                        print(f"Checked column box for {player_name} at column {col_idx + 1}")
+                    break
+            
+        except Exception as e:
+            print(f"Error syncing column checkbox with player selection: {e}")
+    
+    def update_all_column_checkboxes_from_selections(self):
+        """Update all column checkboxes based on current dropdown selections."""
+        try:
+            # Get team size to identify the last round
+            ui_prefs = self.db_preferences.get_ui_preferences()
+            team_size = ui_prefs.get('team_size', 5)
+            
+            # Get all selected enemy players from ante selections and implicit selections
+            selected_players = set()
+            
+            for round_num in range(1, 6):
+                round_data = self.selected_players_per_round.get(round_num, {})
+                ante_team = round_data.get('ante_team')
+                
+                # Only add ante if it's from enemy team
+                if ante_team == 'enemy' and round_data.get('ante'):
+                    selected_players.add(round_data['ante'])
+                
+                # Add implicit selections if they're enemy players
+                if round_data.get('implicit_selection'):
+                    # Check if this implicit selection is an enemy player
+                    enemy_players = self.get_opponent_player_names()
+                    if round_data['implicit_selection'] in enemy_players:
+                        selected_players.add(round_data['implicit_selection'])
+                
+                # In the last round, if enemy is responding, include the first response
+                if round_num == team_size:
+                    response_team = round_data.get('response_team')
+                    if response_team == 'enemy' and round_data.get('response1'):
+                        selected_players.add(round_data['response1'])
+            
+            # Get enemy player names
+            enemy_players = self.get_opponent_player_names()
+            
+            # Update each checkbox based on whether that player is selected
+            for col_idx, enemy_player in enumerate(enemy_players):
+                if col_idx < len(self.column_checkboxes):
+                    if enemy_player in selected_players:
+                        self.column_checkboxes[col_idx].set(1)
+                    else:
+                        self.column_checkboxes[col_idx].set(0)
+            
+        except Exception as e:
+            print(f"Error updating all column checkboxes from selections: {e}")
+    
+    def update_all_checkboxes_from_selections(self):
+        """Update all row checkboxes based on current dropdown selections."""
+        try:
+            # Get team size to identify the last round
+            ui_prefs = self.db_preferences.get_ui_preferences()
+            team_size = ui_prefs.get('team_size', 5)
+            
+            # Get all selected friendly players from ante selections and implicit selections
+            selected_players = set()
+            
+            print("DEBUG: Calculating row checkboxes...")
+            for round_num in range(1, 6):
+                round_data = self.selected_players_per_round.get(round_num, {})
+                ante_team = round_data.get('ante_team')
+                
+                # Only add ante if it's from friendly team
+                if ante_team == 'friendly' and round_data.get('ante'):
+                    selected_players.add(round_data['ante'])
+                    print(f"  Round {round_num}: Friendly ante = {round_data['ante']}")
+                
+                # Add implicit selections if they're friendly players
+                if round_data.get('implicit_selection'):
+                    # Check if this implicit selection is a friendly player
+                    friendly_players = self.get_friendly_player_names()
+                    if round_data['implicit_selection'] in friendly_players:
+                        selected_players.add(round_data['implicit_selection'])
+                        print(f"  Round {round_num}: Implicit selection = {round_data['implicit_selection']}")
+                
+                # In the last round, if friendly is responding, include the first response
+                if round_num == team_size:
+                    response_team = round_data.get('response_team')
+                    if response_team == 'friendly' and round_data.get('response1'):
+                        selected_players.add(round_data['response1'])
+                        print(f"  Round {round_num}: Last round response = {round_data['response1']}")
+            
+            print(f"DEBUG: Total selected friendly players: {selected_players}")
+            
+            # Get friendly player names
+            friendly_players = self.get_friendly_player_names()
+            
+            # Update each checkbox based on whether that player is selected
+            for row_idx, friendly_player in enumerate(friendly_players):
+                if row_idx < len(self.row_checkboxes):
+                    should_check = friendly_player in selected_players
+                    current_state = self.row_checkboxes[row_idx].get()
+                    if should_check != current_state:
+                        print(f"DEBUG: Setting {friendly_player} checkbox to {1 if should_check else 0} (was {current_state})")
+                        self.row_checkboxes[row_idx].set(1 if should_check else 0)
+            
+        except Exception as e:
+            print(f"Error updating all checkboxes from selections: {e}")
 
     def _update_ante_response_dropdowns(self, friendly_players, enemy_players):
         """Update dropdowns with proper ante/response logic and matchup correlation."""
         try:
+            # Get team size from config once at the start
+            ui_prefs = self.db_preferences.get_ui_preferences()
+            team_size = ui_prefs.get('team_size', 5)  # Default to 5 if not set
+            print(f"DEBUG: team_size from config = {team_size}")
+            
             dropdown_index = 0
             enemy_dropdown_index = 0
             
@@ -2461,13 +2836,16 @@ class UiManager:
                         dropdown_index += 1
                     
                     # Update enemy response dropdowns
+                    # First response dropdown: exclude previous rounds + current round ante
                     available_enemy = self._get_available_enemy_players(round_num, enemy_players)
                     if enemy_dropdown_index < len(self.enemy_round_dropdowns):
                         self.enemy_round_dropdowns[enemy_dropdown_index]['values'] = [""] + available_enemy
                         enemy_dropdown_index += 1
                     
+                    # Second response dropdown: also exclude current round response1
                     if enemy_dropdown_index < len(self.enemy_round_dropdowns):
-                        self.enemy_round_dropdowns[enemy_dropdown_index]['values'] = [""] + available_enemy
+                        available_enemy_2 = self._get_available_enemy_players(round_num, enemy_players, exclude_current_response1=True)
+                        self.enemy_round_dropdowns[enemy_dropdown_index]['values'] = [""] + available_enemy_2
                         enemy_dropdown_index += 1
                         
                 else:
@@ -2479,13 +2857,16 @@ class UiManager:
                         enemy_dropdown_index += 1
                     
                     # Update friendly response dropdowns
+                    # First response dropdown: exclude previous rounds + current round ante
                     available_friendly = self._get_available_friendly_players(round_num, friendly_players)
                     if dropdown_index < len(self.round_dropdowns):
                         self.round_dropdowns[dropdown_index]['values'] = [""] + available_friendly
                         dropdown_index += 1
                     
+                    # Second response dropdown: also exclude current round response1
                     if dropdown_index < len(self.round_dropdowns):
-                        self.round_dropdowns[dropdown_index]['values'] = [""] + available_friendly
+                        available_friendly_2 = self._get_available_friendly_players(round_num, friendly_players, exclude_current_response1=True)
+                        self.round_dropdowns[dropdown_index]['values'] = [""] + available_friendly_2
                         dropdown_index += 1
                         
         except Exception as e:
@@ -2529,8 +2910,15 @@ class UiManager:
         
         return ante_options
 
-    def _get_available_friendly_players(self, round_num, all_friendly_players):
-        """Get available friendly players for the current round."""
+    def _get_available_friendly_players(self, round_num, all_friendly_players, exclude_current_response1=False):
+        """Get available friendly players for the current round.
+        
+        Args:
+            round_num: The round number to get available players for
+            all_friendly_players: List of all friendly player names
+            exclude_current_response1: If True, also exclude response1 from the current round
+                                      (used for the second response dropdown)
+        """
         used_players = set()
         
         # Collect all used friendly players from previous rounds
@@ -2544,10 +2932,27 @@ class UiManager:
                 if round_data.get('response2'):
                     used_players.add(round_data['response2'])
         
+        # Also check current round for ante (if friendly antes this round)
+        current_round_data = self.selected_players_per_round.get(round_num, {})
+        if current_round_data.get('ante_team') == 'friendly' and current_round_data.get('ante'):
+            used_players.add(current_round_data['ante'])
+        
+        # If this is for the second response dropdown, also exclude response1 from current round
+        if exclude_current_response1 and current_round_data.get('response_team') == 'friendly':
+            if current_round_data.get('response1'):
+                used_players.add(current_round_data['response1'])
+        
         return [player for player in all_friendly_players if player not in used_players]
 
-    def _get_available_enemy_players(self, round_num, all_enemy_players):
-        """Get available enemy players for the current round."""
+    def _get_available_enemy_players(self, round_num, all_enemy_players, exclude_current_response1=False):
+        """Get available enemy players for the current round.
+        
+        Args:
+            round_num: The round number to get available players for
+            all_enemy_players: List of all enemy player names
+            exclude_current_response1: If True, also exclude response1 from the current round
+                                      (used for the second response dropdown)
+        """
         used_players = set()
         
         # Collect all used enemy players from previous rounds
@@ -2560,6 +2965,16 @@ class UiManager:
                     used_players.add(round_data['response1'])
                 if round_data.get('response2'):
                     used_players.add(round_data['response2'])
+        
+        # Also check current round for ante (if enemy antes this round)
+        current_round_data = self.selected_players_per_round.get(round_num, {})
+        if current_round_data.get('ante_team') == 'enemy' and current_round_data.get('ante'):
+            used_players.add(current_round_data['ante'])
+        
+        # If this is for the second response dropdown, also exclude response1 from current round
+        if exclude_current_response1 and current_round_data.get('response_team') == 'enemy':
+            if current_round_data.get('response1'):
+                used_players.add(current_round_data['response1'])
         
         return [player for player in all_enemy_players if player not in used_players]
 

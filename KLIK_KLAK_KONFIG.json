@@ -18,7 +18,9 @@
     "rating_system": "1-5",
     "_rating_system_comment": "Rating system to use - Options: '1-5' (Standard) or '1-9' (Extended). Change via Data Management > Rating System menu",
     "matchup_output_format": "standard",
-    "_matchup_output_format_comment": "Matchup extraction display format - Options: 'standard' (concise summary) or 'verbose' (detailed decision path)"
+    "_matchup_output_format_comment": "Matchup extraction display format - Options: 'standard' (concise summary) or 'verbose' (detailed decision path)",
+    "team_size": 5,
+    "_team_size_comment": "Number of players per team - Options: 5 (standard) or higher for future expansion. Affects round generation and dropdown display logic"
   },
   "logging": {
     "_comment": "Logging preferences - Controls debug output and log files",
