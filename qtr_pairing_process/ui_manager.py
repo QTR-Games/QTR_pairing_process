@@ -2,6 +2,7 @@
 # native libraries
 from multiprocessing import Value
 import os
+import sys
 import csv
 from typing import List, Optional, Dict, Any
 
@@ -49,6 +50,9 @@ class UiManager:
         self.is_sorted = False  # State variable to track if the tree is sorted
         self.active_sort_mode = None  # Track which sort mode is currently active
         
+        # Check if running in debug mode early for FILL button visibility
+        self.is_debugging = 'debugpy' in sys.modules or sys.gettrace() is not None
+        
         # Initialize settings manager
         self.settings_manager = SettingsManager()
         
@@ -70,6 +74,11 @@ class UiManager:
         self.comment_indicator_callbacks: Dict[tuple, str] = {}  # Store after_idle callback IDs
         self.row_checkboxes: List[tk.IntVar] = []
         self.column_checkboxes: List[tk.IntVar] = []
+        self._updating_dropdowns = False  # Flag to prevent recursive updates
+        
+        # Tree synchronization state tracking
+        self._tree_sync_in_progress = False  # Lock to prevent Phase 1 when triggered by Phase 2
+        self._current_tree_top_player = None  # Track which player is currently at top of tree
 
         # Initialize database preferences manager
         self.db_preferences = DatabasePreferences(print_output=print_output)
@@ -248,6 +257,22 @@ class UiManager:
                                    bg="lightcyan", fg="darkgreen", font=("Arial", 9, "bold"),
                                    relief=tk.RAISED, borderwidth=2)
         data_mgmt_button.pack(side=tk.LEFT, padx=10, pady=5)
+        
+        # Clear button for round dropdowns
+        clear_button = tk.Button(self.button_row_frame, text="Clear",
+                               command=lambda: self.clear_round_dropdowns(),
+                               bg="lightyellow", fg="darkred", font=("Arial", 9, "bold"),
+                               relief=tk.RAISED, borderwidth=2)
+        clear_button.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # FILL button (only visible in debug mode) - for testing convenience
+        self.fill_button = tk.Button(self.button_row_frame, text="FILL",
+                               command=lambda: self.fill_round_dropdowns(),
+                               bg="lightgreen", fg="darkblue", font=("Arial", 9, "bold"),
+                               relief=tk.RAISED, borderwidth=2)
+        # Only pack if in debug mode (will be checked after is_debugging is set)
+        if hasattr(self, 'is_debugging') and self.is_debugging:
+            self.fill_button.pack(side=tk.LEFT, padx=5, pady=5)
 
         # Initialize round tracking variables first
         self.round_dropdowns = []
@@ -1154,6 +1179,9 @@ class UiManager:
         # since gettrace() may not be active during early initialization
         is_debugging = 'debugpy' in sys.modules or sys.gettrace() is not None
         
+        # Update debug mode flag (already set in __init__ but recheck here for auto-population)
+        self.is_debugging = is_debugging
+        
         print(f"DEBUG: debugpy in sys.modules = {'debugpy' in sys.modules}")
         print(f"DEBUG: sys.gettrace() = {sys.gettrace()}")
         print(f"DEBUG: is_debugging = {is_debugging}")
@@ -1256,6 +1284,31 @@ class UiManager:
         
         # Update comment indicators after loading grid data
         self.update_comment_indicators()
+        
+        # Auto-generate tree after both teams are loaded
+        # This prevents lag on first dropdown interaction by pre-generating the tree
+        self.auto_generate_tree_after_teams_loaded()
+        
+    def auto_generate_tree_after_teams_loaded(self):
+        """
+        Automatically generate the matchup tree after both teams are loaded.
+        This prevents first-interaction lag by pre-generating the tree structure.
+        Only generates if tree doesn't already exist.
+        """
+        try:
+            # Check if tree already exists
+            root_nodes = self.treeview.tree.get_children()
+            if root_nodes and len(root_nodes) > 0:
+                # Tree already exists, don't regenerate
+                return
+            
+            # Generate the tree silently in the background
+            self.on_generate_combinations()
+            print("Auto-generated matchup tree after teams loaded")
+            
+        except Exception as e:
+            # Don't block UI if generation fails
+            print(f"Warning: Auto-generation of tree failed: {e}")
         
     def save_grid_data_to_db(self):
         # Prevent saving when grid is flipped to opponent's perspective
@@ -1714,6 +1767,10 @@ class UiManager:
     def get_friendly_player_names(self):
         return [self.grid_entries[row][0].get() for row in range(1, 6)]
     
+    def get_enemy_player_names(self):
+        """Get enemy/opponent player names from grid."""
+        return self.get_opponent_player_names()
+    
     def extract_ratings(self):
         ratings = {}
         fNames = self.get_friendly_player_names()
@@ -2147,6 +2204,11 @@ class UiManager:
     def create_round_selection_dropdowns(self):
         """Create dropdowns for tracking player selections across tournament rounds."""
         try:
+            # Get team size from config to determine dropdown structure
+            ui_prefs = self.db_preferences.get_ui_preferences()
+            team_size = ui_prefs.get('team_size', 5)  # Default to 5 if not set
+            print(f"Creating dropdowns for {team_size}-player teams")
+            
             # Clear existing content (but skip the header frame that was created in parent method)
             for widget in self.round_selection_frame.winfo_children():
                 if widget.winfo_class() != 'Frame' or len(widget.winfo_children()) == 0:
@@ -2172,8 +2234,8 @@ class UiManager:
             header_frame.grid_columnconfigure(2, weight=1, minsize=150)
             
             tk.Label(header_frame, text="Round", font=("Arial", 10, "bold")).grid(row=0, column=0, padx=5, sticky='w')
-            tk.Label(header_frame, text="Friendly", font=("Arial", 10, "bold")).grid(row=0, column=1, padx=5, sticky='w')
-            tk.Label(header_frame, text="Enemy", font=("Arial", 10, "bold")).grid(row=0, column=2, padx=5, sticky='w')
+            tk.Label(header_frame, text="Team B", font=("Arial", 10, "bold")).grid(row=0, column=1, padx=5, sticky='w')
+            tk.Label(header_frame, text="Team A", font=("Arial", 10, "bold")).grid(row=0, column=2, padx=5, sticky='w')
             
             # Create 5 rounds of dropdowns (ante system: 1 ante + 2 responses per round)
             for round_num in range(1, 6):
@@ -2201,25 +2263,30 @@ class UiManager:
                     enemy_response_frame = tk.Frame(round_frame)
                     enemy_response_frame.grid(row=0, column=2, rowspan=2, padx=5, pady=2, sticky='nsew')
                     
-                    # Enemy response dropdowns - vertically stacked
+                    # Enemy response dropdown 1
                     enemy_var1 = tk.StringVar()
                     enemy_dropdown1 = ttk.Combobox(enemy_response_frame, state='readonly', width=18, textvariable=enemy_var1)
                     enemy_dropdown1.pack(fill=tk.X, pady=(0, 2))
                     
-                    enemy_var2 = tk.StringVar()
-                    enemy_dropdown2 = ttk.Combobox(enemy_response_frame, state='readonly', width=18, textvariable=enemy_var2)
-                    enemy_dropdown2.pack(fill=tk.X, pady=(0, 0))
+                    # Enemy response dropdown 2 - only create if not the last round
+                    if round_num < team_size:
+                        enemy_var2 = tk.StringVar()
+                        enemy_dropdown2 = ttk.Combobox(enemy_response_frame, state='readonly', width=18, textvariable=enemy_var2)
+                        enemy_dropdown2.pack(fill=tk.X, pady=(0, 0))
+                        enemy_var2.trace_add('write', lambda *args, r=round_num, p=2, v=enemy_var2: self.on_response_selection_change_direct(r, p, v))
+                        self.enemy_round_vars.extend([enemy_var1, enemy_var2])
+                        self.enemy_round_dropdowns.extend([enemy_dropdown1, enemy_dropdown2])
+                    else:
+                        self.enemy_round_vars.append(enemy_var1)
+                        self.enemy_round_dropdowns.append(enemy_dropdown1)
                     
                     # Bind events
                     friendly_var.trace_add('write', lambda *args, r=round_num, v=friendly_var: self.on_ante_selection_change_direct(r, v))
                     enemy_var1.trace_add('write', lambda *args, r=round_num, p=1, v=enemy_var1: self.on_response_selection_change_direct(r, p, v))
-                    enemy_var2.trace_add('write', lambda *args, r=round_num, p=2, v=enemy_var2: self.on_response_selection_change_direct(r, p, v))
                     
                     # Store references
                     self.round_vars.append(friendly_var)
                     self.round_dropdowns.append(friendly_dropdown)
-                    self.enemy_round_vars.extend([enemy_var1, enemy_var2])
-                    self.enemy_round_dropdowns.extend([enemy_dropdown1, enemy_dropdown2])
                     self.selected_players_per_round[round_num] = {
                         'ante': None, 'ante_team': 'friendly',
                         'response1': None, 'response2': None, 'response_team': 'enemy'
@@ -2235,25 +2302,30 @@ class UiManager:
                     friendly_response_frame = tk.Frame(round_frame)
                     friendly_response_frame.grid(row=0, column=1, rowspan=2, padx=5, pady=2, sticky='nsew')
                     
-                    # Friendly response dropdowns - vertically stacked
+                    # Friendly response dropdown 1
                     friendly_var1 = tk.StringVar()
                     friendly_dropdown1 = ttk.Combobox(friendly_response_frame, state='readonly', width=18, textvariable=friendly_var1)
                     friendly_dropdown1.pack(fill=tk.X, pady=(0, 2))
                     
-                    friendly_var2 = tk.StringVar()
-                    friendly_dropdown2 = ttk.Combobox(friendly_response_frame, state='readonly', width=18, textvariable=friendly_var2)
-                    friendly_dropdown2.pack(fill=tk.X, pady=(0, 0))
+                    # Friendly response dropdown 2 - only create if not the last round
+                    if round_num < team_size:
+                        friendly_var2 = tk.StringVar()
+                        friendly_dropdown2 = ttk.Combobox(friendly_response_frame, state='readonly', width=18, textvariable=friendly_var2)
+                        friendly_dropdown2.pack(fill=tk.X, pady=(0, 0))
+                        friendly_var2.trace_add('write', lambda *args, r=round_num, p=2, v=friendly_var2: self.on_response_selection_change_direct(r, p, v))
+                        self.round_vars.extend([friendly_var1, friendly_var2])
+                        self.round_dropdowns.extend([friendly_dropdown1, friendly_dropdown2])
+                    else:
+                        self.round_vars.append(friendly_var1)
+                        self.round_dropdowns.append(friendly_dropdown1)
                     
                     # Bind events
                     enemy_var.trace_add('write', lambda *args, r=round_num, v=enemy_var: self.on_ante_selection_change_direct(r, v))
                     friendly_var1.trace_add('write', lambda *args, r=round_num, p=1, v=friendly_var1: self.on_response_selection_change_direct(r, p, v))
-                    friendly_var2.trace_add('write', lambda *args, r=round_num, p=2, v=friendly_var2: self.on_response_selection_change_direct(r, p, v))
                     
                     # Store references
                     self.enemy_round_vars.append(enemy_var)
                     self.enemy_round_dropdowns.append(enemy_dropdown)
-                    self.round_vars.extend([friendly_var1, friendly_var2])
-                    self.round_dropdowns.extend([friendly_dropdown1, friendly_dropdown2])
                     self.selected_players_per_round[round_num] = {
                         'ante': None, 'ante_team': 'enemy',
                         'response1': None, 'response2': None, 'response_team': 'friendly'
@@ -2395,28 +2467,311 @@ class UiManager:
     def on_ante_selection_change_direct(self, round_num, var):
         """Handle ante selection changes with direct variable access."""
         try:
+            # Skip if we're updating dropdowns programmatically
+            if self._updating_dropdowns:
+                return
+            
             selected_player = var.get()
+            old_ante = self.selected_players_per_round[round_num].get('ante')
             self.selected_players_per_round[round_num]['ante'] = selected_player if selected_player else None
+            
+            # If the ante changed (including being cleared), clear all subsequent rounds
+            if old_ante != (selected_player if selected_player else None):
+                self.clear_subsequent_rounds(round_num)
+            
+            round_data = self.selected_players_per_round.get(round_num, {})
+            ante_team = round_data.get('ante_team', 'unknown')
+            
+            # Check if this is round 2, 4 (enemy antes, so check previous round's friendly responses)
+            # or round 3, 5 (friendly antes, so check previous round's enemy responses)
+            if round_num in [2, 3, 4, 5] and selected_player:
+                previous_round = round_num - 1
+                previous_round_data = self.selected_players_per_round.get(previous_round, {})
+                
+                # Get the two responses from the previous round
+                response1 = previous_round_data.get('response1')
+                response2 = previous_round_data.get('response2')
+                response_team = previous_round_data.get('response_team')
+                
+                # The response that was NOT selected as ante is the one that "played"
+                # So we need to mark it as implicitly selected
+                if response1 and response2:
+                    if selected_player == response1:
+                        # Response2 was the one that played - mark it in tracking
+                        previous_round_data['implicit_selection'] = response2
+                    elif selected_player == response2:
+                        # Response1 was the one that played - mark it in tracking
+                        previous_round_data['implicit_selection'] = response1
+            else:
+                # Clear any implicit selection if ante is cleared
+                if round_num >= 2:
+                    previous_round = round_num - 1
+                    previous_round_data = self.selected_players_per_round.get(previous_round, {})
+                    if 'implicit_selection' in previous_round_data:
+                        previous_round_data['implicit_selection'] = None
+            
+            # Recalculate ALL checkboxes from scratch based on current selections
+            self.update_all_checkboxes_from_selections()
+            self.update_all_column_checkboxes_from_selections()
             
             # Update all dropdown options to reflect new availability
             self.update_round_dropdown_options()
             
-            round_data = self.selected_players_per_round.get(round_num, {})
-            ante_team = round_data.get('ante_team', 'unknown')
+            # NEW: Trigger tree synchronization for Round 1 ante changes
+            if round_num == 1 and ante_team == 'friendly':
+                self.sync_tree_with_round_1_ante(selected_player)
+            
             print(f"Round {round_num} ante selection ({ante_team}): {selected_player}")
             
         except Exception as e:
             print(f"Error handling ante selection change: {e}")
 
+    def sync_tree_with_round_1_ante(self, selected_player):
+        """
+        Synchronize tree when Round 1 ante (friendly) is selected.
+        - Generate tree if not generated or stale
+        - Sort tree with worst matchups first (enemy's best picks)
+        - Expand only Round 1 nodes containing selected player
+        - Select the first Round 1 node (worst matchup)
+        - If player is empty/cleared, collapse entire tree
+        
+        Smart reordering: Only reorders tree when player changes, preventing
+        nodes from jumping when user interacts with already-sorted tree.
+        """
+        try:
+            # Check if sync is triggered by Phase 2 (tree → dropdown)
+            # If so, skip to prevent infinite loop
+            if self._tree_sync_in_progress:
+                return
+            
+            # If selection is cleared, collapse the tree
+            if not selected_player:
+                self.collapse_entire_tree()
+                self._current_tree_top_player = None
+                return
+            
+            # Check if this player is already at the top
+            # If so, skip reordering (prevents jumping when clicking nodes)
+            if self._current_tree_top_player == selected_player:
+                return
+            
+            # Check if we need to generate the tree
+            root_nodes = self.treeview.tree.get_children()
+            if not root_nodes or len(root_nodes) == 0:
+                # No tree exists, generate it
+                self.on_generate_combinations()
+            
+            # Sort tree with worst matchups first (enemy's best picks)
+            # Use cumulative sort in reverse (lowest values first = worst for friendly team)
+            self.sort_tree_worst_first()
+            
+            # Collapse entire tree first
+            self.collapse_entire_tree()
+            
+            # Expand only Round 1 nodes with selected player and select first one
+            self.expand_and_select_round1_nodes(selected_player)
+            
+            # Update state: this player is now at the top
+            self._current_tree_top_player = selected_player
+            
+        except Exception as e:
+            print(f"Error synchronizing tree with Round 1 ante: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def collapse_entire_tree(self):
+        """Collapse all tree nodes recursively."""
+        try:
+            def collapse_recursive(node_id):
+                # Collapse this node
+                self.treeview.tree.item(node_id, open=False)
+                # Recursively collapse all children
+                children = self.treeview.tree.get_children(node_id)
+                for child in children:
+                    collapse_recursive(child)
+            
+            # Start from root nodes
+            root_nodes = self.treeview.tree.get_children()
+            for root in root_nodes:
+                collapse_recursive(root)
+                
+        except Exception as e:
+            print(f"Error collapsing tree: {e}")
+    
+    def expand_and_select_round1_nodes(self, player_name):
+        """
+        Physically reorder Round 1 nodes to move selected player's matchups to the top.
+        Select the first node (which will be worst matchup after sorting).
+        Keep all children collapsed.
+        """
+        try:
+            root_nodes = self.treeview.tree.get_children()
+            if not root_nodes:
+                return
+            
+            # The first root node should be "Pairings"
+            pairings_root = root_nodes[0]
+            
+            # Expand the Pairings root
+            self.treeview.tree.item(pairings_root, open=True)
+            
+            # Get all first-level children (these are Round 1 matchups)
+            round1_nodes = self.treeview.tree.get_children(pairings_root)
+            
+            # Separate nodes into two groups: player matchups and others
+            player_nodes = []
+            other_nodes = []
+            
+            for node_id in round1_nodes:
+                node_text = self.treeview.tree.item(node_id, 'text')
+                
+                # Check if this node contains the selected player
+                if player_name in node_text:
+                    player_nodes.append((node_id, node_text))
+                else:
+                    other_nodes.append((node_id, node_text))
+            
+            # Sort other nodes alphabetically by text
+            other_nodes.sort(key=lambda x: x[1])
+            
+            # Detach all Round 1 nodes
+            for node_id in round1_nodes:
+                self.treeview.tree.detach(node_id)
+            
+            # Re-insert player matchups first (at the top, directly under parent)
+            for node_id, _ in player_nodes:
+                self.treeview.tree.move(node_id, pairings_root, 'end')
+                # Keep children collapsed
+                self.treeview.tree.item(node_id, open=False)
+            
+            # Then re-insert other nodes in alphabetical order
+            for node_id, _ in other_nodes:
+                self.treeview.tree.move(node_id, pairings_root, 'end')
+                # Keep children collapsed
+                self.treeview.tree.item(node_id, open=False)
+            
+            # Select the first player node (worst matchup for selected player)
+            if player_nodes:
+                first_matching_node = player_nodes[0][0]
+                # Clear any existing selection
+                self.treeview.tree.selection_remove(self.treeview.tree.selection())
+                # Select the first node
+                self.treeview.tree.selection_set(first_matching_node)
+                # Ensure it's visible
+                self.treeview.tree.see(first_matching_node)
+                
+        except Exception as e:
+            print(f"Error expanding Round 1 nodes: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def sort_tree_worst_first(self):
+        """
+        Sort tree with worst matchups first (lowest ratings = enemy's best picks).
+        This is the inverse of normal cumulative sorting.
+        """
+        try:
+            # Save original order if not already saved
+            if not hasattr(self.tree_generator, 'original_order_saved') or not self.tree_generator.original_order_saved:
+                self.tree_generator.save_original_order()
+                self.tree_generator.original_order_saved = True
+            
+            # Calculate cumulative values
+            self.tree_generator.calculate_all_path_values("")
+            
+            # Sort recursively, but with LOWEST values first (worst for friendly team)
+            root_nodes = self.treeview.tree.get_children()
+            for root in root_nodes:
+                self.sort_children_by_cumulative_reverse(root)
+            
+            # Update UI state
+            self.current_sort_mode = "worst_first"
+            self.active_sort_mode = "worst_first"
+            self.treeview.tree.heading("Sort Value", text="Worst First")
+            self.update_sort_value_column()
+            self.is_sorted = True
+            
+        except Exception as e:
+            print(f"Error sorting tree worst first: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def sort_children_by_cumulative_reverse(self, node):
+        """Recursively sort children by cumulative values in REVERSE (worst first)."""
+        try:
+            children = self.treeview.tree.get_children(node)
+            if not children:
+                return
+            
+            # Get cumulative values for all children
+            children_with_scores = []
+            for child in children:
+                cumulative_value = self.tree_generator.get_cumulative_value_from_tags(child)
+                children_with_scores.append((child, cumulative_value))
+            
+            # Sort by cumulative value (LOWEST first - worst outcomes at top)
+            children_with_scores.sort(key=lambda x: x[1], reverse=False)
+            
+            # Reorder children in the tree
+            for child, _ in children_with_scores:
+                self.treeview.tree.detach(child)
+            for child, _ in children_with_scores:
+                self.treeview.tree.move(child, node, 'end')
+            
+            # Recursively sort grandchildren
+            for child, _ in children_with_scores:
+                self.sort_children_by_cumulative_reverse(child)
+                
+        except Exception as e:
+            print(f"Error sorting children reverse: {e}")
+
     def on_response_selection_change_direct(self, round_num, position, var):
         """Handle response selection changes with direct variable access."""
         try:
+            # Skip if we're updating dropdowns programmatically
+            if self._updating_dropdowns:
+                return
+            
             selected_player = var.get()
             response_key = f'response{position}'
+            old_response = self.selected_players_per_round[round_num].get(response_key)
             self.selected_players_per_round[round_num][response_key] = selected_player if selected_player else None
+            
+            # If this response was cleared, also clear the other response in the same round
+            # AND clear any implicit selection that may have been set by a future round
+            if not selected_player and old_response:
+                # Clear the other response in this round
+                other_position = 2 if position == 1 else 1
+                other_key = f'response{other_position}'
+                self.selected_players_per_round[round_num][other_key] = None
+                
+                # Clear implicit selection from this round (set by future rounds)
+                if 'implicit_selection' in self.selected_players_per_round[round_num]:
+                    self.selected_players_per_round[round_num]['implicit_selection'] = None
+                    print(f"DEBUG: Cleared implicit selection from Round {round_num}")
+            
+            # If the response changed (including being cleared), clear all subsequent rounds
+            if old_response != (selected_player if selected_player else None):
+                self.clear_subsequent_rounds(round_num)
+                # Refresh UI to show all cleared responses
+                self.refresh_dropdown_ui_from_tracking()
             
             # Update all dropdown options to reflect new availability
             self.update_round_dropdown_options()
+            
+            # Recalculate checkboxes AFTER all clearing and UI updates are done
+            self.update_all_checkboxes_from_selections()
+            self.update_all_column_checkboxes_from_selections()
+            
+            # Get team size from config to check if this is the last round
+            ui_prefs = self.db_preferences.get_ui_preferences()
+            team_size = ui_prefs.get('team_size', 5)
+            
+            # In the last round (round N for N-player teams), treat the first response like an ante
+            # since it's the only remaining player and should check the box
+            if round_num == team_size and position == 1:
+                round_data = self.selected_players_per_round.get(round_num, {})
+                response_team = round_data.get('response_team')
             
             round_data = self.selected_players_per_round.get(round_num, {})
             response_team = round_data.get('response_team', 'unknown')
@@ -2435,10 +2790,432 @@ class UiManager:
         # This is a simplified index calculation - you may need to adjust based on actual storage
         base_index = (round_num - 1) * 2
         return base_index + (position - 1)
+    
+    def clear_subsequent_rounds(self, from_round):
+        """Clear all dropdown selections in rounds after the specified round."""
+        try:
+            # Clear all rounds after from_round
+            for round_num in range(from_round + 1, 6):
+                if round_num in self.selected_players_per_round:
+                    round_data = self.selected_players_per_round[round_num]
+                    
+                    # Clear the tracking data
+                    round_data['ante'] = None
+                    round_data['response1'] = None
+                    round_data['response2'] = None
+                    if 'implicit_selection' in round_data:
+                        round_data['implicit_selection'] = None
+            
+            # After clearing tracking data, refresh ALL dropdowns to reflect the cleared state
+            # This will properly clear only the dropdowns for rounds > from_round
+            # while preserving the current round's selection
+            self.refresh_dropdown_ui_from_tracking()
+            
+            print(f"Cleared all rounds after round {from_round}")
+            
+        except Exception as e:
+            print(f"Error clearing subsequent rounds: {e}")
+    
+    def refresh_dropdown_ui_from_tracking(self):
+        """Refresh all dropdown UI elements to match the tracking dictionary."""
+        try:
+            # Set flag to prevent recursive calls
+            self._updating_dropdowns = True
+            
+            # Update friendly dropdowns
+            friendly_dropdown_idx = 0
+            for round_num in range(1, 6):
+                round_data = self.selected_players_per_round.get(round_num, {})
+                ante_team = round_data.get('ante_team')
+                response_team = round_data.get('response_team')
+                
+                if ante_team == 'friendly':
+                    # Set friendly ante dropdown
+                    if friendly_dropdown_idx < len(self.round_vars):
+                        ante_value = round_data.get('ante', '')
+                        self.round_vars[friendly_dropdown_idx].set(ante_value if ante_value else "")
+                        friendly_dropdown_idx += 1
+                
+                if response_team == 'friendly':
+                    # Set friendly response dropdowns
+                    if friendly_dropdown_idx < len(self.round_vars):
+                        response1_value = round_data.get('response1', '')
+                        self.round_vars[friendly_dropdown_idx].set(response1_value if response1_value else "")
+                        friendly_dropdown_idx += 1
+                    
+                    if friendly_dropdown_idx < len(self.round_vars):
+                        response2_value = round_data.get('response2', '')
+                        self.round_vars[friendly_dropdown_idx].set(response2_value if response2_value else "")
+                        friendly_dropdown_idx += 1
+            
+            # Update enemy dropdowns
+            enemy_dropdown_idx = 0
+            for round_num in range(1, 6):
+                round_data = self.selected_players_per_round.get(round_num, {})
+                ante_team = round_data.get('ante_team')
+                response_team = round_data.get('response_team')
+                
+                if ante_team == 'enemy':
+                    # Set enemy ante dropdown
+                    if enemy_dropdown_idx < len(self.enemy_round_vars):
+                        ante_value = round_data.get('ante', '')
+                        self.enemy_round_vars[enemy_dropdown_idx].set(ante_value if ante_value else "")
+                        enemy_dropdown_idx += 1
+                
+                if response_team == 'enemy':
+                    # Set enemy response dropdowns
+                    if enemy_dropdown_idx < len(self.enemy_round_vars):
+                        response1_value = round_data.get('response1', '')
+                        self.enemy_round_vars[enemy_dropdown_idx].set(response1_value if response1_value else "")
+                        enemy_dropdown_idx += 1
+                    
+                    # Check if second response dropdown exists (not in last round)
+                    ui_prefs = self.db_preferences.get_ui_preferences()
+                    team_size = ui_prefs.get('team_size', 5)
+                    if round_num < team_size and enemy_dropdown_idx < len(self.enemy_round_vars):
+                        response2_value = round_data.get('response2', '')
+                        self.enemy_round_vars[enemy_dropdown_idx].set(response2_value if response2_value else "")
+                        enemy_dropdown_idx += 1
+            
+            # Clear flag after update
+            self._updating_dropdowns = False
+            
+        except Exception as e:
+            self._updating_dropdowns = False
+            print(f"Error refreshing dropdown UI: {e}")
+    
+    def clear_round_dropdowns(self):
+        """Clear all values from round selection dropdowns."""
+        try:
+            # Set flag to prevent callbacks during bulk clear
+            self._updating_dropdowns = True
+            
+            # Clear all friendly dropdown values
+            for var in self.round_vars:
+                var.set("")
+            
+            # Clear all enemy dropdown values
+            for var in self.enemy_round_vars:
+                var.set("")
+            
+            # Clear tracking dictionary
+            for round_num in self.selected_players_per_round:
+                self.selected_players_per_round[round_num]['ante'] = None
+                self.selected_players_per_round[round_num]['response1'] = None
+                self.selected_players_per_round[round_num]['response2'] = None
+                if 'implicit_selection' in self.selected_players_per_round[round_num]:
+                    self.selected_players_per_round[round_num]['implicit_selection'] = None
+            
+            # Uncheck all row checkboxes
+            for checkbox_var in self.row_checkboxes:
+                checkbox_var.set(0)
+            
+            # Uncheck all column checkboxes
+            for checkbox_var in self.column_checkboxes:
+                checkbox_var.set(0)
+            
+            # Clear flag
+            self._updating_dropdowns = False
+            
+            print("All round dropdowns cleared")
+            
+        except Exception as e:
+            self._updating_dropdowns = False
+            print(f"Error clearing round dropdowns: {e}")
+    
+    def fill_round_dropdowns(self):
+        """Fill all dropdowns with the first available option (for testing purposes)."""
+        try:
+            print("Starting to fill all round dropdowns with first available options...")
+            
+            # First clear everything to start fresh
+            self.clear_round_dropdowns()
+            
+            # Get team size from config
+            ui_prefs = self.db_preferences.get_ui_preferences()
+            team_size = ui_prefs.get('team_size', 5)
+            
+            # Get current team player lists
+            friendly_players = self.get_friendly_player_names()
+            enemy_players = self.get_enemy_player_names()
+            
+            if not friendly_players or not enemy_players:
+                print("Cannot fill dropdowns: teams not selected")
+                messagebox.showwarning("Teams Required", "Please select both teams before using FILL.")
+                return
+            
+            # Process each round sequentially
+            for round_num in range(1, 6):
+                round_data = self.selected_players_per_round.get(round_num, {})
+                friendly_antes = (round_num % 2 == 1)
+                
+                # Update dropdown options first to get current available players
+                self.update_round_dropdown_options()
+                
+                if friendly_antes:
+                    # Friendly antes, Enemy responds
+                    # Get friendly ante dropdown and select first available
+                    dropdown_idx = self._get_friendly_ante_dropdown_index(round_num)
+                    if dropdown_idx is not None and dropdown_idx < len(self.round_dropdowns):
+                        dropdown = self.round_dropdowns[dropdown_idx]
+                        values = dropdown['values']
+                        if len(values) > 1:  # First item is empty string
+                            first_option = values[1]
+                            self.round_vars[dropdown_idx].set(first_option)
+                            print(f"Round {round_num}: Set friendly ante to {first_option}")
+                            # Small delay to allow callbacks to process
+                            self.root.update_idletasks()
+                    
+                    # Update options again after ante selection
+                    self.update_round_dropdown_options()
+                    
+                    # Get enemy response dropdowns and select first available
+                    enemy_dropdown_indices = self._get_enemy_response_dropdown_indices(round_num)
+                    for idx, enemy_idx in enumerate(enemy_dropdown_indices):
+                        if enemy_idx < len(self.enemy_round_dropdowns):
+                            dropdown = self.enemy_round_dropdowns[enemy_idx]
+                            values = dropdown['values']
+                            if len(values) > 1:
+                                first_option = values[1]
+                                self.enemy_round_vars[enemy_idx].set(first_option)
+                                print(f"Round {round_num}: Set enemy response {idx+1} to {first_option}")
+                                self.root.update_idletasks()
+                                # Update options after first response before second
+                                if idx == 0:
+                                    self.update_round_dropdown_options()
+                else:
+                    # Enemy antes, Friendly responds
+                    # Get enemy ante dropdown and select first available
+                    dropdown_idx = self._get_enemy_ante_dropdown_index(round_num)
+                    if dropdown_idx is not None and dropdown_idx < len(self.enemy_round_dropdowns):
+                        dropdown = self.enemy_round_dropdowns[dropdown_idx]
+                        values = dropdown['values']
+                        if len(values) > 1:
+                            first_option = values[1]
+                            self.enemy_round_vars[dropdown_idx].set(first_option)
+                            print(f"Round {round_num}: Set enemy ante to {first_option}")
+                            self.root.update_idletasks()
+                    
+                    # Update options again after ante selection
+                    self.update_round_dropdown_options()
+                    
+                    # Get friendly response dropdowns and select first available
+                    friendly_dropdown_indices = self._get_friendly_response_dropdown_indices(round_num)
+                    for idx, friendly_idx in enumerate(friendly_dropdown_indices):
+                        if friendly_idx < len(self.round_dropdowns):
+                            dropdown = self.round_dropdowns[friendly_idx]
+                            values = dropdown['values']
+                            if len(values) > 1:
+                                first_option = values[1]
+                                self.round_vars[friendly_idx].set(first_option)
+                                print(f"Round {round_num}: Set friendly response {idx+1} to {first_option}")
+                                self.root.update_idletasks()
+                                # Update options after first response before second
+                                if idx == 0:
+                                    self.update_round_dropdown_options()
+            
+            print("Finished filling all round dropdowns")
+            
+        except Exception as e:
+            print(f"Error filling round dropdowns: {e}")
+            messagebox.showerror("Fill Error", f"Failed to fill dropdowns: {e}")
+    
+    def _get_friendly_ante_dropdown_index(self, round_num):
+        """Get the dropdown index for friendly ante in the specified round."""
+        # Friendly antes in rounds 1, 3, 5
+        # Dropdown order: [R1-ante, R2-resp1, R2-resp2, R3-ante, R4-resp1, R4-resp2, R5-ante]
+        if round_num == 1:
+            return 0
+        elif round_num == 3:
+            return 3
+        elif round_num == 5:
+            return 6
+        return None
+    
+    def _get_enemy_ante_dropdown_index(self, round_num):
+        """Get the dropdown index for enemy ante in the specified round."""
+        # Enemy antes in rounds 2, 4
+        # Dropdown order: [R1-resp1, R1-resp2, R2-ante, R3-resp1, R3-resp2, R4-ante, R5-resp1]
+        if round_num == 2:
+            return 2
+        elif round_num == 4:
+            return 5
+        return None
+    
+    def _get_enemy_response_dropdown_indices(self, round_num):
+        """Get the dropdown indices for enemy responses in the specified round."""
+        # Enemy responds in rounds 1, 3, 5
+        # Dropdown order: [R1-resp1, R1-resp2, R2-ante, R3-resp1, R3-resp2, R4-ante, R5-resp1]
+        if round_num == 1:
+            return [0, 1]
+        elif round_num == 3:
+            return [3, 4]
+        elif round_num == 5:
+            return [6]  # Only one response in last round
+        return []
+    
+    def _get_friendly_response_dropdown_indices(self, round_num):
+        """Get the dropdown indices for friendly responses in the specified round."""
+        # Friendly responds in rounds 2, 4
+        # Dropdown order: [R1-ante, R2-resp1, R2-resp2, R3-ante, R4-resp1, R4-resp2, R5-ante]
+        if round_num == 2:
+            return [1, 2]
+        elif round_num == 4:
+            return [4, 5]
+        return []
+    
+    def sync_checkbox_with_player_selection(self, player_name):
+        """Check or uncheck the row checkbox corresponding to the selected player."""
+        try:
+            if not player_name:
+                # If player name is empty, we need to check if this player is used anywhere else
+                # If not, uncheck their box
+                self.update_all_checkboxes_from_selections()
+                return
+            
+            # Get friendly player names from grid
+            friendly_players = self.get_friendly_player_names()
+            
+            # Find which row this player is in (1-5)
+            for row_idx, friendly_player in enumerate(friendly_players):
+                if friendly_player == player_name:
+                    # Check the checkbox for this row (row_idx is 0-based, checkbox is 1-based)
+                    if row_idx < len(self.row_checkboxes):
+                        self.row_checkboxes[row_idx].set(1)
+                        print(f"Checked box for {player_name} at row {row_idx + 1}")
+                    break
+            
+        except Exception as e:
+            print(f"Error syncing checkbox with player selection: {e}")
+    
+    def sync_column_checkbox_with_player_selection(self, player_name):
+        """Check or uncheck the column checkbox corresponding to the selected enemy player."""
+        try:
+            if not player_name:
+                # If player name is empty, recalculate all column checkboxes
+                self.update_all_column_checkboxes_from_selections()
+                return
+            
+            # Get enemy player names from grid
+            enemy_players = self.get_opponent_player_names()
+            
+            # Find which column this player is in (1-5)
+            for col_idx, enemy_player in enumerate(enemy_players):
+                if enemy_player == player_name:
+                    # Check the checkbox for this column (col_idx is 0-based, checkbox is 1-based)
+                    if col_idx < len(self.column_checkboxes):
+                        self.column_checkboxes[col_idx].set(1)
+                        print(f"Checked column box for {player_name} at column {col_idx + 1}")
+                    break
+            
+        except Exception as e:
+            print(f"Error syncing column checkbox with player selection: {e}")
+    
+    def update_all_column_checkboxes_from_selections(self):
+        """Update all column checkboxes based on current dropdown selections."""
+        try:
+            # Get team size to identify the last round
+            ui_prefs = self.db_preferences.get_ui_preferences()
+            team_size = ui_prefs.get('team_size', 5)
+            
+            # Get all selected enemy players from ante selections and implicit selections
+            selected_players = set()
+            
+            for round_num in range(1, 6):
+                round_data = self.selected_players_per_round.get(round_num, {})
+                ante_team = round_data.get('ante_team')
+                
+                # Only add ante if it's from enemy team
+                if ante_team == 'enemy' and round_data.get('ante'):
+                    selected_players.add(round_data['ante'])
+                
+                # Add implicit selections if they're enemy players
+                if round_data.get('implicit_selection'):
+                    # Check if this implicit selection is an enemy player
+                    enemy_players = self.get_opponent_player_names()
+                    if round_data['implicit_selection'] in enemy_players:
+                        selected_players.add(round_data['implicit_selection'])
+                
+                # In the last round, if enemy is responding, include the first response
+                if round_num == team_size:
+                    response_team = round_data.get('response_team')
+                    if response_team == 'enemy' and round_data.get('response1'):
+                        selected_players.add(round_data['response1'])
+            
+            # Get enemy player names
+            enemy_players = self.get_opponent_player_names()
+            
+            # Update each checkbox based on whether that player is selected
+            for col_idx, enemy_player in enumerate(enemy_players):
+                if col_idx < len(self.column_checkboxes):
+                    if enemy_player in selected_players:
+                        self.column_checkboxes[col_idx].set(1)
+                    else:
+                        self.column_checkboxes[col_idx].set(0)
+            
+        except Exception as e:
+            print(f"Error updating all column checkboxes from selections: {e}")
+    
+    def update_all_checkboxes_from_selections(self):
+        """Update all row checkboxes based on current dropdown selections."""
+        try:
+            # Get team size to identify the last round
+            ui_prefs = self.db_preferences.get_ui_preferences()
+            team_size = ui_prefs.get('team_size', 5)
+            
+            # Get all selected friendly players from ante selections and implicit selections
+            selected_players = set()
+            
+            print("DEBUG: Calculating row checkboxes...")
+            for round_num in range(1, 6):
+                round_data = self.selected_players_per_round.get(round_num, {})
+                ante_team = round_data.get('ante_team')
+                
+                # Only add ante if it's from friendly team
+                if ante_team == 'friendly' and round_data.get('ante'):
+                    selected_players.add(round_data['ante'])
+                    print(f"  Round {round_num}: Friendly ante = {round_data['ante']}")
+                
+                # Add implicit selections if they're friendly players
+                if round_data.get('implicit_selection'):
+                    # Check if this implicit selection is a friendly player
+                    friendly_players = self.get_friendly_player_names()
+                    if round_data['implicit_selection'] in friendly_players:
+                        selected_players.add(round_data['implicit_selection'])
+                        print(f"  Round {round_num}: Implicit selection = {round_data['implicit_selection']}")
+                
+                # In the last round, if friendly is responding, include the first response
+                if round_num == team_size:
+                    response_team = round_data.get('response_team')
+                    if response_team == 'friendly' and round_data.get('response1'):
+                        selected_players.add(round_data['response1'])
+                        print(f"  Round {round_num}: Last round response = {round_data['response1']}")
+            
+            print(f"DEBUG: Total selected friendly players: {selected_players}")
+            
+            # Get friendly player names
+            friendly_players = self.get_friendly_player_names()
+            
+            # Update each checkbox based on whether that player is selected
+            for row_idx, friendly_player in enumerate(friendly_players):
+                if row_idx < len(self.row_checkboxes):
+                    should_check = friendly_player in selected_players
+                    current_state = self.row_checkboxes[row_idx].get()
+                    if should_check != current_state:
+                        print(f"DEBUG: Setting {friendly_player} checkbox to {1 if should_check else 0} (was {current_state})")
+                        self.row_checkboxes[row_idx].set(1 if should_check else 0)
+            
+        except Exception as e:
+            print(f"Error updating all checkboxes from selections: {e}")
 
     def _update_ante_response_dropdowns(self, friendly_players, enemy_players):
         """Update dropdowns with proper ante/response logic and matchup correlation."""
         try:
+            # Get team size from config once at the start
+            ui_prefs = self.db_preferences.get_ui_preferences()
+            team_size = ui_prefs.get('team_size', 5)  # Default to 5 if not set
+            print(f"DEBUG: team_size from config = {team_size}")
+            
             dropdown_index = 0
             enemy_dropdown_index = 0
             
@@ -2461,13 +3238,16 @@ class UiManager:
                         dropdown_index += 1
                     
                     # Update enemy response dropdowns
+                    # First response dropdown: exclude previous rounds + current round ante
                     available_enemy = self._get_available_enemy_players(round_num, enemy_players)
                     if enemy_dropdown_index < len(self.enemy_round_dropdowns):
                         self.enemy_round_dropdowns[enemy_dropdown_index]['values'] = [""] + available_enemy
                         enemy_dropdown_index += 1
                     
+                    # Second response dropdown: also exclude current round response1
                     if enemy_dropdown_index < len(self.enemy_round_dropdowns):
-                        self.enemy_round_dropdowns[enemy_dropdown_index]['values'] = [""] + available_enemy
+                        available_enemy_2 = self._get_available_enemy_players(round_num, enemy_players, exclude_current_response1=True)
+                        self.enemy_round_dropdowns[enemy_dropdown_index]['values'] = [""] + available_enemy_2
                         enemy_dropdown_index += 1
                         
                 else:
@@ -2479,13 +3259,16 @@ class UiManager:
                         enemy_dropdown_index += 1
                     
                     # Update friendly response dropdowns
+                    # First response dropdown: exclude previous rounds + current round ante
                     available_friendly = self._get_available_friendly_players(round_num, friendly_players)
                     if dropdown_index < len(self.round_dropdowns):
                         self.round_dropdowns[dropdown_index]['values'] = [""] + available_friendly
                         dropdown_index += 1
                     
+                    # Second response dropdown: also exclude current round response1
                     if dropdown_index < len(self.round_dropdowns):
-                        self.round_dropdowns[dropdown_index]['values'] = [""] + available_friendly
+                        available_friendly_2 = self._get_available_friendly_players(round_num, friendly_players, exclude_current_response1=True)
+                        self.round_dropdowns[dropdown_index]['values'] = [""] + available_friendly_2
                         dropdown_index += 1
                         
         except Exception as e:
@@ -2529,8 +3312,15 @@ class UiManager:
         
         return ante_options
 
-    def _get_available_friendly_players(self, round_num, all_friendly_players):
-        """Get available friendly players for the current round."""
+    def _get_available_friendly_players(self, round_num, all_friendly_players, exclude_current_response1=False):
+        """Get available friendly players for the current round.
+        
+        Args:
+            round_num: The round number to get available players for
+            all_friendly_players: List of all friendly player names
+            exclude_current_response1: If True, also exclude response1 from the current round
+                                      (used for the second response dropdown)
+        """
         used_players = set()
         
         # Collect all used friendly players from previous rounds
@@ -2544,10 +3334,27 @@ class UiManager:
                 if round_data.get('response2'):
                     used_players.add(round_data['response2'])
         
+        # Also check current round for ante (if friendly antes this round)
+        current_round_data = self.selected_players_per_round.get(round_num, {})
+        if current_round_data.get('ante_team') == 'friendly' and current_round_data.get('ante'):
+            used_players.add(current_round_data['ante'])
+        
+        # If this is for the second response dropdown, also exclude response1 from current round
+        if exclude_current_response1 and current_round_data.get('response_team') == 'friendly':
+            if current_round_data.get('response1'):
+                used_players.add(current_round_data['response1'])
+        
         return [player for player in all_friendly_players if player not in used_players]
 
-    def _get_available_enemy_players(self, round_num, all_enemy_players):
-        """Get available enemy players for the current round."""
+    def _get_available_enemy_players(self, round_num, all_enemy_players, exclude_current_response1=False):
+        """Get available enemy players for the current round.
+        
+        Args:
+            round_num: The round number to get available players for
+            all_enemy_players: List of all enemy player names
+            exclude_current_response1: If True, also exclude response1 from the current round
+                                      (used for the second response dropdown)
+        """
         used_players = set()
         
         # Collect all used enemy players from previous rounds
@@ -2560,6 +3367,16 @@ class UiManager:
                     used_players.add(round_data['response1'])
                 if round_data.get('response2'):
                     used_players.add(round_data['response2'])
+        
+        # Also check current round for ante (if enemy antes this round)
+        current_round_data = self.selected_players_per_round.get(round_num, {})
+        if current_round_data.get('ante_team') == 'enemy' and current_round_data.get('ante'):
+            used_players.add(current_round_data['ante'])
+        
+        # If this is for the second response dropdown, also exclude response1 from current round
+        if exclude_current_response1 and current_round_data.get('response_team') == 'enemy':
+            if current_round_data.get('response1'):
+                used_players.add(current_round_data['response1'])
         
         return [player for player in all_enemy_players if player not in used_players]
 
