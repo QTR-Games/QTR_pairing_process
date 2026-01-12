@@ -75,6 +75,10 @@ class UiManager:
         self.row_checkboxes: List[tk.IntVar] = []
         self.column_checkboxes: List[tk.IntVar] = []
         self._updating_dropdowns = False  # Flag to prevent recursive updates
+        
+        # Tree synchronization state tracking
+        self._tree_sync_in_progress = False  # Lock to prevent Phase 1 when triggered by Phase 2
+        self._current_tree_top_player = None  # Track which player is currently at top of tree
 
         # Initialize database preferences manager
         self.db_preferences = DatabasePreferences(print_output=print_output)
@@ -1280,6 +1284,31 @@ class UiManager:
         
         # Update comment indicators after loading grid data
         self.update_comment_indicators()
+        
+        # Auto-generate tree after both teams are loaded
+        # This prevents lag on first dropdown interaction by pre-generating the tree
+        self.auto_generate_tree_after_teams_loaded()
+        
+    def auto_generate_tree_after_teams_loaded(self):
+        """
+        Automatically generate the matchup tree after both teams are loaded.
+        This prevents first-interaction lag by pre-generating the tree structure.
+        Only generates if tree doesn't already exist.
+        """
+        try:
+            # Check if tree already exists
+            root_nodes = self.treeview.tree.get_children()
+            if root_nodes and len(root_nodes) > 0:
+                # Tree already exists, don't regenerate
+                return
+            
+            # Generate the tree silently in the background
+            self.on_generate_combinations()
+            print("Auto-generated matchup tree after teams loaded")
+            
+        except Exception as e:
+            # Don't block UI if generation fails
+            print(f"Warning: Auto-generation of tree failed: {e}")
         
     def save_grid_data_to_db(self):
         # Prevent saving when grid is flipped to opponent's perspective
@@ -2488,10 +2517,213 @@ class UiManager:
             # Update all dropdown options to reflect new availability
             self.update_round_dropdown_options()
             
+            # NEW: Trigger tree synchronization for Round 1 ante changes
+            if round_num == 1 and ante_team == 'friendly':
+                self.sync_tree_with_round_1_ante(selected_player)
+            
             print(f"Round {round_num} ante selection ({ante_team}): {selected_player}")
             
         except Exception as e:
             print(f"Error handling ante selection change: {e}")
+
+    def sync_tree_with_round_1_ante(self, selected_player):
+        """
+        Synchronize tree when Round 1 ante (friendly) is selected.
+        - Generate tree if not generated or stale
+        - Sort tree with worst matchups first (enemy's best picks)
+        - Expand only Round 1 nodes containing selected player
+        - Select the first Round 1 node (worst matchup)
+        - If player is empty/cleared, collapse entire tree
+        
+        Smart reordering: Only reorders tree when player changes, preventing
+        nodes from jumping when user interacts with already-sorted tree.
+        """
+        try:
+            # Check if sync is triggered by Phase 2 (tree → dropdown)
+            # If so, skip to prevent infinite loop
+            if self._tree_sync_in_progress:
+                return
+            
+            # If selection is cleared, collapse the tree
+            if not selected_player:
+                self.collapse_entire_tree()
+                self._current_tree_top_player = None
+                return
+            
+            # Check if this player is already at the top
+            # If so, skip reordering (prevents jumping when clicking nodes)
+            if self._current_tree_top_player == selected_player:
+                return
+            
+            # Check if we need to generate the tree
+            root_nodes = self.treeview.tree.get_children()
+            if not root_nodes or len(root_nodes) == 0:
+                # No tree exists, generate it
+                self.on_generate_combinations()
+            
+            # Sort tree with worst matchups first (enemy's best picks)
+            # Use cumulative sort in reverse (lowest values first = worst for friendly team)
+            self.sort_tree_worst_first()
+            
+            # Collapse entire tree first
+            self.collapse_entire_tree()
+            
+            # Expand only Round 1 nodes with selected player and select first one
+            self.expand_and_select_round1_nodes(selected_player)
+            
+            # Update state: this player is now at the top
+            self._current_tree_top_player = selected_player
+            
+        except Exception as e:
+            print(f"Error synchronizing tree with Round 1 ante: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def collapse_entire_tree(self):
+        """Collapse all tree nodes recursively."""
+        try:
+            def collapse_recursive(node_id):
+                # Collapse this node
+                self.treeview.tree.item(node_id, open=False)
+                # Recursively collapse all children
+                children = self.treeview.tree.get_children(node_id)
+                for child in children:
+                    collapse_recursive(child)
+            
+            # Start from root nodes
+            root_nodes = self.treeview.tree.get_children()
+            for root in root_nodes:
+                collapse_recursive(root)
+                
+        except Exception as e:
+            print(f"Error collapsing tree: {e}")
+    
+    def expand_and_select_round1_nodes(self, player_name):
+        """
+        Physically reorder Round 1 nodes to move selected player's matchups to the top.
+        Select the first node (which will be worst matchup after sorting).
+        Keep all children collapsed.
+        """
+        try:
+            root_nodes = self.treeview.tree.get_children()
+            if not root_nodes:
+                return
+            
+            # The first root node should be "Pairings"
+            pairings_root = root_nodes[0]
+            
+            # Expand the Pairings root
+            self.treeview.tree.item(pairings_root, open=True)
+            
+            # Get all first-level children (these are Round 1 matchups)
+            round1_nodes = self.treeview.tree.get_children(pairings_root)
+            
+            # Separate nodes into two groups: player matchups and others
+            player_nodes = []
+            other_nodes = []
+            
+            for node_id in round1_nodes:
+                node_text = self.treeview.tree.item(node_id, 'text')
+                
+                # Check if this node contains the selected player
+                if player_name in node_text:
+                    player_nodes.append((node_id, node_text))
+                else:
+                    other_nodes.append((node_id, node_text))
+            
+            # Sort other nodes alphabetically by text
+            other_nodes.sort(key=lambda x: x[1])
+            
+            # Detach all Round 1 nodes
+            for node_id in round1_nodes:
+                self.treeview.tree.detach(node_id)
+            
+            # Re-insert player matchups first (at the top, directly under parent)
+            for node_id, _ in player_nodes:
+                self.treeview.tree.move(node_id, pairings_root, 'end')
+                # Keep children collapsed
+                self.treeview.tree.item(node_id, open=False)
+            
+            # Then re-insert other nodes in alphabetical order
+            for node_id, _ in other_nodes:
+                self.treeview.tree.move(node_id, pairings_root, 'end')
+                # Keep children collapsed
+                self.treeview.tree.item(node_id, open=False)
+            
+            # Select the first player node (worst matchup for selected player)
+            if player_nodes:
+                first_matching_node = player_nodes[0][0]
+                # Clear any existing selection
+                self.treeview.tree.selection_remove(self.treeview.tree.selection())
+                # Select the first node
+                self.treeview.tree.selection_set(first_matching_node)
+                # Ensure it's visible
+                self.treeview.tree.see(first_matching_node)
+                
+        except Exception as e:
+            print(f"Error expanding Round 1 nodes: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def sort_tree_worst_first(self):
+        """
+        Sort tree with worst matchups first (lowest ratings = enemy's best picks).
+        This is the inverse of normal cumulative sorting.
+        """
+        try:
+            # Save original order if not already saved
+            if not hasattr(self.tree_generator, 'original_order_saved') or not self.tree_generator.original_order_saved:
+                self.tree_generator.save_original_order()
+                self.tree_generator.original_order_saved = True
+            
+            # Calculate cumulative values
+            self.tree_generator.calculate_all_path_values("")
+            
+            # Sort recursively, but with LOWEST values first (worst for friendly team)
+            root_nodes = self.treeview.tree.get_children()
+            for root in root_nodes:
+                self.sort_children_by_cumulative_reverse(root)
+            
+            # Update UI state
+            self.current_sort_mode = "worst_first"
+            self.active_sort_mode = "worst_first"
+            self.treeview.tree.heading("Sort Value", text="Worst First")
+            self.update_sort_value_column()
+            self.is_sorted = True
+            
+        except Exception as e:
+            print(f"Error sorting tree worst first: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def sort_children_by_cumulative_reverse(self, node):
+        """Recursively sort children by cumulative values in REVERSE (worst first)."""
+        try:
+            children = self.treeview.tree.get_children(node)
+            if not children:
+                return
+            
+            # Get cumulative values for all children
+            children_with_scores = []
+            for child in children:
+                cumulative_value = self.tree_generator.get_cumulative_value_from_tags(child)
+                children_with_scores.append((child, cumulative_value))
+            
+            # Sort by cumulative value (LOWEST first - worst outcomes at top)
+            children_with_scores.sort(key=lambda x: x[1], reverse=False)
+            
+            # Reorder children in the tree
+            for child, _ in children_with_scores:
+                self.treeview.tree.detach(child)
+            for child, _ in children_with_scores:
+                self.treeview.tree.move(child, node, 'end')
+            
+            # Recursively sort grandchildren
+            for child, _ in children_with_scores:
+                self.sort_children_by_cumulative_reverse(child)
+                
+        except Exception as e:
+            print(f"Error sorting children reverse: {e}")
 
     def on_response_selection_change_direct(self, round_num, position, var):
         """Handle response selection changes with direct variable access."""
