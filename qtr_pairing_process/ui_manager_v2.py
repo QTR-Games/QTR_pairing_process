@@ -440,8 +440,12 @@ class UiManager:
                 entry.bind("<FocusOut>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
                 entry.bind("<Return>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
                 
-                # Set initial value from model
-                entry.insert(0, self.grid_data_model.get_rating(r, c))
+                # Set initial value from model (Phase 1: handle None → '')
+                initial_value = self.grid_data_model.get_rating(r, c)
+                if initial_value is None:
+                    entry.insert(0, '')
+                else:
+                    entry.insert(0, str(initial_value))
 
         # Create the display grid (right side of unified grid, columns 7-12)
         for r in range(6):
@@ -597,15 +601,17 @@ class UiManager:
         if self.column_checkboxes and col-1 < len(self.column_checkboxes) and self.column_checkboxes[col-1].get() == 1:
             return  # Skip updating color if column checkbox is checked
         
-        # V2: Get value from GridDataModel instead of StringVar
+        # V2: Get value from GridDataModel (may be int or str)
         value = self.grid_data_model.get_rating(row, col)
+        # Convert to string for color map lookup
+        value_str = str(value) if value != '' else ''
         widget = self.grid_widgets[row][col]
         
         # Check if cell has comment (comment indicator takes precedence)
         if self.grid_data_model.has_comment(row, col):
             widget.config(bg='#ffffcc')  # Light yellow for comments
-        elif widget and value in self.color_map:
-            widget.config(bg=self.color_map[value])
+        elif widget and value_str in self.color_map:
+            widget.config(bg=self.color_map[value_str])
         elif widget:
             widget.config(bg='white')
     
@@ -613,15 +619,16 @@ class UiManager:
         """Update all grid cell colors based on current rating system"""
         for row in range(1, 6):
             for col in range(1, 6):
-                # V2: Get value from GridDataModel
+                # V2: Get value from GridDataModel (may be int or str)
                 value = self.grid_data_model.get_rating(row, col)
+                value_str = str(value) if value != '' else ''
                 widget = self.grid_widgets[row][col]
                 
                 # Check for comment indicator first
                 if self.grid_data_model.has_comment(row, col):
                     widget.config(bg='#ffffcc')
-                elif widget and value in self.color_map:
-                    widget.config(bg=self.color_map[value])
+                elif widget and value_str in self.color_map:
+                    widget.config(bg=self.color_map[value_str])
                 elif widget:
                     widget.config(bg='white')
     
@@ -743,10 +750,10 @@ class UiManager:
                     for row1 in range(1, 6):
                         widget = self.grid_widgets[row1][col]
                         if widget is not None and widget.cget('state') != 'disabled':
-                            # V2: Read from GridDataModel (ensure string type)
-                            cell_value = str(self.grid_data_model.get_rating(row1, col))
-                            if cell_value and cell_value.strip() and cell_value != "---":
-                                col_margin_sum += int(cell_value)
+                            # V2: Get integer value directly from GridDataModel
+                            cell_value = self.grid_data_model.get_rating(row1, col)
+                            if isinstance(cell_value, int):
+                                col_margin_sum += cell_value
                     diff = floor_rating_sum - col_margin_sum
                     all_margins.append(diff)
                 
@@ -783,11 +790,10 @@ class UiManager:
                 for col in range(1, 6):
                     widget = self.grid_widgets[row][col]
                     if widget is not None and widget.cget('state') != 'disabled':
-                        # V2: Read from GridDataModel (ensure string type)
-                        cell_value = str(self.grid_data_model.get_rating(row, col))
-                        if cell_value and cell_value.strip() and cell_value != "---":
-                            if int(cell_value) > 3:
-                                good_matchups += 1
+                        # V2: Get integer value directly from GridDataModel
+                        cell_value = self.grid_data_model.get_rating(row, col)
+                        if isinstance(cell_value, int) and cell_value > 3:
+                            good_matchups += 1
                 can_pin = "PIN" if good_matchups > 1 else "---"
                 self.update_display_fields(row, 2, can_pin)
             except (ValueError, IndexError) as e:
@@ -803,11 +809,10 @@ class UiManager:
                 for col in range(1, 6):
                     widget = self.grid_widgets[row][col]
                     if widget is not None and widget.cget('state') != 'disabled':
-                        # V2: Read from GridDataModel (ensure string type)
-                        cell_value = str(self.grid_data_model.get_rating(row, col))
-                        if cell_value and cell_value.strip() and cell_value != "---":
-                            if int(cell_value) < 3:
-                                num_bad_matchups += 1
+                        # V2: Get integer value directly from GridDataModel
+                        cell_value = self.grid_data_model.get_rating(row, col)
+                        if isinstance(cell_value, int) and cell_value < 3:
+                            num_bad_matchups += 1
                 player_pinned = "PINNED!" if num_bad_matchups > 1 else "---"
                 self.update_display_fields(row, 1, player_pinned)
             except (ValueError, IndexError) as e:
@@ -823,10 +828,10 @@ class UiManager:
                 for col in range(1, 6):
                     widget = self.grid_widgets[row][col]
                     if widget is not None and widget.cget('state') != 'disabled':
-                        # V2: Read from GridDataModel (ensure string type)
-                        cell_value = str(self.grid_data_model.get_rating(row, col))
-                        if cell_value and cell_value.strip() and cell_value != "---":
-                            floor_rating_sum += int(cell_value)
+                        # V2: Get integer value directly from GridDataModel
+                        cell_value = self.grid_data_model.get_rating(row, col)
+                        if isinstance(cell_value, int):
+                            floor_rating_sum += cell_value
                 self.update_display_fields(row, 0, floor_rating_sum)
             except (ValueError, IndexError) as e:
                 print(f"set_floor_values has failed with error:\n{e}")
@@ -1389,8 +1394,8 @@ class UiManager:
             team_1_pos = team_1_dict[row[0]]['position']
             team_2_pos = team_2_dict[row[1]]['position']
             if 0 <= team_1_pos < 6 and 0 <= team_2_pos < 6:
-                # Ensure rating is stored as string
-                self.grid_data_model.set_rating(team_1_pos, team_2_pos, str(row[2]), notify=False)
+                # Store as integer for efficient calculations
+                self.grid_data_model.set_rating(team_1_pos, team_2_pos, int(row[2]), notify=False)
         
         # End batch mode - this triggers single batch notification
         self.grid_data_model.end_batch()
@@ -1464,11 +1469,16 @@ class UiManager:
         # V2: Read from GridDataModel instead of StringVars
         for row in range(1, 6):
             for col in range(1, 6):
-                rating_str = self.grid_data_model.get_rating(row, col)
-                if not rating_str:
+                rating_value = self.grid_data_model.get_rating(row, col)
+                if not rating_value:
                     continue
                 try:
-                    rating = int(rating_str)
+                    # Convert to int if needed
+                    if isinstance(rating_value, str):
+                        rating = int(rating_value)
+                    else:
+                        rating = rating_value
+                    
                     team_1_player_id = team_1_dict[row]['id']
                     team_2_player_id = team_2_dict[col]['id']
                     self.db_manager.upsert_rating(
@@ -1845,13 +1855,17 @@ class UiManager:
     def validate_grid_data(self):
         """Validate grid data based on current rating system"""
         min_rating, max_rating = self.rating_range
-        valid_ratings = [str(i) for i in range(min_rating, max_rating + 1)]
+        valid_ratings = list(range(min_rating, max_rating + 1))
         
         for row in range(1, 6):
             for col in range(1, 6):
-                # V2: Read from GridDataModel
+                # V2: Read from GridDataModel (may be int or str)
                 value = self.grid_data_model.get_rating(row, col)
-                if value and value not in valid_ratings:
+                # Convert to int for validation if it's a string digit
+                if isinstance(value, str) and value.strip().isdigit():
+                    value = int(value)
+                
+                if isinstance(value, int) and value not in valid_ratings:
                     system_name = self.rating_config['name']
                     messagebox.showerror("Error", 
                                        f"Invalid rating at row {row+1}, column {col+1}.\n\n"
@@ -1899,10 +1913,10 @@ class UiManager:
             ratings[player] = {}
             for col in range(1, 6):
                 opponent = self.grid_data_model.get_rating(0, col)
-                rating_str = self.grid_data_model.get_rating(row, col)
-                if rating_str:
-                    rating = int(rating_str)
-                    ratings[player][opponent] = rating
+                rating_value = self.grid_data_model.get_rating(row, col)
+                # Store integer directly
+                if isinstance(rating_value, int):
+                    ratings[player][opponent] = rating_value
         return ratings
 
     # Comment functionality methods
@@ -2196,32 +2210,20 @@ class UiManager:
         """Flip the grid to show opponent's perspective of matchup ratings."""
         try:
             if not self.grid_is_flipped:
-                # V2: Use GridDataModel with batch mode for efficient flipping
+                # Phase 1: Use snapshot API for cleaner state management
+                self.flip_snapshot = self.grid_data_model.get_state_snapshot()
+                
                 self.grid_data_model.begin_batch()
                 
-                # Store original data before flipping
-                self.original_grid_data = {}
-                for row in range(6):
-                    for col in range(6):
-                        self.original_grid_data[(row, col)] = self.grid_data_model.get_rating(row, col)
-                
                 # 1. Swap team player names
-                # Store friendly team names (column 0, rows 1-5)
-                friendly_names = []
-                for row in range(1, 6):
-                    friendly_names.append(self.grid_data_model.get_rating(row, 0))
+                friendly_names = [self.grid_data_model.get_rating(row, 0) for row in range(1, 6)]
+                enemy_names = [self.grid_data_model.get_rating(0, col) for col in range(1, 6)]
                 
-                # Store enemy team names (row 0, columns 1-5)  
-                enemy_names = []
-                for col in range(1, 6):
-                    enemy_names.append(self.grid_data_model.get_rating(0, col))
-                
-                # Swap the names - put enemy names where friendly names were
+                # Swap the names
                 for row in range(1, 6):
                     if row - 1 < len(enemy_names):
                         self.grid_data_model.set_rating(row, 0, enemy_names[row - 1], notify=False)
                 
-                # Put friendly names where enemy names were
                 for col in range(1, 6):
                     if col - 1 < len(friendly_names):
                         self.grid_data_model.set_rating(0, col, friendly_names[col - 1], notify=False)
@@ -2230,30 +2232,22 @@ class UiManager:
                 for row in range(1, 6):
                     for col in range(1, 6):
                         current_value = self.grid_data_model.get_rating(row, col)
-                        if current_value.isdigit():
-                            rating = int(current_value)
+                        if isinstance(current_value, int):
                             # Flip around 3: new_rating = 6 - old_rating
-                            flipped_rating = 6 - rating
-                            self.grid_data_model.set_rating(row, col, str(flipped_rating), notify=False)
+                            flipped_rating = 6 - current_value
+                            self.grid_data_model.set_rating(row, col, flipped_rating, notify=False)
                 
-                # End batch mode
                 self.grid_data_model.end_batch()
-                
                 self.grid_is_flipped = True
                 print("Grid flipped to opponent's perspective")
                 
             else:
-                # Restore original data
-                if self.original_grid_data:
-                    self.grid_data_model.begin_batch()
-                    for row in range(6):
-                        for col in range(6):
-                            original_value = self.original_grid_data.get((row, col), "")
-                            self.grid_data_model.set_rating(row, col, original_value, notify=False)
-                    self.grid_data_model.end_batch()
+                # Phase 1: Restore using snapshot API
+                if hasattr(self, 'flip_snapshot') and self.flip_snapshot:
+                    self.grid_data_model.restore_state_snapshot(self.flip_snapshot, notify=True)
+                    self.flip_snapshot = None
                 
                 self.grid_is_flipped = False
-                self.original_grid_data = None
                 print("Grid restored to friendly perspective")
                 
         except Exception as e:
@@ -3815,26 +3809,51 @@ class UiManager:
         Sync Entry widget value to GridDataModel.
         
         Called on FocusOut and Return key to update model with manual entry.
+        Phase 1: Converts rating cells (row > 0, col > 0) to integers.
         """
-        current_value = widget.get()
+        current_value = widget.get().strip()
         model_value = self.grid_data_model.get_rating(row, col)
         
-        if current_value != model_value:
-            self.grid_data_model.set_rating(row, col, current_value)
+        # For rating cells, convert to integer or None
+        if row > 0 and col > 0:
+            # Rating cell - convert to int if valid, None if empty
+            if current_value and current_value.isdigit():
+                new_value = int(current_value)
+            elif not current_value:
+                new_value = None  # Empty string → None
+            else:
+                new_value = current_value  # Keep invalid strings for validation error
+        else:
+            # Header cell - keep as string (player name)
+            new_value = current_value if current_value else None
+        
+        if new_value != model_value:
+            self.grid_data_model.set_rating(row, col, new_value)
             # Trigger color update and scenario calculations
             self.update_color_on_change(None, None, None, row, col)
             self.on_scenario_calculations()
     
     def _update_entry_from_model(self, row: int, col: int):
-        """Update Entry widget from GridDataModel value"""
+        """
+        Update Entry widget from GridDataModel value.
+        Phase 1: Convert int/None → string for Entry widget display.
+        """
         widget = self.grid_widgets[row][col]
         if widget:
             current_text = widget.get()
             model_value = self.grid_data_model.get_rating(row, col)
             
-            if current_text != model_value:
+            # Convert model value to string for Entry widget
+            if model_value is None:
+                model_str = ''
+            elif isinstance(model_value, int):
+                model_str = str(model_value)
+            else:
+                model_str = str(model_value)  # Handle string (player names)
+            
+            if current_text != model_str:
                 widget.delete(0, tk.END)
-                widget.insert(0, model_value)
+                widget.insert(0, model_str)
     
     def _update_display_entry_from_model(self, row: int, col: int):
         """Update display Entry widget from GridDataModel value"""

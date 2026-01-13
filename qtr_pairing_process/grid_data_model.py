@@ -7,7 +7,7 @@ Provides observer pattern for UI updates with batch operation support.
 © Daniel P Raven and Matt Russell 2024 All Rights Reserved
 """
 
-from typing import Dict, Tuple, Callable, List, Set, Optional, Any
+from typing import Dict, Tuple, Callable, List, Set, Optional, Any, Union
 
 
 class GridDataModel:
@@ -28,7 +28,8 @@ class GridDataModel:
     
     def __init__(self):
         # Core data structures - pure Python (no Tkinter dependencies)
-        self.ratings: List[List[str]] = [['' for _ in range(6)] for _ in range(6)]
+        # Ratings: int for actual ratings (1-5), str for player names (headers), None for empty
+        self.ratings: List[List[Union[int, str, None]]] = [[None for _ in range(6)] for _ in range(6)]
         self.display: List[List[str]] = [['' for _ in range(6)] for _ in range(6)]
         self.comments: Dict[Tuple[int, int], str] = {}
         self.disabled_cells: Set[Tuple[int, int]] = set()
@@ -94,35 +95,60 @@ class GridDataModel:
     
     # Rating grid access
     
-    def get_rating(self, row: int, col: int) -> str:
-        """Get rating value for cell"""
+    def get_rating(self, row: int, col: int) -> Union[int, str, None]:
+        """Get rating value for cell (int for ratings, str for names, None for empty)"""
         return self.ratings[row][col]
     
-    def set_rating(self, row: int, col: int, value: str, notify: bool = True):
+    def set_rating(self, row: int, col: int, value: Union[int, str, None], notify: bool = True):
         """
-        Set rating value with optional notification.
+        Set rating value with type safety and validation.
         
         Args:
             row, col: Cell coordinates (0-5)
-            value: New rating value
+            value: New rating value (int for ratings, str for names, None for empty)
             notify: If False, skip notification (for batch updates)
+            
+        Raises:
+            ValueError: If value is invalid type or out of range for matchup cells
         """
-        old_value = self.ratings[row][col]
-        self.ratings[row][col] = value
+        # Type validation and conversion
+        if value is None or value == '':
+            validated_value = None
+        elif isinstance(value, int):
+            validated_value = value
+        elif isinstance(value, str):
+            # Try to convert string to int for matchup cells (row > 0 and col > 0)
+            if row > 0 and col > 0:
+                # Matchup cell - should be integer rating
+                if value.strip() == '':
+                    validated_value = None
+                else:
+                    try:
+                        validated_value = int(value)
+                    except ValueError:
+                        raise ValueError(f"Invalid rating '{value}' at ({row}, {col}): must be integer or empty")
+            else:
+                # Header cell (row 0 or col 0) - keep as string (player name)
+                validated_value = value
+        else:
+            raise ValueError(f"Invalid type {type(value)} for rating at ({row}, {col})")
         
-        if notify and old_value != value:
-            self._notify_observers('rating_changed', row, col, value)
+        old_value = self.ratings[row][col]
+        self.ratings[row][col] = validated_value
+        
+        if notify and old_value != validated_value:
+            self._notify_observers('rating_changed', row, col, validated_value)
     
-    def get_all_ratings(self) -> List[List[str]]:
+    def get_all_ratings(self) -> List[List[Union[int, str, None]]]:
         """Get entire rating grid (returns copy)"""
         return [row[:] for row in self.ratings]
     
-    def set_all_ratings(self, data: List[List[str]], notify: bool = True):
+    def set_all_ratings(self, data: List[List[Union[int, str, None]]], notify: bool = True):
         """
         Set entire rating grid.
         
         Args:
-            data: 6×6 list of rating values
+            data: 6×6 list of rating values (mixed types)
             notify: If False, skip notification
         """
         self.ratings = [row[:] for row in data]
@@ -219,7 +245,7 @@ class GridDataModel:
     
     def clear_grid(self, notify: bool = True):
         """Clear all rating and display values"""
-        self.ratings = [['' for _ in range(6)] for _ in range(6)]
+        self.ratings = [[None for _ in range(6)] for _ in range(6)]
         self.display = [['' for _ in range(6)] for _ in range(6)]
         
         if notify:
