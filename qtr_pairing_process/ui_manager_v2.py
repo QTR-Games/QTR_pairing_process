@@ -1397,8 +1397,11 @@ class UiManager:
                 # Store as integer for efficient calculations
                 self.grid_data_model.set_rating(team_1_pos, team_2_pos, int(row[2]), notify=False)
         
-        # End batch mode - this triggers single batch notification
+        # End batch mode
         self.grid_data_model.end_batch()
+        
+        # Manually notify observers that grid has been loaded (notify=False above means no events queued)
+        self.grid_data_model._notify_observers('grid_loaded')
         
         # Update comment indicators after loading grid data
         self.update_comment_indicators()
