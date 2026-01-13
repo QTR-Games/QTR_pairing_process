@@ -743,8 +743,8 @@ class UiManager:
                     for row1 in range(1, 6):
                         widget = self.grid_widgets[row1][col]
                         if widget is not None and widget.cget('state') != 'disabled':
-                            # V2: Read from GridDataModel
-                            cell_value = self.grid_data_model.get_rating(row1, col)
+                            # V2: Read from GridDataModel (ensure string type)
+                            cell_value = str(self.grid_data_model.get_rating(row1, col))
                             if cell_value and cell_value.strip() and cell_value != "---":
                                 col_margin_sum += int(cell_value)
                     diff = floor_rating_sum - col_margin_sum
@@ -783,8 +783,8 @@ class UiManager:
                 for col in range(1, 6):
                     widget = self.grid_widgets[row][col]
                     if widget is not None and widget.cget('state') != 'disabled':
-                        # V2: Read from GridDataModel
-                        cell_value = self.grid_data_model.get_rating(row, col)
+                        # V2: Read from GridDataModel (ensure string type)
+                        cell_value = str(self.grid_data_model.get_rating(row, col))
                         if cell_value and cell_value.strip() and cell_value != "---":
                             if int(cell_value) > 3:
                                 good_matchups += 1
@@ -803,8 +803,8 @@ class UiManager:
                 for col in range(1, 6):
                     widget = self.grid_widgets[row][col]
                     if widget is not None and widget.cget('state') != 'disabled':
-                        # V2: Read from GridDataModel
-                        cell_value = self.grid_data_model.get_rating(row, col)
+                        # V2: Read from GridDataModel (ensure string type)
+                        cell_value = str(self.grid_data_model.get_rating(row, col))
                         if cell_value and cell_value.strip() and cell_value != "---":
                             if int(cell_value) < 3:
                                 num_bad_matchups += 1
@@ -823,8 +823,8 @@ class UiManager:
                 for col in range(1, 6):
                     widget = self.grid_widgets[row][col]
                     if widget is not None and widget.cget('state') != 'disabled':
-                        # V2: Read from GridDataModel
-                        cell_value = self.grid_data_model.get_rating(row, col)
+                        # V2: Read from GridDataModel (ensure string type)
+                        cell_value = str(self.grid_data_model.get_rating(row, col))
                         if cell_value and cell_value.strip() and cell_value != "---":
                             floor_rating_sum += int(cell_value)
                 self.update_display_fields(row, 0, floor_rating_sum)
@@ -1389,7 +1389,8 @@ class UiManager:
             team_1_pos = team_1_dict[row[0]]['position']
             team_2_pos = team_2_dict[row[1]]['position']
             if 0 <= team_1_pos < 6 and 0 <= team_2_pos < 6:
-                self.grid_data_model.set_rating(team_1_pos, team_2_pos, row[2], notify=False)
+                # Ensure rating is stored as string
+                self.grid_data_model.set_rating(team_1_pos, team_2_pos, str(row[2]), notify=False)
         
         # End batch mode - this triggers single batch notification
         self.grid_data_model.end_batch()
