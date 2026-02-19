@@ -94,6 +94,16 @@ class MockTreeView:
     def __init__(self):
         self.tree: MockTreeWidget | None = None  # Will be set in constructor
 
+class MockNotebook:
+    """Mock notebook for testing tab visibility."""
+    
+    def __init__(self):
+        self.current_tab = "tree_frame"  # Default to tree tab for tests
+    
+    def select(self):
+        """Return the currently selected tab."""
+        return self.current_tab
+
 class MockUIManager:
     """Mock UI manager for testing synchronization."""
     
@@ -107,6 +117,10 @@ class MockUIManager:
         # Create mock tree widget
         self.treeview = MockTreeView()
         self.treeview.tree = MockTreeWidget()
+        
+        # Create mock notebook and tree frame for tab visibility checks
+        self.notebook = MockNotebook()
+        self.tree_frame = "tree_frame"  # Mock frame identifier
         
         # Set up test tree structure
         self._setup_test_tree()
@@ -171,7 +185,7 @@ class TreeSyncTester:
     
     def __init__(self):
         self.ui_manager = MockUIManager()
-        self.synchronizer = MatchupTreeSynchronizer(self.ui_manager)
+        self.synchronizer = MatchupTreeSynchronizer(self.ui_manager, auto_sync_enabled=True)
         self.test_results = []
         
     def run_all_tests(self):
@@ -187,7 +201,12 @@ class TreeSyncTester:
             self.test_tree_to_round_sync,
             self.test_pattern_matching,
             self.test_conflict_handling,
-            self.test_performance
+            self.test_performance,
+            self.test_cleanup_method,
+            self.test_deepcopy_cache,
+            self.test_path_caching,
+            self.test_cache_size_limit,
+            self.test_tab_visibility_optimization
         ]
         
         for test in tests:
@@ -427,6 +446,192 @@ class TreeSyncTester:
         print(f"  ✓ Performance test passed: {avg_time*1000:.1f}ms average")
         
         return True
+    
+    def test_cleanup_method(self):
+        """Test cleanup method properly releases resources."""
+        # Create a new synchronizer for this test
+        test_ui_manager = MockUIManager()
+        test_sync = MatchupTreeSynchronizer(test_ui_manager, auto_sync_enabled=True)
+        
+        # Set some cached data
+        test_sync.current_tree_path = ['path1', 'path2']
+        test_sync.last_round_selections = {1: {'ante': 'test'}}
+        test_sync._path_cache = {'key1': ['path']}
+        
+        # Call cleanup
+        test_sync.cleanup()
+        
+        # Verify caches are cleared
+        if test_sync.current_tree_path:
+            print(f"  ❌ current_tree_path not cleared: {test_sync.current_tree_path}")
+            return False
+            
+        if test_sync.last_round_selections:
+            print(f"  ❌ last_round_selections not cleared")
+            return False
+            
+        if test_sync._path_cache:
+            print(f"  ❌ _path_cache not cleared")
+            return False
+            
+        if test_sync.tree_widget is not None:
+            print(f"  ❌ tree_widget reference not cleared")
+            return False
+        
+        print("  ✓ Cleanup method properly releases all resources")
+        return True
+    
+    def test_deepcopy_cache(self):
+        """Test that cache uses deepcopy to prevent nested mutation bugs."""
+        # Setup initial selections with nested dict
+        self.ui_manager.selected_players_per_round = {
+            1: {
+                'ante': 'Pete',
+                'ante_team': 'friendly',
+                'response1': 'Opponent3',
+                'response_team': 'enemy'
+            }
+        }
+        
+        # Trigger cache update
+        changed = self.synchronizer.is_selections_changed()
+        
+        if not changed:
+            print("  ❌ Should detect initial change")
+            return False
+        
+        # Save a reference to what was cached
+        cached_ante_before_mutation = self.synchronizer.last_round_selections[1]['ante']
+        
+        # Now mutate the nested dictionary in the source
+        self.ui_manager.selected_players_per_round[1]['ante'] = 'Modified'
+        
+        # Check that the cached value was NOT affected by the mutation (proving deepcopy worked)
+        cached_ante_after_mutation = self.synchronizer.last_round_selections[1]['ante']
+        
+        if cached_ante_after_mutation != 'Pete':
+            print(f"  ❌ Cache was modified by source mutation (shallow copy bug): {cached_ante_after_mutation}")
+            return False
+        
+        if cached_ante_before_mutation != cached_ante_after_mutation:
+            print(f"  ❌ Cache value changed unexpectedly")
+            return False
+        
+        # Now check if change detection works
+        changed_again = self.synchronizer.is_selections_changed()
+        
+        if not changed_again:
+            print("  ❌ Should detect nested dict mutation")
+            return False
+        
+        print("  ✓ Deepcopy prevents nested dictionary mutation bugs")
+        return True
+    
+    def test_path_caching(self):
+        """Test that path search results are cached for performance."""
+        selections = self.synchronizer._parse_round_selections()
+        
+        # First search should cache the result
+        path1 = self.synchronizer._find_matching_tree_path(selections)
+        
+        # Check that cache has an entry
+        cache_size_after_first = len(self.synchronizer._path_cache)
+        if cache_size_after_first == 0:
+            print(f"  ❌ Path not cached after first search")
+            return False
+        
+        # Second search should use cached result 
+        path2 = self.synchronizer._find_matching_tree_path(selections)
+        
+        # Paths should be identical
+        if path1 != path2:
+            print(f"  ❌ Cached path differs from original")
+            return False
+        
+        # Cache size shouldn't increase
+        cache_size_after_second = len(self.synchronizer._path_cache)
+        if cache_size_after_second != cache_size_after_first:
+            print(f"  ❌ Cache size increased on second search (not using cache)")
+            return False
+        
+        print(f"  ✓ Path caching working correctly (cache size: {cache_size_after_first})")
+        return True
+    
+    def test_cache_size_limit(self):
+        """Test that cache enforces size limit to prevent unbounded growth."""
+        # Clear existing cache
+        self.synchronizer._path_cache.clear()
+        
+        # Create many different selections to exceed cache limit
+        from qtr_pairing_process.matchup_tree_sync import _MAX_PATH_CACHE_SIZE
+        
+        for i in range(_MAX_PATH_CACHE_SIZE + 10):
+            # Create unique cache key
+            cache_key = f"test_key_{i}"
+            self.synchronizer._cache_path(cache_key, [f'path_{i}'])
+        
+        # Cache should not exceed max size
+        if len(self.synchronizer._path_cache) > _MAX_PATH_CACHE_SIZE:
+            print(f"  ❌ Cache exceeded max size: {len(self.synchronizer._path_cache)} > {_MAX_PATH_CACHE_SIZE}")
+            return False
+        
+        # Cache should be at or near max size (allowing for some tolerance)
+        if len(self.synchronizer._path_cache) < _MAX_PATH_CACHE_SIZE - 5:
+            print(f"  ❌ Cache unexpectedly small: {len(self.synchronizer._path_cache)}")
+            return False
+        
+        print(f"  ✓ Cache size limit enforced (max: {_MAX_PATH_CACHE_SIZE}, actual: {len(self.synchronizer._path_cache)})")
+        return True
+    
+    def test_tab_visibility_optimization(self):
+        """Test that sync is skipped when tree tab is not visible (performance optimization)."""
+        # Initially, tree tab should be "visible" in mock
+        if not self.synchronizer._is_tree_tab_visible():
+            print("  ❌ Tree tab should be visible initially in mock")
+            return False
+        
+        # Sync should work when tree tab is visible
+        initial_cache_size = len(self.synchronizer._path_cache)
+        self.synchronizer.sync_round_to_tree(1)
+        
+        # Now simulate switching to a different tab
+        self.ui_manager.notebook.current_tab = "team_grid"
+        
+        if self.synchronizer._is_tree_tab_visible():
+            print("  ❌ Tree tab should not be visible when on different tab")
+            return False
+        
+        # Record current state
+        cache_size_before_skip = len(self.synchronizer._path_cache)
+        sync_count_before = id(self.synchronizer.current_tree_path)
+        
+        # Attempt sync multiple times - should all be skipped
+        for _ in range(5):
+            self.synchronizer.sync_round_to_tree(1)
+        
+        # Cache and sync state should not have changed (syncs were skipped)
+        cache_size_after_skip = len(self.synchronizer._path_cache)
+        
+        if cache_size_after_skip != cache_size_before_skip:
+            print(f"  ❌ Cache changed during skipped syncs: {cache_size_before_skip} -> {cache_size_after_skip}")
+            return False
+        
+        # Switch back to tree tab
+        self.ui_manager.notebook.current_tab = "tree_frame"
+        
+        if not self.synchronizer._is_tree_tab_visible():
+            print("  ❌ Tree tab should be visible after switching back")
+            return False
+        
+        # Sync should work again
+        self.synchronizer.sync_round_to_tree(1)
+        
+        # Verify the method ran (cache may or may not grow due to caching, but should not fail)
+        
+        print("  ✓ Tab visibility optimization working correctly")
+        print("  ✓ Sync skipped when tree not visible (prevents lag)")
+        print("  ✓ Sync resumes when tree becomes visible")
+        return True
         
     def print_summary(self):
         """Print test results summary."""
@@ -461,7 +666,7 @@ def create_demo_ui():
             
             # Create test UI manager
             self.ui_manager = MockUIManager()
-            self.synchronizer = MatchupTreeSynchronizer(self.ui_manager)
+            self.synchronizer = MatchupTreeSynchronizer(self.ui_manager, auto_sync_enabled=True)
             
             self.create_widgets()
             

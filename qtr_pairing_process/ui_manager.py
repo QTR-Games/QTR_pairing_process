@@ -296,6 +296,13 @@ class UiManager:
                                    bg="lightcyan", fg="darkgreen", font=("Arial", 9, "bold"),
                                    relief=tk.RAISED, borderwidth=2)
         data_mgmt_button.pack(side=tk.LEFT, padx=10, pady=5)
+        
+        # Sync to Tree button (syncs dropdowns -> tree)
+        self.team_grid_sync_button = tk.Button(self.button_row_frame, text="⟳ Sync to Tree", 
+                                   command=lambda: self.sync_grid_to_tree(),
+                                   bg="lightyellow", fg="darkblue", font=("Arial", 9, "bold"),
+                                   relief=tk.RAISED, borderwidth=2)
+        self.team_grid_sync_button.pack(side=tk.LEFT, padx=10, pady=5)
 
         # Initialize round tracking variables first
         self.round_dropdowns = []
@@ -303,6 +310,7 @@ class UiManager:
         self.enemy_round_dropdowns = []
         self.enemy_round_vars = []
         self.selected_players_per_round = {}
+        self._updating_dropdowns = False  # Guard flag to prevent cascading updates
         
         # Create Round Selection section for Team Grid tab only
         self.create_team_grid_round_selection()
@@ -352,6 +360,15 @@ class UiManager:
         self.strategic_button = tk.Button(self.buttons_frame, text="⚫ Strategic\nOptimal", command=self.toggle_strategic_optimal_sort)
         self.strategic_button.pack(fill=tk.X, pady=5)
         
+        # Add sync indicator button (clickable to trigger manual sync)
+        self.sync_indicator_button = tk.Button(self.buttons_frame, text="⚫ Tree/Grid\nOut of Sync", command=self.manual_sync_now)
+        self.sync_indicator_button.pack(fill=tk.X, pady=5)
+        
+        # Add auto-sync checkbox
+        self.auto_sync_var = tk.IntVar()
+        self.auto_sync_checkbox = tk.Checkbutton(self.buttons_frame, text="Auto-Sync", variable=self.auto_sync_var)
+        self.auto_sync_checkbox.pack(fill=tk.X, pady=2)
+        
         # Set initial button states (all inactive)
         self.update_sort_button_states()
         
@@ -371,10 +388,19 @@ class UiManager:
         # Create status bar
         self.create_status_bar()
         
+        # Load auto-sync preference and set up checkbox binding
+        self.auto_tree_sync_enabled = self.db_preferences.get_auto_tree_sync()
+        self.auto_sync_var.set(1 if self.auto_tree_sync_enabled else 0)
+        self.auto_sync_var.trace_add('write', lambda *args: self.on_auto_sync_toggle())
+        
         # Initialize matchup tree synchronizer after all UI components are created
         self.tree_synchronizer = None
         try:
-            self.tree_synchronizer = MatchupTreeSynchronizer(self)
+            self.tree_synchronizer = MatchupTreeSynchronizer(
+                self, 
+                auto_sync_enabled=self.auto_tree_sync_enabled,
+                sync_state_callback=self.update_sync_indicator_state
+            )
             print("Matchup tree synchronizer initialized successfully")
         except Exception as e:
             print(f"Warning: Could not initialize tree synchronizer: {e}")
@@ -1352,13 +1378,13 @@ class UiManager:
             
             # Set active button to bright green with pressed appearance
             if self.active_sort_mode == "cumulative":
-                self.cumulative_button.config(text="� ACTIVE\nCumulative", relief=tk.SUNKEN, bg='lightgreen', fg='darkgreen')
+                self.cumulative_button.config(text="🔵 ACTIVE\nCumulative", relief=tk.SUNKEN, bg='lightgreen', fg='darkgreen')
             elif self.active_sort_mode == "confidence":
-                self.confidence_button.config(text="� ACTIVE\nConfidence", relief=tk.SUNKEN, bg='lightgreen', fg='darkgreen')
+                self.confidence_button.config(text="🔵 ACTIVE\nConfidence", relief=tk.SUNKEN, bg='lightgreen', fg='darkgreen')
             elif self.active_sort_mode == "resistance":
-                self.counter_button.config(text="� ACTIVE\nCounter Pick", relief=tk.SUNKEN, bg='lightgreen', fg='darkgreen')
+                self.counter_button.config(text="🔵 ACTIVE\nCounter Pick", relief=tk.SUNKEN, bg='lightgreen', fg='darkgreen')
             elif self.active_sort_mode == "strategic":
-                self.strategic_button.config(text="� ACTIVE\nStrategic", relief=tk.SUNKEN, bg='lightgreen', fg='darkgreen')
+                self.strategic_button.config(text="🔵 ACTIVE\nStrategic", relief=tk.SUNKEN, bg='lightgreen', fg='darkgreen')
                 
         except Exception as e:
             print(f"ERROR updating sort button states: {e}")
@@ -1380,6 +1406,113 @@ class UiManager:
                     self.strategic_button.config(text="Strategic\nOptimal")
             except Exception as e2:
                 print(f"ERROR: Fallback button update also failed: {e2}")
+
+    def update_sync_indicator_state(self, in_sync: bool):
+        """Update sync indicator button appearance based on sync state.
+        
+        Args:
+            in_sync: True if tree and dropdowns are synced, False if out of sync
+        """
+        try:
+            if in_sync:
+                # Show blue circle when synced
+                self.sync_indicator_button.config(
+                    text="🔵 ACTIVE\nSynced", 
+                    relief=tk.SUNKEN, 
+                    bg='lightgreen', 
+                    fg='darkgreen'
+                )
+            else:
+                # Show gray circle when out of sync
+                self.sync_indicator_button.config(
+                    text="⚫ Tree/Grid\nOut of Sync", 
+                    relief=tk.RAISED, 
+                    bg='lightgray', 
+                    fg='black'
+                )
+        except Exception as e:
+            print(f"ERROR updating sync indicator: {e}")
+            # Fallback to text-only
+            try:
+                if in_sync:
+                    self.sync_indicator_button.config(text="[SYNCED]")
+                else:
+                    self.sync_indicator_button.config(text="[NOT SYNCED]")
+            except:
+                pass
+    
+    def manual_sync_now(self):
+        """Manually trigger a one-time sync between tree and dropdowns.
+        Direction depends on which tab is currently active.
+        """
+        if not hasattr(self, 'tree_synchronizer') or self.tree_synchronizer is None:
+            print("Tree synchronizer not initialized")
+            return
+        
+        try:
+            # Determine which tab is active
+            current_tab = self.notebook.select()
+            tab_name = self.notebook.tab(current_tab, "text")
+            
+            if "Team Grid" in tab_name:
+                # On Team Grid tab: sync FROM dropdowns TO tree (use manual sync)
+                print("Manual sync: Team Grid → Matchup Tree")
+                self.tree_synchronizer.sync_round_to_tree(manual_sync=True)
+                # Switch to tree tab to show the result
+                if hasattr(self, 'matchup_tree_frame'):
+                    self.notebook.select(self.matchup_tree_frame)
+            else:
+                # On Matchup Tree tab: sync FROM tree TO dropdowns
+                print("Manual sync: Matchup Tree → Team Grid")
+                self.tree_synchronizer.sync_tree_to_rounds()
+            
+            # Update indicator to show synced state
+            self.update_sync_indicator_state(True)
+            
+        except Exception as e:
+            print(f"ERROR during manual sync: {e}")
+    
+    def sync_grid_to_tree(self):
+        """Sync FROM Team Grid dropdowns TO Matchup Tree.
+        Called by the 'Sync to Tree' button on the Team Grid tab.
+        """
+        if not hasattr(self, 'tree_synchronizer') or self.tree_synchronizer is None:
+            print("Tree synchronizer not initialized")
+            return
+        
+        try:
+            print("Syncing: Team Grid → Matchup Tree")
+            # Sync all rounds with manual_sync=True to bypass auto-sync checks
+            self.tree_synchronizer.sync_round_to_tree(changed_round=None, manual_sync=True)
+            
+            # Switch to the tree tab so user can see the synced result
+            if hasattr(self, 'notebook') and hasattr(self, 'matchup_tree_frame'):
+                self.notebook.select(self.matchup_tree_frame)
+            
+            # Update indicator to show synced state
+            self.update_sync_indicator_state(True)
+            
+        except Exception as e:
+            print(f"ERROR during grid-to-tree sync: {e}")
+    
+    def on_auto_sync_toggle(self):
+        """Handle auto-sync checkbox toggle."""
+        try:
+            # Get new state
+            enabled = bool(self.auto_sync_var.get())
+            self.auto_tree_sync_enabled = enabled
+            
+            # Update synchronizer
+            if hasattr(self, 'tree_synchronizer') and self.tree_synchronizer:
+                self.tree_synchronizer.set_auto_sync_enabled(enabled)
+            
+            # Save to config
+            self.db_preferences.set_auto_tree_sync(enabled)
+            
+            print(f"Auto-sync {'enabled' if enabled else 'disabled'}")
+            
+        except Exception as e:
+            print(f"ERROR toggling auto-sync: {e}")
 
     def update_scenario_box(self):
         scenarios = []
@@ -2996,7 +3129,13 @@ class UiManager:
 
     def update_round_dropdown_options(self):
         """Update the options in round dropdowns based on current team selection."""
+        # Guard against cascading updates from trace callbacks
+        if self._updating_dropdowns:
+            return
+            
         try:
+            self._updating_dropdowns = True
+            
             # Get current friendly team players from database
             friendly_players = []
             if self.team1_var.get():
@@ -3033,6 +3172,8 @@ class UiManager:
                     
         except Exception as e:
             print(f"Error updating round dropdown options: {e}")
+        finally:
+            self._updating_dropdowns = False
 
     def on_ante_selection_change(self, round_num):
         """Handle ante selection changes."""
@@ -3187,8 +3328,8 @@ class UiManager:
                     # Update friendly ante dropdown with special logic for matchup correlation
                     if dropdown_index < len(self.round_dropdowns):
                         if round_num == 1:
-                            # Round 1: Normal available players
-                            available_friendly = self._get_available_friendly_players(round_num, friendly_players)
+                            # Round 1: Normal available players (exclude players used in this round except ante)
+                            available_friendly = self._get_dropdown_options_for_ante(round_num, friendly_players, 'friendly')
                         else:
                             # Round 3, 5: Only players who responded in previous round
                             available_friendly = self._get_friendly_ante_options(round_num)
@@ -3196,13 +3337,16 @@ class UiManager:
                         self.round_dropdowns[dropdown_index]['values'] = [""] + available_friendly
                         dropdown_index += 1
                     
-                    # Update enemy response dropdowns
-                    available_enemy = self._get_available_enemy_players(round_num, enemy_players)
+                    # Update enemy response dropdowns (2 dropdowns)
+                    # Response 1 dropdown
                     if enemy_dropdown_index < len(self.enemy_round_dropdowns):
+                        available_enemy = self._get_dropdown_options_for_response(round_num, enemy_players, 'enemy', 1)
                         self.enemy_round_dropdowns[enemy_dropdown_index]['values'] = [""] + available_enemy
                         enemy_dropdown_index += 1
                     
+                    # Response 2 dropdown
                     if enemy_dropdown_index < len(self.enemy_round_dropdowns):
+                        available_enemy = self._get_dropdown_options_for_response(round_num, enemy_players, 'enemy', 2)
                         self.enemy_round_dropdowns[enemy_dropdown_index]['values'] = [""] + available_enemy
                         enemy_dropdown_index += 1
                         
@@ -3214,18 +3358,108 @@ class UiManager:
                         self.enemy_round_dropdowns[enemy_dropdown_index]['values'] = [""] + ante_options
                         enemy_dropdown_index += 1
                     
-                    # Update friendly response dropdowns
-                    available_friendly = self._get_available_friendly_players(round_num, friendly_players)
+                    # Update friendly response dropdowns (2 dropdowns)
+                    # Response 1 dropdown
                     if dropdown_index < len(self.round_dropdowns):
+                        available_friendly = self._get_dropdown_options_for_response(round_num, friendly_players, 'friendly', 1)
                         self.round_dropdowns[dropdown_index]['values'] = [""] + available_friendly
                         dropdown_index += 1
                     
+                    # Response 2 dropdown
                     if dropdown_index < len(self.round_dropdowns):
+                        available_friendly = self._get_dropdown_options_for_response(round_num, friendly_players, 'friendly', 2)
                         self.round_dropdowns[dropdown_index]['values'] = [""] + available_friendly
                         dropdown_index += 1
                         
         except Exception as e:
             print(f"Error updating ante/response dropdowns: {e}")
+    
+    def _get_dropdown_options_for_ante(self, round_num, all_team_players, team):
+        """Get options for an ante dropdown, excluding response players from same round.
+        
+        Args:
+            round_num: Round number
+            all_team_players: List of all players for this team
+            team: 'friendly' or 'enemy'
+        """
+        used_players = set()
+        
+        # Collect players used in previous rounds
+        for r in range(1, round_num):
+            round_data = self.selected_players_per_round.get(r, {})
+            if round_data.get('ante_team') == team and round_data.get('ante'):
+                used_players.add(round_data['ante'])
+            if round_data.get('response_team') == team:
+                if round_data.get('response1'):
+                    used_players.add(round_data['response1'])
+                if round_data.get('response2'):
+                    used_players.add(round_data['response2'])
+        
+        # Exclude response players from THIS round
+        current_round_data = self.selected_players_per_round.get(round_num, {})
+        if current_round_data.get('response_team') == team:
+            if current_round_data.get('response1'):
+                used_players.add(current_round_data['response1'])
+            if current_round_data.get('response2'):
+                used_players.add(current_round_data['response2'])
+        
+        # Include current ante for THIS round (prevents clearing)
+        current_ante = current_round_data.get('ante') if current_round_data.get('ante_team') == team else None
+        
+        # Build available list
+        available = [player for player in all_team_players if player not in used_players]
+        
+        # Add current ante if not already in list
+        if current_ante and current_ante not in available:
+            available.append(current_ante)
+        
+        return available
+    
+    def _get_dropdown_options_for_response(self, round_num, all_team_players, team, position):
+        """Get options for a response dropdown, excluding ante and other response from same round.
+        
+        Args:
+            round_num: Round number
+            all_team_players: List of all players for this team
+            team: 'friendly' or 'enemy'
+            position: 1 or 2 (response1 or response2)
+        """
+        used_players = set()
+        
+        # Collect players used in previous rounds
+        for r in range(1, round_num):
+            round_data = self.selected_players_per_round.get(r, {})
+            if round_data.get('ante_team') == team and round_data.get('ante'):
+                used_players.add(round_data['ante'])
+            if round_data.get('response_team') == team:
+                if round_data.get('response1'):
+                    used_players.add(round_data['response1'])
+                if round_data.get('response2'):
+                    used_players.add(round_data['response2'])
+        
+        # Exclude ante and OTHER response player from THIS round
+        current_round_data = self.selected_players_per_round.get(round_num, {})
+        if current_round_data.get('ante_team') == team and current_round_data.get('ante'):
+            used_players.add(current_round_data['ante'])
+        
+        if current_round_data.get('response_team') == team:
+            # Exclude the OTHER response (not this one)
+            other_position = 2 if position == 1 else 1
+            other_response = current_round_data.get(f'response{other_position}')
+            if other_response:
+                used_players.add(other_response)
+        
+        # Include current response for THIS position (prevents clearing)
+        current_response = current_round_data.get(f'response{position}') if current_round_data.get('response_team') == team else None
+        
+        # Build available list
+        available = [player for player in all_team_players if player not in used_players]
+        
+        # Add current response if not already in list
+        if current_response and current_response not in available:
+            available.append(current_response)
+        
+        return available
 
     def _get_enemy_ante_options(self, round_num):
         """Get valid ante options for enemy based on previous round's responses."""
@@ -3243,6 +3477,12 @@ class UiManager:
                 ante_options.append(previous_round_data['response1'])
             if previous_round_data.get('response2'):
                 ante_options.append(previous_round_data['response2'])
+        
+        # Include currently selected ante for this round to prevent dropdown clearing
+        current_round_data = self.selected_players_per_round.get(round_num, {})
+        current_ante = current_round_data.get('ante')
+        if current_ante and current_ante not in ante_options:
+            ante_options.append(current_ante)
         
         return ante_options
 
@@ -3263,10 +3503,22 @@ class UiManager:
             if previous_round_data.get('response2'):
                 ante_options.append(previous_round_data['response2'])
         
+        # Include currently selected ante for this round to prevent dropdown clearing
+        current_round_data = self.selected_players_per_round.get(round_num, {})
+        current_ante = current_round_data.get('ante')
+        if current_ante and current_ante not in ante_options:
+            ante_options.append(current_ante)
+        
         return ante_options
 
-    def _get_available_friendly_players(self, round_num, all_friendly_players):
-        """Get available friendly players for the current round."""
+    def _get_available_friendly_players(self, round_num, all_friendly_players, exclude_current_round=True):
+        """Get available friendly players for the current round.
+        
+        Args:
+            round_num: The round number being updated
+            all_friendly_players: List of all friendly team players
+            exclude_current_round: If True, exclude players already selected in THIS round
+        """
         used_players = set()
         
         # Collect all used friendly players from previous rounds
@@ -3280,10 +3532,30 @@ class UiManager:
                 if round_data.get('response2'):
                     used_players.add(round_data['response2'])
         
-        return [player for player in all_friendly_players if player not in used_players]
+        # Also exclude players already selected in THIS round (prevents duplicates)
+        if exclude_current_round:
+            current_round_data = self.selected_players_per_round.get(round_num, {})
+            if current_round_data.get('ante_team') == 'friendly' and current_round_data.get('ante'):
+                used_players.add(current_round_data['ante'])
+            if current_round_data.get('response_team') == 'friendly':
+                if current_round_data.get('response1'):
+                    used_players.add(current_round_data['response1'])
+                if current_round_data.get('response2'):
+                    used_players.add(current_round_data['response2'])
+        
+        # Return available players (not in used set)
+        available = [player for player in all_friendly_players if player not in used_players]
+        
+        return available
 
-    def _get_available_enemy_players(self, round_num, all_enemy_players):
-        """Get available enemy players for the current round."""
+    def _get_available_enemy_players(self, round_num, all_enemy_players, exclude_current_round=True):
+        """Get available enemy players for the current round.
+        
+        Args:
+            round_num: The round number being updated
+            all_enemy_players: List of all enemy team players
+            exclude_current_round: If True, exclude players already selected in THIS round
+        """
         used_players = set()
         
         # Collect all used enemy players from previous rounds
@@ -3297,7 +3569,23 @@ class UiManager:
                 if round_data.get('response2'):
                     used_players.add(round_data['response2'])
         
-        return [player for player in all_enemy_players if player not in used_players]
+        # Also exclude players already selected in THIS round (prevents duplicates)
+        if exclude_current_round:
+            current_round_data = self.selected_players_per_round.get(round_num, {})
+            if current_round_data.get('ante_team') == 'enemy' and current_round_data.get('ante'):
+                used_players.add(current_round_data['ante'])
+            if current_round_data.get('response_team') == 'enemy':
+                if current_round_data.get('response1'):
+                    used_players.add(current_round_data['response1'])
+                if current_round_data.get('response2'):
+                    used_players.add(current_round_data['response2'])
+        
+        # Return available players (not in used set)
+        available = [player for player in all_enemy_players if player not in used_players]
+        
+        return available
+        
+        return available
 
     def create_matchup_output_panel(self):
         """Create a panel to display the final 5 matchups in a simple format."""

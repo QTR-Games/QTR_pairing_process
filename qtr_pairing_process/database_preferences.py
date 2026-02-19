@@ -49,7 +49,8 @@ class DatabasePreferences:
             },
             "ui_preferences": {
                 "show_welcome_message": True,
-                "rating_system": "1-5"
+                "rating_system": "1-5",
+                "auto_tree_sync": False
             },
             "logging": {
                 "level": "verbose",
@@ -179,6 +180,26 @@ class DatabasePreferences:
         """Get all UI preferences"""
         config = self.load_config()
         return config.get("ui_preferences", {})
+    
+    def get_auto_tree_sync(self) -> bool:
+        """Get auto tree sync preference (default: False)"""
+        config = self.load_config()
+        return config.get("ui_preferences", {}).get("auto_tree_sync", False)
+    
+    def set_auto_tree_sync(self, enabled: bool) -> bool:
+        """Set auto tree sync preference"""
+        config = self.load_config()
+        
+        if "ui_preferences" not in config:
+            config["ui_preferences"] = {}
+        
+        config["ui_preferences"]["auto_tree_sync"] = enabled
+        
+        success = self.save_config(config)
+        if success:
+            self.logger.info(f"Auto tree sync preference updated: {enabled}")
+        
+        return success
     
     def update_ui_preferences(self, preferences: Dict[str, Any]) -> bool:
         """Update UI preferences"""
