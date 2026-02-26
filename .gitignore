@@ -167,3 +167,16 @@ notebook_jobs/nylas/nylas_local.py
 .DS_Store
 **/.DS_Store
 .idea/*
+# Local virtual environment/runtime artifacts
+Scripts/
+share/
+pyvenv.cfg
+
+# Common local venv folders
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
