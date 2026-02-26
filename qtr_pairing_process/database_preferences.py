@@ -50,7 +50,8 @@ class DatabasePreferences:
             "ui_preferences": {
                 "show_welcome_message": True,
                 "rating_system": "1-5",
-                "auto_tree_sync": False
+                "auto_tree_sync": False,
+                "matchup_output_format": "standard"
             },
             "logging": {
                 "level": "verbose",
@@ -160,6 +161,33 @@ class DatabasePreferences:
         """Check if welcome message should be shown"""
         config = self.load_config()
         return config.get("ui_preferences", {}).get("show_welcome_message", True)
+    
+    def get_matchup_output_format(self) -> str:
+        """Get matchup output format preference (standard or verbose)"""
+        config = self.load_config()
+        return config.get("ui_preferences", {}).get("matchup_output_format", "standard")
+    
+    def set_matchup_output_format(self, format_type: str) -> bool:
+        """Set matchup output format preference
+        
+        Args:
+            format_type: Either 'standard' or 'verbose'
+        """
+        if format_type not in ['standard', 'verbose']:
+            raise ValueError("Format must be 'standard' or 'verbose'")
+        
+        config = self.load_config()
+        
+        if "ui_preferences" not in config:
+            config["ui_preferences"] = {}
+        
+        config["ui_preferences"]["matchup_output_format"] = format_type
+        
+        success = self.save_config(config)
+        if success:
+            self.logger.info(f"Matchup output format updated: {format_type}")
+        
+        return success
     
     def set_welcome_message_preference(self, show: bool) -> bool:
         """Set welcome message preference"""

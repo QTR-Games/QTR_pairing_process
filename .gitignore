@@ -62,6 +62,11 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# Application logs - exclude all logging files
+qtr_pairing_process.log
+*.log
+**/*.log
+
 # Flask stuff:
 instance/
 .webassets-cache
@@ -167,16 +172,24 @@ notebook_jobs/nylas/nylas_local.py
 .DS_Store
 **/.DS_Store
 .idea/*
-# Local virtual environment/runtime artifacts
+
+# Local workflow files
+GIT_WORKFLOW.md
+QTR_pairing_process.code-workspace
+cleanup-feature.ps1
+finish-feature.ps1
+new-feature.ps1
+
+# Local runtime / venv artifacts
 Scripts/
 share/
 pyvenv.cfg
+ipykernel_launcher.py
+ipython_pygments_lexers.py
+jupyter.py
+nest_asyncio.py
+decorator.py
 
-# Common local venv folders
-.venv/
-venv/
-env/
-
-# Python cache
-__pycache__/
-*.pyc
+# Local merge backup patches
+backup_pre_core_staged.patch
+backup_pre_core_worktree.patch

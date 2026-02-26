@@ -19,9 +19,15 @@ class DataValidator:
         r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]",  # Control characters
     ]
     
-    # Allowed characters for names (including international and gaming symbols)
-    # Includes: letters, numbers, spaces, hyphens, apostrophes, periods, hash, parentheses, brackets, underscores
-    SAFE_NAME_PATTERN = re.compile(r"^[\w\s\-'\.#\(\)\[\]{}@&+àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ\u0100-\u017f\u0180-\u024f\u1e00-\u1eff]+$", re.IGNORECASE | re.UNICODE)
+    # Allowed characters for names (including international and special characters)
+    # Supports: letters, numbers, spaces, hyphens, apostrophes, periods, hash/pound (#),
+    # parentheses, underscores, plus signs, ampersands, forward slashes, and various international characters
+    # (accents, umlauts, cedillas, etc.)
+    SAFE_NAME_PATTERN = re.compile(
+        r"^[\w\s\-'\.#\(\)\+&/àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ"
+        r"\u0100-\u017f\u0180-\u024f\u1e00-\u1eff\u0370-\u03ff\u0400-\u04ff]+$",
+        re.IGNORECASE | re.UNICODE
+    )
     
     @staticmethod
     def sanitize_text_input(text: str, max_length: int = 255, allow_empty: bool = False) -> Optional[str]:
@@ -60,7 +66,11 @@ class DataValidator:
                 
         # Validate against safe character pattern
         if not DataValidator.SAFE_NAME_PATTERN.match(text):
-            raise ValueError("Input contains invalid characters. Only letters, numbers, spaces, hyphens, apostrophes, periods, hash symbols (#), parentheses, brackets, and common gaming symbols are allowed.")
+            raise ValueError(
+                "Input contains invalid characters. "
+                "Only letters, numbers, spaces, hyphens, apostrophes, periods, "
+                "hash symbols (#), parentheses, plus signs, ampersands, forward slashes (/), and international characters are allowed."
+            )
             
         return text
     
@@ -267,12 +277,6 @@ class DataValidator:
             ("Test Scenario", DataValidator.validate_scenario_name, True),
             ("João da Silva", DataValidator.validate_player_name, True),  # Portuguese
             ("François Müller", DataValidator.validate_player_name, True),  # French/German
-            ("ONLY THREE POINTS #19873", DataValidator.validate_player_name, True),  # Gaming handle with hash
-            ("Player (Main)", DataValidator.validate_player_name, True),  # Name with parentheses
-            ("Team [Alpha]", DataValidator.validate_team_name, True),  # Name with brackets
-            ("User@Domain", DataValidator.validate_player_name, True),  # Name with @ symbol
-            ("Player+Alt", DataValidator.validate_player_name, True),  # Name with + symbol
-            ("Gamer{Pro}", DataValidator.validate_player_name, True),  # Name with curly braces
             ("Москва United", DataValidator.validate_team_name, False),  # Cyrillic - should fail with current pattern
             
             # Invalid cases - SQL injection attempts

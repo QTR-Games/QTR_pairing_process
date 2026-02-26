@@ -50,11 +50,14 @@ class TreeGenerator:
             cumulative_score = 0  # Will be calculated later during sort operations
             confidence_score = self.calculate_confidence_for_rating(base_rating)
             resistance_score = self.calculate_resistance_for_rating(base_rating, rating_0, rating_1)
-            
-            item_id = self.treeview.tree.insert(parent, 'end', 
-                                              text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", 
-                                              values=(base_rating, cumulative_score, confidence_score, resistance_score), 
-                                              tags=base_rating)
+
+            item_id = self.treeview.tree.insert(
+                parent,
+                'end',
+                text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)",
+                values=(base_rating, cumulative_score, confidence_score, resistance_score),
+                tags=base_rating,
+            )
             
             if fNames:
                 opponent_perms = list(permutations(comb, 2))
@@ -66,11 +69,14 @@ class TreeGenerator:
                     child_cumulative = 0  # Will be calculated during sort operations
                     child_confidence = self.calculate_confidence_for_rating(child_rating)
                     child_resistance = self.calculate_resistance_for_rating(child_rating, child_rating, child_rating)
-                    
-                    child_id = self.treeview.tree.insert(item_id, 'end', 
-                                                        text=f"{opponent} rating {child_rating}", 
-                                                        values=(child_rating, child_cumulative, child_confidence, child_resistance), 
-                                                        tags=child_rating)                    
+
+                    child_id = self.treeview.tree.insert(
+                        item_id,
+                        'end',
+                        text=f"{opponent} rating {child_rating}",
+                        values=(child_rating, child_cumulative, child_confidence, child_resistance),
+                        tags=child_rating,
+                    )
                     self.generate_nested_combinations(next_fName,nested_oNames, fNames, oRatings, fRatings, child_id)
 
     def sort_by_cumulative_value(self):
@@ -97,14 +103,13 @@ class TreeGenerator:
             if node:  # Skip empty root
                 try:
                     leaf_value = int(self.treeview.tree.item(node, 'values')[0])
-                    # Store cumulative value in the item's tags and update display column
                     item_data = self.treeview.tree.item(node)
                     current_tags = list(item_data.get('tags', []))
                     # Remove any existing cumulative tag and add new one
                     current_tags = [tag for tag in current_tags if not str(tag).startswith('cumulative_')]
                     current_tags.append(f'cumulative_{leaf_value}')
                     self.treeview.tree.item(node, tags=current_tags)
-                    
+
                     # Update the cumulative score column (index 1)
                     self.update_node_cumulative_display(node, leaf_value)
                     return leaf_value
@@ -138,7 +143,7 @@ class TreeGenerator:
                 current_tags = [tag for tag in current_tags if not str(tag).startswith('cumulative_')]
                 current_tags.append(f'cumulative_{max_cumulative}')
                 self.treeview.tree.item(node, tags=current_tags)
-                
+
                 # Update the cumulative score column (index 1)
                 self.update_node_cumulative_display(node, max_cumulative)
             return max_cumulative
@@ -154,11 +159,11 @@ class TreeGenerator:
         for child in children:
             cumulative_value = self.get_cumulative_value_from_tags(child)
             children_with_scores.append((child, cumulative_value))
-        
+
         # Determine if this is an opponent decision level or our choice level
         # Use the first child to determine the level, since all children are at the same level
         is_opponent_choice_level = self._is_opponent_choice_level(children[0])
-        
+
         if is_opponent_choice_level:
             # Opponent choice level: Sort by LOWEST cumulative value first (opponent picks what's worst for us)
             children_with_scores.sort(key=lambda x: x[1], reverse=False)
@@ -307,7 +312,7 @@ class TreeGenerator:
             ])
             
             self.treeview.tree.item(node, tags=current_tags)
-            
+
             # Update the confidence score column (index 2)
             self.update_node_confidence_display(node, confidence)
         except Exception:
@@ -324,11 +329,11 @@ class TreeGenerator:
         for child in children:
             confidence_score = self.get_confidence_from_tags(child)
             children_with_scores.append((child, confidence_score))
-        
+
         # Determine if this is an opponent decision level or our choice level
         # Use the first child to determine the level, since all children are at the same level
         is_opponent_choice_level = self._is_opponent_choice_level(children[0])
-        
+
         if is_opponent_choice_level:
             # Opponent choice level: Sort by LOWEST confidence first (opponent picks what's least confident for us)
             children_with_scores.sort(key=lambda x: x[1], reverse=False)
@@ -460,7 +465,7 @@ class TreeGenerator:
             current_tags.append(f'resistance_{int(resistance)}')
             
             self.treeview.tree.item(node, tags=current_tags)
-            
+
             # Update the resistance score column (index 3)
             self.update_node_resistance_display(node, resistance)
         except Exception:
@@ -477,11 +482,11 @@ class TreeGenerator:
         for child in children:
             resistance_score = self.get_resistance_from_tags(child)
             children_with_scores.append((child, resistance_score))
-        
+
         # Determine if this is an opponent decision level or our choice level
         # Use the first child to determine the level, since all children are at the same level
         is_opponent_choice_level = self._is_opponent_choice_level(children[0])
-        
+
         if is_opponent_choice_level:
             # Opponent choice level: Sort by LOWEST resistance first (opponent picks what's least resistant for us)
             children_with_scores.sort(key=lambda x: x[1], reverse=False)

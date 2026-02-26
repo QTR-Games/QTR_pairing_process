@@ -21,10 +21,8 @@ import logging
 from copy import deepcopy
 from dataclasses import dataclass
 
-# Configure module logger
+# Configure module logger and precompiled regex patterns
 logger = logging.getLogger(__name__)
-
-# Pre-compiled regex patterns for performance
 _VS_PATTERN = re.compile(r'^(.+?)\s+vs\s+(.+?)(?:\s*\([^)]+\))?$', re.IGNORECASE)
 _TEAM_PATTERN = re.compile(r'^(.+?)\s+vs\s+(.+?)(?:\s*\([^)]+\))?(?:\s+OR\s+.*)?$', re.IGNORECASE)
 
@@ -111,33 +109,18 @@ class MatchupTreeSynchronizer:
             
         # The round tracker callbacks will be set up by hooking into existing change handlers
         # We'll enhance the existing on_ante_selection_change_direct and on_response_selection_change_direct
-    
+
     def _is_tree_tab_visible(self) -> bool:
-        """
-        Check if the Matchup Tree tab is currently visible.
-        Returns False if we can't determine or if tree is not visible.
-        
-        This is a performance optimization to avoid expensive tree operations
-        when the user is viewing a different tab.
-        """
+        """Check if the Matchup Tree tab is currently visible."""
         try:
             if not hasattr(self.ui_manager, 'notebook'):
                 return False
-            
-            # Get the currently selected tab
             current_tab = self.ui_manager.notebook.select()
-            
-            # Check if we're on the Matchup Tree tab
-            # The tree tab is typically tab index 1 (0=Team Grid, 1=Matchup Tree)
-            if hasattr(self.ui_manager, 'tree_frame'):
-                tree_tab_id = str(self.ui_manager.tree_frame)
+            if hasattr(self.ui_manager, 'matchup_tree_frame'):
+                tree_tab_id = str(self.ui_manager.matchup_tree_frame)
                 return current_tab == tree_tab_id
-            
-            # Fallback: assume tree is visible if we can't determine
             return True
-            
         except Exception:
-            # On any error, assume tree is visible to maintain functionality
             return True
     
     def set_auto_sync_enabled(self, enabled: bool):
@@ -156,57 +139,40 @@ class MatchupTreeSynchronizer:
         if self.is_syncing or not self.tree_widget:
             return
         
-        # Notify that positions are out of sync (before sync check)
         if self.sync_state_callback:
             self.sync_state_callback(False)
         
-        # If auto-sync is disabled and this is NOT a manual sync, don't perform sync
         if not manual_sync and not self.auto_sync_enabled:
             logger.debug("Auto-sync disabled, skipping round-to-tree sync")
             return
         
-        # Performance optimization: Skip sync if tree tab is not visible (unless manual sync)
         if not manual_sync and not self._is_tree_tab_visible():
             return
         
-        # Cancel any pending tree-to-round sync to prevent race condition
         if self.pending_tree_sync_id is not None:
             try:
                 self.ui_manager.root.after_cancel(self.pending_tree_sync_id)
                 self.pending_tree_sync_id = None
-            except:
+            except Exception:
                 pass
             
         try:
             self.is_syncing = True
             self.sync_direction = 'round_to_tree'
             
-            # Get current round selections
             round_selections = self._parse_round_selections()
-            
             if not round_selections:
                 return
             
-            # Find the matching tree path
             matching_path = self._find_matching_tree_path(round_selections, changed_round)
-            
             if matching_path:
-                # Mark that we're making a programmatic tree change
-                # This tells the tree selection event handler to ignore this change
                 self._programmatic_tree_change = True
-                
-                # Navigate to the matching node
                 self._navigate_to_tree_node(matching_path[-1])
                 self.current_tree_path = matching_path
-                
-                # Notify that sync is complete (positions now match)
                 if self.sync_state_callback:
                     self.sync_state_callback(True)
-                
-                # Reset flag after a brief moment (tree event fires asynchronously)
                 if hasattr(self.ui_manager, 'root'):
                     self.ui_manager.root.after(50, lambda: setattr(self, '_programmatic_tree_change', False))
-                
         except Exception as e:
             logger.error(f"Error syncing round to tree: {e}")
         finally:
@@ -241,8 +207,6 @@ class MatchupTreeSynchronizer:
             if tree_matchups:
                 # Update round tracker dropdowns to match
                 self._update_round_dropdowns_from_tree(tree_matchups)
-                
-                # Notify that sync is complete (positions now match)
                 if self.sync_state_callback:
                     self.sync_state_callback(True)
             
@@ -304,17 +268,14 @@ class MatchupTreeSynchronizer:
         # Create cache key from selections
         cache_key = self._create_cache_key(round_selections)
         
-        # Check cache first
         if cache_key in self._path_cache:
             cached_path = self._path_cache[cache_key]
             return cached_path
         
-        # Start from tree root
         root_items = self.tree_widget.get_children("")
         if not root_items:
             return None
         
-        # Use recursive search to find matching path
         result_path = None
         for root_item in root_items:
             path = self._recursive_path_search(root_item, round_selections, 0, [root_item])
@@ -322,9 +283,7 @@ class MatchupTreeSynchronizer:
                 result_path = path
                 break
         
-        # Cache the result (including None results to avoid repeated failed searches)
         self._cache_path(cache_key, result_path)
-        
         return result_path
     
     def _create_cache_key(self, selections: List[MatchupSelection]) -> str:
@@ -333,27 +292,17 @@ class MatchupTreeSynchronizer:
         for sel in selections:
             matchup = sel.get_primary_matchup()
             if matchup:
-                # Create key from sorted player names to handle order variations
                 key_parts.append(f"{sel.round_num}:{','.join(sorted(matchup))}")
         return '|'.join(key_parts)
     
     def _cache_path(self, cache_key: str, path: Optional[List[str]]):
-        """
-        Cache a tree path with size limit enforcement.
-        
-        Args:
-            cache_key: Key to store the path under
-            path: Path to cache (or None for negative caching)
-        """
-        # Enforce cache size limit
+        """Cache a tree path with size limit enforcement."""
         if len(self._path_cache) >= _MAX_PATH_CACHE_SIZE:
-            # Remove oldest entry (first item in dict)
             try:
                 oldest_key = next(iter(self._path_cache))
                 del self._path_cache[oldest_key]
             except StopIteration:
                 pass
-        
         self._path_cache[cache_key] = path
     
     def _recursive_path_search(self, current_node: str, selections: List[MatchupSelection],
@@ -476,7 +425,6 @@ class MatchupTreeSynchronizer:
                     node_text = self.tree_widget.item(current, 'text')
                     node_values = self.tree_widget.item(current, 'values')
                     
-                    # Defensive validation: ensure we got valid data
                     if node_text is None:
                         logger.warning(f"Tree node {current} has no text, skipping")
                         parent = self.tree_widget.parent(current)
@@ -491,7 +439,6 @@ class MatchupTreeSynchronizer:
                     
                     parent = self.tree_widget.parent(current)
                     current = parent if parent else None
-                    
                 except tk.TclError as e:
                     logger.warning(f"Error accessing tree node {current}: {e}")
                     break
@@ -516,7 +463,6 @@ class MatchupTreeSynchronizer:
     def _parse_matchup_from_text(self, text: str, round_num: int) -> Optional[Dict[str, Any]]:
         """
         Parse matchup information from a tree node's text.
-        Handles OR alternatives like "Bokur vs FLO (3/5) OR GORKUL (3/5)".
         
         Args:
             text: Tree node text
@@ -525,54 +471,37 @@ class MatchupTreeSynchronizer:
         Returns:
             Dictionary with matchup info (player1, player2, player3 if OR exists) or None if parsing fails
         """
-        # Use pre-compiled pattern for performance
         match = _TEAM_PATTERN.search(text.strip())
         
         if match:
             player1 = match.group(1).strip()
             player2_raw = match.group(2).strip()
-            
-            # Remove any rating information from player1
             player1 = re.sub(r'\s*\([^)]+\)$', '', player1).strip()
-            
-            # Check if there's an OR clause in player2_raw
             player2 = None
             player3 = None
             
             if ' OR ' in text:
-                # Extract both alternatives
-                # Pattern: "player2 (rating) OR player3 (rating)"
                 or_pattern = re.compile(r'vs\s+(.+?)\s*\([^)]+\)\s+OR\s+(.+?)(?:\s*\([^)]+\))?$', re.IGNORECASE)
                 or_match = or_pattern.search(text)
-                
                 if or_match:
                     player2 = or_match.group(1).strip()
                     player3 = or_match.group(2).strip()
-                    # Remove any trailing rating from player3
                     player3 = re.sub(r'\s*\([^)]+\)$', '', player3).strip()
                 else:
-                    # Fallback: just use player2_raw without OR parsing
                     player2 = re.sub(r'\s*\([^)]+\)$', '', player2_raw).strip()
             else:
-                # No OR clause, just clean up player2
                 player2 = re.sub(r'\s*\([^)]+\)$', '', player2_raw).strip()
-            
             result = {
                 'round': round_num,
                 'player1': player1,
                 'player2': player2,
                 'text': text
             }
-            
-            # Add player3 if it exists
             if player3:
                 result['player3'] = player3
-            
             return result
         else:
-            # Log warning if parsing fails for unexpected format
             logger.warning(f"Failed to parse matchup from text: {text}")
-        
         return None
     
     def _update_round_dropdowns_from_tree(self, tree_matchups: List[Dict[str, Any]]):
@@ -594,34 +523,25 @@ class MatchupTreeSynchronizer:
                 round_num = matchup.get('round', 1)
                 player1 = matchup.get('player1', '')
                 player2 = matchup.get('player2', '')
-                player3 = matchup.get('player3', None)  # Third player from OR clause
+                
+                player3 = matchup.get('player3', None)
                 
                 if round_num <= 5 and player1 and player2:
-                    # Determine ante/response teams based on round number
-                    # Tree format is always: AntePlayer vs ResponseOption1 OR ResponseOption2
-                    friendly_antes = (round_num % 2 == 1)  # Rounds 1,3,5
-                    
-                    # player1 is always the ante player
-                    # player2 and player3 (if exists) are response options
+                    friendly_antes = (round_num % 2 == 1)
                     ante_player = player1
                     response_player1 = player2
-                    response_player2 = player3  # May be None
-                    
+                    response_player2 = player3
                     if friendly_antes:
-                        # Rounds 1,3,5: Friendly antes, Enemy responds
                         ante_team = 'friendly'
                         response_team = 'enemy'
                     else:
-                        # Rounds 2,4: Enemy antes, Friendly responds
                         ante_team = 'enemy'
                         response_team = 'friendly'
-                    
-                    # Update the tracking dictionary
                     self.ui_manager.selected_players_per_round[round_num] = {
                         'ante': ante_player,
                         'ante_team': ante_team,
                         'response1': response_player1,
-                        'response2': response_player2,  # Now includes OR alternative
+                        'response2': response_player2,
                         'response_team': response_team
                     }
             
@@ -630,61 +550,33 @@ class MatchupTreeSynchronizer:
             
         except Exception as e:
             logger.error(f"Error updating round dropdowns from tree: {e}")
-    
+
     def _calculate_dropdown_index(self, round_num: int, position: str, team: str) -> int:
-        """
-        Calculate the dropdown index for a given round, position, and team.
-        
-        Args:
-            round_num: Round number (1-5)
-            position: 'ante' or 'response' (response1 or response2)
-            team: 'friendly' or 'enemy'
-            
-        Returns:
-            Index into the appropriate round_vars or enemy_round_vars list
-            
-        Notes:
-            The dropdown layout alternates between friendly and enemy antes:
-            - Rounds 1, 3, 5: Friendly ante, Enemy responses
-            - Rounds 2, 4: Enemy ante, Friendly responses
-            
-            Each round has 1 ante + 2 response slots = 3 total slots per round
-        """
-        friendly_antes = (round_num % 2 == 1)  # True for rounds 1, 3, 5
-        
+        """Calculate the dropdown index for a given round, position, and team."""
+        friendly_antes = (round_num % 2 == 1)
         if team == 'friendly':
             if friendly_antes:
-                # Friendly ante rounds: ante is in round_vars
                 if position == 'ante':
-                    # Calculate which friendly ante slot (0, 3, 6 for rounds 1, 3, 5)
                     return (round_num - 1) // 2 * 3
-                else:
-                    # This shouldn't happen in friendly ante rounds
-                    logger.warning(f"Unexpected friendly response in round {round_num}")
-                    return 0
-            else:
-                # Enemy ante rounds: friendly responses are in round_vars
-                # Rounds 2, 4 have indices starting at 1, 4
-                response_num = int(position[-1]) if position.startswith('response') else 1
-                base_index = ((round_num - 2) // 2 * 3) + 1
-                return base_index + (response_num - 1)
-        else:  # enemy team
-            if friendly_antes:
-                # Friendly ante rounds: enemy responses are in enemy_round_vars
-                response_num = int(position[-1]) if position.startswith('response') else 1
-                base_index = (round_num - 1) // 2 * 3 + 1
-                return base_index + (response_num - 1)
-            else:
-                # Enemy ante rounds: enemy ante is in enemy_round_vars
-                if position == 'ante':
-                    return ((round_num - 2) // 2 * 3)
-                else:
-                    logger.warning(f"Unexpected enemy response in round {round_num}")
-                    return 0
+                logger.warning(f"Unexpected friendly response in round {round_num}")
+                return 0
+            response_num = int(position[-1]) if position.startswith('response') else 1
+            base_index = ((round_num - 2) // 2 * 3) + 1
+            return base_index + (response_num - 1)
+        if friendly_antes:
+            response_num = int(position[-1]) if position.startswith('response') else 1
+            base_index = (round_num - 1) // 2 * 3 + 1
+            return base_index + (response_num - 1)
+        if position == 'ante':
+            return ((round_num - 2) // 2 * 3)
+        logger.warning(f"Unexpected enemy response in round {round_num}")
+        return 0
     
     def _update_dropdown_widgets(self):
         """Update the actual dropdown widget values to match the tracking data."""
         try:
+            if hasattr(self.ui_manager, '_updating_dropdowns'):
+                self.ui_manager._updating_dropdowns = True
             # Update round dropdowns
             if hasattr(self.ui_manager, 'round_vars') and hasattr(self.ui_manager, 'enemy_round_vars'):
                 round_var_index = 0
@@ -723,39 +615,30 @@ class MatchupTreeSynchronizer:
                                 
         except Exception as e:
             logger.error(f"Error updating dropdown widgets: {e}")
+        finally:
+            if hasattr(self.ui_manager, '_updating_dropdowns'):
+                self.ui_manager._updating_dropdowns = False
     
     def _on_tree_selection_changed(self, event):
         """Handle tree selection change events."""
-        # Ignore if this is a programmatic change (from dropdown sync)
         if self._programmatic_tree_change:
             logger.debug("Ignoring programmatic tree selection change")
             return
-        
-        # Notify that tree and dropdowns are out of sync
         if self.sync_state_callback:
             self.sync_state_callback(False)
-        
-        # If auto-sync is disabled, don't sync to rounds
         if not self.auto_sync_enabled:
             logger.debug("Auto-sync disabled, skipping tree-to-round sync")
             return
-        
-        # Cancel any existing pending sync
         if self.pending_tree_sync_id is not None:
             try:
                 self.ui_manager.root.after_cancel(self.pending_tree_sync_id)
-            except:
+            except Exception:
                 pass
-        
-        # Delay sync to avoid conflicts with tree expansion/collapse
-        # This is a USER-initiated tree click, so sync to dropdowns
         if hasattr(self.ui_manager, 'root'):
             def delayed_sync():
                 self.pending_tree_sync_id = None
-                # Only sync if we're not currently syncing from another operation
                 if not self.is_syncing:
                     self.sync_tree_to_rounds()
-            
             self.pending_tree_sync_id = self.ui_manager.root.after(100, delayed_sync)
     
     def is_selections_changed(self) -> bool:
@@ -764,7 +647,6 @@ class MatchupTreeSynchronizer:
         changed = current_selections != self.last_round_selections
         
         if changed:
-            # Use deepcopy to prevent nested dict mutations from corrupting cache
             self.last_round_selections = deepcopy(current_selections)
             
         return changed
@@ -772,46 +654,29 @@ class MatchupTreeSynchronizer:
     def force_full_sync(self):
         """Force a complete synchronization between round tracker and tree."""
         logger.info("Forcing full synchronization...")
-        
-        # Clear caches
         self.last_round_selections.clear()
         self.current_tree_path.clear()
         self._path_cache.clear()
-        
-        # Sync round to tree (this is typically the primary direction)
-        # Use manual_sync=True to force sync even if auto-sync is disabled
         self.sync_round_to_tree(manual_sync=True)
-    
+
     def cleanup(self):
-        """
-        Clean up resources and unbind event handlers.
-        
-        Should be called when the synchronizer is being destroyed or re-initialized
-        to prevent memory leaks from event handlers and unbounded cache growth.
-        """
-        # Cancel any pending tree sync callbacks
+        """Clean up resources and unbind event handlers."""
         if self.pending_tree_sync_id is not None:
             try:
                 self.ui_manager.root.after_cancel(self.pending_tree_sync_id)
                 self.pending_tree_sync_id = None
             except Exception as e:
                 logger.warning(f"Error canceling pending sync: {e}")
-        
-        # Unbind tree widget event handlers
         if self.tree_widget:
             try:
                 self.tree_widget.unbind('<<TreeviewSelect>>')
             except Exception as e:
                 logger.warning(f"Error unbinding tree event handler: {e}")
-        
-        # Clear all caches
         self.last_round_selections.clear()
         self.current_tree_path.clear()
         self._path_cache.clear()
         self._programmatic_tree_change = False
         self.sync_state_callback = None
-        
-        # Clear references
         self.tree_widget = None
     
     def get_sync_status(self) -> Dict[str, Any]:

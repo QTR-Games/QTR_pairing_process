@@ -14,6 +14,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__)))
 from qtr_pairing_process.db_management.db_manager import DbManager
 from qtr_pairing_process.matchup_data_cache import MatchupDataCache
 
+
 def test_cache_performance():
     """
     Test and compare performance between direct database queries and cached queries.
@@ -51,7 +52,8 @@ def test_cache_performance():
     cache_time = time.time() - start_time
     
     print(f"⚡ Cache query: {len(cache_team_names)} teams in {cache_time:.4f}s")
-    print(f"🚀 Speed improvement: {(db_time / cache_time):.1f}x faster")
+    if cache_time > 0:
+        print(f"🚀 Speed improvement: {(db_time / cache_time):.1f}x faster")
     
     # Test 2: Multiple team lookups (simulate UI usage)
     print("\n🔍 TEST 2: Multiple Team Lookups")
@@ -97,6 +99,8 @@ def test_cache_performance():
                 ratings = db_manager.query_sql(ratings_sql)
             else:
                 ratings = []
+        else:
+            players1 = players2 = ratings = []
         
         db_total_time = time.time() - start_time
         db_query_count = 5  # team1, team2, players1, players2, ratings
@@ -105,15 +109,13 @@ def test_cache_performance():
         
         # Cache queries (new method)
         start_time = time.time()
-        
         cached_data = cache.get_cached_grid_data(team1, team2, scenario_id)
-        
         cache_total_time = time.time() - start_time
         cache_query_count = 1 if scenario_id not in [cache_key[2] for cache_key in cache._ratings_cache.keys()] else 0
         
         print(f"⚡ Cache queries: {cache_query_count} queries in {cache_total_time:.4f}s")
         
-        if db_total_time > 0:
+        if db_total_time > 0 and cache_total_time > 0:
             print(f"🚀 Speed improvement: {(db_total_time / cache_total_time):.1f}x faster")
             print(f"📉 Query reduction: {db_query_count - cache_query_count} fewer queries")
     
@@ -148,7 +150,8 @@ def test_cache_performance():
         # Estimate old method time (15-20 queries per matchup)
         estimated_old_time = cache_simulation_time * 15  # Conservative estimate
         print(f"📊 Estimated old method: ~{estimated_old_time:.2f}s")
-        print(f"🚀 Estimated improvement: {(estimated_old_time / cache_simulation_time):.1f}x faster")
+        if cache_simulation_time > 0:
+            print(f"🚀 Estimated improvement: {(estimated_old_time / cache_simulation_time):.1f}x faster")
     
     # Show final cache statistics
     print("\n📈 FINAL CACHE STATISTICS")
@@ -156,8 +159,8 @@ def test_cache_performance():
     cache.print_cache_stats()
     
     print("\n✅ PERFORMANCE TEST COMPLETE!")
-    print("💡 The cache system successfully reduces database queries by 80-90%")
     print("🔥 UI responsiveness is dramatically improved!")
+
 
 if __name__ == "__main__":
     try:
@@ -166,5 +169,3 @@ if __name__ == "__main__":
         print(f"❌ Test failed: {e}")
         import traceback
         traceback.print_exc()
-    
-    input("\nPress Enter to exit...")

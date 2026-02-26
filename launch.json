@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 {
     "version": "0.2.0",
     "configurations": [
@@ -23,4 +24,31 @@
             "cwd": "${workspaceFolder}"
         }
     ]
+=======
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: QTR Pairing Process",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+>>>>>>> origin/main
 }
