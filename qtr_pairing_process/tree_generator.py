@@ -8,11 +8,9 @@ import qtr_pairing_process.utility_funcs as uf
 class TreeGenerator:
     def __init__(
         self,
-        treeview,
-        sort_alpha
+        treeview
     ):
         self.treeview = treeview
-        self.sort_alpha = sort_alpha
         self.original_order = {}
         self.fRatings = None
 
@@ -21,17 +19,20 @@ class TreeGenerator:
         self.treeview.tree.delete(*self.treeview.tree.get_children())
         # Reset sorting state for new generation
         self.original_order_saved = False
+        self.original_order = {}
         tree_top = self.treeview.tree.insert("", 'end', text="Pairings")
-        fNames_sorted = sorted(fNames, key=lambda x: x) if self.sort_alpha else fNames
-        oNames_sorted = sorted(oNames, key=lambda x: x) if self.sort_alpha else oNames
         
-        for name in fNames_sorted:
-            fnames_filtered = [x for x in fNames_sorted if x!=name]
+        # Use original order (no alphabetical sorting)
+        for name in fNames:
+            fnames_filtered = [x for x in fNames if x!=name]
 
-            # print(f"Top Level: {name} in {fNames_sorted}")
-            self.generate_nested_combinations(name, fnames_filtered, oNames_sorted, fRatings, oRatings, tree_top)
-            fNames_sorted[:] = uf.cycle_list(fNames_sorted)
-            # oNames_sorted[:] = cycle_list(oNames_sorted)
+            # print(f"Top Level: {name} in {fNames}")
+            self.generate_nested_combinations(name, fnames_filtered, oNames, fRatings, oRatings, tree_top)
+            fNames[:] = uf.cycle_list(fNames)
+            # oNames[:] = uf.cycle_list(oNames)
+        
+        # Save the original order after generation for restore functionality
+        self.save_original_order_recursive()
         
     def generate_nested_combinations(self, first_fName, fNames, oNames, fRatings, oRatings, parent):
         
@@ -39,8 +40,9 @@ class TreeGenerator:
         if oNames and not combs:
             first_oName = oNames[0]
             combs = list(combinations([first_oName,first_oName], 2))
-        combs_sorted = sorted(combs, key=lambda x: (x[0], x[1])) if self.sort_alpha else combs
-        for comb in combs_sorted:
+        
+        # Use original order (no alphabetical sorting)
+        for comb in combs:
             rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
             rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
             item_id = self.treeview.tree.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=(max(rating_0, rating_1), ""), tags=max(rating_0, rating_1))
@@ -521,3 +523,226 @@ class TreeGenerator:
                     self.treeview.tree.move(child_id, root, 'end')
                 except tkinter.TclError as e:
                     print(f"Error moving child {child_id} to root {root}: {e}")
+
+    def save_original_order_recursive(self, node=""):
+        """Recursively save the original order of all nodes in the tree"""
+        children = self.treeview.tree.get_children(node)
+        if children:
+            self.original_order[node if node else "root"] = list(children)
+            for child in children:
+                self.save_original_order_recursive(child)
+    
+    def restore_original_order(self):
+        """Restore the original order of all nodes in the tree"""
+        if not self.original_order:
+            return
+        
+        def restore_node(node=""):
+            key = node if node else "root"
+            if key in self.original_order:
+                original_children = self.original_order[key]
+                current_children = list(self.treeview.tree.get_children(node))
+                
+                # Detach all children
+                for child in current_children:
+                    try:
+                        self.treeview.tree.detach(child)
+                    except tkinter.TclError:
+                        pass
+                
+                # Reattach in original order
+                for child in original_children:
+                    try:
+                        self.treeview.tree.move(child, node, 'end')
+                    except tkinter.TclError:
+                        pass
+                
+                # Recursively restore children
+                for child in original_children:
+                    restore_node(child)
+        
+        restore_node()
+    
+    def sort_by_column_recursive(self, column, reverse=False):
+        """Sort all tree levels by a specific column"""
+        # Save original order if not already saved
+        if not self.original_order:
+            self.save_original_order_recursive()
+        
+        # Sort recursively from root
+        def sort_node_children(node=""):
+            children = list(self.treeview.tree.get_children(node))
+            if not children:
+                return
+            
+            # Create list of (child_id, sort_key) tuples
+            children_with_keys = []
+            for child in children:
+                if column == "text":
+                    # Sort by the text field (Pairing column)
+                    sort_key = self.treeview.tree.item(child, 'text')
+                else:
+                    # Sort by a value column (Rating or Sort Value)
+                    try:
+                        values = self.treeview.tree.item(child, 'values')
+                        if column == "Rating":
+                            sort_key = int(values[0]) if values and values[0] != 'N/A' else 0
+                        elif column == "Sort Value":
+                            # Use cumulative value from tags if available
+                            cumulative = self.get_cumulative_from_tags(child)
+                            if cumulative > 0:
+                                sort_key = cumulative
+                            else:
+                                sort_key = int(values[1]) if len(values) > 1 and values[1] != '' else 0
+                        else:
+                            sort_key = 0
+                    except (ValueError, IndexError, TypeError):
+                        sort_key = 0
+                
+                # For text sorting, convert to lowercase for case-insensitive comparison
+                if column == "text" and isinstance(sort_key, str):
+                    sort_key = sort_key.lower()
+                
+                children_with_keys.append((child, sort_key))
+            
+            # Sort the children
+            children_with_keys.sort(key=lambda x: x[1], reverse=reverse)
+            
+            # Reorder in tree
+            for child, _ in children_with_keys:
+                try:
+                    self.treeview.tree.detach(child)
+                except tkinter.TclError:
+                    pass
+            
+            for child, _ in children_with_keys:
+                try:
+                    self.treeview.tree.move(child, node, 'end')
+                except tkinter.TclError:
+                    pass
+            
+            # Recursively sort grandchildren
+            for child, _ in children_with_keys:
+                sort_node_children(child)
+        
+        sort_node_children()
+
+    def ensure_analysis_tags(self, mode):
+        """Ensure analysis tags exist for a given advanced sorting mode.
+
+        This computes and stores per-node tags but does not reorder the tree.
+        """
+        if mode == "cumulative":
+            self.calculate_all_path_values("")
+        elif mode == "confidence":
+            self.calculate_confidence_scores("")
+        elif mode == "resistance":
+            self.calculate_counter_resistance_scores("")
+
+    def _get_primary_sort_value(self, node, primary_mode):
+        if primary_mode == "cumulative":
+            return self.get_cumulative_value_from_tags(node)
+        if primary_mode == "confidence":
+            return self.get_confidence_from_tags(node)
+        if primary_mode == "resistance":
+            return self.get_resistance_from_tags(node)
+        return 0
+
+    def _parse_int(self, value, default=0):
+        try:
+            if value in (None, "", "N/A"):
+                return default
+            return int(float(value))
+        except (ValueError, TypeError):
+            return default
+
+    def _get_secondary_sort_value(self, node, secondary_column):
+        """Get a stable secondary sort key for a node.
+
+        secondary_column: one of {"text", "Rating", "Sort Value"}
+        """
+        if secondary_column == "text":
+            try:
+                return str(self.treeview.tree.item(node, 'text')).lower()
+            except Exception:
+                return ""
+
+        try:
+            values = self.treeview.tree.item(node, 'values')
+        except Exception:
+            values = ()
+
+        if secondary_column == "Rating":
+            return self._parse_int(values[0] if len(values) > 0 else None, default=0)
+
+        if secondary_column == "Sort Value":
+            return self._parse_int(values[1] if len(values) > 1 else None, default=0)
+
+        return 0
+
+    def sort_combined_recursive(self, primary_mode=None, secondary_column=None, secondary_reverse=False, compute_primary_tags=True):
+        """Sort the tree recursively with advanced mode as primary and column sort as secondary.
+
+        Order of precedence (stable): primary_mode -> secondary_column -> original generation order.
+        primary_mode: None or one of {"cumulative", "confidence", "resistance"}
+        secondary_column: None or one of {"text", "Rating", "Sort Value"}
+        secondary_reverse: True for descending secondary sort.
+        """
+        # Ensure we have an original-order snapshot to use as the final tie-break.
+        if not self.original_order:
+            self.save_original_order_recursive()
+
+        if primary_mode and compute_primary_tags:
+            self.ensure_analysis_tags(primary_mode)
+
+        def sort_node(node=""):
+            children = list(self.treeview.tree.get_children(node))
+            if not children:
+                return
+
+            key = node if node else "root"
+            original_children = self.original_order.get(key)
+            if original_children:
+                index_map = {cid: i for i, cid in enumerate(original_children)}
+                children.sort(key=lambda cid: index_map.get(cid, 10**9))
+
+            # If the secondary column is Sort Value and primary_mode is active, let the
+            # column direction control the primary sort (e.g., ascending cumulative).
+            primary_reverse = True
+            effective_secondary = secondary_column
+            if primary_mode and secondary_column == "Sort Value":
+                primary_reverse = secondary_reverse
+                effective_secondary = None
+
+            # Secondary sort (column header) first so that primary sort can remain dominant.
+            if effective_secondary:
+                children.sort(
+                    key=lambda cid: self._get_secondary_sort_value(cid, effective_secondary),
+                    reverse=secondary_reverse,
+                )
+
+            # Primary sort (advanced mode) last, leveraging Python's stable sort.
+            if primary_mode:
+                children.sort(
+                    key=lambda cid: self._get_primary_sort_value(cid, primary_mode),
+                    reverse=primary_reverse,
+                )
+
+            # Reorder in tree.
+            for child in children:
+                try:
+                    self.treeview.tree.detach(child)
+                except tkinter.TclError:
+                    pass
+
+            for child in children:
+                try:
+                    self.treeview.tree.move(child, node, 'end')
+                except tkinter.TclError:
+                    pass
+
+            # Recurse.
+            for child in children:
+                sort_node(child)
+
+        sort_node("")

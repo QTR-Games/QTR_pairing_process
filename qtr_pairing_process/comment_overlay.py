@@ -47,10 +47,13 @@ class CommentOverlay:
         self.comment_editor_callback = comment_editor_callback
         
         # Canvas overlay - placed over grid using place geometry
+        # Note: Canvas is not actually transparent on all platforms, so we don't draw on it
+        # We only use it for coordinate-based event handling
         self.canvas = tk.Canvas(
             parent_frame,
             highlightthickness=0,
-            cursor='arrow'
+            cursor='arrow',
+            bg=parent_frame['bg']  # Match parent background to blend in
         )
         
         # Grid geometry tracking (set by update_grid_geometry())

@@ -184,7 +184,7 @@ class UiManager:
         
         # Widget references (Entry widgets only, no StringVars)
         self.grid_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(6)] for _ in range(6)]
-        self.grid_display_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(6)] for _ in range(6)]
+        self.grid_display_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(5)] for _ in range(6)]
         
         # Comment overlay will be initialized after grid creation
         self.comment_overlay: Optional[CommentOverlay] = None
@@ -198,17 +198,16 @@ class UiManager:
         pairingLead.pack(side=tk.BOTTOM,pady=5)
         pairingLead.select()
 
-        self.sort_alpha = tk.IntVar()
-        alphaBox = tk.Checkbutton(self.buttons_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
-        alphaBox.pack(side=tk.BOTTOM,pady=5)
-        alphaBox.select()
-
         # create treeview and tree generator
         self.treeview = LazyTreeView(master=self.tree_tab_right_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
-        self.tree_generator = TreeGenerator(treeview=self.treeview, sort_alpha=self.sort_alpha.get())
+        self.tree_generator = TreeGenerator(treeview=self.treeview)
         
         # Track current sorting mode for column display
         self.current_sort_mode = "none"
+        
+        # Track column sorting state: {column_id: 'asc'|'desc'|'none'}
+        self.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+        self.active_column_sort = None  # Which column is currently sorted
         
         # Matchup output panel will be created lazily when generating combinations
         self.matchup_output_panel_created = False
@@ -346,9 +345,9 @@ class UiManager:
         # Configure Treeview with style
         style = ttk.Style()
         style.configure("Treeview", font=("Arial", 10))
-        self.treeview.tree.heading("#0", text="Pairing")
-        self.treeview.tree.heading("Rating", text="Rating")
-        self.treeview.tree.heading("Sort Value", text="Sort Value")
+        self.treeview.tree.heading("#0", text="Pairing", command=lambda: self.on_column_click("#0"))
+        self.treeview.tree.heading("Rating", text="Rating", command=lambda: self.on_column_click("Rating"))
+        self.treeview.tree.heading("Sort Value", text="Sort Value", command=lambda: self.on_column_click("Sort Value"))
         
         # Configure column widths
         self.treeview.tree.column("Rating", width=80, minwidth=50)
@@ -423,7 +422,7 @@ class UiManager:
         separator.grid(row=1, column=6, rowspan=7, sticky="ns", padx=5)
         
         calc_header = tk.Label(self.grid_frame, text="Calculations", font=("Arial", 11, "bold"), bg="lightgreen")
-        calc_header.grid(row=1, column=7, columnspan=6, pady=(0, 2), sticky="ew")
+        calc_header.grid(row=1, column=7, columnspan=5, pady=(0, 2), sticky="ew")
 
         # V2: Create the 6x6 rating grid WITHOUT StringVars or bindings
         # All state managed by GridDataModel, events by CommentOverlay
@@ -447,10 +446,10 @@ class UiManager:
                 else:
                     entry.insert(0, str(initial_value))
 
-        # Create the display grid (right side of unified grid, columns 7-12)
+        # Create the display grid (right side of unified grid, columns 7-11)
         for r in range(6):
-            for c in range(6):
-                # Display grid entries (columns 7-12) - no textvariable
+            for c in range(5):
+                # Display grid entries (columns 7-11) - no textvariable
                 display_entry = tk.Entry(self.grid_frame, width=8, 
                                        state='readonly', font=("Arial", 10), relief=tk.SOLID, borderwidth=1,
                                        readonlybackground="lightgray")
@@ -466,17 +465,17 @@ class UiManager:
         # Use minimal grid weights to reduce resize lag
         for i in range(2, 8):  # rows 2-7 for grid data
             self.grid_frame.grid_rowconfigure(i, weight=0)  # Fixed height
-        for i in range(13):  # columns 0-12
+        for i in range(13):  # columns 0-12 (6 rating + separator + 5 display + row select)
             self.grid_frame.grid_columnconfigure(i, weight=0)  # Fixed width
 
-        # Add row checkboxes (column 13)
+        # Add row checkboxes (column 12)
         checkbox_label = tk.Label(self.grid_frame, text="Row\nSelect", font=("Arial", 9, "bold"))
-        checkbox_label.grid(row=1, column=13, pady=(0, 2))
+        checkbox_label.grid(row=1, column=12, pady=(0, 2))
         
         for r in range(1, 6):
             var = tk.IntVar()
             entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"R{r}")
-            entry.grid(row=r + 2, column=13, padx=2, pady=1, sticky="w")
+            entry.grid(row=r + 2, column=12, padx=2, pady=1, sticky="w")
             var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
             self.row_checkboxes.append(var)
 
@@ -495,17 +494,17 @@ class UiManager:
         self.grid_frame.grid_rowconfigure(8, weight=0)
         self.grid_frame.grid_rowconfigure(9, weight=0)
         self.grid_frame.grid_columnconfigure(6, weight=0)
-        self.grid_frame.grid_columnconfigure(13, weight=0)
+        self.grid_frame.grid_columnconfigure(12, weight=0)
         
-        # V2: Initialize CommentOverlay after grid creation (replaces 75 mouse bindings)
-        self.comment_overlay = CommentOverlay(
-            parent_frame=self.grid_frame,
-            grid_data_model=self.grid_data_model,
-            comment_editor_callback=self._open_comment_editor_for_cell
-        )
+        # V2: Event delegation - 3 frame bindings instead of 75 widget bindings
+        # Bind to grid_frame and use coordinate detection to find target cell
+        self.comment_overlay = None
+        self._current_hover_cell = None  # Track which cell we're hovering over
         
-        # Calculate and set grid geometry for overlay
-        self.root.after(100, self._update_comment_overlay_geometry)
+        # Frame-level event delegation (3 bindings for entire grid)
+        self.grid_frame.bind('<Motion>', self._on_grid_motion, add='+')
+        self.grid_frame.bind('<Leave>', self._on_grid_leave, add='+')
+        self.grid_frame.bind('<Button-3>', self._on_grid_right_click, add='+')
 
     def create_team_grid_round_selection(self):
         """Create the Round Selection section for Team Grid tab with 75%/25% split"""
@@ -704,8 +703,7 @@ class UiManager:
             self.update_display_fields(0,1,"PINNED?")
             self.update_display_fields(0,2,"CAN-PIN?")
             self.update_display_fields(0,3,"PROTECT")
-            self.update_display_fields(0,4,"MAX/MIN")
-            self.update_display_fields(0,5,"SUM MARG")
+            self.update_display_fields(0,4,"BUSSING")
         except (ValueError, IndexError) as e:
             print(f"update_display_fields has failed with error:\n{e}")
 
@@ -717,7 +715,7 @@ class UiManager:
         if not team_1 or not team_2:
             # Clear display fields when no teams are selected
             for row in range(1, 6):
-                for col in range(0, 6):
+                for col in range(0, 5):
                     self.update_display_fields(row, col, "---")
             return
         
@@ -732,14 +730,14 @@ class UiManager:
         for row in range(1, 6):
             try:
                 if self.row_checkboxes and row - 1 < len(self.row_checkboxes) and self.row_checkboxes[row - 1].get() == 1:
-                    for col in range(4, 6):
+                    for col in range(4, 5):
                         self.update_display_fields(row, col, "---")
                     continue
                 
                 # V2: Get floor value from GridDataModel
                 floor_value = self.grid_data_model.get_display(row, 0)
                 if not floor_value or floor_value == "---" or floor_value.strip() == "":
-                    for col in range(4, 6):
+                    for col in range(4, 5):
                         self.update_display_fields(row, col, "---")
                     continue
                 floor_rating_sum = int(floor_value)
@@ -761,8 +759,6 @@ class UiManager:
                 min_margin = min(all_margins)
                 margin_text = f"{max_margin} | {min_margin}"
                 self.update_display_fields(row, 4, margin_text)
-                sum_margins = sum(all_margins)
-                self.update_display_fields(row, 5, sum_margins)
             except (ValueError, IndexError) as e:
                 print(f"check_margins has failed for row {row} with error:\n{e}")
 
@@ -1114,68 +1110,90 @@ class UiManager:
         self.active_sort_mode = None
         self.is_sorted = False
         self.current_sort_mode = "none"
-        self.treeview.tree.heading("Sort Value", text="Sort Value")
+        self.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+        self.active_column_sort = None
+        self.update_column_headers()
         self.update_sort_value_column()
         self.update_sort_button_states()
         
     def sort_by_confidence(self):
         """Sort tree by risk-adjusted confidence scores"""
-        self.tree_generator.sort_by_risk_adjusted_confidence()
+        # Compute tags (no reordering here); ordering is applied by apply_combined_sort()
+        self.tree_generator.ensure_analysis_tags("confidence")
         self.current_sort_mode = "confidence"
         self.active_sort_mode = "confidence"
-        self.treeview.tree.heading("Sort Value", text="Confidence Score")
         self.update_sort_value_column()
+        self.update_column_headers()
+        self.apply_combined_sort(compute_primary_tags=False)
         self.is_sorted = True
         self.update_sort_button_states()
 
     def sort_by_counter_resistance(self):
         """Sort tree by counter-resistance against opponent strategies"""
-        self.tree_generator.sort_by_opponent_response_simulation()
+        # Compute tags (no reordering here); ordering is applied by apply_combined_sort()
+        self.tree_generator.ensure_analysis_tags("resistance")
         self.current_sort_mode = "resistance"
         self.active_sort_mode = "resistance"
-        self.treeview.tree.heading("Sort Value", text="Resistance Score")
         self.update_sort_value_column()
+        self.update_column_headers()
+        self.apply_combined_sort(compute_primary_tags=False)
         self.is_sorted = True
         self.update_sort_button_states()
 
     def sort_by_cumulative(self):
         """Sort tree by cumulative value"""
-        self.tree_generator.sort_by_cumulative_value()
+        # Compute tags (no reordering here); ordering is applied by apply_combined_sort()
+        self.tree_generator.ensure_analysis_tags("cumulative")
         self.current_sort_mode = "cumulative"
         self.active_sort_mode = "cumulative"
-        self.treeview.tree.heading("Sort Value", text="Cumulative Value")
         self.update_sort_value_column()
+        self.update_column_headers()
+        self.apply_combined_sort(compute_primary_tags=False)
         self.is_sorted = True
         self.update_sort_button_states()
     
     def unsort_tree(self):
         """Remove all sorting and return to default order"""
-        self.tree_generator.unsort_tree()
+        # Clear BOTH advanced and column sorting (this is the only action that does so)
+        self.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+        self.active_column_sort = None
+
+        self.tree_generator.restore_original_order()
         self.current_sort_mode = "none"
         self.active_sort_mode = None
-        self.treeview.tree.heading("Sort Value", text="Sort Value")
         self.update_sort_value_column()
+        self.update_column_headers()
         self.is_sorted = False
+        self.update_sort_button_states()
+
+    def clear_advanced_sort_mode(self):
+        """Turn off advanced sorting but keep any active column header sort."""
+        self.current_sort_mode = "none"
+        self.active_sort_mode = None
+        self.update_sort_value_column()
+        self.update_column_headers()
+        self.apply_combined_sort()
+        self.is_sorted = self.active_column_sort is not None
         self.update_sort_button_states()
     
     def toggle_cumulative_sort(self):
         """Toggle cumulative sorting on/off"""
         if self.active_sort_mode == "cumulative":
-            self.unsort_tree()
+            self.clear_advanced_sort_mode()
         else:
             self.sort_by_cumulative()
     
     def toggle_confidence_sort(self):
         """Toggle confidence sorting on/off"""
         if self.active_sort_mode == "confidence":
-            self.unsort_tree()
+            self.clear_advanced_sort_mode()
         else:
             self.sort_by_confidence()
     
     def toggle_counter_sort(self):
         """Toggle counter-resistance sorting on/off"""
         if self.active_sort_mode == "resistance":
-            self.unsort_tree()
+            self.clear_advanced_sort_mode()
         else:
             self.sort_by_counter_resistance()
     
@@ -1193,6 +1211,95 @@ class UiManager:
             self.confidence_button.config(text="🔴 Highest\nConfidence", relief=tk.SUNKEN, bg='lightcoral')
         elif self.active_sort_mode == "resistance":
             self.counter_button.config(text="🔴 Counter\nPick", relief=tk.SUNKEN, bg='lightcoral')
+
+    def on_column_click(self, column_id):
+        """Handle column header clicks to cycle through sort states"""
+        # Cycle through sort states: none -> desc -> asc -> none
+        current_state = self.column_sort_states.get(column_id, "none")
+        
+        if current_state == "none":
+            new_state = "desc"
+        elif current_state == "desc":
+            new_state = "asc"
+        else:  # asc
+            new_state = "none"
+        
+        # Update all columns to none first
+        for col in self.column_sort_states:
+            self.column_sort_states[col] = "none"
+        
+        # Set new state for clicked column
+        self.column_sort_states[column_id] = new_state
+        self.active_column_sort = column_id if new_state != "none" else None
+        
+        # Update all column headers with appropriate indicators
+        self.update_column_headers()
+
+        # Apply combined sorting (advanced primary, column secondary)
+        self.apply_combined_sort()
+
+    def apply_combined_sort(self, compute_primary_tags=True):
+        """Apply Option A combined sorting: advanced mode primary, column header secondary."""
+        primary_mode = self.active_sort_mode if self.active_sort_mode else None
+
+        secondary_column = None
+        secondary_reverse = False
+        if self.active_column_sort:
+            state = self.column_sort_states.get(self.active_column_sort, "none")
+            if state != "none":
+                secondary_reverse = (state == "desc")
+                if self.active_column_sort == "#0":
+                    secondary_column = "text"
+                elif self.active_column_sort in ("Rating", "Sort Value"):
+                    secondary_column = self.active_column_sort
+
+        if not primary_mode and not secondary_column:
+            self.tree_generator.restore_original_order()
+            return
+
+        self.tree_generator.sort_combined_recursive(
+            primary_mode=primary_mode,
+            secondary_column=secondary_column,
+            secondary_reverse=secondary_reverse,
+            compute_primary_tags=compute_primary_tags,
+        )
+
+    def _get_sort_value_header_base(self):
+        if self.current_sort_mode == "confidence":
+            return "Confidence Score"
+        if self.current_sort_mode == "resistance":
+            return "Resistance Score"
+        if self.current_sort_mode == "cumulative":
+            return "Cumulative Value"
+        return "Sort Value"
+    
+    def update_column_headers(self):
+        """Update column headers with sort direction indicators"""
+        # Base column names (Sort Value is mode-dependent)
+        base_names = {"#0": "Pairing", "Rating": "Rating", "Sort Value": self._get_sort_value_header_base()}
+        
+        # Update each column header
+        for column_id in ["#0", "Rating", "Sort Value"]:
+            base_name = base_names[column_id]
+            state = self.column_sort_states.get(column_id, "none")
+            is_primary_sort_value = (
+                column_id == "Sort Value"
+                and self.active_sort_mode is not None
+                and self.active_column_sort == "Sort Value"
+                and state in ("asc", "desc")
+            )
+            
+            if state == "asc":
+                display_name = f"{base_name} ▲"
+            elif state == "desc":
+                display_name = f"{base_name} ▼"
+            else:
+                display_name = base_name
+
+            if is_primary_sort_value:
+                display_name = f"{display_name} (Primary)"
+            
+            self.treeview.tree.heading(column_id, text=display_name)
 
     def update_scenario_box(self):
         scenarios = []
@@ -2032,6 +2139,108 @@ class UiManager:
                     indicator.destroy()
             except:
                 pass  # Widget already destroyed
+
+    # ========================================================================
+    # V2: Event Delegation Methods (3 bindings instead of 75)
+    # ========================================================================
+    
+    def _find_grid_cell_at_cursor(self, event):
+        """
+        Find which grid cell (row, col) is under the cursor.
+        
+        Uses coordinate-based hit detection to map mouse position to grid cell.
+        Returns (row, col) or None if not over a matchup cell.
+        """
+        # Get widget under cursor using root coordinates
+        x_root, y_root = event.x_root, event.y_root
+        widget = self.root.winfo_containing(x_root, y_root)
+        
+        if not widget:
+            return None
+        
+        # Check if this widget is one of our grid Entry widgets
+        for r in range(1, 6):  # Only matchup cells
+            for c in range(1, 6):
+                if self.grid_widgets[r][c] == widget:
+                    return (r, c)
+        
+        return None
+    
+    def _on_grid_motion(self, event):
+        """
+        Handle mouse motion over grid frame (event delegation).
+        Replaces 25 individual <Enter>/<Leave> bindings with 1 <Motion> binding.
+        """
+        cell = self._find_grid_cell_at_cursor(event)
+        
+        # Check if we moved to a different cell
+        if cell != self._current_hover_cell:
+            # Hide tooltip if we left a cell
+            if self._current_hover_cell is not None:
+                self._hide_comment_tooltip_internal()
+            
+            # Show tooltip if we entered a cell with a comment
+            if cell is not None:
+                row, col = cell
+                if self.grid_data_model.has_comment(row, col):
+                    self._show_comment_tooltip_internal(event, row, col)
+            
+            self._current_hover_cell = cell
+    
+    def _on_grid_leave(self, event):
+        """
+        Handle mouse leaving grid frame (event delegation).
+        Replaces 25 individual <Leave> bindings with 1 frame-level binding.
+        """
+        self._hide_comment_tooltip_internal()
+        self._current_hover_cell = None
+    
+    def _on_grid_right_click(self, event):
+        """
+        Handle right-click on grid frame (event delegation).
+        Replaces 25 individual <Button-3> bindings with 1 frame-level binding.
+        """
+        cell = self._find_grid_cell_at_cursor(event)
+        if cell is not None:
+            row, col = cell
+            self._open_comment_editor_for_cell(row, col)
+    
+    def _show_comment_tooltip_internal(self, event, row, col):
+        """Internal method to show comment tooltip (called by event delegation)"""
+        comment_text = self.grid_data_model.get_comment(row, col)
+        if not comment_text:
+            return
+        
+        # Create tooltip window
+        self.comment_tooltip = tk.Toplevel(self.root)
+        self.comment_tooltip.wm_overrideredirect(True)  # Remove window decorations
+        
+        # Position tooltip near cursor
+        x = event.x_root + 10
+        y = event.y_root + 10
+        self.comment_tooltip.wm_geometry(f"+{x}+{y}")
+        
+        # Create label with comment text
+        label = tk.Label(
+            self.comment_tooltip,
+            text=comment_text,
+            background='#ffffcc',
+            relief=tk.SOLID,
+            borderwidth=1,
+            padx=5,
+            pady=5,
+            wraplength=300
+        )
+        label.pack()
+    
+    def _hide_comment_tooltip_internal(self):
+        """Internal method to hide comment tooltip (called by event delegation)"""
+        if hasattr(self, 'comment_tooltip') and self.comment_tooltip:
+            try:
+                self.comment_tooltip.destroy()
+            except:
+                pass
+            self.comment_tooltip = None
 
     def show_comment_tooltip(self, event, row, col):
         """[DEPRECATED V2] CommentOverlay handles tooltips now. Kept for compatibility."""
@@ -3860,6 +4069,9 @@ class UiManager:
     
     def _update_display_entry_from_model(self, row: int, col: int):
         """Update display Entry widget from GridDataModel value"""
+        if row >= len(self.grid_display_widgets) or col >= len(self.grid_display_widgets[row]):
+            return
+
         widget = self.grid_display_widgets[row][col]
         if widget:
             widget.config(state='normal')
