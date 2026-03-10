@@ -778,7 +778,6 @@ class TreeGenerator:
                 sort_node(child)
 
         sort_node("")
-
     def calculate_confidence_for_rating(self, rating):
         """Calculate confidence score based on rating value"""
         try:
