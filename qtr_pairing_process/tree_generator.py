@@ -13,9 +13,11 @@ class TreeGenerator:
         self.treeview = treeview
         self.original_order = {}
         self.fRatings = None
+        self.our_team_first = True  # Will be set during generation
 
-    def generate_combinations(self, fNames, oNames, fRatings, oRatings):
+    def generate_combinations(self, fNames, oNames, fRatings, oRatings, our_team_first=True):
         self.fRatings = fRatings
+        self.our_team_first = our_team_first
         self.treeview.tree.delete(*self.treeview.tree.get_children())
         # Reset sorting state for new generation
         self.original_order_saved = False
@@ -45,14 +47,38 @@ class TreeGenerator:
         for comb in combs:
             rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
             rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
-            item_id = self.treeview.tree.insert(parent, 'end', text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)", values=(max(rating_0, rating_1), ""), tags=max(rating_0, rating_1))
+            # Calculate all three score types for this pairing
+            base_rating = max(rating_0, rating_1)
+            cumulative_score = 0  # Will be calculated later during sort operations
+            confidence_score = self.calculate_confidence_for_rating(base_rating)
+            resistance_score = self.calculate_resistance_for_rating(base_rating, rating_0, rating_1)
+
+            item_id = self.treeview.tree.insert(
+                parent,
+                'end',
+                text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)",
+                values=(base_rating, cumulative_score, confidence_score, resistance_score),
+                tags=base_rating,
+            )
             
             if fNames:
                 opponent_perms = list(permutations(comb, 2))
                 for opponent, next_fName in opponent_perms:                    
                     nested_oNames = [name for name in oNames if name != opponent and name!=next_fName]
                     nested_fNames = [name for name in fNames if name != first_fName]
-                    child_id = self.treeview.tree.insert(item_id, 'end', text=f"{opponent} rating {fRatings[first_fName].get(opponent)}", values=(fRatings[first_fName].get(opponent), ""), tags=fRatings[first_fName].get(opponent))                    
+                    # Calculate scores for child node
+                    child_rating = fRatings[first_fName].get(opponent, 0)
+                    child_cumulative = 0  # Will be calculated during sort operations
+                    child_confidence = self.calculate_confidence_for_rating(child_rating)
+                    child_resistance = self.calculate_resistance_for_rating(child_rating, child_rating, child_rating)
+
+                    child_id = self.treeview.tree.insert(
+                        item_id,
+                        'end',
+                        text=f"{opponent} rating {child_rating}",
+                        values=(child_rating, child_cumulative, child_confidence, child_resistance),
+                        tags=child_rating,
+                    )
                     self.generate_nested_combinations(next_fName,nested_oNames, fNames, oRatings, fRatings, child_id)
 
     def sort_by_cumulative_value(self):
@@ -79,13 +105,15 @@ class TreeGenerator:
             if node:  # Skip empty root
                 try:
                     leaf_value = int(self.treeview.tree.item(node, 'values')[0])
-                    # Store cumulative value in the item's tags for easy access
                     item_data = self.treeview.tree.item(node)
                     current_tags = list(item_data.get('tags', []))
                     # Remove any existing cumulative tag and add new one
                     current_tags = [tag for tag in current_tags if not str(tag).startswith('cumulative_')]
                     current_tags.append(f'cumulative_{leaf_value}')
                     self.treeview.tree.item(node, tags=current_tags)
+
+                    # Update the cumulative score column (index 1)
+                    self.update_node_cumulative_display(node, leaf_value)
                     return leaf_value
                 except (ValueError, IndexError):
                     item_data = self.treeview.tree.item(node)
@@ -111,12 +139,15 @@ class TreeGenerator:
                     max_cumulative = max(max_cumulative, child_cumulative)
             
             if node:  # Skip empty root
-                # Store cumulative value in tags
+                # Store cumulative value in tags and update display
                 item_data = self.treeview.tree.item(node)
                 current_tags = list(item_data.get('tags', []))
                 current_tags = [tag for tag in current_tags if not str(tag).startswith('cumulative_')]
                 current_tags.append(f'cumulative_{max_cumulative}')
                 self.treeview.tree.item(node, tags=current_tags)
+
+                # Update the cumulative score column (index 1)
+                self.update_node_cumulative_display(node, max_cumulative)
             return max_cumulative
 
     def sort_children_by_cumulative(self, node):
@@ -130,9 +161,17 @@ class TreeGenerator:
         for child in children:
             cumulative_value = self.get_cumulative_value_from_tags(child)
             children_with_scores.append((child, cumulative_value))
-        
-        # Sort by cumulative value (highest first - best outcomes at top)
-        children_with_scores.sort(key=lambda x: x[1], reverse=True)
+
+        # Determine if this is an opponent decision level or our choice level
+        # Use the first child to determine the level, since all children are at the same level
+        is_opponent_choice_level = self._is_opponent_choice_level(children[0])
+
+        if is_opponent_choice_level:
+            # Opponent choice level: Sort by LOWEST cumulative value first (opponent picks what's worst for us)
+            children_with_scores.sort(key=lambda x: x[1], reverse=False)
+        else:
+            # Our choice level: Sort by HIGHEST cumulative value first (we pick what's best for us)
+            children_with_scores.sort(key=lambda x: x[1], reverse=True)
         
         # Reorder children in the tree
         for child, _ in children_with_scores:
@@ -275,6 +314,9 @@ class TreeGenerator:
             ])
             
             self.treeview.tree.item(node, tags=current_tags)
+
+            # Update the confidence score column (index 2)
+            self.update_node_confidence_display(node, confidence)
         except Exception:
             pass
 
@@ -289,9 +331,17 @@ class TreeGenerator:
         for child in children:
             confidence_score = self.get_confidence_from_tags(child)
             children_with_scores.append((child, confidence_score))
-        
-        # Sort by confidence score (highest first - most reliable outcomes at top)
-        children_with_scores.sort(key=lambda x: x[1], reverse=True)
+
+        # Determine if this is an opponent decision level or our choice level
+        # Use the first child to determine the level, since all children are at the same level
+        is_opponent_choice_level = self._is_opponent_choice_level(children[0])
+
+        if is_opponent_choice_level:
+            # Opponent choice level: Sort by LOWEST confidence first (opponent picks what's least confident for us)
+            children_with_scores.sort(key=lambda x: x[1], reverse=False)
+        else:
+            # Our choice level: Sort by HIGHEST confidence first (we pick what's most confident)
+            children_with_scores.sort(key=lambda x: x[1], reverse=True)
         
         # Reorder children in the tree
         for child, _ in children_with_scores:
@@ -417,6 +467,9 @@ class TreeGenerator:
             current_tags.append(f'resistance_{int(resistance)}')
             
             self.treeview.tree.item(node, tags=current_tags)
+
+            # Update the resistance score column (index 3)
+            self.update_node_resistance_display(node, resistance)
         except Exception:
             pass
 
@@ -431,9 +484,17 @@ class TreeGenerator:
         for child in children:
             resistance_score = self.get_resistance_from_tags(child)
             children_with_scores.append((child, resistance_score))
-        
-        # Sort by resistance score (highest first - most counter-resistant at top)
-        children_with_scores.sort(key=lambda x: x[1], reverse=True)
+
+        # Determine if this is an opponent decision level or our choice level
+        # Use the first child to determine the level, since all children are at the same level
+        is_opponent_choice_level = self._is_opponent_choice_level(children[0])
+
+        if is_opponent_choice_level:
+            # Opponent choice level: Sort by LOWEST resistance first (opponent picks what's least resistant for us)
+            children_with_scores.sort(key=lambda x: x[1], reverse=False)
+        else:
+            # Our choice level: Sort by HIGHEST resistance first (we pick what's most counter-resistant)
+            children_with_scores.sort(key=lambda x: x[1], reverse=True)
         
         # Reorder children in the tree
         for child, _ in children_with_scores:
@@ -531,64 +592,55 @@ class TreeGenerator:
             self.original_order[node if node else "root"] = list(children)
             for child in children:
                 self.save_original_order_recursive(child)
-    
+
     def restore_original_order(self):
         """Restore the original order of all nodes in the tree"""
         if not self.original_order:
             return
-        
+
         def restore_node(node=""):
             key = node if node else "root"
             if key in self.original_order:
                 original_children = self.original_order[key]
                 current_children = list(self.treeview.tree.get_children(node))
-                
-                # Detach all children
+
                 for child in current_children:
                     try:
                         self.treeview.tree.detach(child)
                     except tkinter.TclError:
                         pass
-                
-                # Reattach in original order
+
                 for child in original_children:
                     try:
                         self.treeview.tree.move(child, node, 'end')
                     except tkinter.TclError:
                         pass
-                
-                # Recursively restore children
+
                 for child in original_children:
                     restore_node(child)
-        
+
         restore_node()
-    
+
     def sort_by_column_recursive(self, column, reverse=False):
         """Sort all tree levels by a specific column"""
-        # Save original order if not already saved
         if not self.original_order:
             self.save_original_order_recursive()
-        
-        # Sort recursively from root
+
         def sort_node_children(node=""):
             children = list(self.treeview.tree.get_children(node))
             if not children:
                 return
-            
-            # Create list of (child_id, sort_key) tuples
+
             children_with_keys = []
             for child in children:
                 if column == "text":
-                    # Sort by the text field (Pairing column)
                     sort_key = self.treeview.tree.item(child, 'text')
                 else:
-                    # Sort by a value column (Rating or Sort Value)
                     try:
                         values = self.treeview.tree.item(child, 'values')
                         if column == "Rating":
                             sort_key = int(values[0]) if values and values[0] != 'N/A' else 0
                         elif column == "Sort Value":
-                            # Use cumulative value from tags if available
                             cumulative = self.get_cumulative_from_tags(child)
                             if cumulative > 0:
                                 sort_key = cumulative
@@ -598,33 +650,29 @@ class TreeGenerator:
                             sort_key = 0
                     except (ValueError, IndexError, TypeError):
                         sort_key = 0
-                
-                # For text sorting, convert to lowercase for case-insensitive comparison
+
                 if column == "text" and isinstance(sort_key, str):
                     sort_key = sort_key.lower()
-                
+
                 children_with_keys.append((child, sort_key))
-            
-            # Sort the children
+
             children_with_keys.sort(key=lambda x: x[1], reverse=reverse)
-            
-            # Reorder in tree
+
             for child, _ in children_with_keys:
                 try:
                     self.treeview.tree.detach(child)
                 except tkinter.TclError:
                     pass
-            
+
             for child, _ in children_with_keys:
                 try:
                     self.treeview.tree.move(child, node, 'end')
                 except tkinter.TclError:
                     pass
-            
-            # Recursively sort grandchildren
+
             for child, _ in children_with_keys:
                 sort_node_children(child)
-        
+
         sort_node_children()
 
     def ensure_analysis_tags(self, mode):
@@ -657,10 +705,7 @@ class TreeGenerator:
             return default
 
     def _get_secondary_sort_value(self, node, secondary_column):
-        """Get a stable secondary sort key for a node.
-
-        secondary_column: one of {"text", "Rating", "Sort Value"}
-        """
+        """Get a stable secondary sort key for a node."""
         if secondary_column == "text":
             try:
                 return str(self.treeview.tree.item(node, 'text')).lower()
@@ -681,14 +726,7 @@ class TreeGenerator:
         return 0
 
     def sort_combined_recursive(self, primary_mode=None, secondary_column=None, secondary_reverse=False, compute_primary_tags=True):
-        """Sort the tree recursively with advanced mode as primary and column sort as secondary.
-
-        Order of precedence (stable): primary_mode -> secondary_column -> original generation order.
-        primary_mode: None or one of {"cumulative", "confidence", "resistance"}
-        secondary_column: None or one of {"text", "Rating", "Sort Value"}
-        secondary_reverse: True for descending secondary sort.
-        """
-        # Ensure we have an original-order snapshot to use as the final tie-break.
+        """Sort the tree recursively with advanced mode as primary and column sort as secondary."""
         if not self.original_order:
             self.save_original_order_recursive()
 
@@ -706,29 +744,24 @@ class TreeGenerator:
                 index_map = {cid: i for i, cid in enumerate(original_children)}
                 children.sort(key=lambda cid: index_map.get(cid, 10**9))
 
-            # If the secondary column is Sort Value and primary_mode is active, let the
-            # column direction control the primary sort (e.g., ascending cumulative).
             primary_reverse = True
             effective_secondary = secondary_column
             if primary_mode and secondary_column == "Sort Value":
                 primary_reverse = secondary_reverse
                 effective_secondary = None
 
-            # Secondary sort (column header) first so that primary sort can remain dominant.
             if effective_secondary:
                 children.sort(
                     key=lambda cid: self._get_secondary_sort_value(cid, effective_secondary),
                     reverse=secondary_reverse,
                 )
 
-            # Primary sort (advanced mode) last, leveraging Python's stable sort.
             if primary_mode:
                 children.sort(
                     key=lambda cid: self._get_primary_sort_value(cid, primary_mode),
                     reverse=primary_reverse,
                 )
 
-            # Reorder in tree.
             for child in children:
                 try:
                     self.treeview.tree.detach(child)
@@ -741,8 +774,233 @@ class TreeGenerator:
                 except tkinter.TclError:
                     pass
 
-            # Recurse.
             for child in children:
                 sort_node(child)
 
         sort_node("")
+
+    def calculate_confidence_for_rating(self, rating):
+        """Calculate confidence score based on rating value"""
+        try:
+            rating_val = int(rating) if rating != 'N/A' else 0
+            return self.calculate_rating_confidence(rating_val)
+        except (ValueError, TypeError):
+            return 0
+
+    def calculate_resistance_for_rating(self, base_rating, rating_0, rating_1):
+        """Calculate resistance score based on rating spread and values"""
+        try:
+            r0 = int(rating_0) if rating_0 != 'N/A' else 0
+            r1 = int(rating_1) if rating_1 != 'N/A' else 0
+
+            min_rating = min(r0, r1)
+            spread = abs(r0 - r1)
+
+            base_resistance = min_rating * 10
+            spread_penalty = spread * 5
+
+            resistance_score = max(0, base_resistance - spread_penalty)
+
+            return resistance_score
+        except (ValueError, TypeError):
+            return 0
+
+    def sort_by_strategic_optimal(self):
+        """Strategic optimal sorting with multi-objective weighting."""
+        root_nodes = self.treeview.tree.get_children()
+        if root_nodes:
+            if not hasattr(self, 'original_order_saved') or not self.original_order_saved:
+                self.save_original_order()
+                self.original_order_saved = True
+
+            self.calculate_strategic_optimal_scores("")
+            for root in root_nodes:
+                self.sort_children_by_strategic_optimal(root)
+
+    def calculate_strategic_optimal_scores(self, node):
+        """Calculate strategic optimal expected value scores using multi-objective optimization."""
+        children = self.treeview.tree.get_children(node)
+
+        if not children:
+            if node:
+                try:
+                    rating = int(self.treeview.tree.item(node, 'values')[0])
+
+                    base_ev = self.calculate_base_expected_value(rating)
+                    win_probability = self.calculate_win_probability(rating)
+                    floor_protection = self.calculate_floor_protection(rating)
+                    counter_resistance = self.calculate_counter_resistance_value(rating)
+
+                    strategic_score = self.combine_strategic_factors(
+                        base_ev, win_probability, floor_protection, counter_resistance
+                    )
+
+                    self.store_strategic_optimal_data(node, strategic_score)
+                    return strategic_score
+
+                except (ValueError, IndexError):
+                    self.store_strategic_optimal_data(node, 0)
+                    return 0
+            return 0
+
+        path_scores = []
+        for child in children:
+            child_score = self.calculate_strategic_optimal_scores(child)
+            if node:
+                try:
+                    node_rating = int(self.treeview.tree.item(node, 'values')[0])
+                    node_base_ev = self.calculate_base_expected_value(node_rating)
+                    node_win_prob = self.calculate_win_probability(node_rating)
+                    node_floor = self.calculate_floor_protection(node_rating)
+                    node_counter = self.calculate_counter_resistance_value(node_rating)
+
+                    node_strategic = self.combine_strategic_factors(
+                        node_base_ev, node_win_prob, node_floor, node_counter
+                    )
+
+                    total_strategic = self.aggregate_path_scores(node_strategic, child_score)
+                    path_scores.append(total_strategic)
+
+                except (ValueError, IndexError):
+                    path_scores.append(child_score)
+            else:
+                path_scores.append(child_score)
+
+        if node:
+            best_strategic = max(path_scores) if path_scores else 0
+            self.store_strategic_optimal_data(node, best_strategic)
+            return best_strategic
+
+        return max(path_scores) if path_scores else 0
+
+    def calculate_base_expected_value(self, rating):
+        """Calculate base expected value from rating with win probability conversion"""
+        try:
+            r = int(rating) if rating != 'N/A' else 0
+            win_prob_map = {5: 0.90, 4: 0.75, 3: 0.50, 2: 0.25, 1: 0.10, 0: 0.05}
+            win_probability = win_prob_map.get(r, 0.50)
+            return win_probability * 100
+        except (ValueError, TypeError):
+            return 50
+
+    def calculate_win_probability(self, rating):
+        """Calculate probability of winning this matchup for 3/5 optimization"""
+        try:
+            r = int(rating) if rating != 'N/A' else 0
+            win_weights = {5: 100, 4: 85, 3: 65, 2: 30, 1: 10, 0: 5}
+            return win_weights.get(r, 50)
+        except (ValueError, TypeError):
+            return 50
+
+    def calculate_floor_protection(self, rating):
+        """Calculate protection against catastrophic matchup failures"""
+        try:
+            r = int(rating) if rating != 'N/A' else 0
+            floor_scores = {5: 100, 4: 95, 3: 80, 2: 40, 1: 10, 0: 0}
+            return floor_scores.get(r, 50)
+        except (ValueError, TypeError):
+            return 50
+
+    def calculate_counter_resistance_value(self, rating):
+        """Calculate resistance to opponent counter-picks"""
+        try:
+            r = int(rating) if rating != 'N/A' else 0
+            resistance_scores = {5: 90, 4: 80, 3: 60, 2: 35, 1: 15, 0: 5}
+            return resistance_scores.get(r, 50)
+        except (ValueError, TypeError):
+            return 50
+
+    def combine_strategic_factors(self, base_ev, win_prob, floor_protect, counter_resist):
+        """Combine strategic factors using multi-objective optimization weights"""
+        return (
+            floor_protect * 0.40 +
+            win_prob * 0.30 +
+            base_ev * 0.20 +
+            counter_resist * 0.10
+        )
+
+    def aggregate_path_scores(self, node_score, child_score):
+        """Aggregate node and child strategic scores for complete paths"""
+        return (node_score * 0.60) + (child_score * 0.40)
+
+    def store_strategic_optimal_data(self, node, strategic_score):
+        """Store strategic optimal data in node tags and update display"""
+        try:
+            item_data = self.treeview.tree.item(node)
+            current_tags = list(item_data.get('tags', []))
+
+            current_tags = [tag for tag in current_tags if not str(tag).startswith('strategic_')]
+            current_tags.append(f'strategic_{int(strategic_score)}')
+
+            self.treeview.tree.item(node, tags=current_tags)
+
+            self.update_node_strategic_display(node, strategic_score)
+        except Exception:
+            pass
+
+    def update_node_strategic_display(self, node, strategic_value):
+        """Update the sort value column display for strategic optimal scores"""
+        try:
+            current_values = list(self.treeview.tree.item(node, 'values'))
+            if len(current_values) >= 2:
+                current_values[1] = int(strategic_value)
+                self.treeview.tree.item(node, values=current_values)
+        except Exception as e:
+            print(f"Error updating strategic display for node {node}: {e}")
+
+    def sort_children_by_strategic_optimal(self, node):
+        """Recursively sort children by their strategic optimal scores"""
+        children = self.treeview.tree.get_children(node)
+        if not children:
+            return
+
+        children_with_scores = []
+        for child in children:
+            strategic_score = self.get_strategic_score_from_tags(child)
+            children_with_scores.append((child, strategic_score))
+
+        is_opponent_choice_level = self._is_opponent_choice_level(children[0])
+
+        if is_opponent_choice_level:
+            children_with_scores.sort(key=lambda x: x[1], reverse=False)
+        else:
+            children_with_scores.sort(key=lambda x: x[1], reverse=True)
+
+        for child, _ in children_with_scores:
+            self.treeview.tree.detach(child)
+        for child, _ in children_with_scores:
+            self.treeview.tree.move(child, node, 'end')
+
+        for child, _ in children_with_scores:
+            self.sort_children_by_strategic_optimal(child)
+
+    def get_strategic_score_from_tags(self, node):
+        """Extract strategic score from node tags"""
+        try:
+            item_data = self.treeview.tree.item(node)
+            tags = item_data.get('tags', [])
+            for tag in tags:
+                if str(tag).startswith('strategic_'):
+                    return int(str(tag).replace('strategic_', ''))
+        except (ValueError, TypeError):
+            pass
+        return 0
+
+    def _is_opponent_choice_level(self, node):
+        """Determine if this node represents an opponent choice level."""
+        try:
+            depth = 0
+            current = node
+            while current:
+                parent = self.treeview.tree.parent(current)
+                if not parent:
+                    break
+                depth += 1
+                current = parent
+
+            if self.our_team_first:
+                return depth in (2, 4, 5)
+
+            return depth in (1, 3, 4)
+        except Exception:
+            return False
