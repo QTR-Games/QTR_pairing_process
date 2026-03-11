@@ -74,7 +74,7 @@ class UiManager:
 
         # Initialize other UI components
         self.comment_tooltip: Optional[tk.Toplevel] = None
-        self.comment_indicators: Dict[tuple, tk.Label] = {}  # Store comment indicators
+        self.comment_indicators: Dict[tuple, tk.Widget] = {}  # Store comment indicators
         self.comment_indicator_callbacks: Dict[tuple, str] = {}  # Store after_idle callback IDs
         self.row_checkboxes: List[tk.IntVar] = []
         self.column_checkboxes: List[tk.IntVar] = []
@@ -617,7 +617,8 @@ class UiManager:
         
         # Check if cell has comment (comment indicator takes precedence)
         if self.grid_data_model.has_comment(row, col):
-            widget.config(bg='#ffffcc')  # Light yellow for comments
+            if widget:
+                widget.config(bg='#ffffcc')  # Light yellow for comments
         elif widget and value_str in self.color_map:
             widget.config(bg=self.color_map[value_str])
         elif widget:
@@ -634,7 +635,8 @@ class UiManager:
                 
                 # Check for comment indicator first
                 if self.grid_data_model.has_comment(row, col):
-                    widget.config(bg='#ffffcc')
+                    if widget:
+                        widget.config(bg='#ffffcc')
                 elif widget and value_str in self.color_map:
                     widget.config(bg=self.color_map[value_str])
                 elif widget:
@@ -896,10 +898,7 @@ class UiManager:
                     self.update_sort_button_states()
                 
                 # Clear grid data
-                for r in range(6):
-                    for c in range(6):
-                        self.grid_entries[r][c].set("")
-                        self.grid_display_entries[r][c].set("")
+                self.grid_data_model.clear_grid(notify=True)
                 
                 # Trigger database selection
                 self.select_database()
@@ -2118,15 +2117,21 @@ class UiManager:
     def add_comment_indicator(self, row, col):
         """Add a small corner indicator for comments"""
         try:
-            # Create a small triangle indicator
-            indicator = tk.Label(
+            # Create a small red arrowhead (downward triangle) for visibility.
+            indicator = tk.Canvas(
                 self.grid_frame,
-                text="Γû▓",  # Small triangle
-                font=("Arial", 6),
-                fg="#FF6B35",  # Orange-red color for visibility
-                bg=self.grid_frame.cget('bg'),
-                relief=tk.FLAT,
-                borderwidth=0
+                width=9,
+                height=9,
+                highlightthickness=0,
+                borderwidth=0,
+                relief=tk.FLAT
+            )
+            indicator.create_polygon(
+                1, 1,
+                8, 1,
+                4, 8,
+                fill="#D32F2F",
+                outline="white"
             )
             
             # Store the indicator for cleanup later
@@ -2148,6 +2153,11 @@ class UiManager:
             
             widget = self.grid_widgets[row][col]
             if widget is not None and widget.winfo_exists():
+                # Match the cell background to reduce visual seams.
+                try:
+                    indicator.configure(bg=widget.cget('bg'))
+                except Exception:
+                    pass
                 # Position the indicator in the top-right corner
                 indicator.place(
                     in_=widget,
@@ -2359,6 +2369,8 @@ class UiManager:
                         friendly_player, opponent_player, comment_content
                     )
                     messagebox.showinfo("Success", "Comment saved successfully!")
+                    self.update_comment_indicators()
+                    self.update_grid_colors()
                 else:
                     # Delete comment if empty
                     self.db_manager.delete_comment_by_name(
@@ -2366,6 +2378,8 @@ class UiManager:
                         friendly_player, opponent_player
                     )
                     messagebox.showinfo("Success", "Comment deleted successfully!")
+                    self.update_comment_indicators()
+                    self.update_grid_colors()
                 
                 dialog.destroy()
                 
@@ -2381,6 +2395,8 @@ class UiManager:
                         friendly_player, opponent_player
                     )
                     messagebox.showinfo("Success", "Comment deleted successfully!")
+                    self.update_comment_indicators()
+                    self.update_grid_colors()
                     dialog.destroy()
                 except Exception as e:
                     print(f"Error deleting comment: {e}")
@@ -4169,27 +4185,7 @@ class UiManager:
         except Exception as e:
             print(f"Error opening comment editor: {e}")
             messagebox.showerror("Error", f"Failed to open comment editor: {e}")
-            if current_index + 1 < len(all_nodes):
-                next_node = all_nodes[current_index + 1]
-                next_text = next_node['text']
-                
-                # Determine which option was selected
-                for option in options:
-                    option_name = option.split('(')[0].strip()
-                    if option_name in next_text or next_text.startswith(option_name):
-                        decision_made = f"{friendly} vs {option}"
-                        break
-            
-            return {
-                'friendly': friendly,
-                'options': options,
-                'choice': text,
-                'decision': decision_made or f"{friendly} vs {options[0]}"  # Default to first option
-            }
-            
-        except Exception as e:
-            print(f"Error parsing choice node: {e}")
-            return None
+            return
     
     def identify_actual_decisions(self, decision_path, preliminary_matchups):
         """Identify the actual decisions made by analyzing the tree traversal path."""
