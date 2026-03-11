@@ -20,9 +20,7 @@
     "auto_tree_sync": true,
     "_auto_tree_sync_comment": "Automatically sync matchups when updates occur - Options: true (on) or false (off)",
     "matchup_output_format": "standard",
-    "_matchup_output_format_comment": "Matchup extraction display format - Options: 'standard' (concise summary) or 'verbose' (detailed decision path)",
-    "team_size": 5,
-    "_team_size_comment": "Number of players per team - Options: 5 (standard) or higher for future expansion. Affects round generation and dropdown display logic"
+    "_matchup_output_format_comment": "Matchup extraction display format - Options: 'standard' (concise summary) or 'verbose' (detailed decision path)"
   },
   "logging": {
     "_comment": "Logging preferences - Controls debug output and log files",
