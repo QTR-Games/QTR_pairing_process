@@ -18,6 +18,9 @@ class ExcelImporter:
         self.workbook = openpyxl.load_workbook(filename = f'{self.file_path}/{self.file_name}')
 
     def validate_sheetnames(self):
+        if self.workbook is None:
+            print('Workbook not loaded. Call read_excel_file() first.')
+            return
         workbook_sheet_names = self.workbook.sheetnames
         for sn in SHEET_NAMES:
             if sn not in workbook_sheet_names:
@@ -49,6 +52,9 @@ class ExcelImporter:
 
 
     def validate_ranking_sheet_players(self, sheet_name):
+        if self.workbook is None:
+            print('Workbook not loaded. Call read_excel_file() first.')
+            return
         sheet = self.workbook[sheet_name]
         team1_ranking_players = [x[0].value for x in sheet['A2':'A6']]
         team2_ranking_players = [x.value for x in sheet['B1':'F1'][0]]
@@ -59,6 +65,9 @@ class ExcelImporter:
         if team2_ranking_players != self.team_metadata['team2']['player_names']:
             print(f'Varying team column names between team sheet and sheet_name {sheet_name}.')
     def validate_ranking_sheet_ranks(self, sheet_name):
+        if self.workbook is None:
+            print('Workbook not loaded. Call read_excel_file() first.')
+            return
         sheet = self.workbook[sheet_name]
         grid_ranks = sheet['B2':'F6']
         for row in grid_ranks:
@@ -73,6 +82,9 @@ class ExcelImporter:
                     print(f'Bad value {col.value} for rank, should be in range 1-5.')
 
     def read_ranking_sheet(self, sheet_name):
+        if self.workbook is None:
+            print('Workbook not loaded. Call read_excel_file() first.')
+            return
         sheet = self.workbook[sheet_name]
         grid_ranks = sheet['B2':'F6']
         grid_rank_array = [[x.value for x in y] for y in grid_ranks]
@@ -89,10 +101,29 @@ class ExcelImporter:
 
     def upsert_rating_sheet(self, rating_sheet_name, scenario_id):
         grid_ranks = self.ratings[rating_sheet_name]
-        team_1 = self.team_metadata['team1']
-        team_2 = self.team_metadata['team2']
+        team_1 = self.team_metadata.get('team1')
+        team_2 = self.team_metadata.get('team2')
+        if not team_1 or not team_2:
+            print(f"Missing team metadata for rating sheet {rating_sheet_name}")
+            return
         team_1_id = self.db_manager.query_team_id(team_1['team_name'])
         team_2_id = self.db_manager.query_team_id(team_2['team_name'])
+
+        if team_1_id is None or team_2_id is None:
+            print(f"Missing team id(s) for rating sheet {rating_sheet_name}: {team_1_id}, {team_2_id}")
+            return
+
+        team1_players = self.team_metadata.get('team1', {}).get('player_names')
+        team2_players = self.team_metadata.get('team2', {}).get('player_names')
+        if not team1_players or not team2_players:
+            print(f"Missing player names for rating sheet {rating_sheet_name}")
+            return
+
+        team1_player_dict = self.player_dicts.get('team1')
+        team2_player_dict = self.player_dicts.get('team2')
+        if not team1_player_dict or not team2_player_dict:
+            print(f"Missing player dictionary for rating sheet {rating_sheet_name}")
+            return
 
         if team_1_id > team_2_id:
             team_1_id, team_2_id = team_2_id, team_1_id
@@ -103,8 +134,8 @@ class ExcelImporter:
         for i,row in enumerate(grid_ranks):
             for j,col in enumerate(row):
                 
-                player_id_1 = self.player_dicts['team1'][self.team_metadata['team1']['player_names'][i]]
-                player_id_2 = self.player_dicts['team2'][self.team_metadata['team2']['player_names'][j]]
+                player_id_1 = team1_player_dict[team1_players[i]]
+                player_id_2 = team2_player_dict[team2_players[j]]
                 rank = col
                 self.db_manager.upsert_rating(player_id_1=player_id_1,
                 player_id_2=player_id_2,
@@ -124,6 +155,10 @@ class ExcelImporter:
         print('Beginning Excel Import!!!')
         self.read_excel_file()
         self.validate_sheetnames()
+
+        if self.workbook is None:
+            print('Workbook not loaded. Call read_excel_file() first.')
+            return
 
         self.validate_team_sheet(self.workbook[SHEET_NAMES[0]])
         self.read_and_validate_ranking_sheets()
