@@ -6,6 +6,7 @@ import sys
 import csv
 import time
 from typing import List, Optional, Dict, Any
+import tkinter.font as tkfont
 
 # installed libraries
 import tkinter as tk
@@ -139,6 +140,7 @@ class UiManager:
         self.root.bind('<Escape>', lambda event: self.root.quit())
         self.root.bind('<Return>', lambda event: self.on_generate_combinations())
         self.root.bind('<Control-Tab>', lambda event: self.switch_tab())
+        self.root.bind('<FocusIn>', lambda event: self._on_root_focus_in())
 
         # Create the top team name and scenario display
         self.drop_down_frame = tk.Frame(self.root)
@@ -194,6 +196,26 @@ class UiManager:
         # Track grid flip state and store original data
         self.grid_is_flipped = False
         self.original_grid_data = None
+
+        # Grid dirty tracking and status message rotation
+        self._grid_dirty = False
+        self._status_messages = []
+        self._status_message_index = 0
+        self._status_message_phase = 0
+        self._status_message_job = None
+        self._status_font_normal = ("Arial", 8)
+        self._status_font_emphasis = ("Arial", 8, "bold")
+        self._status_fg_normal = "#666666"
+        self._status_fg_emphasis = "#000000"
+
+        # Clipboard paste helpers
+        self._paste_5x5_button = None
+        self._top_left_rating_entry = None
+
+        # Header name tooltip state
+        self._name_tooltip_window = None
+        self._name_tooltip_label = None
+        self._name_tooltip_cell = None
 
         self.team_b = tk.IntVar()
         pairingLead = tk.Checkbutton(self.buttons_frame, text="Our team first", variable=self.team_b)
@@ -322,6 +344,14 @@ class UiManager:
         # Add essential buttons to a row just above the pairing grid       
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Flip Grid", command=lambda: self.flip_grid_perspective()).pack(side=tk.LEFT, padx=5, pady=5)
+
+        self._paste_5x5_button = tk.Button(
+            self.button_row_frame,
+            text="Paste 5x5",
+            command=self._on_paste_5x5_button,
+            state=tk.DISABLED
+        )
+        self._paste_5x5_button.pack(side=tk.LEFT, padx=5, pady=5)
         
         # Data Management menu button
         data_mgmt_button = tk.Button(self.button_row_frame, text="Data Management", 
@@ -409,6 +439,7 @@ class UiManager:
         
         # Create status bar
         self.create_status_bar()
+        self._refresh_paste_button_state()
         
         # Show welcome dialog if this is first time or user hasn't disabled it
         if self.db_preferences.should_show_welcome_message():
@@ -433,7 +464,7 @@ class UiManager:
         separator.grid(row=1, column=6, rowspan=7, sticky="ns", padx=5)
         
         calc_header = tk.Label(self.grid_frame, text="Calculations", font=("Arial", 11, "bold"), bg="lightgreen")
-        calc_header.grid(row=1, column=7, columnspan=6, pady=(0, 2), sticky="ew")
+        calc_header.grid(row=1, column=7, columnspan=5, pady=(0, 2), sticky="ew")
 
         # V2: Create the 6x6 rating grid WITHOUT StringVars or bindings
         # All state managed by GridDataModel; comments handled per cell.
@@ -450,6 +481,19 @@ class UiManager:
                 entry.bind("<FocusOut>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
                 entry.bind("<Return>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
 
+                if (r == 0 and c > 0) or (c == 0 and r > 0):
+                    entry.bind(
+                        "<Button-1>",
+                        lambda event, row=r, col=c: self._toggle_name_tooltip(event, row, col),
+                        add='+'
+                    )
+
+                if r == 1 and c == 1:
+                    self._top_left_rating_entry = entry
+                    entry.bind("<Control-v>", self._on_top_left_paste_event, add='+')
+                    entry.bind("<<Paste>>", self._on_top_left_paste_event, add='+')
+                    entry.bind("<FocusIn>", lambda event: self._refresh_paste_button_state(), add='+')
+
                 # Right-click per-cell comment editor for matchup cells
                 if r > 0 and c > 0:
                     entry.bind("<Enter>", lambda event, row=r, col=c: self.show_comment_tooltip(event, row, col), add='+')
@@ -463,10 +507,10 @@ class UiManager:
                 else:
                     entry.insert(0, str(initial_value))
 
-        # Create the display grid (right side of unified grid, columns 7-12)
+        # Create the display grid (right side of unified grid, columns 7-11)
         for r in range(6):
-            for c in range(6):
-                # Display grid entries (columns 7-12) - no textvariable
+            for c in range(5):
+                # Display grid entries (columns 7-11) - no textvariable
                 display_entry = tk.Entry(self.grid_frame, width=8, 
                                        state='readonly', font=("Arial", 10), relief=tk.SOLID, borderwidth=1,
                                        readonlybackground="lightgray")
@@ -482,17 +526,17 @@ class UiManager:
         # Use minimal grid weights to reduce resize lag
         for i in range(2, 8):  # rows 2-7 for grid data
             self.grid_frame.grid_rowconfigure(i, weight=0)  # Fixed height
-        for i in range(13):  # columns 0-12
+        for i in range(12):  # columns 0-11
             self.grid_frame.grid_columnconfigure(i, weight=0)  # Fixed width
 
-        # Add row checkboxes (column 13)
+        # Add row checkboxes (column 12)
         checkbox_label = tk.Label(self.grid_frame, text="Row\nSelect", font=("Arial", 9, "bold"))
-        checkbox_label.grid(row=1, column=13, pady=(0, 2))
+        checkbox_label.grid(row=1, column=12, pady=(0, 2))
         
         for r in range(1, 6):
             var = tk.IntVar()
             entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"R{r}")
-            entry.grid(row=r + 2, column=13, padx=2, pady=1, sticky="w")
+            entry.grid(row=r + 2, column=12, padx=2, pady=1, sticky="w")
             var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
             self.row_checkboxes.append(var)
 
@@ -511,7 +555,7 @@ class UiManager:
         self.grid_frame.grid_rowconfigure(8, weight=0)
         self.grid_frame.grid_rowconfigure(9, weight=0)
         self.grid_frame.grid_columnconfigure(6, weight=0)
-        self.grid_frame.grid_columnconfigure(13, weight=0)
+        self.grid_frame.grid_columnconfigure(12, weight=0)
         
         # Per-cell enter/leave bindings handle comment tooltips.
 
@@ -656,6 +700,20 @@ class UiManager:
         system_info = f"Rating System: {self.rating_config['name']} ({self.rating_range[0]}-{self.rating_range[1]})"
         self.rating_status = tk.Label(self.status_frame, text=system_info, anchor=tk.CENTER)
         self.rating_status.pack(side=tk.LEFT, expand=True, padx=20)
+
+        # Dynamic status messages (e.g., unsaved changes)
+        self.dynamic_status_frame = tk.Frame(self.status_frame, width=240, height=22)
+        self.dynamic_status_frame.pack(side=tk.RIGHT, padx=10, pady=2)
+        self.dynamic_status_frame.pack_propagate(False)
+
+        self.dynamic_status_label = tk.Label(
+            self.dynamic_status_frame,
+            text="",
+            anchor=tk.W,
+            font=self._status_font_normal,
+            fg=self._status_fg_normal
+        )
+        self.dynamic_status_label.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=2, pady=1)
         
         # Add color preview
         color_frame = tk.Frame(self.status_frame)
@@ -667,6 +725,8 @@ class UiManager:
             color_box = tk.Label(color_frame, text=rating, bg=self.color_map[rating], 
                                width=2, relief=tk.RAISED, borderwidth=1, font=("Arial", 7, "bold"))
             color_box.pack(side=tk.LEFT, padx=1)
+
+        self._refresh_status_messages()
     
     def update_status_bar(self):
         """Update status bar information"""
@@ -699,6 +759,266 @@ class UiManager:
                 color_box = tk.Label(color_frame, text=rating, bg=self.color_map[rating], 
                                    width=2, relief=tk.RAISED, borderwidth=1, font=("Arial", 7, "bold"))
                 color_box.pack(side=tk.LEFT, padx=1)
+
+        self._refresh_status_messages()
+
+    def _set_grid_dirty(self, is_dirty: bool):
+        if self._grid_dirty != is_dirty:
+            self._grid_dirty = is_dirty
+            self._refresh_status_messages()
+
+    def _refresh_status_messages(self):
+        messages = []
+        if self._grid_dirty:
+            messages.append("Unsaved grid data")
+        self._set_status_messages(messages)
+
+    def _set_status_messages(self, messages: List[str]):
+        if not hasattr(self, 'dynamic_status_label'):
+            return
+
+        self._status_messages = [msg for msg in messages if msg]
+        self._status_message_index = 0
+        self._status_message_phase = 0
+
+        self._cancel_status_rotation()
+
+        if not self._status_messages:
+            self.dynamic_status_label.config(text="")
+            return
+
+        self._rotate_status_message()
+
+    def _cancel_status_rotation(self):
+        if self._status_message_job is not None:
+            try:
+                self.root.after_cancel(self._status_message_job)
+            except Exception:
+                pass
+            self._status_message_job = None
+
+    def _rotate_status_message(self):
+        if not self._status_messages or not hasattr(self, 'dynamic_status_label'):
+            return
+
+        message = self._status_messages[self._status_message_index]
+
+        if self._status_message_phase == 0:
+            self.dynamic_status_label.config(
+                text=message,
+                font=self._status_font_normal,
+                fg=self._status_fg_normal
+            )
+            delay_ms = 300
+        elif self._status_message_phase == 1:
+            self.dynamic_status_label.config(
+                text=message,
+                font=self._status_font_emphasis,
+                fg=self._status_fg_emphasis
+            )
+            delay_ms = 800
+        elif self._status_message_phase == 2:
+            self.dynamic_status_label.config(
+                text=message,
+                font=self._status_font_normal,
+                fg=self._status_fg_normal
+            )
+            delay_ms = 300
+        else:
+            self._status_message_phase = 0
+            self._status_message_index = (self._status_message_index + 1) % len(self._status_messages)
+            delay_ms = 200
+            self._status_message_job = self.root.after(delay_ms, self._rotate_status_message)
+            return
+
+        self._status_message_phase += 1
+        self._status_message_job = self.root.after(delay_ms, self._rotate_status_message)
+
+    def _on_root_focus_in(self):
+        self._refresh_paste_button_state()
+
+    def _read_clipboard_text(self) -> Optional[str]:
+        try:
+            return self.root.clipboard_get()
+        except tk.TclError:
+            return None
+
+    def _parse_clipboard_grid(self, text: str):
+        if not text:
+            return None, "Clipboard is empty."
+
+        lines = [line.strip() for line in text.strip().splitlines() if line.strip() != ""]
+        if len(lines) != 5:
+            return None, "Expected 5 rows of data."
+
+        grid = []
+        for line in lines:
+            if "\t" in line:
+                parts = line.split("\t")
+            elif "," in line:
+                parts = line.split(",")
+            else:
+                return None, "Expected tab- or comma-separated values."
+
+            parts = [part.strip() for part in parts]
+            if len(parts) != 5:
+                return None, "Expected 5 columns per row."
+
+            row_values = []
+            for part in parts:
+                if part == "" or not part.isdigit():
+                    return None, "All values must be whole numbers."
+                row_values.append(int(part))
+            grid.append(row_values)
+
+        return grid, None
+
+    def _refresh_paste_button_state(self):
+        if not self._paste_5x5_button:
+            return
+
+        clipboard_text = self._read_clipboard_text()
+        grid, _ = self._parse_clipboard_grid(clipboard_text or "")
+        if grid:
+            self._paste_5x5_button.config(state=tk.NORMAL)
+        else:
+            self._paste_5x5_button.config(state=tk.DISABLED)
+
+    def _apply_5x5_grid(self, grid: List[List[int]]):
+        self.grid_data_model.begin_batch()
+        for r in range(1, 6):
+            for c in range(1, 6):
+                self.grid_data_model.set_rating(r, c, grid[r - 1][c - 1])
+        self.grid_data_model.end_batch()
+        self.on_scenario_calculations()
+        self._set_grid_dirty(True)
+
+    def _on_paste_5x5_button(self):
+        clipboard_text = self._read_clipboard_text() or ""
+        grid, error = self._parse_clipboard_grid(clipboard_text)
+        if not grid:
+            messagebox.showerror(
+                "Paste Failed",
+                "Could not paste clipboard data into the grid.\n"
+                "Expected a 5x5 grid of numbers separated by tabs or commas."
+            )
+            return
+
+        self._apply_5x5_grid(grid)
+        messagebox.showinfo(
+            "Paste Complete",
+            "Pasted 25 values into the ratings grid.\nRemember to Save Grid to keep changes."
+        )
+        self._refresh_paste_button_state()
+
+    def _on_top_left_paste_event(self, event):
+        clipboard_text = self._read_clipboard_text() or ""
+        grid, _ = self._parse_clipboard_grid(clipboard_text)
+        if not grid:
+            return None
+
+        self._apply_5x5_grid(grid)
+        messagebox.showinfo(
+            "Paste Complete",
+            "Pasted 25 values into the ratings grid.\nRemember to Save Grid to keep changes."
+        )
+        self._refresh_paste_button_state()
+        return "break"
+
+    def _ensure_name_tooltip_window(self):
+        if self._name_tooltip_window:
+            return
+
+        self._name_tooltip_window = tk.Toplevel(self.root)
+        self._name_tooltip_window.wm_overrideredirect(True)
+        self._name_tooltip_window.wm_attributes("-topmost", True)
+        self._name_tooltip_window.withdraw()
+
+        self._name_tooltip_label = tk.Label(
+            self._name_tooltip_window,
+            text="",
+            justify=tk.LEFT,
+            anchor=tk.W,
+            bg="#1f2430",
+            fg="#f0f3f6",
+            font=("Arial", 10),
+            relief=tk.SOLID,
+            borderwidth=1,
+            padx=8,
+            pady=6
+        )
+        self._name_tooltip_label.pack(fill=tk.BOTH, expand=True)
+
+        self.root.bind("<Button-1>", self._on_root_click_for_name_tooltip, add='+')
+
+    def _on_root_click_for_name_tooltip(self, event):
+        widget = event.widget
+        for r in range(6):
+            for c in range(6):
+                if (r == 0 and c > 0) or (c == 0 and r > 0):
+                    if self.grid_widgets[r][c] is widget:
+                        return
+        self._hide_name_tooltip()
+
+    def _hide_name_tooltip(self):
+        if self._name_tooltip_window:
+            self._name_tooltip_window.withdraw()
+        self._name_tooltip_cell = None
+
+    def _toggle_name_tooltip(self, event, row: int, col: int):
+        self._ensure_name_tooltip_window()
+
+        widget = self.grid_widgets[row][col]
+        if not widget:
+            return
+
+        if self._name_tooltip_cell == (row, col):
+            self._hide_name_tooltip()
+            return
+
+        text = widget.get().strip()
+        if not text:
+            self._hide_name_tooltip()
+            return
+
+        if not self._is_text_truncated(widget, text):
+            self._hide_name_tooltip()
+            return
+
+        wrap_width = self._get_left_grid_width()
+        self._name_tooltip_label.config(text=text, wraplength=wrap_width)
+        self._name_tooltip_window.update_idletasks()
+
+        x = widget.winfo_rootx()
+        tooltip_height = self._name_tooltip_window.winfo_height()
+        y = widget.winfo_rooty() - tooltip_height - 4
+        if y < 0:
+            y = 0
+        self._name_tooltip_window.geometry(f"+{x}+{y}")
+        self._name_tooltip_window.deiconify()
+        self._name_tooltip_window.lift()
+
+        self._name_tooltip_cell = (row, col)
+
+    def _is_text_truncated(self, widget: tk.Entry, text: str) -> bool:
+        widget_width = widget.winfo_width()
+        if widget_width <= 1:
+            return len(text) > 8
+
+        font = tkfont.Font(font=widget.cget("font"))
+        text_width = font.measure(text)
+        padding = 8
+        return text_width > max(widget_width - padding, 1)
+
+    def _get_left_grid_width(self) -> int:
+        width = 0
+        for c in range(6):
+            widget = self.grid_widgets[0][c]
+            if widget:
+                width += widget.winfo_width()
+        if width <= 0:
+            return 360
+        return width
     
     # Add this method to update display-only fields
     def update_display_fields(self, row, col, value):
@@ -714,8 +1034,8 @@ class UiManager:
             self.update_display_fields(0,1,"PINNED?")
             self.update_display_fields(0,2,"CAN-PIN?")
             self.update_display_fields(0,3,"PROTECT")
-            self.update_display_fields(0,4,"MAX/MIN")
-            self.update_display_fields(0,5,"SUM MARG")
+            self.update_display_fields(0,4,"BUS RIDE")
+            # SUM MARG removed
         except (ValueError, IndexError) as e:
             print(f"update_display_fields has failed with error:\n{e}")
 
@@ -735,22 +1055,20 @@ class UiManager:
         self.check_pinned_players()  # info_col 1
         self.check_for_pins()  # info_col 2
         self.check_protect()  # info_col 3
-        self.check_margins()  # info_col 4 & 5
+        self.check_margins()  # info_col 4
         self.update_comment_indicators()  # Update comment visual indicators
 
     def check_margins(self):
         for row in range(1, 6):
             try:
                 if self.row_checkboxes and row - 1 < len(self.row_checkboxes) and self.row_checkboxes[row - 1].get() == 1:
-                    for col in range(4, 6):
-                        self.update_display_fields(row, col, "---")
+                    self.update_display_fields(row, 4, "---")
                     continue
                 
                 # V2: Get floor value from GridDataModel
                 floor_value = self.grid_data_model.get_display(row, 0)
                 if not floor_value or floor_value == "---" or floor_value.strip() == "":
-                    for col in range(4, 6):
-                        self.update_display_fields(row, col, "---")
+                    self.update_display_fields(row, 4, "---")
                     continue
                 floor_rating_sum = int(floor_value)
                 
@@ -771,8 +1089,7 @@ class UiManager:
                 min_margin = min(all_margins)
                 margin_text = f"{max_margin} | {min_margin}"
                 self.update_display_fields(row, 4, margin_text)
-                sum_margins = sum(all_margins)
-                self.update_display_fields(row, 5, sum_margins)
+                # SUM MARG removed
             except (ValueError, IndexError) as e:
                 print(f"check_margins has failed for row {row} with error:\n{e}")
 
@@ -1536,6 +1853,8 @@ class UiManager:
 
         # Update calculations for display grid
         self.on_scenario_calculations()
+
+        self._set_grid_dirty(False)
         
         # Auto-generate tree after both teams are loaded
         self.auto_generate_tree_after_teams_loaded()
@@ -1626,6 +1945,8 @@ class UiManager:
                 except (ValueError, IndexError) as e:
                     print(f"Error saving rating at ({row}, {col}): {e}")
                     continue 
+
+            self._set_grid_dirty(False)
 
     def add_team_to_db(self):
         # Use the main window as parent for the dialog
@@ -4074,6 +4395,8 @@ class UiManager:
             # Trigger color update and scenario calculations
             self.update_color_on_change(None, None, None, row, col)
             self.on_scenario_calculations()
+            if row > 0 and col > 0:
+                self._set_grid_dirty(True)
     
     def _update_entry_from_model(self, row: int, col: int):
         """
