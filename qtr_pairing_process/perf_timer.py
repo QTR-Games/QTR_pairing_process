@@ -16,7 +16,7 @@ class PerfTimer:
         self.enabled = enabled
 
     @contextmanager
-    def span(self, label: str, **meta: Dict[str, Any]):
+    def span(self, label: str, **meta: Any):
         if not self.enabled:
             yield
             return
