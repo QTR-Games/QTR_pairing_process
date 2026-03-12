@@ -51,7 +51,8 @@ class DatabasePreferences:
                 "show_welcome_message": True,
                 "rating_system": "1-5",
                 "auto_tree_sync": False,
-                "matchup_output_format": "standard"
+                "matchup_output_format": "standard",
+                "perf_logging_enabled": False
             },
             "logging": {
                 "level": "verbose",
