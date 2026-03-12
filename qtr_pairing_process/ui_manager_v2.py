@@ -5,7 +5,9 @@ import os
 import sys
 import csv
 import time
+from pathlib import Path
 from typing import List, Optional, Dict, Any
+import tkinter.font as tkfont
 
 # installed libraries
 import tkinter as tk
@@ -32,6 +34,7 @@ from qtr_pairing_process.create_team_dialog import CreateTeamDialog
 from qtr_pairing_process.excel_management.excel_importer import ExcelImporter
 from qtr_pairing_process.excel_management.simple_excel_importer import SimpleExcelImporter
 from qtr_pairing_process.grid_data_model import GridDataModel
+from qtr_pairing_process.perf_timer import PerfTimer
 
 
 class UiManager:
@@ -42,7 +45,8 @@ class UiManager:
         directory: str,
         scenario_ranges: Dict[int, tuple],
         scenario_to_csv_map: Dict[int, str],
-        print_output: bool = False
+        print_output: bool = False,
+        perf_enabled: Optional[bool] = None
     ):
         self.print_output = print_output
         self.directory = directory
@@ -72,6 +76,18 @@ class UiManager:
         self.color_map = self.rating_config['color_map']
         self.rating_range = self.rating_config['range']
 
+        pref_perf = ui_prefs.get("perf_logging_enabled")
+        if perf_enabled is None:
+            perf_is_enabled = pref_perf if pref_perf is not None else self.is_debugging
+        else:
+            perf_is_enabled = perf_enabled
+
+        self.perf_logging_enabled = perf_is_enabled
+        self.perf = PerfTimer(
+            enabled=perf_is_enabled,
+            log_path=Path(__file__).parent.parent / "perf_log.txt"
+        )
+
         # Initialize other UI components
         self.comment_tooltip: Optional[tk.Toplevel] = None
         self.comment_indicators: Dict[tuple, tk.Widget] = {}  # Store comment indicators
@@ -91,8 +107,10 @@ class UiManager:
         self.logger = get_logger(__name__)
         self.logger.info("UiManager initializing...")
         
-        self.select_database()
-        self.initialize_ui_vars()
+        with self.perf.span("startup.select_database"):
+            self.select_database()
+        with self.perf.span("startup.initialize_ui_vars"):
+            self.initialize_ui_vars()
 
         if print_output:
             print(f"TKINTER VERSION: {tk.TkVersion}")
@@ -139,6 +157,9 @@ class UiManager:
         self.root.bind('<Escape>', lambda event: self.root.quit())
         self.root.bind('<Return>', lambda event: self.on_generate_combinations())
         self.root.bind('<Control-Tab>', lambda event: self.switch_tab())
+        self.root.bind('<FocusIn>', lambda event: self._on_root_focus_in())
+        self.root.bind('<FocusOut>', lambda event: self._hide_all_popups(), add='+')
+        self.root.bind('<Button-1>', self._on_root_click_for_popups, add='+')
 
         # Create the top team name and scenario display
         self.drop_down_frame = tk.Frame(self.root)
@@ -195,6 +216,34 @@ class UiManager:
         self.grid_is_flipped = False
         self.original_grid_data = None
 
+        # Grid dirty tracking and status message rotation
+        self._grid_dirty = False
+        self._status_messages = []
+        self._status_message_index = 0
+        self._status_message_phase = 0
+        self._status_message_job = None
+        self._status_font_normal = ("Arial", 8)
+        self._status_font_emphasis = ("Arial", 8, "bold")
+        self._status_fg_normal = "#666666"
+        self._status_fg_emphasis = "#000000"
+
+        # Clipboard paste helpers
+        self._paste_5x5_button = None
+        self._top_left_rating_entry = None
+
+        # Header name tooltip state
+        self._name_tooltip_window = None
+        self._name_tooltip_label = None
+        self._name_tooltip_cell = None
+
+        # Comment tooltip state
+        self._comment_tooltip_window = None
+        self._comment_tooltip_label = None
+        self._comment_tooltip_cell = None
+        self._comment_editor_open = False
+        self._popup_pending = False
+
+
         self.team_b = tk.IntVar()
         pairingLead = tk.Checkbutton(self.buttons_frame, text="Our team first", variable=self.team_b)
         pairingLead.pack(side=tk.BOTTOM,pady=5)
@@ -225,8 +274,9 @@ class UiManager:
     
     def _populate_dropdowns(self):
         """Populate dropdowns after UI is visible (deferred for performance)"""
-        self.set_team_dropdowns()
-        self.update_scenario_box()
+        with self.perf.span("startup.populate_dropdowns"):
+            self.set_team_dropdowns()
+            self.update_scenario_box()
     
     def on_tab_switch(self, event):
         """Initialize Team Grid tab on first access with timing"""
@@ -240,7 +290,8 @@ class UiManager:
                 print(f"\n[TAB SWITCH] Switching to '{current_tab}' tab...")
             
             if current_tab == "Team Grid":
-                self.init_team_grid_if_needed()
+                with self.perf.span("tab_switch.team_grid"):
+                    self.init_team_grid_if_needed()
             
             # Force all UI updates to complete before measuring time
             if self.is_debugging and start_time is not None:
@@ -264,7 +315,8 @@ class UiManager:
             print("[TAB SWITCH] Initializing Team Grid content (60 dropdowns)...")
         
         # Create Round Selection section (60 dropdowns)
-        self.create_team_grid_round_selection()
+        with self.perf.span("team_grid.create_round_selection"):
+            self.create_team_grid_round_selection()
         self.team_grid_initialized = True
 
         # Populate grid once widgets exist
@@ -278,7 +330,8 @@ class UiManager:
             print(f"[TAB SWITCH] Team Grid initialization fully rendered in {init_elapsed_ms:.2f}ms")
     
     def create_ui(self):
-        self.create_ui_grids()
+        with self.perf.span("startup.create_ui_grids"):
+            self.create_ui_grids()
 
         tk.Label(self.drop_down_frame, text='Select Team 1:').pack(side=tk.LEFT, padx=5, pady=5)
         # Use a StringVar to hold the value of the Combobox
@@ -322,6 +375,14 @@ class UiManager:
         # Add essential buttons to a row just above the pairing grid       
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.button_row_frame, text="Flip Grid", command=lambda: self.flip_grid_perspective()).pack(side=tk.LEFT, padx=5, pady=5)
+
+        self._paste_5x5_button = tk.Button(
+            self.button_row_frame,
+            text="Paste 5x5",
+            command=self._on_paste_5x5_button,
+            state=tk.DISABLED
+        )
+        self._paste_5x5_button.pack(side=tk.LEFT, padx=5, pady=5)
         
         # Data Management menu button
         data_mgmt_button = tk.Button(self.button_row_frame, text="Data Management", 
@@ -404,11 +465,15 @@ class UiManager:
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
 
-        self.update_combobox_colors()
-        self.init_display_headers()
+        with self.perf.span("startup.update_combobox_colors"):
+            self.update_combobox_colors()
+        with self.perf.span("startup.init_display_headers"):
+            self.init_display_headers()
         
         # Create status bar
-        self.create_status_bar()
+        with self.perf.span("startup.create_status_bar"):
+            self.create_status_bar()
+        self._refresh_paste_button_state()
         
         # Show welcome dialog if this is first time or user hasn't disabled it
         if self.db_preferences.should_show_welcome_message():
@@ -433,66 +498,84 @@ class UiManager:
         separator.grid(row=1, column=6, rowspan=7, sticky="ns", padx=5)
         
         calc_header = tk.Label(self.grid_frame, text="Calculations", font=("Arial", 11, "bold"), bg="lightgreen")
-        calc_header.grid(row=1, column=7, columnspan=6, pady=(0, 2), sticky="ew")
+        calc_header.grid(row=1, column=7, columnspan=5, pady=(0, 2), sticky="ew")
 
         # V2: Create the 6x6 rating grid WITHOUT StringVars or bindings
         # All state managed by GridDataModel; comments handled per cell.
-        for r in range(6):
-            for c in range(6):
-                # Rating grid entries (columns 0-5) - no textvariable, no bindings
-                entry = tk.Entry(self.grid_frame, width=8, 
-                               font=("Arial", 10), relief=tk.SOLID, borderwidth=1)
-                entry.grid(row=r + 2, column=c, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
-                self.grid_widgets[r][c] = entry
+        with self.perf.span("grid.create_rating_cells"):
+            for r in range(6):
+                for c in range(6):
+                    # Rating grid entries (columns 0-5) - no textvariable, no bindings
+                    entry = tk.Entry(self.grid_frame, width=8, 
+                                   font=("Arial", 10), relief=tk.SOLID, borderwidth=1)
+                    entry.grid(row=r + 2, column=c, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
+                    self.grid_widgets[r][c] = entry
                 
-                # V2: Manual synchronization with GridDataModel (no trace callbacks)
-                # We'll use FocusOut event for manual synchronization
-                entry.bind("<FocusOut>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
-                entry.bind("<Return>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
+                    # V2: Manual synchronization with GridDataModel (no trace callbacks)
+                    # We'll use FocusOut event for manual synchronization
+                    entry.bind("<FocusOut>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
+                    entry.bind("<Return>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
 
-                # Right-click per-cell comment editor for matchup cells
-                if r > 0 and c > 0:
-                    entry.bind("<Enter>", lambda event, row=r, col=c: self.show_comment_tooltip(event, row, col), add='+')
-                    entry.bind("<Leave>", self.hide_comment_tooltip, add='+')
-                    entry.bind("<Button-3>", lambda event, row=r, col=c: self.open_comment_editor(event, row, col), add='+')
-                
-                # Set initial value from model (Phase 1: handle None ΓåÆ '')
-                initial_value = self.grid_data_model.get_rating(r, c)
-                if initial_value is None:
-                    entry.insert(0, '')
-                else:
-                    entry.insert(0, str(initial_value))
+                    if (r == 0 and c > 0) or (c == 0 and r > 0):
+                        entry.bind(
+                            "<Button-1>",
+                            lambda event, row=r, col=c: self._toggle_name_tooltip(event, row, col),
+                            add='+'
+                        )
 
-        # Create the display grid (right side of unified grid, columns 7-12)
-        for r in range(6):
-            for c in range(6):
-                # Display grid entries (columns 7-12) - no textvariable
-                display_entry = tk.Entry(self.grid_frame, width=8, 
-                                       state='readonly', font=("Arial", 10), relief=tk.SOLID, borderwidth=1,
-                                       readonlybackground="lightgray")
-                display_entry.grid(row=r + 2, column=c + 7, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
-                self.grid_display_widgets[r][c] = display_entry
+                    if r == 1 and c == 1:
+                        self._top_left_rating_entry = entry
+                        entry.bind("<Control-v>", self._on_top_left_paste_event, add='+')
+                        entry.bind("<<Paste>>", self._on_top_left_paste_event, add='+')
+                        entry.bind("<FocusIn>", lambda event: self._refresh_paste_button_state(), add='+')
+
+                    # Right-click per-cell comment editor for matchup cells
+                    if r > 0 and c > 0:
+                        entry.bind(
+                            "<Button-1>",
+                            lambda event, row=r, col=c: self._toggle_comment_tooltip(event, row, col),
+                            add='+'
+                        )
+                        entry.bind("<Button-3>", lambda event, row=r, col=c: self.open_comment_editor(event, row, col), add='+')
                 
-                # Set initial value from model
-                display_entry.config(state='normal')
-                display_entry.delete(0, tk.END)
-                display_entry.insert(0, self.grid_data_model.get_display(r, c))
-                display_entry.config(state='readonly')
+                    # Set initial value from model (Phase 1: handle None ΓåÆ '')
+                    initial_value = self.grid_data_model.get_rating(r, c)
+                    if initial_value is None:
+                        entry.insert(0, '')
+                    else:
+                        entry.insert(0, str(initial_value))
+
+        # Create the display grid (right side of unified grid, columns 7-11)
+        with self.perf.span("grid.create_display_cells"):
+            for r in range(6):
+                for c in range(5):
+                    # Display grid entries (columns 7-11) - no textvariable
+                    display_entry = tk.Entry(self.grid_frame, width=8, 
+                                           state='readonly', font=("Arial", 10), relief=tk.SOLID, borderwidth=1,
+                                           readonlybackground="lightgray")
+                    display_entry.grid(row=r + 2, column=c + 7, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
+                    self.grid_display_widgets[r][c] = display_entry
+                    
+                    # Set initial value from model
+                    display_entry.config(state='normal')
+                    display_entry.delete(0, tk.END)
+                    display_entry.insert(0, self.grid_data_model.get_display(r, c))
+                    display_entry.config(state='readonly')
 
         # Use minimal grid weights to reduce resize lag
         for i in range(2, 8):  # rows 2-7 for grid data
             self.grid_frame.grid_rowconfigure(i, weight=0)  # Fixed height
-        for i in range(13):  # columns 0-12
+        for i in range(12):  # columns 0-11
             self.grid_frame.grid_columnconfigure(i, weight=0)  # Fixed width
 
-        # Add row checkboxes (column 13)
+        # Add row checkboxes (column 12)
         checkbox_label = tk.Label(self.grid_frame, text="Row\nSelect", font=("Arial", 9, "bold"))
-        checkbox_label.grid(row=1, column=13, pady=(0, 2))
+        checkbox_label.grid(row=1, column=12, pady=(0, 2))
         
         for r in range(1, 6):
             var = tk.IntVar()
             entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"R{r}")
-            entry.grid(row=r + 2, column=13, padx=2, pady=1, sticky="w")
+            entry.grid(row=r + 2, column=12, padx=2, pady=1, sticky="w")
             var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
             self.row_checkboxes.append(var)
 
@@ -511,9 +594,9 @@ class UiManager:
         self.grid_frame.grid_rowconfigure(8, weight=0)
         self.grid_frame.grid_rowconfigure(9, weight=0)
         self.grid_frame.grid_columnconfigure(6, weight=0)
-        self.grid_frame.grid_columnconfigure(13, weight=0)
+        self.grid_frame.grid_columnconfigure(12, weight=0)
         
-        # Per-cell enter/leave bindings handle comment tooltips.
+        # Per-cell bindings handle comment editing and click-to-show popups.
 
     def create_team_grid_round_selection(self):
         """Create the Round Selection section for Team Grid tab with 75%/25% split"""
@@ -656,6 +739,20 @@ class UiManager:
         system_info = f"Rating System: {self.rating_config['name']} ({self.rating_range[0]}-{self.rating_range[1]})"
         self.rating_status = tk.Label(self.status_frame, text=system_info, anchor=tk.CENTER)
         self.rating_status.pack(side=tk.LEFT, expand=True, padx=20)
+
+        # Dynamic status messages (e.g., unsaved changes)
+        self.dynamic_status_frame = tk.Frame(self.status_frame, width=240, height=22)
+        self.dynamic_status_frame.pack(side=tk.RIGHT, padx=10, pady=2)
+        self.dynamic_status_frame.pack_propagate(False)
+
+        self.dynamic_status_label = tk.Label(
+            self.dynamic_status_frame,
+            text="",
+            anchor=tk.W,
+            font=self._status_font_normal,
+            fg=self._status_fg_normal
+        )
+        self.dynamic_status_label.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=2, pady=1)
         
         # Add color preview
         color_frame = tk.Frame(self.status_frame)
@@ -667,6 +764,8 @@ class UiManager:
             color_box = tk.Label(color_frame, text=rating, bg=self.color_map[rating], 
                                width=2, relief=tk.RAISED, borderwidth=1, font=("Arial", 7, "bold"))
             color_box.pack(side=tk.LEFT, padx=1)
+
+        self._refresh_status_messages()
     
     def update_status_bar(self):
         """Update status bar information"""
@@ -699,6 +798,395 @@ class UiManager:
                 color_box = tk.Label(color_frame, text=rating, bg=self.color_map[rating], 
                                    width=2, relief=tk.RAISED, borderwidth=1, font=("Arial", 7, "bold"))
                 color_box.pack(side=tk.LEFT, padx=1)
+
+        self._refresh_status_messages()
+
+    def _set_perf_logging(self, enabled: bool):
+        self.perf_logging_enabled = enabled
+        self.perf.set_enabled(enabled)
+        self.db_preferences.update_ui_preferences({"perf_logging_enabled": enabled})
+
+    def _on_perf_logging_toggle(self):
+        enabled = bool(self.perf_logging_var.get())
+        self._set_perf_logging(enabled)
+
+    def _set_grid_dirty(self, is_dirty: bool):
+        if self._grid_dirty != is_dirty:
+            self._grid_dirty = is_dirty
+            self._refresh_status_messages()
+
+    def _refresh_status_messages(self):
+        messages = []
+        if self._grid_dirty:
+            messages.append("Unsaved grid data")
+        self._set_status_messages(messages)
+
+    def _set_status_messages(self, messages: List[str]):
+        if not hasattr(self, 'dynamic_status_label'):
+            return
+
+        self._status_messages = [msg for msg in messages if msg]
+        self._status_message_index = 0
+        self._status_message_phase = 0
+
+        self._cancel_status_rotation()
+
+        if not self._status_messages:
+            self.dynamic_status_label.config(text="")
+            return
+
+        self._rotate_status_message()
+
+    def _cancel_status_rotation(self):
+        if self._status_message_job is not None:
+            try:
+                self.root.after_cancel(self._status_message_job)
+            except Exception:
+                pass
+            self._status_message_job = None
+
+    def _rotate_status_message(self):
+        if not self._status_messages or not hasattr(self, 'dynamic_status_label'):
+            return
+
+        message = self._status_messages[self._status_message_index]
+
+        if self._status_message_phase == 0:
+            self.dynamic_status_label.config(
+                text=message,
+                font=self._status_font_normal,
+                fg=self._status_fg_normal
+            )
+            delay_ms = 300
+        elif self._status_message_phase == 1:
+            self.dynamic_status_label.config(
+                text=message,
+                font=self._status_font_emphasis,
+                fg=self._status_fg_emphasis
+            )
+            delay_ms = 800
+        elif self._status_message_phase == 2:
+            self.dynamic_status_label.config(
+                text=message,
+                font=self._status_font_normal,
+                fg=self._status_fg_normal
+            )
+            delay_ms = 300
+        else:
+            self._status_message_phase = 0
+            self._status_message_index = (self._status_message_index + 1) % len(self._status_messages)
+            delay_ms = 200
+            self._status_message_job = self.root.after(delay_ms, self._rotate_status_message)
+            return
+
+        self._status_message_phase += 1
+        self._status_message_job = self.root.after(delay_ms, self._rotate_status_message)
+
+    def _on_root_focus_in(self):
+        self._refresh_paste_button_state()
+
+    def _read_clipboard_text(self) -> Optional[str]:
+        try:
+            return self.root.clipboard_get()
+        except tk.TclError:
+            return None
+
+    def _parse_clipboard_grid(self, text: str):
+        if not text:
+            return None, "Clipboard is empty."
+
+        lines = [line.strip() for line in text.strip().splitlines() if line.strip() != ""]
+        if len(lines) != 5:
+            return None, "Expected 5 rows of data."
+
+        grid = []
+        for line in lines:
+            if "\t" in line:
+                parts = line.split("\t")
+            elif "," in line:
+                parts = line.split(",")
+            else:
+                return None, "Expected tab- or comma-separated values."
+
+            parts = [part.strip() for part in parts]
+            if len(parts) != 5:
+                return None, "Expected 5 columns per row."
+
+            row_values = []
+            for part in parts:
+                if part == "" or not part.isdigit():
+                    return None, "All values must be whole numbers."
+                row_values.append(int(part))
+            grid.append(row_values)
+
+        return grid, None
+
+    def _refresh_paste_button_state(self):
+        if not self._paste_5x5_button:
+            return
+
+        clipboard_text = self._read_clipboard_text()
+        grid, _ = self._parse_clipboard_grid(clipboard_text or "")
+        if grid:
+            self._paste_5x5_button.config(state=tk.NORMAL)
+        else:
+            self._paste_5x5_button.config(state=tk.DISABLED)
+
+    def _apply_5x5_grid(self, grid: List[List[int]]):
+        self.grid_data_model.begin_batch()
+        for r in range(1, 6):
+            for c in range(1, 6):
+                self.grid_data_model.set_rating(r, c, grid[r - 1][c - 1])
+        self.grid_data_model.end_batch()
+        self.on_scenario_calculations()
+        self._set_grid_dirty(True)
+
+    def _on_paste_5x5_button(self):
+        clipboard_text = self._read_clipboard_text() or ""
+        grid, error = self._parse_clipboard_grid(clipboard_text)
+        if not grid:
+            messagebox.showerror(
+                "Paste Failed",
+                "Could not paste clipboard data into the grid.\n"
+                "Expected a 5x5 grid of numbers separated by tabs or commas."
+            )
+            return
+
+        self._apply_5x5_grid(grid)
+        messagebox.showinfo(
+            "Paste Complete",
+            "Pasted 25 values into the ratings grid.\nRemember to Save Grid to keep changes."
+        )
+        self._refresh_paste_button_state()
+
+    def _on_top_left_paste_event(self, event):
+        clipboard_text = self._read_clipboard_text() or ""
+        grid, _ = self._parse_clipboard_grid(clipboard_text)
+        if not grid:
+            return None
+
+        self._apply_5x5_grid(grid)
+        messagebox.showinfo(
+            "Paste Complete",
+            "Pasted 25 values into the ratings grid.\nRemember to Save Grid to keep changes."
+        )
+        self._refresh_paste_button_state()
+        return "break"
+
+    def _ensure_name_tooltip_window(self):
+        if self._name_tooltip_window:
+            return
+
+        self._name_tooltip_window = tk.Toplevel(self.root)
+        self._name_tooltip_window.wm_overrideredirect(True)
+        self._name_tooltip_window.wm_attributes("-topmost", True)
+        self._name_tooltip_window.withdraw()
+
+        self._name_tooltip_label = tk.Label(
+            self._name_tooltip_window,
+            text="",
+            justify=tk.LEFT,
+            anchor=tk.W,
+            bg="#1f2430",
+            fg="#f0f3f6",
+            font=("Arial", 10),
+            relief=tk.SOLID,
+            borderwidth=1,
+            padx=8,
+            pady=6
+        )
+        self._name_tooltip_label.pack(fill=tk.BOTH, expand=True)
+
+    def _hide_name_tooltip(self):
+        if self._name_tooltip_window:
+            self._name_tooltip_window.withdraw()
+        self._name_tooltip_cell = None
+
+    def _toggle_name_tooltip(self, event, row: int, col: int):
+        if self._comment_editor_open:
+            return
+        self._ensure_name_tooltip_window()
+
+        widget = self.grid_widgets[row][col]
+        if not widget:
+            return
+
+        if self._name_tooltip_cell == (row, col):
+            self._hide_name_tooltip()
+            return
+
+        self._popup_pending = True
+        self._hide_comment_tooltip_popup()
+
+        text = widget.get().strip()
+        if not text:
+            self._hide_name_tooltip()
+            return
+
+        if not self._is_text_truncated(widget, text):
+            self._hide_name_tooltip()
+            return
+
+        wrap_width = self._get_left_grid_width()
+        self._name_tooltip_label.config(text=text, wraplength=wrap_width)
+        self._name_tooltip_window.update_idletasks()
+
+        x = widget.winfo_rootx()
+        tooltip_height = self._name_tooltip_window.winfo_height()
+        y = widget.winfo_rooty() - tooltip_height - 4
+        if y < 0:
+            y = 0
+        self._name_tooltip_window.geometry(f"+{x}+{y}")
+        def show_popup():
+            self._name_tooltip_window.deiconify()
+            self._name_tooltip_window.lift()
+            self._name_tooltip_cell = (row, col)
+            self._popup_pending = False
+
+        self.root.after_idle(show_popup)
+
+    def _ensure_comment_tooltip_window(self):
+        if self._comment_tooltip_window:
+            return
+
+        self._comment_tooltip_window = tk.Toplevel(self.root)
+        self._comment_tooltip_window.wm_overrideredirect(True)
+        self._comment_tooltip_window.wm_attributes("-topmost", True)
+        self._comment_tooltip_window.withdraw()
+
+        self._comment_tooltip_label = tk.Label(
+            self._comment_tooltip_window,
+            text="",
+            justify=tk.LEFT,
+            anchor=tk.W,
+            bg="#1f2430",
+            fg="#f0f3f6",
+            font=("Arial", 10),
+            relief=tk.SOLID,
+            borderwidth=1,
+            padx=8,
+            pady=6
+        )
+        self._comment_tooltip_label.pack(fill=tk.BOTH, expand=True)
+
+    def _hide_comment_tooltip_popup(self):
+        if self._comment_tooltip_window:
+            self._comment_tooltip_window.withdraw()
+        self._comment_tooltip_cell = None
+
+    def _toggle_comment_tooltip(self, event, row: int, col: int):
+        if self._comment_editor_open:
+            return
+        self._ensure_comment_tooltip_window()
+
+        if self._comment_tooltip_cell == (row, col):
+            self._hide_comment_tooltip_popup()
+            return
+
+        comment = self._get_comment_for_cell(row, col)
+        if comment is None or comment == "":
+            self._hide_comment_tooltip_popup()
+            return
+
+        self._popup_pending = True
+        self._hide_name_tooltip()
+
+        wrap_length = self._get_comment_wraplength(comment)
+        self._comment_tooltip_label.config(text=comment, wraplength=wrap_length)
+        self._comment_tooltip_window.update_idletasks()
+
+        widget = self.grid_widgets[row][col]
+        if not widget:
+            return
+
+        x = widget.winfo_rootx()
+        tooltip_height = self._comment_tooltip_window.winfo_height()
+        y = widget.winfo_rooty() - tooltip_height - 4
+        if y < 0:
+            y = 0
+        self._comment_tooltip_window.geometry(f"+{x}+{y}")
+        def show_popup():
+            self._comment_tooltip_window.deiconify()
+            self._comment_tooltip_window.lift()
+            self._comment_tooltip_cell = (row, col)
+            self._popup_pending = False
+
+        self.root.after_idle(show_popup)
+
+    def _get_comment_for_cell(self, row: int, col: int) -> Optional[str]:
+        team1_name = self.team1_var.get()
+        team2_name = self.team2_var.get()
+        scenario_name = self.scenario_var.get()
+
+        friendly_player = self.grid_data_model.get_rating(row, 0)
+        opponent_player = self.grid_data_model.get_rating(0, col)
+
+        if not all([team1_name, team2_name, scenario_name, friendly_player, opponent_player]):
+            return None
+
+        return self.db_manager.query_comment_by_name(
+            team1_name, team2_name, scenario_name,
+            friendly_player, opponent_player
+        )
+
+    def _get_comment_wraplength(self, text: str) -> int:
+        max_width = 6 * self._get_default_column_width()
+        font = tkfont.Font(font=self._comment_tooltip_label.cget("font"))
+        lines = text.splitlines() or [text]
+        max_line_width = max(font.measure(line) for line in lines) if lines else 0
+        if max_line_width > max_width:
+            return max_width
+        return 0
+
+    def _get_default_column_width(self) -> int:
+        widget = self.grid_widgets[1][1] if self.grid_widgets[1][1] else None
+        if widget:
+            width = widget.winfo_width()
+            if width <= 1:
+                width = widget.winfo_reqwidth()
+            if width > 0:
+                return width
+        return 64
+
+    def _on_root_click_for_popups(self, event):
+        if self._comment_editor_open:
+            self._hide_all_popups()
+            return
+
+        if self._popup_pending:
+            return
+
+        widget = event.widget
+        for r in range(6):
+            for c in range(6):
+                if self.grid_widgets[r][c] is widget:
+                    return
+
+        self._hide_all_popups()
+
+    def _hide_all_popups(self):
+        self._hide_name_tooltip()
+        self._hide_comment_tooltip_popup()
+
+    def _is_text_truncated(self, widget: tk.Entry, text: str) -> bool:
+        widget_width = widget.winfo_width()
+        if widget_width <= 1:
+            return len(text) > 8
+
+        font = tkfont.Font(font=widget.cget("font"))
+        text_width = font.measure(text)
+        padding = 8
+        return text_width > max(widget_width - padding, 1)
+
+    def _get_left_grid_width(self) -> int:
+        width = 0
+        for c in range(6):
+            widget = self.grid_widgets[0][c]
+            if widget:
+                width += widget.winfo_width()
+        if width <= 0:
+            return 360
+        return width
     
     # Add this method to update display-only fields
     def update_display_fields(self, row, col, value):
@@ -714,12 +1202,16 @@ class UiManager:
             self.update_display_fields(0,1,"PINNED?")
             self.update_display_fields(0,2,"CAN-PIN?")
             self.update_display_fields(0,3,"PROTECT")
-            self.update_display_fields(0,4,"MAX/MIN")
-            self.update_display_fields(0,5,"SUM MARG")
+            self.update_display_fields(0,4,"BUS RIDE")
+            # SUM MARG removed
         except (ValueError, IndexError) as e:
             print(f"update_display_fields has failed with error:\n{e}")
 
     def on_scenario_calculations(self):
+        with self.perf.span("grid.scenario_calculations"):
+            self._on_scenario_calculations()
+
+    def _on_scenario_calculations(self):
         # Guard: Don't run calculations if teams are not selected
         team_1 = self.combobox_1.get().strip()
         team_2 = self.combobox_2.get().strip()
@@ -735,22 +1227,20 @@ class UiManager:
         self.check_pinned_players()  # info_col 1
         self.check_for_pins()  # info_col 2
         self.check_protect()  # info_col 3
-        self.check_margins()  # info_col 4 & 5
+        self.check_margins()  # info_col 4
         self.update_comment_indicators()  # Update comment visual indicators
 
     def check_margins(self):
         for row in range(1, 6):
             try:
                 if self.row_checkboxes and row - 1 < len(self.row_checkboxes) and self.row_checkboxes[row - 1].get() == 1:
-                    for col in range(4, 6):
-                        self.update_display_fields(row, col, "---")
+                    self.update_display_fields(row, 4, "---")
                     continue
                 
                 # V2: Get floor value from GridDataModel
                 floor_value = self.grid_data_model.get_display(row, 0)
                 if not floor_value or floor_value == "---" or floor_value.strip() == "":
-                    for col in range(4, 6):
-                        self.update_display_fields(row, col, "---")
+                    self.update_display_fields(row, 4, "---")
                     continue
                 floor_rating_sum = int(floor_value)
                 
@@ -771,8 +1261,7 @@ class UiManager:
                 min_margin = min(all_margins)
                 margin_text = f"{max_margin} | {min_margin}"
                 self.update_display_fields(row, 4, margin_text)
-                sum_margins = sum(all_margins)
-                self.update_display_fields(row, 5, sum_margins)
+                # SUM MARG removed
             except (ValueError, IndexError) as e:
                 print(f"check_margins has failed for row {row} with error:\n{e}")
 
@@ -1057,6 +1546,16 @@ class UiManager:
                      command=lambda: self._menu_action(menu_window, self.on_configure_rating_system),
                      relief=tk.RAISED, borderwidth=1, bg="lightpink")
             rating_system_button.pack(pady=(3, 10))
+
+            self.perf_logging_var = tk.IntVar(value=1 if self.perf_logging_enabled else 0)
+            perf_toggle = tk.Checkbutton(
+                database_frame,
+                text="Perf Logging",
+                variable=self.perf_logging_var,
+                command=self._on_perf_logging_toggle,
+                bg="mistyrose"
+            )
+            perf_toggle.pack(pady=(0, 10))
             print("Database section added successfully!")  # Debug output
             
             # Close button frame at the bottom
@@ -1354,11 +1853,16 @@ class UiManager:
             perform_update = True
         if perform_update:
             try:
-                self.update_ui()
+                with self.perf.span("teams.change.update_ui"):
+                    self.update_ui()
+                with self.perf.span("teams.change.clear_rounds"):
+                    self.clear_round_dropdowns()
                 # Update round dropdowns when team changes
-                self.update_round_dropdown_options()
+                with self.perf.span("teams.change.round_dropdowns"):
+                    self.update_round_dropdown_options()
                 # Trigger scenario calculations to populate the grid on the right
-                self.on_scenario_calculations()
+                with self.perf.span("teams.change.calculations"):
+                    self.on_scenario_calculations()
             except (ValueError,IndexError) as e:
                 print(f"team_box_change error: {e}")
             
@@ -1370,8 +1874,10 @@ class UiManager:
 
     def update_ui(self):
         # Update the team dropdowns and grid values
-        self.set_team_dropdowns()
-        self.load_grid_data_from_db()
+        with self.perf.span("ui.update_ui.set_team_dropdowns"):
+            self.set_team_dropdowns()
+        with self.perf.span("ui.update_ui.load_grid"):
+            self.load_grid_data_from_db()
         # print(self.extract_ratings())
 
     def select_team_names(self):
@@ -1445,6 +1951,10 @@ class UiManager:
             print("DEBUG: No debugger detected - skipping auto-population")
 
     def load_grid_data_from_db(self):
+        with self.perf.span("grid.load_from_db"):
+            self._load_grid_data_from_db()
+
+    def _load_grid_data_from_db(self):
         team_1 = self.combobox_1.get().strip()
         team_2 = self.combobox_2.get().strip()
         
@@ -1536,6 +2046,8 @@ class UiManager:
 
         # Update calculations for display grid
         self.on_scenario_calculations()
+
+        self._set_grid_dirty(False)
         
         # Auto-generate tree after both teams are loaded
         self.auto_generate_tree_after_teams_loaded()
@@ -1554,7 +2066,8 @@ class UiManager:
                 return
             
             # Generate the tree silently in the background
-            self.on_generate_combinations()
+            with self.perf.span("tree.auto_generate"):
+                self.on_generate_combinations()
             print("Auto-generated matchup tree after teams loaded")
             
         except Exception as e:
@@ -1562,6 +2075,10 @@ class UiManager:
             print(f"Warning: Auto-generation of tree failed: {e}")
         
     def save_grid_data_to_db(self):
+        with self.perf.span("grid.save_to_db"):
+            self._save_grid_data_to_db()
+
+    def _save_grid_data_to_db(self):
         # Prevent saving when grid is flipped to opponent's perspective
         if self.grid_is_flipped:
             messagebox.showwarning("Cannot Save", 
@@ -1626,6 +2143,8 @@ class UiManager:
                 except (ValueError, IndexError) as e:
                     print(f"Error saving rating at ({row}, {col}): {e}")
                     continue 
+
+            self._set_grid_dirty(False)
 
     def add_team_to_db(self):
         # Use the main window as parent for the dialog
@@ -2106,13 +2625,14 @@ class UiManager:
 
     def update_comment_indicators(self):
         """Update corner indicators for cells that have comments"""
-        # Clear existing indicators first
-        self.clear_comment_indicators()
-        
-        for row in range(1, 6):
-            for col in range(1, 6):
-                if self.check_comment_exists(row, col):
-                    self.add_comment_indicator(row, col)
+        with self.perf.span("comments.update_indicators"):
+            # Clear existing indicators first
+            self.clear_comment_indicators()
+            
+            for row in range(1, 6):
+                for col in range(1, 6):
+                    if self.check_comment_exists(row, col):
+                        self.add_comment_indicator(row, col)
 
     def add_comment_indicator(self, row, col):
         """Add a small corner indicator for comments"""
@@ -2254,6 +2774,10 @@ class UiManager:
     def open_comment_editor(self, event, row, col):
         """Open a dialog to edit/add comments for a specific matchup."""
         try:
+            if self._comment_editor_open:
+                return
+
+            self._hide_all_popups()
             team1_name = self.team1_var.get()
             team2_name = self.team2_var.get()
             scenario_name = self.scenario_var.get()
@@ -2285,6 +2809,7 @@ class UiManager:
     def create_comment_dialog(self, team1_name, team2_name, scenario_name, 
                             friendly_player, opponent_player, existing_comment):
         """Create a dialog window for editing comments"""
+        self._comment_editor_open = True
         dialog = tk.Toplevel(self.root)
         dialog.title("Edit Matchup Comment")
         dialog.geometry("500x400")
@@ -2351,6 +2876,10 @@ class UiManager:
         # Button frame
         button_frame = tk.Frame(dialog)
         button_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        def close_dialog():
+            self._comment_editor_open = False
+            dialog.destroy()
         
         def save_comment():
             try:
@@ -2380,8 +2909,8 @@ class UiManager:
                     messagebox.showinfo("Success", "Comment deleted successfully!")
                     self.update_comment_indicators()
                     self.update_grid_colors()
-                
-                dialog.destroy()
+
+                close_dialog()
                 
             except Exception as e:
                 print(f"Error saving comment: {e}")
@@ -2397,7 +2926,7 @@ class UiManager:
                     messagebox.showinfo("Success", "Comment deleted successfully!")
                     self.update_comment_indicators()
                     self.update_grid_colors()
-                    dialog.destroy()
+                    close_dialog()
                 except Exception as e:
                     print(f"Error deleting comment: {e}")
                     messagebox.showerror("Error", f"Failed to delete comment: {e}")
@@ -2405,10 +2934,12 @@ class UiManager:
         # Buttons
         tk.Button(button_frame, text="Save", command=save_comment, bg="lightgreen").pack(side=tk.LEFT, padx=5)
         tk.Button(button_frame, text="Delete", command=delete_comment, bg="lightcoral").pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        tk.Button(button_frame, text="Cancel", command=close_dialog).pack(side=tk.RIGHT, padx=5)
         
         # Focus on text area
         comment_text.focus_set()
+
+        dialog.protocol("WM_DELETE_WINDOW", close_dialog)
 
     def update_sort_value_column(self):
         """Update the Sort Value column based on current sorting mode"""
@@ -2635,39 +3166,40 @@ class UiManager:
     def update_round_dropdown_options(self):
         """Update the options in round dropdowns based on current team selection."""
         try:
-            # Get current friendly team players from database
-            friendly_players = []
-            if self.team1_var.get():
-                team_name = self.team1_var.get()
-                # Get team ID
-                team_id_query = f"SELECT team_id FROM teams WHERE team_name = '{team_name}'"
-                team_result = self.db_manager.query_sql(team_id_query)
+            with self.perf.span("round_dropdowns.update"):
+                # Get current friendly team players from database
+                friendly_players = []
+                if self.team1_var.get():
+                    team_name = self.team1_var.get()
+                    # Get team ID
+                    team_id_query = f"SELECT team_id FROM teams WHERE team_name = '{team_name}'"
+                    team_result = self.db_manager.query_sql(team_id_query)
+                    
+                    if team_result:
+                        team_id = team_result[0][0]
+                        # Get player names for this team
+                        player_query = f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id"
+                        player_results = self.db_manager.query_sql(player_query)
+                        friendly_players = [row[0] for row in player_results]
                 
-                if team_result:
-                    team_id = team_result[0][0]
-                    # Get player names for this team
-                    player_query = f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id"
-                    player_results = self.db_manager.query_sql(player_query)
-                    friendly_players = [row[0] for row in player_results]
-            
-            # Get current enemy team players from database
-            enemy_players = []
-            if self.team2_var.get():
-                team_name = self.team2_var.get()
-                # Get team ID
-                team_id_query = f"SELECT team_id FROM teams WHERE team_name = '{team_name}'"
-                team_result = self.db_manager.query_sql(team_id_query)
+                # Get current enemy team players from database
+                enemy_players = []
+                if self.team2_var.get():
+                    team_name = self.team2_var.get()
+                    # Get team ID
+                    team_id_query = f"SELECT team_id FROM teams WHERE team_name = '{team_name}'"
+                    team_result = self.db_manager.query_sql(team_id_query)
+                    
+                    if team_result:
+                        team_id = team_result[0][0]
+                        # Get player names for this team
+                        player_query = f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id"
+                        player_results = self.db_manager.query_sql(player_query)
+                        enemy_players = [row[0] for row in player_results]
                 
-                if team_result:
-                    team_id = team_result[0][0]
-                    # Get player names for this team
-                    player_query = f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id"
-                    player_results = self.db_manager.query_sql(player_query)
-                    enemy_players = [row[0] for row in player_results]
-            
-            # Update all dropdowns with ante/response system and matchup logic
-            if hasattr(self, 'round_dropdowns') and hasattr(self, 'enemy_round_dropdowns'):
-                self._update_ante_response_dropdowns(friendly_players, enemy_players)
+                # Update all dropdowns with ante/response system and matchup logic
+                if hasattr(self, 'round_dropdowns') and hasattr(self, 'enemy_round_dropdowns'):
+                    self._update_ante_response_dropdowns(friendly_players, enemy_players)
                     
         except Exception as e:
             print(f"Error updating round dropdown options: {e}")
@@ -4074,6 +4606,8 @@ class UiManager:
             # Trigger color update and scenario calculations
             self.update_color_on_change(None, None, None, row, col)
             self.on_scenario_calculations()
+            if row > 0 and col > 0:
+                self._set_grid_dirty(True)
     
     def _update_entry_from_model(self, row: int, col: int):
         """
