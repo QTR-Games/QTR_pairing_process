@@ -4875,9 +4875,14 @@ class UiManager:
         """Update display Entry widget from GridDataModel value"""
         widget = self.grid_display_widgets[row][col]
         if widget:
+            new_value = self.grid_data_model.get_display(row, col)
+            current_text = widget.get()
+            if current_text == new_value:
+                return
+
             widget.config(state='normal')
             widget.delete(0, tk.END)
-            widget.insert(0, self.grid_data_model.get_display(row, col))
+            widget.insert(0, new_value)
             widget.config(state='readonly')
     
     def _update_comment_indicator(self, row: int, col: int, has_comment: bool):

@@ -14,7 +14,7 @@ Reorient the UI for speed-first usability by reducing redraw churn, making updat
 9. Add resize optimization: throttle redraw work during <Configure> (resize) bursts; skip expensive updates and apply a final refresh when resizing ends; measure before/after to ensure OS-level lag reduces.
 10. Optional background work: load DB data and compute derived values in a background thread, then marshal minimal UI changes back to the main thread using after; ensure UI remains responsive while data loads.
 11. Tighten redraw costs: minimize update_idletasks() usage; wrap only when needed and measure its impact; reduce widget count or reparenting where possible.
-12. Update perf instrumentation to align with new logic: track skipped updates, cache hits, resize throttling effectiveness, and tree cache reuse to validate gains.
+12. Update perf instrumentation to align with new logic: track skipped updates, cache hits, resize throttling effectiveness, and tree cache reuse to validate gains. Treat these as instrumentation-only and remove once the refactor is complete.
 
 ## Relevant files
 - qtr_pairing_process/ui_manager_v2.py — central UI behavior, update graph, redraw throttling, tree generation control
