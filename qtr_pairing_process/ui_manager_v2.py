@@ -201,16 +201,21 @@ class UiManager:
         self.top_frame = tk.Frame(self.team_grid_frame)
         self.top_frame.pack(side=tk.TOP, fill=tk.X)
         self.top_frame.grid_columnconfigure(0, weight=1)
-        self.top_frame.grid_columnconfigure(1, weight=1)
+        self.top_frame.grid_columnconfigure(1, weight=0)
+        self.top_frame.grid_columnconfigure(2, weight=1)
         self.top_frame.grid_rowconfigure(0, weight=1)
 
         # Single unified grid frame (left)
         self.grid_frame = tk.Frame(self.top_frame, relief=tk.RIDGE, borderwidth=2)
         self.grid_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
 
+        # Vertical sort controls strip between grid and matchup extract.
+        self.sort_controls_frame = tk.Frame(self.top_frame, relief=tk.GROOVE, borderwidth=1)
+        self.sort_controls_frame.grid(row=0, column=1, padx=(0, 12), pady=10, sticky="ns")
+
         # Matchup output section (right of grid, above tree)
         self.matchup_output_container = tk.Frame(self.top_frame)
-        self.matchup_output_container.grid(row=0, column=1, padx=(0, 10), pady=10, sticky="nsew")
+        self.matchup_output_container.grid(row=0, column=2, padx=(0, 10), pady=10, sticky="nsew")
 
         self.tree_autogen_var = tk.IntVar(value=1 if self.tree_autogen_enabled else 0)
         self.create_matchup_output_panel()
@@ -219,17 +224,16 @@ class UiManager:
         self.button_row_frame = tk.Frame(self.team_grid_frame)
         self.button_row_frame.pack(side=tk.TOP, fill=tk.X)
 
+        # Tree controls bar sits directly above the tree and keeps options right aligned.
+        self.tree_options_bar = tk.Frame(self.team_grid_frame)
+        self.tree_options_bar.pack(side=tk.TOP, fill=tk.X, padx=10, pady=(0, 2))
+
         # Tree section (below grid)
         self.tree_container_frame = tk.Frame(self.team_grid_frame)
         self.tree_container_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=(0, 5))
 
-        self.tree_controls_frame = tk.Frame(self.tree_container_frame)
-        self.tree_controls_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
         self.tree_view_frame = tk.Frame(self.tree_container_frame)
         self.tree_view_frame.pack(side=tk.LEFT, expand=1, fill=tk.BOTH)
-
-        self.buttons_frame = tk.Frame(self.tree_controls_frame)
-        self.buttons_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
 
         # V2: Replace 144 StringVars with single GridDataModel
         self.grid_data_model = GridDataModel()
@@ -275,13 +279,13 @@ class UiManager:
 
 
         self.team_b = tk.IntVar()
-        pairingLead = tk.Checkbutton(self.buttons_frame, text="Our team first", variable=self.team_b)
-        pairingLead.pack(side=tk.BOTTOM,pady=5)
+        pairingLead = tk.Checkbutton(self.tree_options_bar, text="Our team first", variable=self.team_b)
+        pairingLead.pack(side=tk.RIGHT, padx=(8, 0), pady=5)
         pairingLead.select()
 
         self.sort_alpha = tk.IntVar()
-        alphaBox = tk.Checkbutton(self.buttons_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
-        alphaBox.pack(side=tk.BOTTOM,pady=5)
+        alphaBox = tk.Checkbutton(self.tree_options_bar, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
+        alphaBox.pack(side=tk.RIGHT, padx=(8, 0), pady=5)
         alphaBox.select()
 
         # create treeview and tree generator
@@ -390,32 +394,32 @@ class UiManager:
         self.treeview.tree.tag_configure('5', background="lime")
         self.treeview.pack(expand=1, fill='both')
         
-        # Create Generate Combinations button
-        generateButton = tk.Button(self.buttons_frame, text="Generate\nCombinations", command=self.on_generate_combinations)
-        generateButton.pack(fill=tk.X, pady=5)
+        # Create centered vertical sort strip between grid and matchup extract
+        generateButton = tk.Button(self.sort_controls_frame, text="Generate\nCombinations", command=self.on_generate_combinations, width=16)
+        generateButton.pack(fill=tk.X, padx=8, pady=(8, 5))
 
         # Initialize sorting state tracking
         self.active_sort_mode = None
         
         # Create sorting buttons with active/inactive states
-        self.cumulative_button = tk.Button(self.buttons_frame, text="Cumulative\nSort", command=self.toggle_cumulative_sort)
-        self.cumulative_button.pack(fill=tk.X, pady=5)
+        self.cumulative_button = tk.Button(self.sort_controls_frame, text="Cumulative\nSort", command=self.toggle_cumulative_sort, width=16)
+        self.cumulative_button.pack(fill=tk.X, padx=8, pady=5)
 
-        self.confidence_button = tk.Button(self.buttons_frame, text="Highest\nConfidence", command=self.toggle_confidence_sort)
-        self.confidence_button.pack(fill=tk.X, pady=5)
+        self.confidence_button = tk.Button(self.sort_controls_frame, text="Highest\nConfidence", command=self.toggle_confidence_sort, width=16)
+        self.confidence_button.pack(fill=tk.X, padx=8, pady=5)
 
-        self.counter_button = tk.Button(self.buttons_frame, text="Counter\nPick", command=self.toggle_counter_sort)
-        self.counter_button.pack(fill=tk.X, pady=5)
+        self.counter_button = tk.Button(self.sort_controls_frame, text="Counter\nPick", command=self.toggle_counter_sort, width=16)
+        self.counter_button.pack(fill=tk.X, padx=8, pady=5)
 
         self.sort_guidance_label = tk.Label(
-            self.buttons_frame,
+            self.sort_controls_frame,
             text="Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
             font=("Arial", 8),
             fg="#333333",
             justify=tk.LEFT,
             anchor=tk.W
         )
-        self.sort_guidance_label.pack(fill=tk.X, pady=(6, 0))
+        self.sort_guidance_label.pack(fill=tk.X, padx=8, pady=(6, 8))
         
         # Set initial button states (all inactive)
         self.update_sort_button_states()
@@ -1825,9 +1829,9 @@ class UiManager:
         """Sort tree by risk-adjusted confidence scores"""
         self.current_sort_mode = "confidence"
         self.active_sort_mode = "confidence"
+        self.apply_combined_sort(compute_primary_tags=True)
         self.update_sort_value_column()
         self.update_column_headers()
-        self.apply_combined_sort(compute_primary_tags=True)
         self.is_sorted = True
         self.update_sort_button_states()
         self._update_sort_hint()
@@ -1836,9 +1840,9 @@ class UiManager:
         """Sort tree by counter-resistance against opponent strategies"""
         self.current_sort_mode = "resistance"
         self.active_sort_mode = "resistance"
+        self.apply_combined_sort(compute_primary_tags=True)
         self.update_sort_value_column()
         self.update_column_headers()
-        self.apply_combined_sort(compute_primary_tags=True)
         self.is_sorted = True
         self.update_sort_button_states()
         self._update_sort_hint()
@@ -1847,9 +1851,9 @@ class UiManager:
         """Sort tree by cumulative value"""
         self.current_sort_mode = "cumulative"
         self.active_sort_mode = "cumulative"
+        self.apply_combined_sort(compute_primary_tags=True)
         self.update_sort_value_column()
         self.update_column_headers()
-        self.apply_combined_sort(compute_primary_tags=True)
         self.is_sorted = True
         self.update_sort_button_states()
         self._update_sort_hint()
@@ -1918,8 +1922,9 @@ class UiManager:
         self.column_sort_states[column_id] = new_state
         self.active_column_sort = column_id if new_state != "none" else None
 
-        self.update_column_headers()
         self.apply_combined_sort(compute_primary_tags=True)
+        self.update_sort_value_column()
+        self.update_column_headers()
 
     def _get_sort_value_header_base(self):
         if self.current_sort_mode == "confidence":
@@ -2072,6 +2077,10 @@ class UiManager:
             try:
                 with self.perf.span("teams.change.end_to_end"):
                     self._invalidate_comment_cache()
+                    if not new_team1_value.strip() or not new_team2_value.strip():
+                        self._schedule_scenario_calculations(immediate=True)
+                        self._measure_update_idletasks("teams.change.redraw")
+                        return
                     self._apply_team_change_updates()
                     self._measure_update_idletasks("teams.change.redraw")
             except (ValueError,IndexError) as e:
@@ -2099,18 +2108,14 @@ class UiManager:
         try:
             self._invalidate_tree_cache("team_change")
             with self.perf.span("teams.change.load_grid"):
-                self.load_grid_data_from_db(refresh_ui=False)
-            with self.perf.span("teams.change.refresh"):
-                self._post_grid_load_refresh()
+                self.load_grid_data_from_db(refresh_ui=True)
         finally:
             self._team_change_in_progress = False
 
     def _apply_scenario_change_updates(self):
         self._invalidate_tree_cache("scenario_change")
         with self.perf.span("scenario.change.load_grid"):
-            self.load_grid_data_from_db(refresh_ui=False)
-        with self.perf.span("scenario.change.refresh"):
-            self._post_grid_load_refresh()
+            self.load_grid_data_from_db(refresh_ui=True)
 
     def _post_grid_load_refresh(self):
         self._invalidate_comment_cache()
