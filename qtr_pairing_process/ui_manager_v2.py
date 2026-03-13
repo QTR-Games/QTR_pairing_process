@@ -1151,6 +1151,10 @@ class UiManager:
             return
 
         wrap_width = self._get_left_grid_width()
+        if self._name_tooltip_label is None:
+            return
+        if self._name_tooltip_window is None:
+            return
         self._name_tooltip_label.config(text=text, wraplength=wrap_width)
         self._name_tooltip_window.update_idletasks()
 
@@ -1161,6 +1165,8 @@ class UiManager:
             y = 0
         self._name_tooltip_window.geometry(f"+{x}+{y}")
         def show_popup():
+            if self._name_tooltip_window is None:
+                return
             self._name_tooltip_window.deiconify()
             self._name_tooltip_window.lift()
             self._name_tooltip_cell = (row, col)
@@ -1215,6 +1221,10 @@ class UiManager:
         self._hide_name_tooltip()
 
         wrap_length = self._get_comment_wraplength(comment)
+        if self._comment_tooltip_label is None:
+            return
+        if self._comment_tooltip_window is None:
+            return
         self._comment_tooltip_label.config(text=comment, wraplength=wrap_length)
         self._comment_tooltip_window.update_idletasks()
 
@@ -1229,6 +1239,8 @@ class UiManager:
             y = 0
         self._comment_tooltip_window.geometry(f"+{x}+{y}")
         def show_popup():
+            if self._comment_tooltip_window is None:
+                return
             self._comment_tooltip_window.deiconify()
             self._comment_tooltip_window.lift()
             self._comment_tooltip_cell = (row, col)
@@ -1252,6 +1264,8 @@ class UiManager:
 
     def _get_comment_wraplength(self, text: str) -> int:
         max_width = 6 * self._get_default_column_width()
+        if self._comment_tooltip_label is None:
+            return max_width
         font = tkfont.Font(font=self._comment_tooltip_label.cget("font"))
         lines = text.splitlines() or [text]
         max_line_width = max(font.measure(line) for line in lines) if lines else 0
