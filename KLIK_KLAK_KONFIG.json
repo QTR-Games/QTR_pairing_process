@@ -21,8 +21,9 @@
     "_auto_tree_sync_comment": "Automatically sync matchups when updates occur - Options: true (on) or false (off)",
     "tree_autogen_enabled": true,
     "_tree_autogen_enabled_comment": "Auto-generate tree after grid loads. Requires restart. Options: true (on) or false (off)",
-    "matchup_output_format": "verbose",
-    "_matchup_output_format_comment": "Matchup extraction display format - Options: 'standard' (concise summary) or 'verbose' (detailed decision path)"
+    "matchup_output_format": "standard",
+    "_matchup_output_format_comment": "Matchup extraction display format - Options: 'standard' (concise summary) or 'verbose' (detailed decision path)",
+    "perf_logging_enabled": false
   },
   "logging": {
     "_comment": "Logging preferences - Controls debug output and log files",
@@ -33,6 +34,6 @@
   },
   "created": "2025-10-23T09:31:34.469763",
   "_created_comment": "Initial config creation timestamp - Do not modify manually",
-  "last_modified": "2026-03-13T15:17:29.408716",
+  "last_modified": "2026-03-13T16:17:15.030854",
   "_last_modified_comment": "Last config update timestamp - Updated automatically when any setting changes"
 }

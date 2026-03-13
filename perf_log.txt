@@ -383,3 +383,112 @@
 2026-03-13T15:16:28 | grid.load.background | 2.98ms | rows=25
 2026-03-13T15:16:48 | event_loop.lag | 2693.87ms | source=resize.burst
 2026-03-13T15:16:48 | resize.burst | 0.00ms | start_w=1920 start_h=1009 end_w=1920 end_h=1009 delta_w=0 delta_h=0 events=1 kind=one_off
+2026-03-13T15:47:51 | startup.select_database | 2.81ms
+2026-03-13T15:47:52 | startup.initialize_ui_vars | 1802.38ms
+2026-03-13T15:47:52 | grid.create_rating_cells | 5.30ms
+2026-03-13T15:47:52 | grid.create_display_cells | 3.07ms
+2026-03-13T15:47:52 | startup.create_ui_grids | 28.26ms
+2026-03-13T15:47:53 | startup.update_combobox_colors | 0.01ms
+2026-03-13T15:47:53 | startup.init_display_headers | 0.31ms
+2026-03-13T15:47:53 | startup.create_status_bar | 2.17ms
+2026-03-13T15:47:53 | grid.load_from_db | 0.01ms
+2026-03-13T15:47:53 | team_dropdowns.set_values | 0.10ms
+2026-03-13T15:47:53 | tree.cache.invalidate | 0.00ms | reason=team_change
+2026-03-13T15:47:53 | grid.load_from_db | 0.12ms
+2026-03-13T15:47:53 | teams.change.load_grid | 1.18ms
+2026-03-13T15:47:53 | comments.update_indicators | 0.04ms
+2026-03-13T15:47:53 | grid.scenario_calculations | 1.07ms
+2026-03-13T15:47:53 | teams.change.refresh | 3.28ms
+2026-03-13T15:47:57 | teams.change.redraw | 4453.05ms
+2026-03-13T15:47:57 | teams.change.end_to_end | 4463.09ms
+2026-03-13T15:47:57 | team_dropdown.trace | 4464.64ms
+2026-03-13T15:47:57 | tree.cache.invalidate | 0.00ms | reason=team_change
+2026-03-13T15:47:57 | tree.cache.invalidate | 0.00ms | reason=scenario_change
+2026-03-13T15:47:57 | grid.load_from_db | 0.69ms
+2026-03-13T15:47:57 | scenario.change.load_grid | 2.28ms
+2026-03-13T15:47:57 | comments.update_indicators | 6.01ms
+2026-03-13T15:47:57 | grid.scenario_calculations | 12.85ms
+2026-03-13T15:47:57 | scenario.change.refresh | 24.06ms
+2026-03-13T15:47:57 | event_loop.lag | 4502.70ms | source=team_dropdown.trace
+2026-03-13T15:47:57 | scenario.change.redraw | 1.55ms
+2026-03-13T15:47:57 | scenario.change.auto | 35.60ms
+2026-03-13T15:47:57 | scenario_dropdown.trace | 37.11ms
+2026-03-13T15:47:57 | grid.load_from_db | 42.52ms
+2026-03-13T15:47:57 | teams.change.load_grid | 45.90ms
+2026-03-13T15:47:57 | comments.update_indicators | 1.18ms
+2026-03-13T15:47:57 | grid.scenario_calculations | 0.49ms
+2026-03-13T15:47:57 | teams.change.refresh | 4.58ms
+2026-03-13T15:47:57 | event_loop.lag | 54.40ms | source=scenario_dropdown.trace
+2026-03-13T15:47:57 | teams.change.redraw | 3.01ms
+2026-03-13T15:47:57 | teams.change.end_to_end | 62.87ms
+2026-03-13T15:47:57 | team_dropdown.trace | 65.73ms
+2026-03-13T15:47:57 | startup.populate_dropdowns | 4548.17ms
+2026-03-13T15:47:57 | grid.load.background | 7.21ms | rows=25
+2026-03-13T15:47:57 | event_loop.lag | 116.29ms | source=team_dropdown.trace
+2026-03-13T15:47:57 | event_loop.lag | 237.64ms | source=resize.burst
+2026-03-13T15:47:57 | tree.cache.miss | 0.00ms
+2026-03-13T15:47:58 | tree.cache.store | 0.00ms
+2026-03-13T15:47:58 | tree.auto_generate | 1138.00ms
+2026-03-13T15:47:58 | grid.load_from_db | 0.53ms
+2026-03-13T15:47:58 | resize.burst | 0.00ms | start_w=1920 start_h=1009 end_w=1920 end_h=1009 delta_w=0 delta_h=0 events=1 kind=one_off
+2026-03-13T15:47:59 | comments.update_indicators | 3.41ms
+2026-03-13T15:47:59 | grid.scenario_calculations | 1.90ms
+2026-03-13T15:47:59 | grid.load.background | 3.77ms | rows=25
+2026-03-13T15:48:22 | tree.cache.miss | 0.00ms
+2026-03-13T15:48:23 | tree.cache.store | 0.00ms
+2026-03-13T15:48:27 | tree.cache.hit | 0.00ms | reason=restore
+2026-03-13T15:48:49 | grid.scenario_calculations | 14.83ms
+2026-03-13T15:48:50 | grid.scenario_calculations | 13.03ms
+2026-03-13T15:48:52 | grid.scenario_calculations | 14.25ms
+2026-03-13T15:48:53 | grid.scenario_calculations | 16.73ms
+2026-03-13T15:59:33 | startup.select_database | 1.64ms
+2026-03-13T15:59:35 | startup.initialize_ui_vars | 1798.15ms
+2026-03-13T15:59:35 | grid.create_rating_cells | 6.62ms
+2026-03-13T15:59:35 | grid.create_display_cells | 3.23ms
+2026-03-13T15:59:35 | startup.create_ui_grids | 27.37ms
+2026-03-13T15:59:35 | startup.update_combobox_colors | 0.01ms
+2026-03-13T15:59:35 | startup.init_display_headers | 0.38ms
+2026-03-13T15:59:35 | startup.create_status_bar | 0.84ms
+2026-03-13T15:59:35 | grid.load_from_db | 0.01ms
+2026-03-13T15:59:40 | team_dropdowns.set_values | 0.15ms
+2026-03-13T15:59:40 | tree.cache.invalidate | 0.00ms | reason=team_change
+2026-03-13T15:59:40 | grid.load_from_db | 0.03ms
+2026-03-13T15:59:40 | teams.change.load_grid | 1.93ms
+2026-03-13T15:59:40 | comments.update_indicators | 0.06ms
+2026-03-13T15:59:40 | grid.scenario_calculations | 38.19ms
+2026-03-13T15:59:40 | teams.change.refresh | 43.85ms
+2026-03-13T15:59:41 | event_loop.lag | 314.34ms | source=resize.burst
+2026-03-13T15:59:45 | teams.change.redraw | 4135.52ms
+2026-03-13T15:59:45 | teams.change.end_to_end | 4188.29ms
+2026-03-13T15:59:45 | team_dropdown.trace | 4189.40ms
+2026-03-13T15:59:45 | tree.cache.invalidate | 0.00ms | reason=team_change
+2026-03-13T15:59:45 | tree.cache.invalidate | 0.00ms | reason=scenario_change
+2026-03-13T15:59:45 | grid.load_from_db | 0.52ms
+2026-03-13T15:59:45 | scenario.change.load_grid | 1.85ms
+2026-03-13T15:59:45 | comments.update_indicators | 1.85ms
+2026-03-13T15:59:45 | grid.scenario_calculations | 1.30ms
+2026-03-13T15:59:45 | scenario.change.refresh | 5.24ms
+2026-03-13T15:59:45 | event_loop.lag | 4214.04ms | source=team_dropdown.trace
+2026-03-13T15:59:45 | scenario.change.redraw | 252.67ms
+2026-03-13T15:59:45 | scenario.change.auto | 263.93ms
+2026-03-13T15:59:45 | scenario_dropdown.trace | 265.03ms
+2026-03-13T15:59:45 | grid.load_from_db | 266.63ms
+2026-03-13T15:59:45 | teams.change.load_grid | 268.16ms
+2026-03-13T15:59:45 | comments.update_indicators | 0.51ms
+2026-03-13T15:59:45 | grid.scenario_calculations | 0.32ms
+2026-03-13T15:59:45 | teams.change.refresh | 3.59ms
+2026-03-13T15:59:45 | event_loop.lag | 274.44ms | source=scenario_dropdown.trace
+2026-03-13T15:59:45 | teams.change.redraw | 1.39ms
+2026-03-13T15:59:45 | teams.change.end_to_end | 278.61ms
+2026-03-13T15:59:45 | team_dropdown.trace | 279.94ms
+2026-03-13T15:59:45 | startup.populate_dropdowns | 4508.26ms
+2026-03-13T15:59:45 | resize.burst | 0.00ms | start_w=1920 start_h=1009 end_w=1920 end_h=1009 delta_w=0 delta_h=0 events=1 kind=one_off
+2026-03-13T15:59:45 | grid.load.background | 3.30ms | rows=25
+2026-03-13T15:59:45 | event_loop.lag | 331.19ms | source=team_dropdown.trace
+2026-03-13T15:59:45 | tree.cache.miss | 0.00ms
+2026-03-13T15:59:46 | tree.cache.store | 0.00ms
+2026-03-13T15:59:46 | tree.auto_generate | 1094.82ms
+2026-03-13T15:59:46 | grid.load_from_db | 0.48ms
+2026-03-13T15:59:47 | comments.update_indicators | 24.83ms
+2026-03-13T15:59:47 | grid.scenario_calculations | 5.58ms
+2026-03-13T15:59:47 | grid.load.background | 2.83ms | rows=25

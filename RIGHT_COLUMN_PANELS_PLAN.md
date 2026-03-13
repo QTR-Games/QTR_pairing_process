@@ -1,10 +1,10 @@
 # Right Column Panels Plan
 
 ## Overview
-Add three stacked panels in the right column (Matchup Summary, Notes/Plan, What-if). Reuse the existing right-column container and matchup output panel styling. Wire toggles to existing actions and persist any new preferences via DatabasePreferences.
+Add three panels in the right column (Matchup Summary, Notes/Plan, What-if) and allow the user to select which single panel is shown using a Data Management menu dropdown. Reuse the existing right-column container and matchup output panel styling. Wire toggles to existing actions and persist new preferences via DatabasePreferences. Default panel is Notes/Plan.
 
 ## Steps
-1. Extend the right-column layout to host multiple panels: create a vertical stack inside `matchup_output_container` with three child frames for Matchup Summary, Notes/Plan, and What-if. Use the same frame styling and padding pattern as `create_matchup_output_panel()`.
+1. Extend the right-column layout to host multiple panels: create a vertical stack inside `matchup_output_container` with three child frames for Matchup Summary, Notes/Plan, and What-if. Show only the selected panel (e.g., `pack_forget`/`grid_remove`). Use the same frame styling and padding pattern as `create_matchup_output_panel()`.
 2. Implement Matchup Summary panel:
    - Add a summary frame with title and a compact content area (labels + optional canvas for histogram bars).
    - Data sources:
@@ -22,11 +22,16 @@ Add three stacked panels in the right column (Matchup Summary, Notes/Plan, What-
    - Sort mode hints: display current `active_sort_mode` and a short hint.
    - Tree auto-generate: bind to existing `tree_autogen_var` and `_on_tree_autogen_toggle()`.
    - Compact legend: reuse `color_map` and status bar legend logic.
-5. Wire refresh flows:
+5. Add Data Management menu dropdown for panel selection:
+   - Add a dropdown in the Data Management menu to choose `Matchup Summary`, `Notes/Plan`, or `What-if`.
+   - Persist the selection to KONFIG (e.g., `ui_preferences.right_column_panel`) via `DatabasePreferences.update_ui_preferences()`.
+   - Default to `Notes/Plan` when no preference exists.
+   - When the dropdown changes, immediately switch the visible panel in the right column.
+6. Wire refresh flows:
    - On `on_generate_combinations`: update summary panel + histogram + sort hint.
    - On sort toggles: update summary/hints without regenerating the tree.
    - On rating system change: refresh legend colors.
-6. Add guardrails:
+7. Add guardrails:
    - If no tree exists or no matchups computed, show placeholder states.
    - If histogram data missing, render empty bars or hide the histogram area.
 
@@ -37,13 +42,17 @@ Add three stacked panels in the right column (Matchup Summary, Notes/Plan, What-
 - KLIK_KLAK_KONFIG.json
 
 ## Verification
-1. Launch app: right column shows Matchup Summary, Notes/Plan, and What-if panels stacked top-to-bottom.
-2. Generate combinations: summary updates with final matchups, best/worst spread, and histogram.
-3. Toggle sort modes: sort hint text updates; summary remains consistent.
-4. Toggle tree auto-generate from What-if panel: setting persists and triggers restart warning.
-5. Enter notes, save, restart app: notes persist.
+1. Launch app: right column defaults to Notes/Plan panel.
+2. Data Management menu dropdown changes the visible panel immediately.
+3. Selection persists after restart (KONFIG updated).
+4. Generate combinations: summary updates with final matchups, best/worst spread, and histogram.
+5. Toggle sort modes: sort hint text updates; summary remains consistent.
+6. Toggle tree auto-generate from What-if panel: setting persists and triggers restart warning.
+7. Enter notes, save, restart app: notes persist.
 
 ## Decisions
+- Single-panel display is controlled from Data Management menu to reduce on-screen clutter.
+- Notes/Plan is the default when no preference exists.
 - Matchup Summary draws from existing matchup output and tree values to avoid recomputing pairing logic.
 - Notes persist as plain text with a size cap.
 - What-if panel reuses existing actions (flip grid, sort buttons, tree auto-generate) rather than introducing new logic.

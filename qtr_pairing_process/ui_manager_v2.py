@@ -200,8 +200,8 @@ class UiManager:
 
         self.top_frame = tk.Frame(self.team_grid_frame)
         self.top_frame.pack(side=tk.TOP, fill=tk.X)
-        self.top_frame.grid_columnconfigure(0, weight=3)
-        self.top_frame.grid_columnconfigure(1, weight=2)
+        self.top_frame.grid_columnconfigure(0, weight=1)
+        self.top_frame.grid_columnconfigure(1, weight=1)
         self.top_frame.grid_rowconfigure(0, weight=1)
 
         # Single unified grid frame (left)
@@ -211,6 +211,10 @@ class UiManager:
         # Matchup output section (right of grid, above tree)
         self.matchup_output_container = tk.Frame(self.top_frame)
         self.matchup_output_container.grid(row=0, column=1, padx=(0, 10), pady=10, sticky="nsew")
+
+        self.tree_autogen_var = tk.IntVar(value=1 if self.tree_autogen_enabled else 0)
+        self.create_matchup_output_panel()
+        self.matchup_output_panel_created = True
 
         self.button_row_frame = tk.Frame(self.team_grid_frame)
         self.button_row_frame.pack(side=tk.TOP, fill=tk.X)
@@ -291,8 +295,8 @@ class UiManager:
         self.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
         self.active_column_sort = None
         
-        # Matchup output panel will be created lazily when generating combinations
-        self.matchup_output_panel_created = False
+        # Matchup output panel is created as part of right-column setup
+        self.matchup_output_panel_created = True
         
 
     
@@ -349,7 +353,8 @@ class UiManager:
 
         # Add essential buttons to a row just above the pairing grid       
         tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
-        tk.Button(self.button_row_frame, text="Flip Grid", command=lambda: self.flip_grid_perspective()).pack(side=tk.LEFT, padx=5, pady=5)
+        self.flip_grid_button = tk.Button(self.button_row_frame, text="Flip Grid", command=lambda: self.flip_grid_perspective())
+        self.flip_grid_button.pack(side=tk.LEFT, padx=5, pady=5)
 
         self._paste_5x5_button = tk.Button(
             self.button_row_frame,
@@ -401,6 +406,16 @@ class UiManager:
 
         self.counter_button = tk.Button(self.buttons_frame, text="Counter\nPick", command=self.toggle_counter_sort)
         self.counter_button.pack(fill=tk.X, pady=5)
+
+        self.sort_guidance_label = tk.Label(
+            self.buttons_frame,
+            text="Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
+            font=("Arial", 8),
+            fg="#333333",
+            justify=tk.LEFT,
+            anchor=tk.W
+        )
+        self.sort_guidance_label.pack(fill=tk.X, pady=(6, 0))
         
         # Set initial button states (all inactive)
         self.update_sort_button_states()
@@ -408,7 +423,7 @@ class UiManager:
         # Add tooltip
         self.create_tooltip(self.treeview, "Generated combinations will be displayed here\nNavigate the tree with arrow keys!")
         
-        # Matchup output panel will be created on first combination generation
+        # Matchup output panel is created on startup
         
         # Load grid once widgets exist
         self.root.after(1, self.load_grid_data_from_db)
@@ -900,6 +915,7 @@ class UiManager:
         self.update_column_headers()
         self.update_sort_value_column()
         self.update_sort_button_states()
+        self._update_sort_hint()
 
     def _log_perf_entry(self, label: str, elapsed_ms: float, **meta: Any):
         if not self.perf.enabled:
@@ -1713,7 +1729,6 @@ class UiManager:
             )
             perf_toggle.pack(pady=(0, 10))
             
-            self.tree_autogen_var = tk.IntVar(value=1 if self.tree_autogen_enabled else 0)
             tree_autogen_toggle = tk.Checkbutton(
                 database_frame,
                 text="Tree Auto-Generate (restart)",
@@ -1804,6 +1819,7 @@ class UiManager:
 
         # Reset all sorting states when generating new combinations
         self._reset_tree_sort_state()
+        self._update_matchup_summary([])
         
     def sort_by_confidence(self):
         """Sort tree by risk-adjusted confidence scores"""
@@ -1814,6 +1830,7 @@ class UiManager:
         self.apply_combined_sort(compute_primary_tags=True)
         self.is_sorted = True
         self.update_sort_button_states()
+        self._update_sort_hint()
 
     def sort_by_counter_resistance(self):
         """Sort tree by counter-resistance against opponent strategies"""
@@ -1824,6 +1841,7 @@ class UiManager:
         self.apply_combined_sort(compute_primary_tags=True)
         self.is_sorted = True
         self.update_sort_button_states()
+        self._update_sort_hint()
 
     def sort_by_cumulative(self):
         """Sort tree by cumulative value"""
@@ -1834,6 +1852,7 @@ class UiManager:
         self.apply_combined_sort(compute_primary_tags=True)
         self.is_sorted = True
         self.update_sort_button_states()
+        self._update_sort_hint()
     
     def unsort_tree(self):
         """Remove all sorting and return to default order"""
@@ -1844,6 +1863,7 @@ class UiManager:
         self.apply_combined_sort(compute_primary_tags=False)
         self.is_sorted = self.active_column_sort is not None
         self.update_sort_button_states()
+        self._update_sort_hint()
     
     def toggle_cumulative_sort(self):
         """Toggle cumulative sorting on/off"""
@@ -3375,17 +3395,92 @@ class UiManager:
             print(f"Error flipping grid perspective: {e}")
             messagebox.showerror("Error", f"Failed to flip grid perspective: {e}")
 
-    def create_matchup_output_panel(self):
+    def _update_sort_hint(self):
+        if not hasattr(self, 'sort_guidance_label'):
+            return
+        hint_map = {
+            None: "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
+            "none": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
+            "cumulative": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
+            "confidence": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
+            "resistance": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks"
+        }
+        hint = hint_map.get(self.active_sort_mode, "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks")
+        self.sort_guidance_label.config(text=hint)
+
+    def _load_pairing_notes(self):
+        if not hasattr(self, 'notes_text'):
+            return
+        self.notes_text.delete("1.0", tk.END)
+        if self.pairing_plan_notes:
+            self.notes_text.insert("1.0", self.pairing_plan_notes)
+
+    def _save_pairing_notes(self):
+        if not hasattr(self, 'notes_text'):
+            return
+        notes = self.notes_text.get("1.0", tk.END).rstrip()
+        max_chars = 4096
+        if len(notes) > max_chars:
+            notes = notes[:max_chars]
+            self.notes_text.delete("1.0", tk.END)
+            self.notes_text.insert("1.0", notes)
+        self.pairing_plan_notes = notes
+        self.db_preferences.set_pairing_plan_notes(notes)
+
+    def _clear_pairing_notes(self):
+        if not hasattr(self, 'notes_text'):
+            return
+        self.notes_text.delete("1.0", tk.END)
+        self.pairing_plan_notes = ""
+        self.db_preferences.set_pairing_plan_notes("")
+
+    def create_matchup_output_panel(self, parent: Optional[tk.Frame] = None):
         """Create a panel to display the final 5 matchups in a simple format."""
         try:
+            target_parent = parent if parent is not None else self.matchup_output_container
             # Create output panel frame below the tree section
-            self.output_panel_frame = tk.Frame(self.matchup_output_container, relief=tk.RIDGE, borderwidth=2, bg="lightyellow")
+            self.output_panel_frame = tk.Frame(target_parent, relief=tk.RIDGE, borderwidth=2, bg="lightyellow")
             self.output_panel_frame.pack(side=tk.TOP, fill=tk.BOTH, padx=5, pady=5, expand=True)
             
             # Panel title
             title_label = tk.Label(self.output_panel_frame, text="Final Matchups Output", 
                                  font=("Arial", 12, "bold"), bg="lightyellow")
             title_label.pack(pady=(5, 0))
+
+            summary_frame = tk.Frame(self.output_panel_frame, bg="lightyellow")
+            summary_frame.pack(fill=tk.X, padx=10, pady=(2, 6))
+
+            self.summary_matchups_label = tk.Label(
+                summary_frame,
+                text="Final matchups: Not extracted yet",
+                font=("Arial", 9),
+                bg="lightyellow",
+                fg="#333333",
+                justify=tk.LEFT,
+                anchor=tk.W,
+                wraplength=360
+            )
+            self.summary_matchups_label.pack(fill=tk.X)
+
+            self.summary_spread_label = tk.Label(
+                summary_frame,
+                text="Best/Worst spread: --",
+                font=("Arial", 9),
+                bg="lightyellow",
+                fg="#333333",
+                justify=tk.LEFT,
+                anchor=tk.W
+            )
+            self.summary_spread_label.pack(fill=tk.X)
+
+            self.summary_histogram = tk.Canvas(
+                summary_frame,
+                height=60,
+                bg="white",
+                relief=tk.SUNKEN,
+                borderwidth=1
+            )
+            self.summary_histogram.pack(fill=tk.X, pady=(4, 0))
             
             # Instructions
             instructions = tk.Label(self.output_panel_frame, 
@@ -3453,6 +3548,99 @@ class UiManager:
                 
         except Exception as e:
             print(f"Error updating verbose mode preference: {e}")
+
+    def _update_matchup_summary(self, matchups: List[Dict[str, Any]]):
+        if not hasattr(self, 'summary_matchups_label'):
+            return
+
+        if not matchups:
+            self.summary_matchups_label.config(text="Final matchups: Not extracted yet")
+            self.summary_spread_label.config(text="Best/Worst spread: --")
+            self._render_confidence_histogram([])
+            return
+
+        matchup_lines = []
+        ratings = []
+        for matchup in matchups:
+            decision = matchup.get('decision') or matchup.get('choice') or ""
+            if decision:
+                matchup_lines.append(decision)
+            rating_value = self._parse_rating_value(matchup.get('rating'))
+            if rating_value is not None:
+                ratings.append(rating_value)
+
+        summary_text = "Final matchups: " + ("; ".join(matchup_lines) if matchup_lines else "(unavailable)")
+        self.summary_matchups_label.config(text=summary_text)
+
+        if ratings:
+            best = max(ratings)
+            worst = min(ratings)
+            avg = sum(ratings) / len(ratings)
+            self.summary_spread_label.config(
+                text=f"Best/Worst spread: {best:.2f} / {worst:.2f} (avg {avg:.2f})"
+            )
+        else:
+            self.summary_spread_label.config(text="Best/Worst spread: --")
+
+        self._render_confidence_histogram(ratings)
+
+    def _parse_rating_value(self, rating: Any) -> Optional[float]:
+        if rating is None:
+            return None
+        if isinstance(rating, (int, float)):
+            return float(rating)
+        rating_text = str(rating).strip()
+        if not rating_text:
+            return None
+        if '/' in rating_text:
+            rating_text = rating_text.split('/', 1)[0].strip()
+        try:
+            return float(rating_text)
+        except ValueError:
+            return None
+
+    def _render_confidence_histogram(self, ratings: List[float]):
+        if not hasattr(self, 'summary_histogram'):
+            return
+        canvas = self.summary_histogram
+        canvas.delete("all")
+
+        if not ratings:
+            canvas.create_text(4, 30, anchor=tk.W, text="No confidence data", fill="#777777", font=("Arial", 8))
+            return
+
+        min_rating = self.rating_range[0] if hasattr(self, 'rating_range') else 1
+        max_rating = self.rating_range[1] if hasattr(self, 'rating_range') else 5
+        bin_count = 5
+        bin_width = (max_rating - min_rating) / bin_count
+        bins = [0] * bin_count
+
+        for rating in ratings:
+            if rating < min_rating:
+                idx = 0
+            elif rating >= max_rating:
+                idx = bin_count - 1
+            else:
+                idx = int((rating - min_rating) / bin_width)
+                idx = min(idx, bin_count - 1)
+            bins[idx] += 1
+
+        width = int(canvas.winfo_width() or 240)
+        height = int(canvas.winfo_height() or 60)
+        padding = 4
+        available_width = max(width - padding * 2, 1)
+        bar_width = available_width / bin_count
+        max_count = max(bins) if bins else 1
+
+        for i, count in enumerate(bins):
+            bar_height = int((count / max_count) * (height - padding * 2)) if max_count else 0
+            x0 = padding + i * bar_width + 1
+            x1 = padding + (i + 1) * bar_width - 1
+            y0 = height - padding - bar_height
+            y1 = height - padding
+            canvas.create_rectangle(x0, y0, x1, y1, fill="#7fbf7f", outline="#4f7f4f")
+            label = f"{min_rating + i * bin_width:.0f}"
+            canvas.create_text(x0 + 2, height - 2, anchor=tk.SW, text=label, fill="#555555", font=("Arial", 7))
     
     def format_matchups_verbose(self, matchups, item_text):
         """Format matchups in verbose mode with complete decision path details."""
@@ -3538,6 +3726,8 @@ class UiManager:
             # Display in text widget
             self.matchups_text.delete(1.0, tk.END)
             self.matchups_text.insert(1.0, output_text)
+
+            self._update_matchup_summary(matchups)
             
             print(f"Successfully extracted {len(matchups)} matchups from selected tree item")
             

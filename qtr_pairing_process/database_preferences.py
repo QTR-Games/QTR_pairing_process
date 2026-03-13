@@ -52,6 +52,8 @@ class DatabasePreferences:
                 "rating_system": "1-5",
                 "auto_tree_sync": False,
                 "tree_autogen_enabled": True,
+                "right_column_panel": "notes",
+                "pairing_plan_notes": "",
                 "matchup_output_format": "standard",
                 "perf_logging_enabled": False
             },
