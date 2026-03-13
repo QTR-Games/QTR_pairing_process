@@ -411,9 +411,12 @@ class UiManager:
         self.counter_button = tk.Button(self.sort_controls_frame, text="Counter\nPick", command=self.toggle_counter_sort, width=16)
         self.counter_button.pack(fill=tk.X, padx=8, pady=5)
 
+        self.strategic_button = tk.Button(self.sort_controls_frame, text="Strategic\nFusion", command=self.toggle_strategic_sort, width=16)
+        self.strategic_button.pack(fill=tk.X, padx=8, pady=5)
+
         self.sort_guidance_label = tk.Label(
             self.sort_controls_frame,
-            text="Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
+            text="Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
             font=("Arial", 8),
             fg="#333333",
             justify=tk.LEFT,
@@ -1857,6 +1860,17 @@ class UiManager:
         self.is_sorted = True
         self.update_sort_button_states()
         self._update_sort_hint()
+
+    def sort_by_strategic(self):
+        """Sort tree by unified strategic score using enhanced metric foundations."""
+        self.current_sort_mode = "strategic3"
+        self.active_sort_mode = "strategic3"
+        self.apply_combined_sort(compute_primary_tags=True)
+        self.update_sort_value_column()
+        self.update_column_headers()
+        self.is_sorted = True
+        self.update_sort_button_states()
+        self._update_sort_hint()
     
     def unsort_tree(self):
         """Remove all sorting and return to default order"""
@@ -1889,6 +1903,13 @@ class UiManager:
             self.unsort_tree()
         else:
             self.sort_by_counter_resistance()
+
+    def toggle_strategic_sort(self):
+        """Toggle unified strategic sorting on/off"""
+        if self.active_sort_mode == "strategic3":
+            self.unsort_tree()
+        else:
+            self.sort_by_strategic()
     
     def update_sort_button_states(self):
         """Update button appearance to show active/inactive states"""
@@ -1896,6 +1917,7 @@ class UiManager:
         self.cumulative_button.config(text="Cumulative\nSort", relief=tk.RAISED, bg='SystemButtonFace')
         self.confidence_button.config(text="Highest\nConfidence", relief=tk.RAISED, bg='SystemButtonFace')
         self.counter_button.config(text="Counter\nPick", relief=tk.RAISED, bg='SystemButtonFace')
+        self.strategic_button.config(text="Strategic\nFusion", relief=tk.RAISED, bg='SystemButtonFace')
         
         # Set active button to bright red circle and pressed appearance
         if self.active_sort_mode == "cumulative":
@@ -1904,6 +1926,8 @@ class UiManager:
             self.confidence_button.config(text="Highest\nConfidence", relief=tk.SUNKEN, bg='lightcoral')
         elif self.active_sort_mode == "resistance":
             self.counter_button.config(text="Counter\nPick", relief=tk.SUNKEN, bg='lightcoral')
+        elif self.active_sort_mode == "strategic3":
+            self.strategic_button.config(text="Strategic\nFusion", relief=tk.SUNKEN, bg='lightcoral')
 
     def on_column_click(self, column_id):
         """Cycle sort state for a column and apply combined sorting."""
@@ -1933,6 +1957,8 @@ class UiManager:
             return "Resistance Score"
         if self.current_sort_mode == "cumulative":
             return "Cumulative Value"
+        if self.current_sort_mode == "strategic3":
+            return "Strategic Score"
         return "Sort Value"
 
     def update_column_headers(self):
@@ -1962,11 +1988,16 @@ class UiManager:
 
         if compute_primary_tags and primary_mode:
             if primary_mode == "cumulative":
-                self.tree_generator.calculate_all_path_values("")
+                self.tree_generator.calculate_all_path_values_enhanced("")
             elif primary_mode == "confidence":
-                self.tree_generator.calculate_confidence_scores("")
+                self.tree_generator.calculate_confidence_scores_enhanced("")
             elif primary_mode == "resistance":
-                self.tree_generator.calculate_counter_resistance_scores("")
+                self.tree_generator.calculate_counter_resistance_scores_enhanced("")
+            elif primary_mode == "strategic3":
+                self.tree_generator.calculate_all_path_values_enhanced("")
+                self.tree_generator.calculate_confidence_scores_enhanced("")
+                self.tree_generator.calculate_counter_resistance_scores_enhanced("")
+                self.tree_generator.calculate_strategic3_scores("")
 
         self._sort_children_combined("", primary_mode, secondary_column)
 
@@ -1986,11 +2017,13 @@ class UiManager:
 
         def primary_key(child_id):
             if primary_mode == "cumulative":
-                return self.tree_generator.get_cumulative_from_tags(child_id)
+                return self.tree_generator.get_cumulative2_from_tags(child_id)
             if primary_mode == "confidence":
-                return self.tree_generator.get_confidence_from_tags(child_id)
+                return self.tree_generator.get_confidence2_from_tags(child_id)
             if primary_mode == "resistance":
-                return self.tree_generator.get_resistance_from_tags(child_id)
+                return self.tree_generator.get_resistance2_from_tags(child_id)
+            if primary_mode == "strategic3":
+                return self.tree_generator.get_strategic3_from_tags(child_id)
             return 0
 
         def secondary_key(child_id):
@@ -3344,11 +3377,13 @@ class UiManager:
         if self.current_sort_mode == "none":
             return ""
         elif self.current_sort_mode == "confidence":
-            return self.tree_generator.get_confidence_from_tags(node)
+            return self.tree_generator.get_confidence2_from_tags(node)
         elif self.current_sort_mode == "resistance":
-            return self.tree_generator.get_resistance_from_tags(node)
+            return self.tree_generator.get_resistance2_from_tags(node)
         elif self.current_sort_mode == "cumulative":
-            return self.tree_generator.get_cumulative_from_tags(node)
+            return self.tree_generator.get_cumulative2_from_tags(node)
+        elif self.current_sort_mode == "strategic3":
+            return self.tree_generator.get_strategic3_from_tags(node)
         else:
             return ""
 
@@ -3404,13 +3439,14 @@ class UiManager:
         if not hasattr(self, 'sort_guidance_label'):
             return
         hint_map = {
-            None: "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
-            "none": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
-            "cumulative": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
-            "confidence": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
-            "resistance": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks"
+            None: "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
+            "none": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
+            "cumulative": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
+            "confidence": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
+            "resistance": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
+            "strategic3": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax"
         }
-        hint = hint_map.get(self.active_sort_mode, "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks")
+        hint = hint_map.get(self.active_sort_mode, "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax")
         self.sort_guidance_label.config(text=hint)
 
     def _load_pairing_notes(self):

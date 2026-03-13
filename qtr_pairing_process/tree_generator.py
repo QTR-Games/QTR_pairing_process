@@ -2,6 +2,7 @@
 
 from itertools import combinations, permutations
 import tkinter
+import math
 
 import qtr_pairing_process.utility_funcs as uf
 
@@ -527,6 +528,244 @@ class TreeGenerator:
         except (ValueError, TypeError):
             pass
         return 0
+
+    def _replace_prefixed_tag(self, node, prefix, value):
+        """Replace all tags with given prefix and add a new value tag."""
+        item_data = self.treeview.tree.item(node)
+        current_tags = list(item_data.get('tags', []))
+        current_tags = [tag for tag in current_tags if not str(tag).startswith(prefix)]
+        current_tags.append(f"{prefix}{int(value)}")
+        self.treeview.tree.item(node, tags=current_tags)
+
+    def _extract_prefixed_tag_value(self, node, prefix, default=0):
+        """Read an integer tag value by prefix from a tree node."""
+        try:
+            item_data = self.treeview.tree.item(node)
+            tags = item_data.get('tags', [])
+            for tag in tags:
+                tag_str = str(tag)
+                if tag_str.startswith(prefix):
+                    return int(tag_str.replace(prefix, ''))
+        except (ValueError, TypeError):
+            pass
+        return default
+
+    def _clamp(self, value, min_value, max_value):
+        return max(min_value, min(max_value, value))
+
+    def calculate_all_path_values_enhanced(self, node, alpha=0.80):
+        """Enhanced cumulative scoring that is optimistic for us and adversarial for opponent turns."""
+        children = self.treeview.tree.get_children(node)
+
+        if not children:
+            if node:
+                try:
+                    leaf_value = int(self.treeview.tree.item(node, 'values')[0])
+                    self._replace_prefixed_tag(node, 'cumulative2_', leaf_value)
+                    self.update_node_cumulative_display(node, leaf_value)
+                    return leaf_value
+                except (ValueError, IndexError):
+                    self._replace_prefixed_tag(node, 'cumulative2_', 0)
+                    self.update_node_cumulative_display(node, 0)
+                    return 0
+            return 0
+
+        child_scores = [self.calculate_all_path_values_enhanced(child, alpha=alpha) for child in children]
+
+        if node:
+            try:
+                node_value = int(self.treeview.tree.item(node, 'values')[0])
+            except (ValueError, IndexError):
+                node_value = 0
+
+            is_opp_level = self._is_opponent_choice_level(children[0]) if children else False
+            if is_opp_level:
+                min_child = min(child_scores)
+                mean_child = sum(child_scores) / max(1, len(child_scores))
+                child_component = alpha * min_child + (1.0 - alpha) * mean_child
+            else:
+                child_component = max(child_scores)
+
+            total_value = int(round(node_value + child_component))
+            self._replace_prefixed_tag(node, 'cumulative2_', total_value)
+            self.update_node_cumulative_display(node, total_value)
+            return total_value
+
+        return max(child_scores) if child_scores else 0
+
+    def get_cumulative2_from_tags(self, node):
+        """Extract enhanced cumulative value from node tags."""
+        return self._extract_prefixed_tag_value(node, 'cumulative2_', default=0)
+
+    def calculate_confidence_scores_enhanced(self, node, k=0.85, u=12.0):
+        """Enhanced confidence with volatility and sample-size penalties."""
+        children = self.treeview.tree.get_children(node)
+
+        if not children:
+            if node:
+                try:
+                    rating = int(self.treeview.tree.item(node, 'values')[0])
+                except (ValueError, IndexError):
+                    rating = 0
+                base_conf = self.calculate_rating_confidence(rating)
+                score = int(self._clamp(base_conf, 0, 100))
+                self._replace_prefixed_tag(node, 'confidence2_', score)
+                self._replace_prefixed_tag(node, 'floor2_', score)
+                self._replace_prefixed_tag(node, 'ceiling2_', score)
+                self.update_node_confidence_display(node, score)
+                return score, score, score
+            return 0, 0, 0
+
+        child_triplets = [self.calculate_confidence_scores_enhanced(child, k=k, u=u) for child in children]
+        child_scores = [triplet[2] for triplet in child_triplets]
+
+        mu = sum(child_scores) / max(1, len(child_scores))
+        if len(child_scores) > 1:
+            variance = sum((s - mu) ** 2 for s in child_scores) / len(child_scores)
+            sigma = math.sqrt(variance)
+        else:
+            sigma = 0.0
+
+        n = max(1, len(child_scores))
+        conservative = mu - (k * sigma) - (u / math.sqrt(n))
+
+        if node:
+            try:
+                node_rating = int(self.treeview.tree.item(node, 'values')[0])
+            except (ValueError, IndexError):
+                node_rating = 0
+            node_conf = self.calculate_rating_confidence(node_rating)
+            score = int(round(self._clamp((0.6 * node_conf) + (0.4 * conservative), 0, 100)))
+
+            floor2 = int(round(self._clamp(min(child_scores), 0, 100)))
+            ceiling2 = int(round(self._clamp(max(child_scores), 0, 100)))
+
+            self._replace_prefixed_tag(node, 'confidence2_', score)
+            self._replace_prefixed_tag(node, 'floor2_', floor2)
+            self._replace_prefixed_tag(node, 'ceiling2_', ceiling2)
+            self.update_node_confidence_display(node, score)
+            return floor2, ceiling2, score
+
+        return 0, 0, int(round(self._clamp(conservative, 0, 100)))
+
+    def get_confidence2_from_tags(self, node):
+        """Extract enhanced confidence value from node tags."""
+        return self._extract_prefixed_tag_value(node, 'confidence2_', default=0)
+
+    def calculate_counter_resistance_scores_enhanced(self, node, beta=1.0, gamma=2.0):
+        """Enhanced resistance with opponent-regret penalty."""
+        children = self.treeview.tree.get_children(node)
+
+        if not children:
+            if node:
+                try:
+                    rating = int(self.treeview.tree.item(node, 'values')[0])
+                except (ValueError, IndexError):
+                    rating = 0
+                base = self.calculate_counter_resistance(rating)
+                score = int(round(self._clamp(base, 0, 100)))
+                self._replace_prefixed_tag(node, 'resistance2_', score)
+                self.update_node_resistance_display(node, score)
+                return score
+            return 0
+
+        child_scores = [self.calculate_counter_resistance_scores_enhanced(child, beta=beta, gamma=gamma) for child in children]
+
+        if node:
+            try:
+                rating = int(self.treeview.tree.item(node, 'values')[0])
+            except (ValueError, IndexError):
+                rating = 0
+
+            base_stability = self.calculate_counter_resistance(rating)
+            best_our = max(child_scores) if child_scores else 0
+            worst_opp = min(child_scores) if child_scores else 0
+            regret = max(0.0, best_our - worst_opp)
+            depth = self._calculate_node_depth(node)
+            depth_buffer = max(0.0, 6.0 - float(depth))
+
+            score = base_stability - (beta * regret) + (gamma * depth_buffer)
+            score = int(round(self._clamp(score, 0, 100)))
+
+            self._replace_prefixed_tag(node, 'resistance2_', score)
+            self.update_node_resistance_display(node, score)
+            return score
+
+        return max(child_scores) if child_scores else 0
+
+    def get_resistance2_from_tags(self, node):
+        """Extract enhanced resistance value from node tags."""
+        return self._extract_prefixed_tag_value(node, 'resistance2_', default=0)
+
+    def calculate_strategic3_scores(self, node, weights=(0.40, 0.35, 0.25), rho=0.20, lam=0.30):
+        """Strategic fusion score built from enhanced cumulative/confidence/resistance metrics."""
+        if node == "":
+            all_nodes = []
+
+            def collect_nodes(parent):
+                for child in self.treeview.tree.get_children(parent):
+                    all_nodes.append(child)
+                    collect_nodes(child)
+
+            collect_nodes("")
+
+            c_values = [self.get_cumulative2_from_tags(n) for n in all_nodes]
+            q_values = [self.get_confidence2_from_tags(n) for n in all_nodes]
+            r_values = [self.get_resistance2_from_tags(n) for n in all_nodes]
+
+            self._strategic3_ranges = {
+                'c_min': min(c_values) if c_values else 0,
+                'c_max': max(c_values) if c_values else 1,
+                'q_min': min(q_values) if q_values else 0,
+                'q_max': max(q_values) if q_values else 100,
+                'r_min': min(r_values) if r_values else 0,
+                'r_max': max(r_values) if r_values else 100,
+            }
+
+        children = self.treeview.tree.get_children(node)
+
+        def normalize(value, key_min, key_max):
+            min_v = self._strategic3_ranges.get(key_min, 0)
+            max_v = self._strategic3_ranges.get(key_max, 1)
+            denom = max(1e-9, max_v - min_v)
+            return self._clamp((value - min_v) / denom, 0.0, 1.0)
+
+        child_scores = [self.calculate_strategic3_scores(child, weights=weights, rho=rho, lam=lam) for child in children]
+
+        if node:
+            c_raw = self.get_cumulative2_from_tags(node)
+            q_raw = self.get_confidence2_from_tags(node)
+            r_raw = self.get_resistance2_from_tags(node)
+            floor2 = self._extract_prefixed_tag_value(node, 'floor2_', default=q_raw)
+            ceiling2 = self._extract_prefixed_tag_value(node, 'ceiling2_', default=q_raw)
+
+            c_norm = normalize(c_raw, 'c_min', 'c_max')
+            q_norm = normalize(q_raw, 'q_min', 'q_max')
+            r_norm = normalize(r_raw, 'r_min', 'r_max')
+
+            w_c, w_q, w_r = weights
+            t_core = max(w_c * (1.0 - c_norm), w_q * (1.0 - q_norm), w_r * (1.0 - r_norm))
+            smooth = (w_c * c_norm) + (w_q * q_norm) + (w_r * r_norm)
+            downside = self._clamp((ceiling2 - floor2) / 100.0, 0.0, 1.0)
+            utility = (-t_core) + (rho * smooth) - (lam * downside)
+            node_gain = utility * 100.0
+
+            if children:
+                is_opp_level = self._is_opponent_choice_level(children[0])
+                child_component = min(child_scores) if is_opp_level else max(child_scores)
+            else:
+                child_component = 0.0
+
+            strategic_value = int(round(node_gain + child_component))
+            self._replace_prefixed_tag(node, 'strategic3_', strategic_value)
+            self.update_node_strategic_display(node, strategic_value)
+            return strategic_value
+
+        return max(child_scores) if child_scores else 0
+
+    def get_strategic3_from_tags(self, node):
+        """Extract strategic fusion value from node tags."""
+        return self._extract_prefixed_tag_value(node, 'strategic3_', default=0)
 
     def unsort_tree(self):
         """Remove sorting and restore original tree order"""
