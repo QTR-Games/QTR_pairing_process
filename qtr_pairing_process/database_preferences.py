@@ -51,6 +51,7 @@ class DatabasePreferences:
                 "show_welcome_message": True,
                 "rating_system": "1-5",
                 "auto_tree_sync": False,
+                "tree_autogen_enabled": True,
                 "matchup_output_format": "standard",
                 "perf_logging_enabled": False
             },
@@ -228,6 +229,25 @@ class DatabasePreferences:
         if success:
             self.logger.info(f"Auto tree sync preference updated: {enabled}")
         
+        return success
+
+
+    def get_tree_autogen_enabled(self) -> bool:
+        """Get tree auto-generation preference (default: False)."""
+        config = self.load_config()
+        return bool(config.get("ui_preferences", {}).get("tree_autogen_enabled", False))
+
+    def set_tree_autogen_enabled(self, enabled: bool) -> bool:
+        """Set tree auto-generation preference."""
+        config = self.load_config()
+
+        if "ui_preferences" not in config:
+            config["ui_preferences"] = {}
+
+        config["ui_preferences"]["tree_autogen_enabled"] = bool(enabled)
+        success = self.save_config(config)
+        if success:
+            self.logger.info(f"Tree auto-generation preference updated: {enabled}")
         return success
     
     def update_ui_preferences(self, preferences: Dict[str, Any]) -> bool:

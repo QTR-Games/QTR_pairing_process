@@ -6,14 +6,15 @@ from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIREC
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(add_help=True)
-    parser.add_argument("--perf", action="store_true", help="Enable UI performance logging")
-    parser.add_argument("--no-perf", action="store_true", help="Disable UI performance logging")
+    perf_group = parser.add_mutually_exclusive_group()
+    perf_group.add_argument("--perf", action="store_true", help="Enable UI performance logging")
+    perf_group.add_argument("--no-perf", action="store_true", help="Disable UI performance logging")
     args, _ = parser.parse_known_args()
 
     perf_enabled = None
     if args.perf:
         perf_enabled = True
-    if args.no_perf:
+    elif args.no_perf:
         perf_enabled = False
 
     ui_manager = UiManager(
