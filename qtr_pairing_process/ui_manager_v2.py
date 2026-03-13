@@ -98,6 +98,22 @@ class UiManager:
         self._current_hover_cell = None
         self._team_dropdowns_initialized = False
         self._auto_populated_teams = False
+        self._team_change_in_progress = False
+        self._scenario_calc_job = None
+        self._scenario_calc_delay_ms = 120
+        self._team_cache: Dict[str, Dict[str, Any]] = {}
+        self._comment_cache: Dict[tuple, Dict[tuple, str]] = {}
+        self._scenario_change_auto = False
+        self._event_loop_lag_threshold_ms = 16.0
+        self._resize_job = None
+        self._resize_active = False
+        self._resize_start_time = 0.0
+        self._resize_last_time = 0.0
+        self._resize_event_count = 0
+        self._resize_start_size = (0, 0)
+        self._resize_end_size = (0, 0)
+        self._last_root_size = (0, 0)
+        self._tree_autogen_job = None
         
         # Tree synchronization state tracking
         self._tree_sync_in_progress = False  # Lock to prevent Phase 1 when triggered by Phase 2
@@ -160,6 +176,9 @@ class UiManager:
         self.root.bind('<FocusIn>', lambda event: self._on_root_focus_in())
         self.root.bind('<FocusOut>', lambda event: self._hide_all_popups(), add='+')
         self.root.bind('<Button-1>', self._on_root_click_for_popups, add='+')
+        self.root.bind('<Configure>', self._on_root_configure, add='+')
+
+        self._last_root_size = (self.root.winfo_width(), self.root.winfo_height())
 
         # Create the top team name and scenario display
         self.drop_down_frame = tk.Frame(self.root)
@@ -321,7 +340,6 @@ class UiManager:
 
         # Populate grid once widgets exist
         self.root.after(1, self.load_grid_data_from_db)
-        self.root.after(1, self.on_scenario_calculations)
         
         if self.is_debugging and init_start is not None:
             # Force rendering to complete before measuring
@@ -342,7 +360,7 @@ class UiManager:
         # Set an instance variable to keep track of the previous value
         self.previous_team1 = self.team1_var.get()
         # Attach a trace to the StringVar
-        self.team1_var.trace_add('write', self.on_team_box_change)
+        self.team1_var.trace_add('write', self._on_team_box_change_traced)
 		
         tk.Label(self.drop_down_frame, text='Select Team 2:').pack(side=tk.LEFT, padx=5, pady=5)
         # Use a StringVar to hold the value of the Combobox
@@ -353,7 +371,7 @@ class UiManager:
         # Set an instance variable to keep track of the previous value
         self.previous_team2 = self.team2_var.get()
         # Attach a trace to the StringVar
-        self.team2_var.trace_add('write', self.on_team_box_change)
+        self.team2_var.trace_add('write', self._on_team_box_change_traced)
 
         # create combobox for scenario selection
         # create the label
@@ -367,7 +385,7 @@ class UiManager:
         # Set an instance variable to keep track of the previous value
         self.previous_value = self.scenario_var.get()
         # Attach a trace to the StringVar
-        self.scenario_var.trace_add('write', self.on_scenario_box_change)
+        self.scenario_var.trace_add('write', self._on_scenario_box_change_traced)
         
         # Defer team dropdowns and scenario box population to after UI is shown
         self.root.after(10, self._populate_dropdowns)
@@ -645,6 +663,8 @@ class UiManager:
         self.create_round_selection_dropdowns()
 
     def on_row_checkbox_change(self, row, var):
+        if self._updating_dropdowns:
+            return
         print(f"Row {row} checkbox changed to {var.get()}")
         for col in range(1,6):
             widget = self.grid_widgets[row][col]
@@ -658,9 +678,11 @@ class UiManager:
                     widget.config(state='normal')
                     self.grid_data_model.set_cell_disabled(row, col, False)
                     # V2: No need to call update_color_on_change explicitly - observer handles it
-        self.on_scenario_calculations()
+        self._schedule_scenario_calculations()
 
     def on_column_checkbox_change(self, col, var):
+        if self._updating_dropdowns:
+            return
         print(f"Column {col} checkbox changed to {var.get()}")
         for row in range(1,6):
             widget = self.grid_widgets[row][col]
@@ -674,7 +696,7 @@ class UiManager:
                     widget.config(state='normal')
                     self.grid_data_model.set_cell_disabled(row, col, False)
                     # V2: Observer handles color update
-        self.on_scenario_calculations()
+        self._schedule_scenario_calculations()
 
     def update_combobox_colors(self):
         for row in range(1, 6):
@@ -699,7 +721,7 @@ class UiManager:
         widget = self.grid_widgets[row][col]
         
         # Check if cell has comment (comment indicator takes precedence)
-        if self.grid_data_model.has_comment(row, col):
+        if self._has_comment_cached(row, col):
             if widget:
                 widget.config(bg='#ffffcc')  # Light yellow for comments
         elif widget and value_str in self.color_map:
@@ -709,6 +731,7 @@ class UiManager:
     
     def update_grid_colors(self):
         """Update all grid cell colors based on current rating system"""
+        comment_map = self._get_comment_map_for_current_selection()
         for row in range(1, 6):
             for col in range(1, 6):
                 # V2: Get value from GridDataModel (may be int or str)
@@ -717,7 +740,7 @@ class UiManager:
                 widget = self.grid_widgets[row][col]
                 
                 # Check for comment indicator first
-                if self.grid_data_model.has_comment(row, col):
+                if self._has_comment_cached(row, col, comment_map=comment_map):
                     if widget:
                         widget.config(bg='#ffffcc')
                 elif widget and value_str in self.color_map:
@@ -885,6 +908,106 @@ class UiManager:
     def _on_root_focus_in(self):
         self._refresh_paste_button_state()
 
+    def _log_perf_entry(self, label: str, elapsed_ms: float, **meta: Any):
+        if not self.perf.enabled:
+            return
+        try:
+            self.perf._write_log(label, elapsed_ms, meta)
+        except Exception:
+            pass
+
+    def _record_event_loop_lag(self, source: str, start_time: float):
+        if not hasattr(self, 'root') or not self.perf.enabled:
+            return
+
+        def log_lag():
+            elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+            if elapsed_ms >= self._event_loop_lag_threshold_ms:
+                self._log_perf_entry("event_loop.lag", elapsed_ms, source=source)
+
+        self.root.after_idle(log_lag)
+
+    def _measure_update_idletasks(self, label: str):
+        if not hasattr(self, 'root') or not self.perf.enabled:
+            return
+
+        start = time.perf_counter()
+        self.root.update_idletasks()
+        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        self._log_perf_entry(label, elapsed_ms)
+
+    def _on_root_configure(self, event):
+        if event.widget is not self.root:
+            return
+
+        width = int(event.width)
+        height = int(event.height)
+        if (width, height) == self._last_root_size:
+            return
+
+        now = time.perf_counter()
+        self._last_root_size = (width, height)
+
+        if not self._resize_active:
+            self._resize_active = True
+            self._resize_start_time = now
+            self._resize_event_count = 0
+            self._resize_start_size = (width, height)
+            self._record_event_loop_lag("resize.burst", now)
+
+        self._resize_end_size = (width, height)
+        self._resize_last_time = now
+        self._resize_event_count += 1
+
+        if self._resize_job is not None:
+            try:
+                self.root.after_cancel(self._resize_job)
+            except Exception:
+                pass
+
+        self._resize_job = self.root.after(150, self._finalize_resize_burst)
+
+    def _finalize_resize_burst(self):
+        if not self._resize_active:
+            return
+
+        duration_ms = (self._resize_last_time - self._resize_start_time) * 1000.0
+        delta_w = self._resize_end_size[0] - self._resize_start_size[0]
+        delta_h = self._resize_end_size[1] - self._resize_start_size[1]
+        resize_kind = self._classify_resize_burst(duration_ms, self._resize_event_count)
+
+        self._log_perf_entry(
+            "resize.burst",
+            duration_ms,
+            start_w=self._resize_start_size[0],
+            start_h=self._resize_start_size[1],
+            end_w=self._resize_end_size[0],
+            end_h=self._resize_end_size[1],
+            delta_w=delta_w,
+            delta_h=delta_h,
+            events=self._resize_event_count,
+            kind=resize_kind
+        )
+
+        self._resize_active = False
+        self._resize_job = None
+
+    def _classify_resize_burst(self, duration_ms: float, event_count: int) -> str:
+        if duration_ms >= 200.0 and event_count > 2:
+            return "drag"
+        return "one_off"
+
+    def _schedule_tree_autogenerate(self):
+        if not hasattr(self, 'root'):
+            return
+        if self._tree_autogen_job is not None:
+            try:
+                self.root.after_cancel(self._tree_autogen_job)
+            except Exception:
+                pass
+
+        self._tree_autogen_job = self.root.after(75, self.auto_generate_tree_after_teams_loaded)
+
     def _read_clipboard_text(self) -> Optional[str]:
         try:
             return self.root.clipboard_get()
@@ -938,7 +1061,7 @@ class UiManager:
             for c in range(1, 6):
                 self.grid_data_model.set_rating(r, c, grid[r - 1][c - 1])
         self.grid_data_model.end_batch()
-        self.on_scenario_calculations()
+        self._schedule_scenario_calculations()
         self._set_grid_dirty(True)
 
     def _on_paste_5x5_button(self):
@@ -1124,10 +1247,8 @@ class UiManager:
         if not all([team1_name, team2_name, scenario_name, friendly_player, opponent_player]):
             return None
 
-        return self.db_manager.query_comment_by_name(
-            team1_name, team2_name, scenario_name,
-            friendly_player, opponent_player
-        )
+        comment_map = self._get_comment_map_for_current_selection()
+        return comment_map.get((friendly_player, opponent_player))
 
     def _get_comment_wraplength(self, text: str) -> int:
         max_width = 6 * self._get_default_column_width()
@@ -1208,6 +1329,30 @@ class UiManager:
             print(f"update_display_fields has failed with error:\n{e}")
 
     def on_scenario_calculations(self):
+        self._schedule_scenario_calculations()
+
+    def _schedule_scenario_calculations(self, immediate: bool = False):
+        if not hasattr(self, 'root'):
+            return
+
+        if self._scenario_calc_job is not None:
+            try:
+                self.root.after_cancel(self._scenario_calc_job)
+            except Exception:
+                pass
+            self._scenario_calc_job = None
+
+        if immediate:
+            self._run_scenario_calculations()
+            return
+
+        self._scenario_calc_job = self.root.after(
+            self._scenario_calc_delay_ms,
+            self._run_scenario_calculations
+        )
+
+    def _run_scenario_calculations(self):
+        self._scenario_calc_job = None
         with self.perf.span("grid.scenario_calculations"):
             self._on_scenario_calculations()
 
@@ -1228,7 +1373,6 @@ class UiManager:
         self.check_for_pins()  # info_col 2
         self.check_protect()  # info_col 3
         self.check_margins()  # info_col 4
-        self.update_comment_indicators()  # Update comment visual indicators
 
     def check_margins(self):
         for row in range(1, 6):
@@ -1391,6 +1535,8 @@ class UiManager:
                 
                 # Trigger database selection
                 self.select_database()
+                self._invalidate_team_cache()
+                self._invalidate_comment_cache()
                 
                 # Update UI with new database
                 self.update_ui()
@@ -1827,6 +1973,18 @@ class UiManager:
         else:
             self.scenario_box['values'] = ("1 - Recon","2 - Battle Lines","3 - Wolves At Our Heels","4 - Payload","5 - Two Fronts","6 - Invasion")
 
+    def _on_team_box_change_traced(self, *args):
+        start_time = time.perf_counter()
+        with self.perf.span("team_dropdown.trace"):
+            self.on_team_box_change(*args)
+        self._record_event_loop_lag("team_dropdown.trace", start_time)
+
+    def _on_scenario_box_change_traced(self, *args):
+        start_time = time.perf_counter()
+        with self.perf.span("scenario_dropdown.trace"):
+            self.on_scenario_box_change(*args)
+        self._record_event_loop_lag("scenario_dropdown.trace", start_time)
+
     def on_scenario_box_change(self, *args):
         # Get the new value
         new_value = self.scenario_var.get()
@@ -1835,9 +1993,15 @@ class UiManager:
             # print(f"Scenario changed from {self.previous_value} to {new_value}\nLOADING NEW SCENARIO DATA\n")
             self.previous_value = new_value
             try:
-                self.update_ui()
+                span_label = "scenario.change.auto" if self._scenario_change_auto else "scenario.change.end_to_end"
+                with self.perf.span(span_label):
+                    self._invalidate_comment_cache()
+                    self._apply_scenario_change_updates()
+                    self._measure_update_idletasks("scenario.change.redraw")
             except (ValueError, IndexError) as e:
                 print(f"scenario_box_change error: {e}")
+            finally:
+                self._scenario_change_auto = False
 
     def on_team_box_change(self, *args):
         # Get the new value
@@ -1853,16 +2017,10 @@ class UiManager:
             perform_update = True
         if perform_update:
             try:
-                with self.perf.span("teams.change.update_ui"):
-                    self.update_ui()
-                with self.perf.span("teams.change.clear_rounds"):
-                    self.clear_round_dropdowns()
-                # Update round dropdowns when team changes
-                with self.perf.span("teams.change.round_dropdowns"):
-                    self.update_round_dropdown_options()
-                # Trigger scenario calculations to populate the grid on the right
-                with self.perf.span("teams.change.calculations"):
-                    self.on_scenario_calculations()
+                with self.perf.span("teams.change.end_to_end"):
+                    self._invalidate_comment_cache()
+                    self._apply_team_change_updates()
+                    self._measure_update_idletasks("teams.change.redraw")
             except (ValueError,IndexError) as e:
                 print(f"team_box_change error: {e}")
             
@@ -1880,6 +2038,106 @@ class UiManager:
             self.load_grid_data_from_db()
         # print(self.extract_ratings())
 
+    def _apply_team_change_updates(self):
+        if self._team_change_in_progress:
+            return
+
+        self._team_change_in_progress = True
+        try:
+            with self.perf.span("teams.change.load_grid"):
+                self.load_grid_data_from_db(refresh_ui=False)
+            with self.perf.span("teams.change.clear_rounds"):
+                self.clear_round_dropdowns()
+            with self.perf.span("teams.change.round_dropdowns"):
+                self.update_round_dropdown_options()
+            with self.perf.span("teams.change.refresh"):
+                self._post_grid_load_refresh()
+        finally:
+            self._team_change_in_progress = False
+
+    def _apply_scenario_change_updates(self):
+        with self.perf.span("scenario.change.load_grid"):
+            self.load_grid_data_from_db(refresh_ui=False)
+        with self.perf.span("scenario.change.refresh"):
+            self._post_grid_load_refresh()
+
+    def _post_grid_load_refresh(self):
+        self._invalidate_comment_cache()
+        self.update_comment_indicators()
+        self._schedule_scenario_calculations(immediate=True)
+        self._set_grid_dirty(False)
+        self._schedule_tree_autogenerate()
+
+    def _invalidate_team_cache(self, team_name: Optional[str] = None):
+        if team_name:
+            self._team_cache.pop(team_name, None)
+            return
+        self._team_cache.clear()
+
+    def _invalidate_comment_cache(self):
+        self._comment_cache.clear()
+
+    def _get_team_data(self, team_name: str) -> Optional[Dict[str, Any]]:
+        if not team_name:
+            return None
+
+        cached = self._team_cache.get(team_name)
+        if cached:
+            return cached
+
+        team_id_result = self.db_manager.query_sql(
+            f"SELECT team_id FROM teams WHERE team_name = '{team_name}'"
+        )
+        if not team_id_result:
+            print(f"Team '{team_name}' not found in database")
+            return None
+
+        team_id = team_id_result[0][0]
+        player_results = self.db_manager.query_sql(
+            f"SELECT player_id, player_name FROM players WHERE team_id = {team_id} ORDER BY player_id"
+        )
+
+        players = [{'id': row[0], 'name': row[1]} for row in player_results]
+        data = {'team_id': team_id, 'players': players}
+        self._team_cache[team_name] = data
+        return data
+
+    def _get_comment_map_for_current_selection(self) -> Dict[tuple, str]:
+        team1_name = self.team1_var.get().strip() if hasattr(self, 'team1_var') else ''
+        team2_name = self.team2_var.get().strip() if hasattr(self, 'team2_var') else ''
+        scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
+
+        if not team1_name or not team2_name:
+            return {}
+
+        cache_key = (team1_name, team2_name, scenario_id)
+        cached = self._comment_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        team1_data = self._get_team_data(team1_name)
+        team2_data = self._get_team_data(team2_name)
+        if not team1_data or not team2_data:
+            return {}
+
+        comments = self.db_manager.query_all_comments(
+            team1_data['team_id'],
+            team2_data['team_id'],
+            scenario_id
+        )
+        self._comment_cache[cache_key] = comments or {}
+        return self._comment_cache[cache_key]
+
+    def _has_comment_cached(self, row: int, col: int, comment_map: Optional[Dict[tuple, str]] = None) -> bool:
+        friendly_player = self.grid_data_model.get_rating(row, 0)
+        opponent_player = self.grid_data_model.get_rating(0, col)
+        if not friendly_player or not opponent_player:
+            return False
+
+        if comment_map is None:
+            comment_map = self._get_comment_map_for_current_selection()
+        return (friendly_player, opponent_player) in comment_map
+
     def select_team_names(self):
         # Using this for testing.
         # Possibly remove this later.
@@ -1892,8 +2150,9 @@ class UiManager:
 
     def set_team_dropdowns(self):
         team_names = self.select_team_names()
-        self.combobox_1['values'] = team_names
-        self.combobox_2['values'] = team_names
+        with self.perf.span("team_dropdowns.set_values"):
+            self.combobox_1['values'] = team_names
+            self.combobox_2['values'] = team_names
 
         if not self._team_dropdowns_initialized:
             self._team_dropdowns_initialized = True
@@ -1950,11 +2209,11 @@ class UiManager:
         else:
             print("DEBUG: No debugger detected - skipping auto-population")
 
-    def load_grid_data_from_db(self):
+    def load_grid_data_from_db(self, refresh_ui: bool = True):
         with self.perf.span("grid.load_from_db"):
-            self._load_grid_data_from_db()
+            self._load_grid_data_from_db(refresh_ui=refresh_ui)
 
-    def _load_grid_data_from_db(self):
+    def _load_grid_data_from_db(self, refresh_ui: bool = True):
         team_1 = self.combobox_1.get().strip()
         team_2 = self.combobox_2.get().strip()
         
@@ -1964,29 +2223,20 @@ class UiManager:
         
         scenario = self.scenario_box.get()[:1]
         if scenario == '':
+            self._scenario_change_auto = True
             self.scenario_box.set("0 - Neutral")
             scenario = self.scenario_box.get()[:1]
         scenario_id = int(scenario)
 
-        team_sql_template = "select team_id from teams where team_name='{team_name}'"
-        team_1_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_1))
-        if not team_1_row:
-            print(f"Team '{team_1}' not found in database")
+        team_1_data = self._get_team_data(team_1)
+        team_2_data = self._get_team_data(team_2)
+        if not team_1_data or not team_2_data:
             return
-        team_1_id = team_1_row[0][0]
 
-        team_2_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_2))
-        if not team_2_row:
-            print(f"Team '{team_2}' not found in database")
-            return
-        team_2_id = team_2_row[0][0]
-
-        player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
-        team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
-        team_2_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_2_id))
-
-        team_1_dict = {row[0]:{'position':i+1,'name':row[1]} for i,row in enumerate(team_1_players)}
-        team_2_dict = {row[0]:{'position':i+1,'name':row[1]}for i,row in enumerate(team_2_players)}
+        team_1_id = team_1_data['team_id']
+        team_2_id = team_2_data['team_id']
+        team_1_dict = {row['id']: {'position': i + 1, 'name': row['name']} for i, row in enumerate(team_1_data['players'])}
+        team_2_dict = {row['id']: {'position': i + 1, 'name': row['name']} for i, row in enumerate(team_2_data['players'])}
         
         ratings_sql = f"""
             SELECT
@@ -2040,17 +2290,9 @@ class UiManager:
 
         # Refresh UI from model after batch load
         self.grid_data_model._notify_observers('grid_loaded')
-        
-        # Update comment indicators after loading grid data
-        self.update_comment_indicators()
 
-        # Update calculations for display grid
-        self.on_scenario_calculations()
-
-        self._set_grid_dirty(False)
-        
-        # Auto-generate tree after both teams are loaded
-        self.auto_generate_tree_after_teams_loaded()
+        if refresh_ui:
+            self._post_grid_load_refresh()
         
     def auto_generate_tree_after_teams_loaded(self):
         """
@@ -2059,6 +2301,7 @@ class UiManager:
         Only generates if tree doesn't already exist.
         """
         try:
+            self._tree_autogen_job = None
             # Check if tree already exists
             root_nodes = self.treeview.tree.get_children()
             if root_nodes and len(root_nodes) > 0:
@@ -2203,6 +2446,8 @@ class UiManager:
                                   f"Players added:\n" + "\n".join([f"ΓÇó {name}" for name in player_names]))
 
             # Update UI like successful CSV import
+            self._invalidate_team_cache()
+            self._invalidate_comment_cache()
             self.set_team_dropdowns()
             self.update_ui()
             
@@ -2241,6 +2486,8 @@ class UiManager:
 
         messagebox.showinfo("Success", f"Team '{team_name}' and all related records have been deleted successfully.")
         try:
+            self._invalidate_team_cache()
+            self._invalidate_comment_cache()
             self.set_team_dropdowns()
             self.update_ui
         except (ValueError, IndexError) as e:
@@ -2277,6 +2524,8 @@ class UiManager:
             )
             
             # Refresh the UI to show the new data
+            self._invalidate_team_cache()
+            self._invalidate_comment_cache()
             self.update_ui()
             
         except Exception as e:
@@ -2360,6 +2609,8 @@ class UiManager:
 
         self.import_csv_header_and_ratings(lines)
         # self.import_csv_ratings(lines)
+        self._invalidate_team_cache()
+        self._invalidate_comment_cache()
         self.update_ui()
 
     def import_csv_header_and_ratings(self, lines):
@@ -2576,25 +2827,12 @@ class UiManager:
     def check_comment_exists(self, row, col):
         """Check if a comment exists for a specific cell without showing tooltip"""
         try:
-            # Get current team and scenario information
-            team1_name = self.team1_var.get()
-            team2_name = self.team2_var.get()
-            scenario_name = self.scenario_var.get()
-            
-            # V2: Get player names from GridDataModel
+            comment_map = self._get_comment_map_for_current_selection()
             friendly_player = self.grid_data_model.get_rating(row, 0)
             opponent_player = self.grid_data_model.get_rating(0, col)
-            
-            if not all([team1_name, team2_name, scenario_name, friendly_player, opponent_player]):
+            if not all([friendly_player, opponent_player]):
                 return False
-            
-            # Query comment from database
-            comment = self.db_manager.query_comment_by_name(
-                team1_name, team2_name, scenario_name, 
-                friendly_player, opponent_player
-            )
-            
-            return comment is not None and comment.strip() != ""
+            return (friendly_player, opponent_player) in comment_map
         except Exception:
             return False
 
@@ -2628,10 +2866,20 @@ class UiManager:
         with self.perf.span("comments.update_indicators"):
             # Clear existing indicators first
             self.clear_comment_indicators()
-            
+
+            comment_map = self._get_comment_map_for_current_selection()
+            if not comment_map:
+                return
+
             for row in range(1, 6):
+                friendly_player = self.grid_data_model.get_rating(row, 0)
+                if not friendly_player:
+                    continue
                 for col in range(1, 6):
-                    if self.check_comment_exists(row, col):
+                    opponent_player = self.grid_data_model.get_rating(0, col)
+                    if not opponent_player:
+                        continue
+                    if (friendly_player, opponent_player) in comment_map:
                         self.add_comment_indicator(row, col)
 
     def add_comment_indicator(self, row, col):
@@ -2898,6 +3146,7 @@ class UiManager:
                         friendly_player, opponent_player, comment_content
                     )
                     messagebox.showinfo("Success", "Comment saved successfully!")
+                    self._invalidate_comment_cache()
                     self.update_comment_indicators()
                     self.update_grid_colors()
                 else:
@@ -2907,6 +3156,7 @@ class UiManager:
                         friendly_player, opponent_player
                     )
                     messagebox.showinfo("Success", "Comment deleted successfully!")
+                    self._invalidate_comment_cache()
                     self.update_comment_indicators()
                     self.update_grid_colors()
 
@@ -2924,6 +3174,7 @@ class UiManager:
                         friendly_player, opponent_player
                     )
                     messagebox.showinfo("Success", "Comment deleted successfully!")
+                    self._invalidate_comment_cache()
                     self.update_comment_indicators()
                     self.update_grid_colors()
                     close_dialog()
@@ -3167,35 +3418,18 @@ class UiManager:
         """Update the options in round dropdowns based on current team selection."""
         try:
             with self.perf.span("round_dropdowns.update"):
-                # Get current friendly team players from database
                 friendly_players = []
-                if self.team1_var.get():
-                    team_name = self.team1_var.get()
-                    # Get team ID
-                    team_id_query = f"SELECT team_id FROM teams WHERE team_name = '{team_name}'"
-                    team_result = self.db_manager.query_sql(team_id_query)
-                    
-                    if team_result:
-                        team_id = team_result[0][0]
-                        # Get player names for this team
-                        player_query = f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id"
-                        player_results = self.db_manager.query_sql(player_query)
-                        friendly_players = [row[0] for row in player_results]
-                
-                # Get current enemy team players from database
                 enemy_players = []
+
+                if self.team1_var.get():
+                    team1_data = self._get_team_data(self.team1_var.get())
+                    if team1_data:
+                        friendly_players = [row['name'] for row in team1_data['players']]
+
                 if self.team2_var.get():
-                    team_name = self.team2_var.get()
-                    # Get team ID
-                    team_id_query = f"SELECT team_id FROM teams WHERE team_name = '{team_name}'"
-                    team_result = self.db_manager.query_sql(team_id_query)
-                    
-                    if team_result:
-                        team_id = team_result[0][0]
-                        # Get player names for this team
-                        player_query = f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id"
-                        player_results = self.db_manager.query_sql(player_query)
-                        enemy_players = [row[0] for row in player_results]
+                    team2_data = self._get_team_data(self.team2_var.get())
+                    if team2_data:
+                        enemy_players = [row['name'] for row in team2_data['players']]
                 
                 # Update all dropdowns with ante/response system and matchup logic
                 if hasattr(self, 'round_dropdowns') and hasattr(self, 'enemy_round_dropdowns'):
@@ -3940,6 +4174,7 @@ class UiManager:
     def update_all_column_checkboxes_from_selections(self):
         """Update all column checkboxes based on current dropdown selections."""
         try:
+            self._updating_dropdowns = True
             # Get team size to identify the last round
             ui_prefs = self.db_preferences.get_ui_preferences()
             team_size = ui_prefs.get('team_size', 5)
@@ -3981,10 +4216,13 @@ class UiManager:
             
         except Exception as e:
             print(f"Error updating all column checkboxes from selections: {e}")
+        finally:
+            self._updating_dropdowns = False
     
     def update_all_checkboxes_from_selections(self):
         """Update all row checkboxes based on current dropdown selections."""
         try:
+            self._updating_dropdowns = True
             # Get team size to identify the last round
             ui_prefs = self.db_preferences.get_ui_preferences()
             team_size = ui_prefs.get('team_size', 5)
@@ -4033,6 +4271,8 @@ class UiManager:
             
         except Exception as e:
             print(f"Error updating all checkboxes from selections: {e}")
+        finally:
+            self._updating_dropdowns = False
 
     def _update_ante_response_dropdowns(self, friendly_players, enemy_players):
         """Update dropdowns with proper ante/response logic and matchup correlation."""
@@ -4605,7 +4845,7 @@ class UiManager:
             self.grid_data_model.set_rating(row, col, new_value)
             # Trigger color update and scenario calculations
             self.update_color_on_change(None, None, None, row, col)
-            self.on_scenario_calculations()
+            self._schedule_scenario_calculations()
             if row > 0 and col > 0:
                 self._set_grid_dirty(True)
     
