@@ -71,6 +71,13 @@ class UiManager:
         config_rating_system = None
         ui_prefs = self.db_preferences.get_ui_preferences()
         self.strategic_preferences = self.db_preferences.get_strategic_preferences()
+        self.tie_break_order = self.strategic_preferences.get('strategic3', {}).get(
+            'tie_break_order',
+            'confidence_then_cumulative'
+        )
+        strategic3_prefs = self.strategic_preferences.get('strategic3', {})
+        self.auto_sort_after_generate = bool(strategic3_prefs.get('auto_sort_after_generate', True))
+        self.auto_sort_toggle_enabled = bool(strategic3_prefs.get('auto_sort_toggle_enabled', True))
         config_rating_system = ui_prefs.get('rating_system')
 
         self.tree_autogen_enabled = self.db_preferences.get_tree_autogen_enabled()
@@ -277,6 +284,7 @@ class UiManager:
         self._comment_tooltip_cell = None
         self._comment_editor_open = False
         self._popup_pending = False
+        self.notes_text: Optional[tk.Text] = None
 
 
         self.team_b = tk.IntVar()
@@ -1831,6 +1839,9 @@ class UiManager:
 
         # Reset all sorting states when generating new combinations
         self._reset_tree_sort_state()
+        if self.auto_sort_toggle_enabled and self.auto_sort_after_generate:
+            # Run first-pass strategic sort through the same path as manual button clicks.
+            self.sort_by_strategic()
         self._update_matchup_summary([])
         
     def sort_by_confidence(self):
@@ -2043,7 +2054,48 @@ class UiManager:
             except (ValueError, IndexError, TypeError):
                 return 0
 
+        def metric_value(child_id, metric):
+            if metric == "cumulative":
+                return self.tree_generator.get_cumulative2_from_tags(child_id)
+            if metric == "confidence":
+                return self.tree_generator.get_confidence2_from_tags(child_id)
+            if metric == "resistance":
+                return self.tree_generator.get_resistance2_from_tags(child_id)
+            if metric == "strategic3":
+                return self.tree_generator.get_strategic3_from_tags(child_id)
+            if metric == "rating":
+                values = self.treeview.tree.item(child_id, 'values') or []
+                try:
+                    return int(values[0])
+                except (ValueError, IndexError, TypeError):
+                    return 0
+            return 0
+
+        def resolve_tie_break_chain():
+            configured = {
+                "confidence_then_cumulative": ["confidence", "cumulative", "resistance"],
+                "cumulative_then_confidence": ["cumulative", "confidence", "resistance"],
+                "resistance_then_confidence": ["resistance", "confidence", "cumulative"],
+            }.get(self.tie_break_order, ["confidence", "cumulative", "resistance"])
+
+            # Prevent duplicate sort dimensions when primary/secondary are already active.
+            excluded = set()
+            if primary_mode:
+                excluded.add(primary_mode)
+            if secondary_column == "Rating":
+                excluded.add("rating")
+
+            return [metric for metric in configured if metric not in excluded]
+
         children_sorted = list(children)
+
+        # Final deterministic fallback for equal numeric metrics.
+        children_sorted.sort(key=lambda child_id: (self.treeview.tree.item(child_id, 'text') or "").lower())
+
+        # Deterministic tie-break chain obeys same decision-owner direction as primary mode.
+        if primary_mode:
+            for tie_metric in reversed(resolve_tie_break_chain()):
+                children_sorted.sort(key=lambda child_id, m=tie_metric: metric_value(child_id, m), reverse=primary_reverse)
 
         if secondary_column and secondary_state != "none":
             children_sorted.sort(key=secondary_key, reverse=secondary_reverse)
@@ -3455,14 +3507,14 @@ class UiManager:
         self.sort_guidance_label.config(text=hint)
 
     def _load_pairing_notes(self):
-        if not hasattr(self, 'notes_text'):
+        if self.notes_text is None:
             return
         self.notes_text.delete("1.0", tk.END)
         if self.pairing_plan_notes:
             self.notes_text.insert("1.0", self.pairing_plan_notes)
 
     def _save_pairing_notes(self):
-        if not hasattr(self, 'notes_text'):
+        if self.notes_text is None:
             return
         notes = self.notes_text.get("1.0", tk.END).rstrip()
         max_chars = 4096
@@ -3474,7 +3526,7 @@ class UiManager:
         self.db_preferences.set_pairing_plan_notes(notes)
 
     def _clear_pairing_notes(self):
-        if not hasattr(self, 'notes_text'):
+        if self.notes_text is None:
             return
         self.notes_text.delete("1.0", tk.END)
         self.pairing_plan_notes = ""

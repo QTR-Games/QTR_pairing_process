@@ -334,6 +334,24 @@ class DatabasePreferences:
         """Get all UI preferences"""
         config = self.load_config()
         return config.get("ui_preferences", {})
+
+    def get_pairing_plan_notes(self) -> str:
+        """Get persisted pairing plan notes."""
+        notes = self.get_ui_preferences().get("pairing_plan_notes", "")
+        return notes if isinstance(notes, str) else ""
+
+    def set_pairing_plan_notes(self, notes: str) -> bool:
+        """Persist pairing plan notes."""
+        config = self.load_config()
+
+        if "ui_preferences" not in config:
+            config["ui_preferences"] = {}
+
+        config["ui_preferences"]["pairing_plan_notes"] = notes if isinstance(notes, str) else ""
+        success = self.save_config(config)
+        if success:
+            self.logger.info("Pairing plan notes updated")
+        return success
     
     def get_auto_tree_sync(self) -> bool:
         """Get auto tree sync preference (default: False)"""
