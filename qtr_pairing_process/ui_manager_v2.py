@@ -1465,11 +1465,60 @@ class UiManager:
                 
                 max_margin = max(all_margins)
                 min_margin = min(all_margins)
-                margin_text = f"{max_margin} | {min_margin}"
-                self.update_display_fields(row, 4, margin_text)
+                bus_text = self._get_bus_advisory_label(max_margin=max_margin, min_margin=min_margin)
+                self.update_display_fields(row, 4, bus_text)
                 # SUM MARG removed
             except (ValueError, IndexError) as e:
                 print(f"check_margins has failed for row {row} with error:\n{e}")
+
+    def _get_current_round_depth(self):
+        """Approximate current round depth from lock-in checkboxes (1..5)."""
+        row_locked = sum(1 for v in self.row_checkboxes if v.get() == 1)
+        col_locked = sum(1 for v in self.column_checkboxes if v.get() == 1)
+        return max(1, min(5, max(row_locked, col_locked) + 1))
+
+    def _get_current_scenario_number(self):
+        scenario_text = ""
+        if hasattr(self, "scenario_var"):
+            scenario_text = (self.scenario_var.get() or "").strip()
+        if not scenario_text:
+            return None
+        try:
+            return int(scenario_text.split("-")[0].strip())
+        except (ValueError, IndexError):
+            return None
+
+    def _get_bus_threshold(self):
+        bus_cfg = self.strategic_preferences.get("bus", {})
+        threshold_policy = bus_cfg.get("threshold_policy", "scenario_dependent")
+        global_threshold = int(bus_cfg.get("global_threshold", 60))
+
+        scenario_number = self._get_current_scenario_number()
+        scenario_thresholds = bus_cfg.get("scenario_thresholds", {})
+        depth_thresholds = bus_cfg.get("depth_thresholds", {})
+        depth_key = str(self._get_current_round_depth())
+        depth_threshold = depth_thresholds.get(depth_key)
+
+        threshold = global_threshold
+        if threshold_policy == "scenario_dependent" and scenario_number is not None:
+            threshold = scenario_thresholds.get(str(scenario_number), global_threshold)
+
+        if depth_threshold is not None:
+            try:
+                threshold = int((int(threshold) + int(depth_threshold)) / 2)
+            except (TypeError, ValueError):
+                pass
+
+        return max(0, min(100, int(threshold)))
+
+    def _get_bus_advisory_label(self, max_margin, min_margin):
+        """Display-only BUS advisory from spread opportunity and downside risk."""
+        spread = max_margin - min_margin
+        downside_risk = max(0, -min_margin)
+        bus_score = max(0, int((spread * 4) + (downside_risk * 2)))
+        threshold = self._get_bus_threshold()
+        bus_yes = bus_score >= threshold
+        return f"YES ({bus_score})" if bus_yes else f"NO ({bus_score})"
 
     def check_protect(self):
         for row in range(1, 6):
