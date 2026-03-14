@@ -2115,8 +2115,14 @@ class UiManager:
                 return self.tree_generator.get_confidence2_from_tags(child_id)
             if metric == "resistance":
                 return self.tree_generator.get_resistance2_from_tags(child_id)
+            if metric == "regret":
+                # Lower regret is better; invert so higher key value remains better.
+                return -self.tree_generator.get_regret2_from_tags(child_id)
             if metric == "strategic3":
                 return self.tree_generator.get_strategic3_from_tags(child_id)
+            if metric == "strategic_exploit":
+                # Lower exploitability is better; invert so higher key value remains better.
+                return -self.tree_generator.get_strategic3_exploitability_from_tags(child_id)
             if metric == "rating":
                 values = self.treeview.tree.item(child_id, 'values') or []
                 try:
@@ -2126,11 +2132,21 @@ class UiManager:
             return 0
 
         def resolve_tie_break_chain():
-            configured = {
-                "confidence_then_cumulative": ["confidence", "cumulative", "resistance"],
-                "cumulative_then_confidence": ["cumulative", "confidence", "resistance"],
-                "resistance_then_confidence": ["resistance", "confidence", "cumulative"],
-            }.get(self.tie_break_order, ["confidence", "cumulative", "resistance"])
+            mode_defaults = {
+                "confidence": ["regret", "cumulative", "resistance"],
+                "cumulative": ["confidence", "resistance"],
+                "resistance": ["confidence", "cumulative"],
+                "strategic3": ["strategic_exploit", "confidence", "cumulative"],
+            }
+
+            if primary_mode in mode_defaults:
+                configured = mode_defaults[primary_mode]
+            else:
+                configured = {
+                    "confidence_then_cumulative": ["confidence", "cumulative", "resistance"],
+                    "cumulative_then_confidence": ["cumulative", "confidence", "resistance"],
+                    "resistance_then_confidence": ["resistance", "confidence", "cumulative"],
+                }.get(self.tie_break_order, ["confidence", "cumulative", "resistance"])
 
             # Prevent duplicate sort dimensions when primary/secondary are already active.
             excluded = set()

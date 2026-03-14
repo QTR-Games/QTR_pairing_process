@@ -657,6 +657,7 @@ class TreeGenerator:
                 self._replace_prefixed_tag(node, 'confidence2_', score)
                 self._replace_prefixed_tag(node, 'floor2_', score)
                 self._replace_prefixed_tag(node, 'ceiling2_', score)
+                self._replace_prefixed_tag(node, 'regret2_', 0)
                 self.update_node_confidence_display(node, score)
                 return score, score, score
             return 0, 0, 0
@@ -684,10 +685,12 @@ class TreeGenerator:
 
             floor2 = int(round(self._clamp(min(child_scores), 0, 100)))
             ceiling2 = int(round(self._clamp(max(child_scores), 0, 100)))
+            regret2 = max(0, ceiling2 - floor2)
 
             self._replace_prefixed_tag(node, 'confidence2_', score)
             self._replace_prefixed_tag(node, 'floor2_', floor2)
             self._replace_prefixed_tag(node, 'ceiling2_', ceiling2)
+            self._replace_prefixed_tag(node, 'regret2_', regret2)
             self.update_node_confidence_display(node, score)
             return floor2, ceiling2, score
 
@@ -696,6 +699,10 @@ class TreeGenerator:
     def get_confidence2_from_tags(self, node):
         """Extract enhanced confidence value from node tags."""
         return self._extract_prefixed_tag_value(node, 'confidence2_', default=0)
+
+    def get_regret2_from_tags(self, node):
+        """Extract confidence regret spread from node tags (lower is better)."""
+        return self._extract_prefixed_tag_value(node, 'regret2_', default=0)
 
     def calculate_counter_resistance_scores_enhanced(self, node, beta=None, gamma=None):
         """Enhanced resistance with opponent-regret penalty."""
@@ -749,6 +756,15 @@ class TreeGenerator:
         weights = self.strategic3_weights if weights is None else weights
         rho = self.strategic3_rho if rho is None else rho
         lam = self.strategic3_lam if lam is None else lam
+        guardrail_strength = str(
+            self.strategic_preferences.get('strategic3', {}).get('round_win_guardrail_strength', 'medium')
+        ).lower()
+        guardrail_coeff = {
+            'low': 0.08,
+            'medium': 0.14,
+            'high': 0.22,
+        }.get(guardrail_strength, 0.14)
+
         if node == "":
             all_nodes = []
 
@@ -797,17 +813,22 @@ class TreeGenerator:
             t_core = max(w_c * (1.0 - c_norm), w_q * (1.0 - q_norm), w_r * (1.0 - r_norm))
             smooth = (w_c * c_norm) + (w_q * q_norm) + (w_r * r_norm)
             downside = self._clamp((ceiling2 - floor2) / 100.0, 0.0, 1.0)
-            utility = (-t_core) + (rho * smooth) - (lam * downside)
+            round_win_feasibility = self._clamp((q_norm - 0.5) * 2.0, -1.0, 1.0)
+            guardrail_term = guardrail_coeff * round_win_feasibility
+            utility = (-t_core) + (rho * smooth) - (lam * downside) + guardrail_term
             node_gain = utility * 100.0
 
             if children:
                 is_opp_level = self._is_opponent_choice_level(children[0])
                 child_component = min(child_scores) if is_opp_level else max(child_scores)
+                exploitability = max(child_scores) - min(child_scores)
             else:
                 child_component = 0.0
+                exploitability = 0.0
 
             strategic_value = int(round(node_gain + child_component))
             self._replace_prefixed_tag(node, 'strategic3_', strategic_value)
+            self._replace_prefixed_tag(node, 'strategic3_exploit_', int(round(exploitability)))
             self.update_node_strategic_display(node, strategic_value)
             return strategic_value
 
@@ -816,6 +837,10 @@ class TreeGenerator:
     def get_strategic3_from_tags(self, node):
         """Extract strategic fusion value from node tags."""
         return self._extract_prefixed_tag_value(node, 'strategic3_', default=0)
+
+    def get_strategic3_exploitability_from_tags(self, node):
+        """Extract strategic exploitability spread (lower is better)."""
+        return self._extract_prefixed_tag_value(node, 'strategic3_exploit_', default=0)
 
     def unsort_tree(self):
         """Remove sorting and restore original tree order"""
