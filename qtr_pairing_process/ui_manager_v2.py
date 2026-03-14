@@ -1941,6 +1941,77 @@ class UiManager:
         except Exception as e:
             print(f"Error configuring rating system: {e}")
             messagebox.showerror("Error", f"Failed to configure rating system: {e}")
+
+    def clear_generated_tree_cache_active_matchup(self):
+        """Clear persisted tree snapshots for the active matchup selection only."""
+        team_1 = self.combobox_1.get().strip() if hasattr(self, 'combobox_1') else ""
+        team_2 = self.combobox_2.get().strip() if hasattr(self, 'combobox_2') else ""
+        if not team_1 or not team_2:
+            messagebox.showwarning(
+                "Tree Cache",
+                "Select both teams before clearing cache for the active matchup.",
+            )
+            return
+
+        scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
+        rating_system = self.current_rating_system
+        team_first = int(bool(self.team_b.get())) if hasattr(self, 'team_b') else 1
+
+        try:
+            self._ensure_generated_tree_cache_table()
+            with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    DELETE FROM generated_tree_cache
+                    WHERE team_1_name = ?
+                      AND team_2_name = ?
+                      AND scenario_id = ?
+                      AND rating_system = ?
+                      AND team_first = ?
+                    """,
+                    (team_1, team_2, int(scenario_id), str(rating_system), team_first),
+                )
+                removed = cur.rowcount if cur.rowcount is not None else 0
+                conn.commit()
+
+            active_prefix = (team_1, team_2, int(scenario_id), str(rating_system), bool(team_first))
+            self._tree_cache = {
+                key: value for key, value in self._tree_cache.items() if tuple(key[:5]) != active_prefix
+            }
+            if self._tree_cache_key and tuple(self._tree_cache_key[:5]) == active_prefix:
+                self._tree_cache_key = None
+            if hasattr(self, 'tree_generator') and self.tree_generator:
+                self.tree_generator.clear_memoization(reason="clear_active_generated_tree_cache")
+
+            messagebox.showinfo(
+                "Tree Cache",
+                f"Removed {removed} cached tree snapshot(s) for the active matchup.",
+            )
+        except Exception as exc:
+            messagebox.showerror("Tree Cache", f"Failed to clear active matchup cache: {exc}")
+
+    def clear_generated_tree_cache_all_matchups(self):
+        """Clear all persisted tree snapshots across all matchups."""
+        try:
+            self._ensure_generated_tree_cache_table()
+            with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
+                cur = conn.cursor()
+                cur.execute("DELETE FROM generated_tree_cache")
+                removed = cur.rowcount if cur.rowcount is not None else 0
+                conn.commit()
+
+            self._tree_cache.clear()
+            self._tree_cache_key = None
+            if hasattr(self, 'tree_generator') and self.tree_generator:
+                self.tree_generator.clear_memoization(reason="clear_all_generated_tree_cache")
+
+            messagebox.showinfo(
+                "Tree Cache",
+                f"Removed {removed} cached tree snapshot(s) across all matchups.",
+            )
+        except Exception as exc:
+            messagebox.showerror("Tree Cache", f"Failed to clear all tree cache entries: {exc}")
     
     def show_data_management_menu(self):
         """Show a popup menu with data management options."""
@@ -2015,6 +2086,12 @@ class UiManager:
                      relief=tk.RAISED, borderwidth=1).pack(pady=3)
             tk.Button(data_mgmt_frame, text="Refresh UI", width=20, height=1,
                      command=lambda: self._menu_action(menu_window, self.update_ui),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
+            tk.Button(data_mgmt_frame, text="Clear Active Tree Cache", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.clear_generated_tree_cache_active_matchup),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
+            tk.Button(data_mgmt_frame, text="Clear All Tree Cache", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.clear_generated_tree_cache_all_matchups),
                      relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
             
             # BOTTOM LEFT: Team Management section
@@ -2384,7 +2461,17 @@ class UiManager:
 
         primary_reverse = False
         if primary_mode:
-            primary_reverse = not self.tree_generator._is_opponent_choice_level(children[0])
+            # Choice ownership for sibling ordering belongs to the current decision node.
+            # For root sorting and the synthetic "Pairings" node, depth-1 children
+            # represent the first real decision owner.
+            decision_node = node
+            if not decision_node:
+                decision_node = children[0]
+            else:
+                node_text = (self.treeview.tree.item(decision_node, 'text') or "").strip().lower()
+                if node_text == "pairings":
+                    decision_node = children[0]
+            primary_reverse = not self.tree_generator._is_opponent_choice_level(decision_node)
 
         def primary_key(child_id):
             if primary_mode == "cumulative":

@@ -238,3 +238,89 @@ def test_guardrail_strength_changes_strategic_score():
 
     root.destroy()
     assert low_score != high_score
+
+
+def test_chooser_direction_unchecked_friendly_depth2_descending_strategic():
+    root = tk.Tk()
+    root.withdraw()
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_base_prefs())
+    gen.our_team_first = True
+
+    root_node = tree.insert("", "end", text="Pairings", values=(0, 0), tags=("0",))
+    depth1 = tree.insert(root_node, "end", text="Friendly choice", values=(0, 0), tags=("0",))
+    better = tree.insert(depth1, "end", text="Friendly A", values=(0, 0), tags=("strategic3_-108",))
+    worse = tree.insert(depth1, "end", text="Friendly B", values=(0, 0), tags=("strategic3_-200",))
+
+    ui = UiManager.__new__(UiManager)
+    ui.treeview = DummyTreeView(tree)  # type: ignore[assignment]
+    ui.tree_generator = gen
+    ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+    ui.tie_break_order = "confidence_then_cumulative"
+
+    ui._sort_children_combined(depth1, "strategic3", None)
+    ordered = list(tree.get_children(depth1))
+
+    root.destroy()
+    assert ordered[0] == better
+    assert ordered[1] == worse
+
+
+def test_chooser_direction_depth_owner_flip_between_team_first_states():
+    root = tk.Tk()
+    root.withdraw()
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_base_prefs())
+
+    root_node = tree.insert("", "end", text="Pairings", values=(0, 0), tags=("0",))
+    high = tree.insert(root_node, "end", text="High", values=(0, 0), tags=("strategic3_-108",))
+    low = tree.insert(root_node, "end", text="Low", values=(0, 0), tags=("strategic3_-200",))
+
+    ui = UiManager.__new__(UiManager)
+    ui.treeview = DummyTreeView(tree)  # type: ignore[assignment]
+    ui.tree_generator = gen
+    ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+    ui.tie_break_order = "confidence_then_cumulative"
+
+    # Team-first checked: root children (depth 1) are our choice, so higher strategic first.
+    gen.our_team_first = True
+    ui._sort_children_combined("", "strategic3", None)
+    order_checked = list(tree.get_children(root_node))
+
+    # Team-first unchecked: root children (depth 1) are opponent choice, so lower strategic first.
+    gen.our_team_first = False
+    ui._sort_children_combined("", "strategic3", None)
+    order_unchecked = list(tree.get_children(root_node))
+
+    root.destroy()
+    assert order_checked[0] == high
+    assert order_checked[1] == low
+    assert order_unchecked[0] == low
+    assert order_unchecked[1] == high
+
+
+def test_enemy_choice_node_orders_worst_for_us_first():
+    root = tk.Tk()
+    root.withdraw()
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_base_prefs())
+    gen.our_team_first = False
+
+    # Depth-1 node is enemy-owned when My Team First is unchecked.
+    root_node = tree.insert("", "end", text="Pairings", values=(0, 0), tags=("0",))
+    enemy_node = tree.insert(root_node, "end", text="FLO vs Dan OR Pete", values=(4, 0), tags=("strategic3_-139",))
+    better_for_us = tree.insert(enemy_node, "end", text="Dan rating 4", values=(4, 0), tags=("strategic3_-141",))
+    worse_for_us = tree.insert(enemy_node, "end", text="Pete rating 2", values=(2, 0), tags=("strategic3_-146",))
+
+    ui = UiManager.__new__(UiManager)
+    ui.treeview = DummyTreeView(tree)  # type: ignore[assignment]
+    ui.tree_generator = gen
+    ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+    ui.tie_break_order = "confidence_then_cumulative"
+
+    ui._sort_children_combined(enemy_node, "strategic3", None)
+    ordered = list(tree.get_children(enemy_node))
+
+    root.destroy()
+    assert ordered[0] == worse_for_us
+    assert ordered[1] == better_for_us
