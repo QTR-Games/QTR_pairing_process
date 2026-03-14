@@ -38,6 +38,7 @@ class TreeGenerator:
             self.strategic3_weights = tuple(w / weight_sum for w in safe_weights)
         self.strategic3_rho = self._read_pref(("strategic3", "rho"), 0.20, 0.0, 5.0)
         self.strategic3_lam = self._read_pref(("strategic3", "lam"), 0.30, 0.0, 5.0)
+        self._generation_id = 0
         self._strategic_memo_context = None
         self._strategic_memo = {}
         self._strategic_memo_hits = 0
@@ -611,6 +612,16 @@ class TreeGenerator:
         self._strategic_memo_context = None
         self._strategic_memo = {}
 
+    def set_generation_id(self, generation_id):
+        """Set tree generation token used for strategic memoization context."""
+        try:
+            normalized = int(generation_id)
+        except (TypeError, ValueError):
+            normalized = 0
+        if normalized != self._generation_id:
+            self._generation_id = normalized
+            self.clear_memoization(reason="generation_change")
+
     def get_memoization_stats(self):
         """Return cumulative memoization statistics for strategic scoring."""
         total = self._strategic_memo_hits + self._strategic_memo_misses
@@ -643,22 +654,8 @@ class TreeGenerator:
             'high': 0.22,
         }.get(self._get_guardrail_strength(), 0.14)
 
-    def _compute_tree_signature(self, node=""):
-        """Build a stable structural signature from tree text + rating values."""
-        child_signatures = []
-        for child in self.treeview.tree.get_children(node):
-            item = self.treeview.tree.item(child)
-            values = item.get('values', ()) or ()
-            rating = 0
-            try:
-                rating = int(values[0]) if len(values) > 0 else 0
-            except (ValueError, TypeError):
-                rating = 0
-            child_signatures.append((item.get('text', ''), rating, self._compute_tree_signature(child)))
-        return tuple(child_signatures)
-
     def _build_strategic_memo_context(self):
-        return ("strategic3", self._compute_parameter_signature(), self._compute_tree_signature(""))
+        return ("strategic3", self._compute_parameter_signature(), self._generation_id)
 
     def calculate_all_path_values_enhanced(self, node, alpha=None):
         """Enhanced cumulative scoring that is optimistic for us and adversarial for opponent turns."""

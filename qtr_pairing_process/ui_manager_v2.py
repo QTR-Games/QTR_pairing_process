@@ -4,6 +4,8 @@ from multiprocessing import Value
 import os
 import sys
 import csv
+import json
+import sqlite3
 import time
 import threading
 from pathlib import Path
@@ -96,7 +98,10 @@ class UiManager:
         self.perf_logging_enabled = perf_is_enabled
         self.perf = PerfTimer(
             enabled=perf_is_enabled,
-            log_path=Path(__file__).parent.parent / "perf_log.txt"
+            log_dir=Path(__file__).parent.parent / "perf_logs",
+            buffered=True,
+            buffer_size=25,
+            max_daily_files=5,
         )
 
         # Initialize other UI components
@@ -131,6 +136,8 @@ class UiManager:
         self._tree_cache_enabled = True
         self._tree_cache = {}
         self._tree_cache_key = None
+        self._tree_generation_id = 0
+        self._calc_grid_cache = {}
         
         
         # Initialize logger
@@ -158,6 +165,7 @@ class UiManager:
                 self.db_path = last_path
                 self.db_name = last_name
                 self.db_manager = DbManager(path=self.db_path, name=self.db_name)
+                self._ensure_generated_tree_cache_table()
                 self.logger.info(f"Auto-loaded last database: {self.db_name} from {self.db_path}")
                 return
             else:
@@ -172,6 +180,7 @@ class UiManager:
             self.db_manager = DbManager()
         else:
             self.db_manager = DbManager(path=self.db_path, name=self.db_name)
+            self._ensure_generated_tree_cache_table()
             # Save this database as the preferred one
             if self.db_path and self.db_name:
                 self.db_preferences.save_database_preference(self.db_path, self.db_name)
@@ -195,6 +204,7 @@ class UiManager:
         self.root.bind('<FocusOut>', lambda event: self._hide_all_popups(), add='+')
         self.root.bind('<Button-1>', self._on_root_click_for_popups, add='+')
         self.root.bind('<Configure>', self._on_root_configure, add='+')
+        self.root.protocol("WM_DELETE_WINDOW", self._on_app_close)
 
         self._last_root_size = (self.root.winfo_width(), self.root.winfo_height())
 
@@ -300,6 +310,7 @@ class UiManager:
             treeview=self.treeview,
             strategic_preferences=self.strategic_preferences,
         )
+        self.tree_generator.set_generation_id(self._tree_generation_id)
         
         # Track current sorting mode for column display
         self.current_sort_mode = "none"
@@ -465,6 +476,8 @@ class UiManager:
             self.root.after(500, self.show_welcome_dialog)  # Delay to ensure UI is ready
 
         self.root.mainloop()
+        if hasattr(self, 'perf') and self.perf:
+            self.perf.close()
 
     def create_ui_grids(self):
         self.row_checkboxes = []
@@ -867,13 +880,130 @@ class UiManager:
     def _on_root_focus_in(self):
         self._refresh_paste_button_state()
 
+    def _on_app_close(self):
+        try:
+            if hasattr(self, 'perf') and self.perf:
+                self.perf.close()
+        finally:
+            self.root.destroy()
+
     def _mark_grid_color_dirty(self):
         self._grid_color_dirty = True
+
+    def _invalidate_calc_grid_cache(self):
+        self._calc_grid_cache.clear()
+
+    def _current_lock_masks(self):
+        row_mask = tuple(int(v.get()) for v in self.row_checkboxes) if self.row_checkboxes else (0, 0, 0, 0, 0)
+        col_mask = tuple(int(v.get()) for v in self.column_checkboxes) if self.column_checkboxes else (0, 0, 0, 0, 0)
+        return row_mask, col_mask
+
+    def _get_grid_ratings_signature(self):
+        matrix = []
+        for row in range(1, 6):
+            row_values = []
+            for col in range(1, 6):
+                value = self.grid_data_model.get_rating(row, col)
+                if isinstance(value, int):
+                    row_values.append(value)
+                else:
+                    row_values.append(None)
+            matrix.append(tuple(row_values))
+        return tuple(matrix)
+
+    def _build_calc_grid_cache_key(self):
+        team_1 = self.combobox_1.get().strip() if hasattr(self, 'combobox_1') else ""
+        team_2 = self.combobox_2.get().strip() if hasattr(self, 'combobox_2') else ""
+        scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
+        row_mask, col_mask = self._current_lock_masks()
+        return (team_1, team_2, scenario_id, row_mask, col_mask, self._get_grid_ratings_signature())
+
+    def _compute_calc_grid_rows_for_current_state(self):
+        row_mask, _ = self._current_lock_masks()
+        floor_values = {}
+        pinned_values = {}
+        can_pin_values = {}
+        protect_values = {}
+        bus_values = {}
+
+        for row in range(1, 6):
+            if row_mask[row - 1] == 1:
+                floor_values[row] = "---"
+                continue
+            floor_rating_sum = 0
+            for col in range(1, 6):
+                widget = self.grid_widgets[row][col]
+                if widget is not None and widget.cget('state') != 'disabled':
+                    cell_value = self.grid_data_model.get_rating(row, col)
+                    if isinstance(cell_value, int):
+                        floor_rating_sum += cell_value
+            floor_values[row] = floor_rating_sum
+
+        for row in range(1, 6):
+            if row_mask[row - 1] == 1:
+                pinned_values[row] = "---"
+                can_pin_values[row] = "---"
+                protect_values[row] = "---"
+                bus_values[row] = "---"
+                continue
+
+            num_bad_matchups = 0
+            good_matchups = 0
+            for col in range(1, 6):
+                widget = self.grid_widgets[row][col]
+                if widget is not None and widget.cget('state') != 'disabled':
+                    cell_value = self.grid_data_model.get_rating(row, col)
+                    if isinstance(cell_value, int):
+                        if cell_value < 3:
+                            num_bad_matchups += 1
+                        if cell_value > 3:
+                            good_matchups += 1
+
+            pinned_values[row] = "PINNED!" if num_bad_matchups > 1 else "---"
+            can_pin_values[row] = "PIN" if good_matchups > 1 else "---"
+            protect_values[row] = "Yes" if (pinned_values[row] != "---" or can_pin_values[row] != "---") else "No"
+
+            floor_value = floor_values[row]
+            if floor_value == "---":
+                bus_values[row] = "---"
+                continue
+
+            all_margins = []
+            for col in range(1, 6):
+                col_margin_sum = 0
+                for row1 in range(1, 6):
+                    widget = self.grid_widgets[row1][col]
+                    if widget is not None and widget.cget('state') != 'disabled':
+                        cell_value = self.grid_data_model.get_rating(row1, col)
+                        if isinstance(cell_value, int):
+                            col_margin_sum += cell_value
+                all_margins.append(int(floor_value) - col_margin_sum)
+
+            max_margin = max(all_margins)
+            min_margin = min(all_margins)
+            bus_values[row] = self._get_bus_advisory_label(max_margin=max_margin, min_margin=min_margin)
+
+        return {
+            "floor": floor_values,
+            "pinned": pinned_values,
+            "can_pin": can_pin_values,
+            "protect": protect_values,
+            "bus": bus_values,
+        }
+
+    def _apply_calc_grid_rows(self, rows):
+        for row in range(1, 6):
+            self.update_display_fields(row, 0, rows["floor"].get(row, "---"))
+            self.update_display_fields(row, 1, rows["pinned"].get(row, "---"))
+            self.update_display_fields(row, 2, rows["can_pin"].get(row, "---"))
+            self.update_display_fields(row, 3, rows["protect"].get(row, "---"))
+            self.update_display_fields(row, 4, rows["bus"].get(row, "---"))
 
     def _invalidate_tree_cache(self, reason: str = ""):
         if self._tree_cache:
             self._tree_cache.clear()
         self._tree_cache_key = None
+        self._invalidate_calc_grid_cache()
         if hasattr(self, 'tree_generator') and self.tree_generator:
             self.tree_generator.clear_memoization(reason=reason)
         if reason and self.perf.enabled:
@@ -894,7 +1024,130 @@ class UiManager:
         scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
         rating_system = self.current_rating_system
         team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
-        return (team_1, team_2, scenario_id, rating_system, team_first)
+        ratings_signature = json.dumps(self._get_grid_ratings_signature(), ensure_ascii=False)
+        return (team_1, team_2, scenario_id, rating_system, team_first, ratings_signature)
+
+    def _next_tree_generation_id(self) -> int:
+        self._tree_generation_id += 1
+        return self._tree_generation_id
+
+    def _set_tree_generation_id(self, generation_id: int):
+        try:
+            normalized = int(generation_id)
+        except (TypeError, ValueError):
+            normalized = 0
+        if normalized <= 0:
+            normalized = self._next_tree_generation_id()
+        self._tree_generation_id = normalized
+        if hasattr(self, 'tree_generator') and self.tree_generator:
+            self.tree_generator.set_generation_id(normalized)
+
+    def _ensure_generated_tree_cache_table(self):
+        if not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
+            return
+        sql = """
+            CREATE TABLE IF NOT EXISTS generated_tree_cache (
+                team_1_name TEXT NOT NULL,
+                team_2_name TEXT NOT NULL,
+                scenario_id INTEGER NOT NULL,
+                rating_system TEXT NOT NULL,
+                team_first INTEGER NOT NULL,
+                ratings_signature TEXT NOT NULL,
+                generation_id INTEGER NOT NULL,
+                snapshot_json TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (team_1_name, team_2_name, scenario_id, rating_system, team_first, ratings_signature)
+            )
+        """
+        try:
+            self.db_manager.execute_sql(sql)
+            with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
+                cur = conn.cursor()
+                cur.execute("PRAGMA table_info(generated_tree_cache)")
+                existing_columns = {row[1] for row in cur.fetchall()}
+                if "ratings_signature" not in existing_columns:
+                    # Cache table is versioned by schema; recreate to guarantee exact-input keys.
+                    cur.execute("DROP TABLE IF EXISTS generated_tree_cache")
+                    cur.execute(sql)
+                    conn.commit()
+        except Exception as exc:
+            self.logger.warning(f"Could not ensure generated_tree_cache table: {exc}")
+
+    def _load_persistent_tree_snapshot(self, cache_key: tuple):
+        if not cache_key or not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
+            return None
+        self._ensure_generated_tree_cache_table()
+        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = cache_key
+        try:
+            with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT snapshot_json, generation_id
+                    FROM generated_tree_cache
+                    WHERE team_1_name = ?
+                      AND team_2_name = ?
+                      AND scenario_id = ?
+                      AND rating_system = ?
+                      AND team_first = ?
+                                            AND ratings_signature = ?
+                    """,
+                                        (
+                                                team_1,
+                                                team_2,
+                                                int(scenario_id),
+                                                str(rating_system),
+                                                int(bool(team_first)),
+                                                str(ratings_signature),
+                                        ),
+                )
+                row = cur.fetchone()
+            if not row:
+                return None
+            snapshot_json, generation_id = row
+            return {
+                "snapshot": json.loads(snapshot_json),
+                "generation_id": int(generation_id),
+            }
+        except Exception as exc:
+            self.logger.warning(f"Failed to load persistent tree cache: {exc}")
+            return None
+
+    def _save_persistent_tree_snapshot(self, cache_key: tuple, payload: Dict[str, Any]):
+        if not cache_key or not payload or not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
+            return
+        self._ensure_generated_tree_cache_table()
+        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = cache_key
+        try:
+            snapshot_json = json.dumps(payload.get("snapshot", []), ensure_ascii=False)
+            generation_id = int(payload.get("generation_id", self._tree_generation_id or 1))
+            with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO generated_tree_cache
+                    (team_1_name, team_2_name, scenario_id, rating_system, team_first, ratings_signature, generation_id, snapshot_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(team_1_name, team_2_name, scenario_id, rating_system, team_first, ratings_signature)
+                    DO UPDATE SET
+                        generation_id = excluded.generation_id,
+                        snapshot_json = excluded.snapshot_json,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        team_1,
+                        team_2,
+                        int(scenario_id),
+                        str(rating_system),
+                        int(bool(team_first)),
+                        str(ratings_signature),
+                        generation_id,
+                        snapshot_json,
+                    ),
+                )
+                conn.commit()
+        except (sqlite3.Error, TypeError, ValueError) as exc:
+            self.logger.warning(f"Failed to persist tree cache snapshot: {exc}")
 
     def _capture_tree_snapshot(self):
         def walk(node_id):
@@ -1422,12 +1675,17 @@ class UiManager:
                 for col in range(0, 6):
                     self.update_display_fields(row, col, "---")
             return
-        
-        self.set_floor_values()  # info_col 0
-        self.check_pinned_players()  # info_col 1
-        self.check_for_pins()  # info_col 2
-        self.check_protect()  # info_col 3
-        self.check_margins()  # info_col 4
+
+        cache_key = self._build_calc_grid_cache_key()
+        cached_rows = self._calc_grid_cache.get(cache_key)
+        if cached_rows is None:
+            cached_rows = self._compute_calc_grid_rows_for_current_state()
+            self._calc_grid_cache[cache_key] = cached_rows
+            self._log_perf_entry("calc_grid.cache.miss", 0.0, entries=len(self._calc_grid_cache))
+        else:
+            self._log_perf_entry("calc_grid.cache.hit", 0.0, entries=len(self._calc_grid_cache))
+
+        self._apply_calc_grid_rows(cached_rows)
 
     def check_margins(self):
         for row in range(1, 6):
@@ -1858,13 +2116,25 @@ class UiManager:
         cache_key = self._build_tree_cache_key()
         if self._tree_cache_enabled and cache_key:
             if cache_key == self._tree_cache_key and self._tree_has_nodes():
+                self._set_tree_generation_id(self._tree_generation_id)
                 self._log_perf_entry("tree.cache.hit", 0.0, reason="active")
                 self._reset_tree_sort_state()
                 return
-            cached_snapshot = self._tree_cache.get(cache_key)
-            if cached_snapshot:
-                self._restore_tree_snapshot(cached_snapshot)
+            cached_payload = self._tree_cache.get(cache_key)
+            if not cached_payload:
+                cached_payload = self._load_persistent_tree_snapshot(cache_key)
+                if cached_payload:
+                    self._tree_cache[cache_key] = cached_payload
+            if cached_payload:
+                if isinstance(cached_payload, dict):
+                    snapshot = cached_payload.get("snapshot", [])
+                    generation_id = cached_payload.get("generation_id", self._next_tree_generation_id())
+                else:
+                    snapshot = cached_payload
+                    generation_id = self._next_tree_generation_id()
+                self._restore_tree_snapshot(snapshot)
                 self._tree_cache_key = cache_key
+                self._set_tree_generation_id(generation_id)
                 self._log_perf_entry("tree.cache.hit", 0.0, reason="restore")
                 self._reset_tree_sort_state()
                 return
@@ -1880,6 +2150,7 @@ class UiManager:
             self.tree_generator.generate_combinations(fNames, oNames, fRatings, oRatings)
         else:
             self.tree_generator.generate_combinations(oNames, fNames, oRatings, fRatings)
+        self._set_tree_generation_id(self._next_tree_generation_id())
         
         # Automatically expand the root "Pairings" node
         root_nodes = self.treeview.tree.get_children()
@@ -1887,7 +2158,12 @@ class UiManager:
             self.treeview.tree.item(root_nodes[0], open=True)
 
         if self._tree_cache_enabled and cache_key:
-            self._tree_cache[cache_key] = self._capture_tree_snapshot()
+            cache_payload = {
+                "snapshot": self._capture_tree_snapshot(),
+                "generation_id": self._tree_generation_id,
+            }
+            self._tree_cache[cache_key] = cache_payload
+            self._save_persistent_tree_snapshot(cache_key, cache_payload)
             self._tree_cache_key = cache_key
             self._log_perf_entry("tree.cache.store", 0.0)
 
@@ -4192,6 +4468,7 @@ class UiManager:
         """
         if event_type == 'rating_changed':
             row, col, value = args
+            self._invalidate_calc_grid_cache()
             self._update_entry_from_model(row, col)
             self.update_color_on_change(None, None, None, row, col)
         
@@ -4206,6 +4483,7 @@ class UiManager:
         
         elif event_type == 'cell_disabled':
             row, col, is_disabled = args
+            self._invalidate_calc_grid_cache()
             widget = self.grid_widgets[row][col]
             if widget:
                 if is_disabled:
@@ -4222,6 +4500,7 @@ class UiManager:
         
         elif event_type == 'grid_cleared':
             self._invalidate_tree_cache("grid_cleared")
+            self._invalidate_calc_grid_cache()
             # Refresh entire grid
             for r in range(6):
                 for c in range(6):
@@ -4229,6 +4508,7 @@ class UiManager:
                     self._update_display_entry_from_model(r, c)
         
         elif event_type == 'grid_loaded':
+            self._invalidate_calc_grid_cache()
             # Refresh entire grid after load
             for r in range(6):
                 for c in range(6):
