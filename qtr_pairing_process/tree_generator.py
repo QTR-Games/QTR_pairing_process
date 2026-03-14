@@ -55,14 +55,16 @@ class TreeGenerator:
         if value == {}:
             value = fallback
 
+        # Raw preference mode: return values like lists/strings directly.
+        if min_value is None and max_value is None:
+            return value
+
         try:
             numeric = float(value)
         except (TypeError, ValueError):
             return fallback
 
-        if min_value is not None and max_value is not None:
-            return self._clamp(numeric, min_value, max_value)
-        return numeric
+        return self._clamp(numeric, min_value, max_value)
 
     def generate_combinations(self, fNames, oNames, fRatings, oRatings, our_team_first=True):
         self.fRatings = fRatings

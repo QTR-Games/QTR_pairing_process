@@ -3,6 +3,7 @@
 
 import tkinter as tk
 from tkinter import ttk
+from typing import cast
 
 from qtr_pairing_process.tree_generator import TreeGenerator
 from qtr_pairing_process.ui_manager_v2 import UiManager
@@ -73,7 +74,7 @@ def test_deterministic_ordering_across_runs():
     root_node = _build_sample_tree(gen, tree)
 
     ui = UiManager.__new__(UiManager)
-    ui.treeview = DummyTreeView(tree)
+    ui.treeview = DummyTreeView(tree)  # type: ignore[assignment]
     ui.tree_generator = gen
     ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
     ui.tie_break_order = "confidence_then_cumulative"
@@ -166,3 +167,64 @@ def test_memoization_hit_rate_increases_on_repeat_sort():
 
     root.destroy()
     assert stats_after_second["hits"] > stats_after_first["hits"]
+
+
+def test_strategic_preferences_are_loaded_into_generator():
+    prefs = _base_prefs()
+    prefs["cumulative2"]["alpha"] = 0.67
+    prefs["confidence2"]["k"] = 1.25
+    prefs["confidence2"]["u"] = 9.0
+    prefs["resistance2"]["beta"] = 1.7
+    prefs["resistance2"]["gamma"] = 2.8
+    prefs["strategic3"]["weights"] = [0.5, 0.3, 0.2]
+    prefs["strategic3"]["rho"] = 0.33
+    prefs["strategic3"]["lam"] = 0.44
+
+    root = tk.Tk()
+    root.withdraw()
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=prefs)
+
+    cumulative2_alpha = cast(float, gen.cumulative2_alpha)
+    confidence2_k = cast(float, gen.confidence2_k)
+    confidence2_u = cast(float, gen.confidence2_u)
+    resistance2_beta = cast(float, gen.resistance2_beta)
+    resistance2_gamma = cast(float, gen.resistance2_gamma)
+
+    assert abs(cumulative2_alpha - 0.67) < 1e-9
+    assert abs(confidence2_k - 1.25) < 1e-9
+    assert abs(confidence2_u - 9.0) < 1e-9
+    assert abs(resistance2_beta - 1.7) < 1e-9
+    assert abs(resistance2_gamma - 2.8) < 1e-9
+    expected_weights = (0.5, 0.3, 0.2)
+    assert all(abs(actual - expected) < 1e-9 for actual, expected in zip(gen.strategic3_weights, expected_weights))
+    strategic3_rho = cast(float, gen.strategic3_rho)
+    strategic3_lam = cast(float, gen.strategic3_lam)
+    assert abs(strategic3_rho - 0.33) < 1e-9
+    assert abs(strategic3_lam - 0.44) < 1e-9
+
+    root.destroy()
+
+
+def test_guardrail_strength_changes_strategic_score():
+    root = tk.Tk()
+    root.withdraw()
+
+    low_prefs = _base_prefs()
+    low_prefs["strategic3"]["round_win_guardrail_strength"] = "low"
+    tree_low = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen_low = TreeGenerator(treeview=DummyTreeView(tree_low), strategic_preferences=low_prefs)
+    root_low = _build_sample_tree(gen_low, tree_low)
+    low_nodes = tree_low.get_children(root_low)
+    low_score = gen_low.get_strategic3_from_tags(low_nodes[0])
+
+    high_prefs = _base_prefs()
+    high_prefs["strategic3"]["round_win_guardrail_strength"] = "high"
+    tree_high = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen_high = TreeGenerator(treeview=DummyTreeView(tree_high), strategic_preferences=high_prefs)
+    root_high = _build_sample_tree(gen_high, tree_high)
+    high_nodes = tree_high.get_children(root_high)
+    high_score = gen_high.get_strategic3_from_tags(high_nodes[0])
+
+    root.destroy()
+    assert low_score != high_score

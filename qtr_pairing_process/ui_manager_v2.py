@@ -584,7 +584,6 @@ class UiManager:
         # Per-cell bindings handle comment editing and click-to-show popups.
 
     def on_row_checkbox_change(self, row, var):
-        print(f"Row {row} checkbox changed to {var.get()}")
         for col in range(1,6):
             widget = self.grid_widgets[row][col]
             if var.get() == 1:  # Checkbox is checked
@@ -602,15 +601,11 @@ class UiManager:
                     self.grid_data_model.set_cell_disabled(row, col, False)
                     # V2: No need to call update_color_on_change explicitly - observer handles it
 
-        # Lock-in state changes alter availability; invalidate cached trees/scores and refresh immediately.
-        self._invalidate_tree_cache("lock_in_change")
+        # Row/column lock-ins drive calc-grid advisory fields only.
+        # Keep tree caches/scores intact to preserve UI responsiveness.
         self._schedule_scenario_calculations(immediate=True)
-        if self.active_sort_mode and self._tree_has_nodes():
-            self.apply_combined_sort(compute_primary_tags=True)
-            self.update_sort_value_column()
 
     def on_column_checkbox_change(self, col, var):
-        print(f"Column {col} checkbox changed to {var.get()}")
         for row in range(1,6):
             widget = self.grid_widgets[row][col]
             if var.get() == 1:  # Checkbox is checked
@@ -628,12 +623,9 @@ class UiManager:
                     self.grid_data_model.set_cell_disabled(row, col, False)
                     # V2: Observer handles color update
 
-        # Lock-in state changes alter availability; invalidate cached trees/scores and refresh immediately.
-        self._invalidate_tree_cache("lock_in_change")
+        # Row/column lock-ins drive calc-grid advisory fields only.
+        # Keep tree caches/scores intact to preserve UI responsiveness.
         self._schedule_scenario_calculations(immediate=True)
-        if self.active_sort_mode and self._tree_has_nodes():
-            self.apply_combined_sort(compute_primary_tags=True)
-            self.update_sort_value_column()
 
     def update_combobox_colors(self):
         for row in range(1, 6):
