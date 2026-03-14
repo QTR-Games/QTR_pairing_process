@@ -602,7 +602,13 @@ class UiManager:
                     widget.config(state='normal')
                     self.grid_data_model.set_cell_disabled(row, col, False)
                     # V2: No need to call update_color_on_change explicitly - observer handles it
-        self._schedule_scenario_calculations()
+
+        # Lock-in state changes alter availability; invalidate cached trees/scores and refresh immediately.
+        self._invalidate_tree_cache("lock_in_change")
+        self._schedule_scenario_calculations(immediate=True)
+        if self.active_sort_mode and self._tree_has_nodes():
+            self.apply_combined_sort(compute_primary_tags=True)
+            self.update_sort_value_column()
 
     def on_column_checkbox_change(self, col, var):
         print(f"Column {col} checkbox changed to {var.get()}")
@@ -622,7 +628,13 @@ class UiManager:
                     widget.config(state='normal')
                     self.grid_data_model.set_cell_disabled(row, col, False)
                     # V2: Observer handles color update
-        self._schedule_scenario_calculations()
+
+        # Lock-in state changes alter availability; invalidate cached trees/scores and refresh immediately.
+        self._invalidate_tree_cache("lock_in_change")
+        self._schedule_scenario_calculations(immediate=True)
+        if self.active_sort_mode and self._tree_has_nodes():
+            self.apply_combined_sort(compute_primary_tags=True)
+            self.update_sort_value_column()
 
     def update_combobox_colors(self):
         for row in range(1, 6):
