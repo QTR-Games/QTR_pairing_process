@@ -10,11 +10,11 @@ class TreeGenerator:
     def __init__(
         self,
         treeview,
-        sort_alpha,
+        sort_alpha=False,
         strategic_preferences=None
     ):
         self.treeview = treeview
-        self.sort_alpha = sort_alpha
+        self.sort_alpha = False
         self.original_order = {}
         self.fRatings = None
         self.our_team_first = True  # Will be set during generation
@@ -67,8 +67,8 @@ class TreeGenerator:
         # Reset sorting state for new generation
         self.original_order_saved = False
         tree_top = self.treeview.tree.insert("", 'end', text="Pairings")
-        fNames_sorted = sorted(fNames, key=lambda x: x) if self.sort_alpha else fNames
-        oNames_sorted = sorted(oNames, key=lambda x: x) if self.sort_alpha else oNames
+        fNames_sorted = list(fNames)
+        oNames_sorted = list(oNames)
         
         for name in fNames_sorted:
             fnames_filtered = [x for x in fNames_sorted if x!=name]
@@ -84,7 +84,7 @@ class TreeGenerator:
         if oNames and not combs:
             first_oName = oNames[0]
             combs = list(combinations([first_oName,first_oName], 2))
-        combs_sorted = sorted(combs, key=lambda x: (x[0], x[1])) if self.sort_alpha else combs
+        combs_sorted = combs
         for comb in combs_sorted:
             rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
             rating_1 = fRatings[first_fName].get(comb[1], 'N/A')

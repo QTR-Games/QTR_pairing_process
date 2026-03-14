@@ -290,18 +290,11 @@ class UiManager:
         self.team_b = tk.IntVar()
         pairingLead = tk.Checkbutton(self.tree_options_bar, text="Our team first", variable=self.team_b)
         pairingLead.pack(side=tk.RIGHT, padx=(8, 0), pady=5)
-        pairingLead.select()
-
-        self.sort_alpha = tk.IntVar()
-        alphaBox = tk.Checkbutton(self.tree_options_bar, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
-        alphaBox.pack(side=tk.RIGHT, padx=(8, 0), pady=5)
-        alphaBox.select()
 
         # create treeview and tree generator
         self.treeview = LazyTreeView(master=self.tree_view_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
         self.tree_generator = TreeGenerator(
             treeview=self.treeview,
-            sort_alpha=self.sort_alpha.get(),
             strategic_preferences=self.strategic_preferences,
         )
         
