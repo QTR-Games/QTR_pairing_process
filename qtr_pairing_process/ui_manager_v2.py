@@ -2114,8 +2114,10 @@ class UiManager:
             self.matchup_output_panel_created = True
 
         cache_key = self._build_tree_cache_key()
+        our_team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
         if self._tree_cache_enabled and cache_key:
             if cache_key == self._tree_cache_key and self._tree_has_nodes():
+                self.tree_generator.our_team_first = our_team_first
                 self._set_tree_generation_id(self._tree_generation_id)
                 self._log_perf_entry("tree.cache.hit", 0.0, reason="active")
                 self._reset_tree_sort_state()
@@ -2134,6 +2136,7 @@ class UiManager:
                     generation_id = self._next_tree_generation_id()
                 self._restore_tree_snapshot(snapshot)
                 self._tree_cache_key = cache_key
+                self.tree_generator.our_team_first = our_team_first
                 self._set_tree_generation_id(generation_id)
                 self._log_perf_entry("tree.cache.hit", 0.0, reason="restore")
                 self._reset_tree_sort_state()
@@ -2146,10 +2149,22 @@ class UiManager:
             print(f"fRatings: {fRatings}\n")
             print(f"oRatings: {oRatings}\n")
         self.validate_grid_data()
-        if self.team_b.get():
-            self.tree_generator.generate_combinations(fNames, oNames, fRatings, oRatings)
+        if our_team_first:
+            self.tree_generator.generate_combinations(
+                fNames,
+                oNames,
+                fRatings,
+                oRatings,
+                our_team_first=True,
+            )
         else:
-            self.tree_generator.generate_combinations(oNames, fNames, oRatings, fRatings)
+            self.tree_generator.generate_combinations(
+                oNames,
+                fNames,
+                oRatings,
+                fRatings,
+                our_team_first=False,
+            )
         self._set_tree_generation_id(self._next_tree_generation_id())
         
         # Automatically expand the root "Pairings" node
@@ -3832,6 +3847,8 @@ class UiManager:
                             self.grid_data_model.set_rating(row, col, flipped_rating, notify=False)
                 
                 self.grid_data_model.end_batch()
+                # Batch mutation used notify=False for performance; emit one refresh event.
+                self.grid_data_model._notify_observers('grid_loaded')
                 self.grid_is_flipped = True
                 print("Grid flipped to opponent's perspective")
                 

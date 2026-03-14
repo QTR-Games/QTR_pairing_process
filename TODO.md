@@ -32,3 +32,11 @@ Find a way to incorporate basic strategies that even a human can see and make su
 Remove alphabetic sorting. With advanced math we don't need it.
 
 Remove the default setting for "my team first".
+
+Add a quick integration test module for generated_tree_cache persistence and generation-id propagation.
+
+Add a Data Management action to clear only generated_tree_cache entries for the active matchup or all matchups.
+
+Add a targeted regression test for chooser-direction behavior:
+- My Team First unchecked: friendly-choice sibling sort is descending by strategic value.
+- My Team First checked: chooser-direction flips correctly by depth owner.
