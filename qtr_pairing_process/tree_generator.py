@@ -14,7 +14,7 @@ class TreeGenerator:
         strategic_preferences=None
     ):
         self.treeview = treeview
-        self.sort_alpha = False
+        self.sort_alpha = bool(sort_alpha)
         self.original_order = {}
         self.fRatings = None
         self.our_team_first = True  # Will be set during generation
@@ -75,6 +75,9 @@ class TreeGenerator:
         tree_top = self.treeview.tree.insert("", 'end', text="Pairings")
         fNames_sorted = list(fNames)
         oNames_sorted = list(oNames)
+        if self.sort_alpha:
+            fNames_sorted.sort()
+            oNames_sorted.sort()
         
         for name in fNames_sorted:
             fnames_filtered = [x for x in fNames_sorted if x!=name]
@@ -90,7 +93,7 @@ class TreeGenerator:
         if oNames and not combs:
             first_oName = oNames[0]
             combs = list(combinations([first_oName,first_oName], 2))
-        combs_sorted = combs
+        combs_sorted = sorted(combs) if self.sort_alpha else combs
         for comb in combs_sorted:
             rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
             rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
@@ -110,6 +113,8 @@ class TreeGenerator:
             
             if fNames:
                 opponent_perms = list(permutations(comb, 2))
+                if self.sort_alpha:
+                    opponent_perms = sorted(opponent_perms)
                 for opponent, next_fName in opponent_perms:                    
                     nested_oNames = [name for name in oNames if name != opponent and name!=next_fName]
                     nested_fNames = [name for name in fNames if name != first_fName]
@@ -618,15 +623,25 @@ class TreeGenerator:
         }
 
     def _compute_parameter_signature(self):
-        guardrail_strength = str(
-            self.strategic_preferences.get('strategic3', {}).get('round_win_guardrail_strength', 'medium')
-        ).lower()
+        guardrail_strength = self._get_guardrail_strength()
         return (
             tuple(round(w, 6) for w in self.strategic3_weights),
             round(float(self.strategic3_rho), 6),
             round(float(self.strategic3_lam), 6),
             guardrail_strength,
         )
+
+    def _get_guardrail_strength(self):
+        return str(
+            self.strategic_preferences.get('strategic3', {}).get('round_win_guardrail_strength', 'medium')
+        ).lower()
+
+    def _get_guardrail_coefficient(self):
+        return {
+            'low': 0.08,
+            'medium': 0.14,
+            'high': 0.22,
+        }.get(self._get_guardrail_strength(), 0.14)
 
     def _compute_tree_signature(self, node=""):
         """Build a stable structural signature from tree text + rating values."""
@@ -806,14 +821,7 @@ class TreeGenerator:
         weights = self.strategic3_weights if weights is None else weights
         rho = self.strategic3_rho if rho is None else rho
         lam = self.strategic3_lam if lam is None else lam
-        guardrail_strength = str(
-            self.strategic_preferences.get('strategic3', {}).get('round_win_guardrail_strength', 'medium')
-        ).lower()
-        guardrail_coeff = {
-            'low': 0.08,
-            'medium': 0.14,
-            'high': 0.22,
-        }.get(guardrail_strength, 0.14)
+        guardrail_coeff = self._get_guardrail_coefficient()
 
         if node == "":
             memo_context = self._build_strategic_memo_context()
@@ -872,6 +880,7 @@ class TreeGenerator:
             r_norm = normalize(r_raw, 'r_min', 'r_max')
 
             w_c, w_q, w_r = weights
+            # Worst-axis regret proxy: whichever dimension is currently weakest dominates core risk.
             t_core = max(w_c * (1.0 - c_norm), w_q * (1.0 - q_norm), w_r * (1.0 - r_norm))
             smooth = (w_c * c_norm) + (w_q * q_norm) + (w_r * r_norm)
             downside = self._clamp((ceiling2 - floor2) / 100.0, 0.0, 1.0)

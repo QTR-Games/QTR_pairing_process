@@ -103,12 +103,12 @@ class DatabasePreferences:
             }
         }
 
-    def _clamp(self, value: Any, min_value: float, max_value: float, fallback: float) -> float:
+    def _clamp(self, value: Any, min_value: float, max_value: float, default_value: float) -> float:
         """Convert to float and clamp safely."""
         try:
             numeric = float(value)
         except (TypeError, ValueError):
-            numeric = float(fallback)
+            numeric = float(default_value)
         return max(min_value, min(max_value, numeric))
 
     def get_strategic_preferences(self) -> Dict[str, Any]:
@@ -156,7 +156,11 @@ class DatabasePreferences:
         weights = validated["strategic3"]["weights"]
         if not isinstance(weights, list) or len(weights) != 3:
             weights = defaults["strategic3"]["weights"]
-        safe_weights = [self._clamp(w, 0.0, 1.0, d) for w, d in zip(weights, defaults["strategic3"]["weights"])]
+        safe_weights = [
+            self._clamp(weights[0], 0.0, 1.0, defaults["strategic3"]["weights"][0]),
+            self._clamp(weights[1], 0.0, 1.0, defaults["strategic3"]["weights"][1]),
+            self._clamp(weights[2], 0.0, 1.0, defaults["strategic3"]["weights"][2]),
+        ]
         total = sum(safe_weights)
         if total <= 0:
             safe_weights = defaults["strategic3"]["weights"]
