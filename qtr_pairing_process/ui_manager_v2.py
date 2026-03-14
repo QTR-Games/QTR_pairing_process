@@ -285,6 +285,9 @@ class UiManager:
         self._comment_editor_open = False
         self._popup_pending = False
         self.notes_text: Optional[tk.Text] = None
+        self._tree_explain_tooltip: Optional[tk.Toplevel] = None
+        self._tree_explain_tooltip_label: Optional[tk.Label] = None
+        self._tree_explain_last_node: Optional[str] = None
 
 
         self.team_b = tk.IntVar()
@@ -398,6 +401,9 @@ class UiManager:
         self.treeview.tree.tag_configure('3', background="yellow")
         self.treeview.tree.tag_configure('4', background="greenyellow")
         self.treeview.tree.tag_configure('5', background="lime")
+        self.treeview.tree.bind("<<TreeviewSelect>>", self._on_tree_selection_changed, add='+')
+        self.treeview.tree.bind("<Motion>", self._on_tree_hover_explain, add='+')
+        self.treeview.tree.bind("<Leave>", self._hide_tree_explain_tooltip, add='+')
         self.treeview.pack(expand=1, fill='both')
         
         # Create centered vertical sort strip between grid and matchup extract
@@ -3641,6 +3647,18 @@ class UiManager:
             )
             self.summary_spread_label.pack(fill=tk.X)
 
+            self.summary_explain_label = tk.Label(
+                summary_frame,
+                text="Explainability: select a tree node to view C2/Q2/R2 and strategic factors.",
+                font=("Arial", 8),
+                bg="lightyellow",
+                fg="#333333",
+                justify=tk.LEFT,
+                anchor=tk.W,
+                wraplength=360
+            )
+            self.summary_explain_label.pack(fill=tk.X, pady=(2, 0))
+
             self.summary_histogram = tk.Canvas(
                 summary_frame,
                 height=60,
@@ -3751,6 +3769,116 @@ class UiManager:
             self.summary_spread_label.config(text="Best/Worst spread: --")
 
         self._render_confidence_histogram(ratings)
+
+        selected_item = self.treeview.tree.selection() if hasattr(self, 'treeview') else []
+        self._update_explainability_card(selected_item[0] if selected_item else None)
+
+    def _get_tag_value(self, node_id: Optional[str], prefix: str, default: int = 0) -> int:
+        if not node_id:
+            return default
+        try:
+            tags = self.treeview.tree.item(node_id, 'tags') or []
+            for tag in tags:
+                tag_str = str(tag)
+                if tag_str.startswith(prefix):
+                    return int(tag_str.replace(prefix, ''))
+        except (ValueError, TypeError):
+            return default
+        return default
+
+    def _get_mode_profile_text(self) -> str:
+        profile = {
+            "cumulative": "Mode: Cumulative (aggressive opponent-aware accumulation)",
+            "confidence": "Mode: Confidence (low-variance 3/5 reliability)",
+            "resistance": "Mode: Counter (exploitability resistance)",
+            "strategic3": "Mode: Strategic Fusion (balanced C2/Q2/R2 + bounded guardrail)",
+        }
+        active_mode = self.active_sort_mode or "none"
+        return profile.get(active_mode, "Mode: Unsorted (raw tree order)")
+
+    def _format_explainability_text(self, node_id: Optional[str]) -> str:
+        if not node_id:
+            return "Explainability: select a tree node to view C2/Q2/R2 and strategic factors."
+
+        c2 = self.tree_generator.get_cumulative2_from_tags(node_id)
+        q2 = self.tree_generator.get_confidence2_from_tags(node_id)
+        r2 = self.tree_generator.get_resistance2_from_tags(node_id)
+        regret = self.tree_generator.get_regret2_from_tags(node_id)
+        floor2 = self._get_tag_value(node_id, 'floor2_', default=q2)
+        ceiling2 = self._get_tag_value(node_id, 'ceiling2_', default=q2)
+        downside = max(0, ceiling2 - floor2)
+        strategic = self.tree_generator.get_strategic3_from_tags(node_id)
+        exploit = self.tree_generator.get_strategic3_exploitability_from_tags(node_id)
+        children = self.treeview.tree.get_children(node_id)
+        sibling_count = len(self.treeview.tree.get_children(self.treeview.tree.parent(node_id) or ""))
+
+        lines = [
+            self._get_mode_profile_text(),
+            f"C2/Q2/R2: {c2} / {q2} / {r2}",
+            f"Regret/Downside: {regret} / {downside}",
+            f"Strategic/Exploitability: {strategic} / {exploit}",
+            f"Round-win guardrail signal: {q2 - 50:+d}",
+            f"Context: siblings={sibling_count}, remaining children={len(children)}",
+            "Bus context: advisory only (YES/NO from calc-grid thresholds)",
+        ]
+        return "\n".join(lines)
+
+    def _update_explainability_card(self, node_id: Optional[str]):
+        if not hasattr(self, 'summary_explain_label'):
+            return
+        self.summary_explain_label.config(text=self._format_explainability_text(node_id))
+
+    def _on_tree_selection_changed(self, _event=None):
+        selected = self.treeview.tree.selection()
+        self._update_explainability_card(selected[0] if selected else None)
+
+    def _ensure_tree_explain_tooltip(self):
+        if self._tree_explain_tooltip:
+            return
+        self._tree_explain_tooltip = tk.Toplevel(self.root)
+        self._tree_explain_tooltip.wm_overrideredirect(True)
+        self._tree_explain_tooltip.wm_attributes("-topmost", True)
+        self._tree_explain_tooltip.withdraw()
+        self._tree_explain_tooltip_label = tk.Label(
+            self._tree_explain_tooltip,
+            text="",
+            justify=tk.LEFT,
+            background="#fff9d8",
+            relief=tk.SOLID,
+            borderwidth=1,
+            padx=6,
+            pady=4,
+            font=("Consolas", 8)
+        )
+        self._tree_explain_tooltip_label.pack(fill=tk.BOTH, expand=True)
+
+    def _hide_tree_explain_tooltip(self, _event=None):
+        if self._tree_explain_tooltip:
+            self._tree_explain_tooltip.withdraw()
+        self._tree_explain_last_node = None
+
+    def _on_tree_hover_explain(self, event):
+        node_id = self.treeview.tree.identify_row(event.y)
+        if not node_id:
+            self._hide_tree_explain_tooltip()
+            return
+        if node_id == self._tree_explain_last_node:
+            return
+
+        self._ensure_tree_explain_tooltip()
+        if self._tree_explain_tooltip is None or self._tree_explain_tooltip_label is None:
+            return
+
+        text = self._format_explainability_text(node_id)
+        self._tree_explain_tooltip_label.config(text=text)
+        self._tree_explain_tooltip.update_idletasks()
+
+        x = self.treeview.tree.winfo_rootx() + event.x + 18
+        y = self.treeview.tree.winfo_rooty() + event.y + 18
+        self._tree_explain_tooltip.geometry(f"+{x}+{y}")
+        self._tree_explain_tooltip.deiconify()
+        self._tree_explain_tooltip.lift()
+        self._tree_explain_last_node = node_id
 
     def _parse_rating_value(self, rating: Any) -> Optional[float]:
         if rating is None:
