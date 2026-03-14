@@ -70,6 +70,14 @@ class UiManager:
         # Check db_preferences first, fallback to old settings manager if not found
         config_rating_system = None
         ui_prefs = self.db_preferences.get_ui_preferences()
+        self.strategic_preferences = self.db_preferences.get_strategic_preferences()
+        self.tie_break_order = self.strategic_preferences.get('strategic3', {}).get(
+            'tie_break_order',
+            'confidence_then_cumulative'
+        )
+        strategic3_prefs = self.strategic_preferences.get('strategic3', {})
+        self.auto_sort_after_generate = bool(strategic3_prefs.get('auto_sort_after_generate', True))
+        self.auto_sort_toggle_enabled = bool(strategic3_prefs.get('auto_sort_toggle_enabled', True))
         config_rating_system = ui_prefs.get('rating_system')
 
         self.tree_autogen_enabled = self.db_preferences.get_tree_autogen_enabled()
@@ -201,16 +209,21 @@ class UiManager:
         self.top_frame = tk.Frame(self.team_grid_frame)
         self.top_frame.pack(side=tk.TOP, fill=tk.X)
         self.top_frame.grid_columnconfigure(0, weight=1)
-        self.top_frame.grid_columnconfigure(1, weight=1)
+        self.top_frame.grid_columnconfigure(1, weight=0)
+        self.top_frame.grid_columnconfigure(2, weight=1)
         self.top_frame.grid_rowconfigure(0, weight=1)
 
         # Single unified grid frame (left)
         self.grid_frame = tk.Frame(self.top_frame, relief=tk.RIDGE, borderwidth=2)
         self.grid_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
 
+        # Vertical sort controls strip between grid and matchup extract.
+        self.sort_controls_frame = tk.Frame(self.top_frame, relief=tk.GROOVE, borderwidth=1)
+        self.sort_controls_frame.grid(row=0, column=1, padx=(0, 12), pady=10, sticky="ns")
+
         # Matchup output section (right of grid, above tree)
         self.matchup_output_container = tk.Frame(self.top_frame)
-        self.matchup_output_container.grid(row=0, column=1, padx=(0, 10), pady=10, sticky="nsew")
+        self.matchup_output_container.grid(row=0, column=2, padx=(0, 10), pady=10, sticky="nsew")
 
         self.tree_autogen_var = tk.IntVar(value=1 if self.tree_autogen_enabled else 0)
         self.create_matchup_output_panel()
@@ -219,17 +232,16 @@ class UiManager:
         self.button_row_frame = tk.Frame(self.team_grid_frame)
         self.button_row_frame.pack(side=tk.TOP, fill=tk.X)
 
+        # Tree controls bar sits directly above the tree and keeps options right aligned.
+        self.tree_options_bar = tk.Frame(self.team_grid_frame)
+        self.tree_options_bar.pack(side=tk.TOP, fill=tk.X, padx=10, pady=(0, 2))
+
         # Tree section (below grid)
         self.tree_container_frame = tk.Frame(self.team_grid_frame)
         self.tree_container_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=(0, 5))
 
-        self.tree_controls_frame = tk.Frame(self.tree_container_frame)
-        self.tree_controls_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
         self.tree_view_frame = tk.Frame(self.tree_container_frame)
         self.tree_view_frame.pack(side=tk.LEFT, expand=1, fill=tk.BOTH)
-
-        self.buttons_frame = tk.Frame(self.tree_controls_frame)
-        self.buttons_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
 
         # V2: Replace 144 StringVars with single GridDataModel
         self.grid_data_model = GridDataModel()
@@ -272,21 +284,22 @@ class UiManager:
         self._comment_tooltip_cell = None
         self._comment_editor_open = False
         self._popup_pending = False
+        self.notes_text: Optional[tk.Text] = None
+        self._tree_explain_tooltip: Optional[tk.Toplevel] = None
+        self._tree_explain_tooltip_label: Optional[tk.Label] = None
+        self._tree_explain_last_node: Optional[str] = None
 
 
         self.team_b = tk.IntVar()
-        pairingLead = tk.Checkbutton(self.buttons_frame, text="Our team first", variable=self.team_b)
-        pairingLead.pack(side=tk.BOTTOM,pady=5)
-        pairingLead.select()
-
-        self.sort_alpha = tk.IntVar()
-        alphaBox = tk.Checkbutton(self.buttons_frame, text="Sort Pairings Alphabetically", variable=self.sort_alpha)
-        alphaBox.pack(side=tk.BOTTOM,pady=5)
-        alphaBox.select()
+        pairingLead = tk.Checkbutton(self.tree_options_bar, text="Our team first", variable=self.team_b)
+        pairingLead.pack(side=tk.RIGHT, padx=(8, 0), pady=5)
 
         # create treeview and tree generator
         self.treeview = LazyTreeView(master=self.tree_view_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
-        self.tree_generator = TreeGenerator(treeview=self.treeview, sort_alpha=self.sort_alpha.get())
+        self.tree_generator = TreeGenerator(
+            treeview=self.treeview,
+            strategic_preferences=self.strategic_preferences,
+        )
         
         # Track current sorting mode for column display
         self.current_sort_mode = "none"
@@ -388,34 +401,40 @@ class UiManager:
         self.treeview.tree.tag_configure('3', background="yellow")
         self.treeview.tree.tag_configure('4', background="greenyellow")
         self.treeview.tree.tag_configure('5', background="lime")
+        self.treeview.tree.bind("<<TreeviewSelect>>", self._on_tree_selection_changed, add='+')
+        self.treeview.tree.bind("<Motion>", self._on_tree_hover_explain, add='+')
+        self.treeview.tree.bind("<Leave>", self._hide_tree_explain_tooltip, add='+')
         self.treeview.pack(expand=1, fill='both')
         
-        # Create Generate Combinations button
-        generateButton = tk.Button(self.buttons_frame, text="Generate\nCombinations", command=self.on_generate_combinations)
-        generateButton.pack(fill=tk.X, pady=5)
+        # Create centered vertical sort strip between grid and matchup extract
+        generateButton = tk.Button(self.sort_controls_frame, text="Generate\nCombinations", command=self.on_generate_combinations, width=16)
+        generateButton.pack(fill=tk.X, padx=8, pady=(8, 5))
 
         # Initialize sorting state tracking
         self.active_sort_mode = None
         
         # Create sorting buttons with active/inactive states
-        self.cumulative_button = tk.Button(self.buttons_frame, text="Cumulative\nSort", command=self.toggle_cumulative_sort)
-        self.cumulative_button.pack(fill=tk.X, pady=5)
+        self.cumulative_button = tk.Button(self.sort_controls_frame, text="Cumulative\nSort", command=self.toggle_cumulative_sort, width=16)
+        self.cumulative_button.pack(fill=tk.X, padx=8, pady=5)
 
-        self.confidence_button = tk.Button(self.buttons_frame, text="Highest\nConfidence", command=self.toggle_confidence_sort)
-        self.confidence_button.pack(fill=tk.X, pady=5)
+        self.confidence_button = tk.Button(self.sort_controls_frame, text="Highest\nConfidence", command=self.toggle_confidence_sort, width=16)
+        self.confidence_button.pack(fill=tk.X, padx=8, pady=5)
 
-        self.counter_button = tk.Button(self.buttons_frame, text="Counter\nPick", command=self.toggle_counter_sort)
-        self.counter_button.pack(fill=tk.X, pady=5)
+        self.counter_button = tk.Button(self.sort_controls_frame, text="Counter\nPick", command=self.toggle_counter_sort, width=16)
+        self.counter_button.pack(fill=tk.X, padx=8, pady=5)
+
+        self.strategic_button = tk.Button(self.sort_controls_frame, text="Strategic\nFusion", command=self.toggle_strategic_sort, width=16)
+        self.strategic_button.pack(fill=tk.X, padx=8, pady=5)
 
         self.sort_guidance_label = tk.Label(
-            self.buttons_frame,
-            text="Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
+            self.sort_controls_frame,
+            text="Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
             font=("Arial", 8),
             fg="#333333",
             justify=tk.LEFT,
             anchor=tk.W
         )
-        self.sort_guidance_label.pack(fill=tk.X, pady=(6, 0))
+        self.sort_guidance_label.pack(fill=tk.X, padx=8, pady=(6, 8))
         
         # Set initial button states (all inactive)
         self.update_sort_button_states()
@@ -565,7 +584,6 @@ class UiManager:
         # Per-cell bindings handle comment editing and click-to-show popups.
 
     def on_row_checkbox_change(self, row, var):
-        print(f"Row {row} checkbox changed to {var.get()}")
         for col in range(1,6):
             widget = self.grid_widgets[row][col]
             if var.get() == 1:  # Checkbox is checked
@@ -582,10 +600,12 @@ class UiManager:
                     widget.config(state='normal')
                     self.grid_data_model.set_cell_disabled(row, col, False)
                     # V2: No need to call update_color_on_change explicitly - observer handles it
-        self._schedule_scenario_calculations()
+
+        # Row/column lock-ins drive calc-grid advisory fields only.
+        # Keep tree caches/scores intact to preserve UI responsiveness.
+        self._schedule_scenario_calculations(immediate=True)
 
     def on_column_checkbox_change(self, col, var):
-        print(f"Column {col} checkbox changed to {var.get()}")
         for row in range(1,6):
             widget = self.grid_widgets[row][col]
             if var.get() == 1:  # Checkbox is checked
@@ -602,7 +622,10 @@ class UiManager:
                     widget.config(state='normal')
                     self.grid_data_model.set_cell_disabled(row, col, False)
                     # V2: Observer handles color update
-        self._schedule_scenario_calculations()
+
+        # Row/column lock-ins drive calc-grid advisory fields only.
+        # Keep tree caches/scores intact to preserve UI responsiveness.
+        self._schedule_scenario_calculations(immediate=True)
 
     def update_combobox_colors(self):
         for row in range(1, 6):
@@ -851,6 +874,8 @@ class UiManager:
         if self._tree_cache:
             self._tree_cache.clear()
         self._tree_cache_key = None
+        if hasattr(self, 'tree_generator') and self.tree_generator:
+            self.tree_generator.clear_memoization(reason=reason)
         if reason and self.perf.enabled:
             self._log_perf_entry("tree.cache.invalidate", 0.0, reason=reason)
 
@@ -1433,11 +1458,60 @@ class UiManager:
                 
                 max_margin = max(all_margins)
                 min_margin = min(all_margins)
-                margin_text = f"{max_margin} | {min_margin}"
-                self.update_display_fields(row, 4, margin_text)
+                bus_text = self._get_bus_advisory_label(max_margin=max_margin, min_margin=min_margin)
+                self.update_display_fields(row, 4, bus_text)
                 # SUM MARG removed
             except (ValueError, IndexError) as e:
                 print(f"check_margins has failed for row {row} with error:\n{e}")
+
+    def _get_current_round_depth(self):
+        """Approximate current round depth from lock-in checkboxes (1..5)."""
+        row_locked = sum(1 for v in self.row_checkboxes if v.get() == 1)
+        col_locked = sum(1 for v in self.column_checkboxes if v.get() == 1)
+        return max(1, min(5, max(row_locked, col_locked) + 1))
+
+    def _get_current_scenario_number(self):
+        scenario_text = ""
+        if hasattr(self, "scenario_var"):
+            scenario_text = (self.scenario_var.get() or "").strip()
+        if not scenario_text:
+            return None
+        try:
+            return int(scenario_text.split("-")[0].strip())
+        except (ValueError, IndexError):
+            return None
+
+    def _get_bus_threshold(self):
+        bus_cfg = self.strategic_preferences.get("bus", {})
+        threshold_policy = bus_cfg.get("threshold_policy", "scenario_dependent")
+        global_threshold = int(bus_cfg.get("global_threshold", 60))
+
+        scenario_number = self._get_current_scenario_number()
+        scenario_thresholds = bus_cfg.get("scenario_thresholds", {})
+        depth_thresholds = bus_cfg.get("depth_thresholds", {})
+        depth_key = str(self._get_current_round_depth())
+        depth_threshold = depth_thresholds.get(depth_key)
+
+        threshold = global_threshold
+        if threshold_policy == "scenario_dependent" and scenario_number is not None:
+            threshold = scenario_thresholds.get(str(scenario_number), global_threshold)
+
+        if depth_threshold is not None:
+            try:
+                threshold = int((int(threshold) + int(depth_threshold)) / 2)
+            except (TypeError, ValueError):
+                pass
+
+        return max(0, min(100, int(threshold)))
+
+    def _get_bus_advisory_label(self, max_margin, min_margin):
+        """Display-only BUS advisory from spread opportunity and downside risk."""
+        spread = max_margin - min_margin
+        downside_risk = max(0, -min_margin)
+        bus_score = max(0, int((spread * 4) + (downside_risk * 2)))
+        threshold = self._get_bus_threshold()
+        bus_yes = bus_score >= threshold
+        return f"YES ({bus_score})" if bus_yes else f"NO ({bus_score})"
 
     def check_protect(self):
         for row in range(1, 6):
@@ -1819,15 +1893,18 @@ class UiManager:
 
         # Reset all sorting states when generating new combinations
         self._reset_tree_sort_state()
+        if self.auto_sort_toggle_enabled and self.auto_sort_after_generate:
+            # Run first-pass strategic sort through the same path as manual button clicks.
+            self.sort_by_strategic()
         self._update_matchup_summary([])
         
     def sort_by_confidence(self):
         """Sort tree by risk-adjusted confidence scores"""
         self.current_sort_mode = "confidence"
         self.active_sort_mode = "confidence"
+        self.apply_combined_sort(compute_primary_tags=True)
         self.update_sort_value_column()
         self.update_column_headers()
-        self.apply_combined_sort(compute_primary_tags=True)
         self.is_sorted = True
         self.update_sort_button_states()
         self._update_sort_hint()
@@ -1836,9 +1913,9 @@ class UiManager:
         """Sort tree by counter-resistance against opponent strategies"""
         self.current_sort_mode = "resistance"
         self.active_sort_mode = "resistance"
+        self.apply_combined_sort(compute_primary_tags=True)
         self.update_sort_value_column()
         self.update_column_headers()
-        self.apply_combined_sort(compute_primary_tags=True)
         self.is_sorted = True
         self.update_sort_button_states()
         self._update_sort_hint()
@@ -1847,9 +1924,30 @@ class UiManager:
         """Sort tree by cumulative value"""
         self.current_sort_mode = "cumulative"
         self.active_sort_mode = "cumulative"
+        self.apply_combined_sort(compute_primary_tags=True)
         self.update_sort_value_column()
         self.update_column_headers()
+        self.is_sorted = True
+        self.update_sort_button_states()
+        self._update_sort_hint()
+
+    def sort_by_strategic(self):
+        """Sort tree by unified strategic score using enhanced metric foundations."""
+        self.current_sort_mode = "strategic3"
+        self.active_sort_mode = "strategic3"
         self.apply_combined_sort(compute_primary_tags=True)
+        memo_stats = self.tree_generator.get_memoization_stats()
+        if self.perf.enabled:
+            self._log_perf_entry(
+                "strategic.memo.stats",
+                0.0,
+                hits=memo_stats["hits"],
+                misses=memo_stats["misses"],
+                hit_rate=f"{memo_stats['hit_rate']:.2%}",
+                entries=memo_stats["entries"],
+            )
+        self.update_sort_value_column()
+        self.update_column_headers()
         self.is_sorted = True
         self.update_sort_button_states()
         self._update_sort_hint()
@@ -1885,6 +1983,13 @@ class UiManager:
             self.unsort_tree()
         else:
             self.sort_by_counter_resistance()
+
+    def toggle_strategic_sort(self):
+        """Toggle unified strategic sorting on/off"""
+        if self.active_sort_mode == "strategic3":
+            self.unsort_tree()
+        else:
+            self.sort_by_strategic()
     
     def update_sort_button_states(self):
         """Update button appearance to show active/inactive states"""
@@ -1892,6 +1997,7 @@ class UiManager:
         self.cumulative_button.config(text="Cumulative\nSort", relief=tk.RAISED, bg='SystemButtonFace')
         self.confidence_button.config(text="Highest\nConfidence", relief=tk.RAISED, bg='SystemButtonFace')
         self.counter_button.config(text="Counter\nPick", relief=tk.RAISED, bg='SystemButtonFace')
+        self.strategic_button.config(text="Strategic\nFusion", relief=tk.RAISED, bg='SystemButtonFace')
         
         # Set active button to bright red circle and pressed appearance
         if self.active_sort_mode == "cumulative":
@@ -1900,6 +2006,8 @@ class UiManager:
             self.confidence_button.config(text="Highest\nConfidence", relief=tk.SUNKEN, bg='lightcoral')
         elif self.active_sort_mode == "resistance":
             self.counter_button.config(text="Counter\nPick", relief=tk.SUNKEN, bg='lightcoral')
+        elif self.active_sort_mode == "strategic3":
+            self.strategic_button.config(text="Strategic\nFusion", relief=tk.SUNKEN, bg='lightcoral')
 
     def on_column_click(self, column_id):
         """Cycle sort state for a column and apply combined sorting."""
@@ -1918,8 +2026,9 @@ class UiManager:
         self.column_sort_states[column_id] = new_state
         self.active_column_sort = column_id if new_state != "none" else None
 
-        self.update_column_headers()
         self.apply_combined_sort(compute_primary_tags=True)
+        self.update_sort_value_column()
+        self.update_column_headers()
 
     def _get_sort_value_header_base(self):
         if self.current_sort_mode == "confidence":
@@ -1928,6 +2037,8 @@ class UiManager:
             return "Resistance Score"
         if self.current_sort_mode == "cumulative":
             return "Cumulative Value"
+        if self.current_sort_mode == "strategic3":
+            return "Strategic Score"
         return "Sort Value"
 
     def update_column_headers(self):
@@ -1957,11 +2068,16 @@ class UiManager:
 
         if compute_primary_tags and primary_mode:
             if primary_mode == "cumulative":
-                self.tree_generator.calculate_all_path_values("")
+                self.tree_generator.calculate_all_path_values_enhanced("")
             elif primary_mode == "confidence":
-                self.tree_generator.calculate_confidence_scores("")
+                self.tree_generator.calculate_confidence_scores_enhanced("")
             elif primary_mode == "resistance":
-                self.tree_generator.calculate_counter_resistance_scores("")
+                self.tree_generator.calculate_counter_resistance_scores_enhanced("")
+            elif primary_mode == "strategic3":
+                self.tree_generator.calculate_all_path_values_enhanced("")
+                self.tree_generator.calculate_confidence_scores_enhanced("")
+                self.tree_generator.calculate_counter_resistance_scores_enhanced("")
+                self.tree_generator.calculate_strategic3_scores("")
 
         self._sort_children_combined("", primary_mode, secondary_column)
 
@@ -1981,11 +2097,13 @@ class UiManager:
 
         def primary_key(child_id):
             if primary_mode == "cumulative":
-                return self.tree_generator.get_cumulative_from_tags(child_id)
+                return self.tree_generator.get_cumulative2_from_tags(child_id)
             if primary_mode == "confidence":
-                return self.tree_generator.get_confidence_from_tags(child_id)
+                return self.tree_generator.get_confidence2_from_tags(child_id)
             if primary_mode == "resistance":
-                return self.tree_generator.get_resistance_from_tags(child_id)
+                return self.tree_generator.get_resistance2_from_tags(child_id)
+            if primary_mode == "strategic3":
+                return self.tree_generator.get_strategic3_from_tags(child_id)
             return 0
 
         def secondary_key(child_id):
@@ -2000,7 +2118,64 @@ class UiManager:
             except (ValueError, IndexError, TypeError):
                 return 0
 
+        def metric_value(child_id, metric):
+            if metric == "cumulative":
+                return self.tree_generator.get_cumulative2_from_tags(child_id)
+            if metric == "confidence":
+                return self.tree_generator.get_confidence2_from_tags(child_id)
+            if metric == "resistance":
+                return self.tree_generator.get_resistance2_from_tags(child_id)
+            if metric == "regret":
+                # Lower regret is better; invert so higher key value remains better.
+                return -self.tree_generator.get_regret2_from_tags(child_id)
+            if metric == "strategic3":
+                return self.tree_generator.get_strategic3_from_tags(child_id)
+            if metric == "strategic_exploit":
+                # Lower exploitability is better; invert so higher key value remains better.
+                return -self.tree_generator.get_strategic3_exploitability_from_tags(child_id)
+            if metric == "rating":
+                values = self.treeview.tree.item(child_id, 'values') or []
+                try:
+                    return int(values[0])
+                except (ValueError, IndexError, TypeError):
+                    return 0
+            return 0
+
+        def resolve_tie_break_chain():
+            mode_defaults = {
+                "confidence": ["regret", "cumulative", "resistance"],
+                "cumulative": ["confidence", "resistance"],
+                "resistance": ["confidence", "cumulative"],
+                "strategic3": ["strategic_exploit", "confidence", "cumulative"],
+            }
+
+            if primary_mode in mode_defaults:
+                configured = mode_defaults[primary_mode]
+            else:
+                configured = {
+                    "confidence_then_cumulative": ["confidence", "cumulative", "resistance"],
+                    "cumulative_then_confidence": ["cumulative", "confidence", "resistance"],
+                    "resistance_then_confidence": ["resistance", "confidence", "cumulative"],
+                }.get(self.tie_break_order, ["confidence", "cumulative", "resistance"])
+
+            # Prevent duplicate sort dimensions when primary/secondary are already active.
+            excluded = set()
+            if primary_mode:
+                excluded.add(primary_mode)
+            if secondary_column == "Rating":
+                excluded.add("rating")
+
+            return [metric for metric in configured if metric not in excluded]
+
         children_sorted = list(children)
+
+        # Final deterministic fallback for equal numeric metrics.
+        children_sorted.sort(key=lambda child_id: (self.treeview.tree.item(child_id, 'text') or "").lower())
+
+        # Deterministic tie-break chain obeys same decision-owner direction as primary mode.
+        if primary_mode:
+            for tie_metric in reversed(resolve_tie_break_chain()):
+                children_sorted.sort(key=lambda child_id, m=tie_metric: metric_value(child_id, m), reverse=primary_reverse)
 
         if secondary_column and secondary_state != "none":
             children_sorted.sort(key=secondary_key, reverse=secondary_reverse)
@@ -2072,6 +2247,10 @@ class UiManager:
             try:
                 with self.perf.span("teams.change.end_to_end"):
                     self._invalidate_comment_cache()
+                    if not new_team1_value.strip() or not new_team2_value.strip():
+                        self._schedule_scenario_calculations(immediate=True)
+                        self._measure_update_idletasks("teams.change.redraw")
+                        return
                     self._apply_team_change_updates()
                     self._measure_update_idletasks("teams.change.redraw")
             except (ValueError,IndexError) as e:
@@ -2099,18 +2278,14 @@ class UiManager:
         try:
             self._invalidate_tree_cache("team_change")
             with self.perf.span("teams.change.load_grid"):
-                self.load_grid_data_from_db(refresh_ui=False)
-            with self.perf.span("teams.change.refresh"):
-                self._post_grid_load_refresh()
+                self.load_grid_data_from_db(refresh_ui=True)
         finally:
             self._team_change_in_progress = False
 
     def _apply_scenario_change_updates(self):
         self._invalidate_tree_cache("scenario_change")
         with self.perf.span("scenario.change.load_grid"):
-            self.load_grid_data_from_db(refresh_ui=False)
-        with self.perf.span("scenario.change.refresh"):
-            self._post_grid_load_refresh()
+            self.load_grid_data_from_db(refresh_ui=True)
 
     def _post_grid_load_refresh(self):
         self._invalidate_comment_cache()
@@ -3339,11 +3514,13 @@ class UiManager:
         if self.current_sort_mode == "none":
             return ""
         elif self.current_sort_mode == "confidence":
-            return self.tree_generator.get_confidence_from_tags(node)
+            return self.tree_generator.get_confidence2_from_tags(node)
         elif self.current_sort_mode == "resistance":
-            return self.tree_generator.get_resistance_from_tags(node)
+            return self.tree_generator.get_resistance2_from_tags(node)
         elif self.current_sort_mode == "cumulative":
-            return self.tree_generator.get_cumulative_from_tags(node)
+            return self.tree_generator.get_cumulative2_from_tags(node)
+        elif self.current_sort_mode == "strategic3":
+            return self.tree_generator.get_strategic3_from_tags(node)
         else:
             return ""
 
@@ -3399,24 +3576,25 @@ class UiManager:
         if not hasattr(self, 'sort_guidance_label'):
             return
         hint_map = {
-            None: "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
-            "none": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
-            "cumulative": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
-            "confidence": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks",
-            "resistance": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks"
+            None: "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
+            "none": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
+            "cumulative": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
+            "confidence": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
+            "resistance": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
+            "strategic3": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax"
         }
-        hint = hint_map.get(self.active_sort_mode, "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks")
+        hint = hint_map.get(self.active_sort_mode, "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax")
         self.sort_guidance_label.config(text=hint)
 
     def _load_pairing_notes(self):
-        if not hasattr(self, 'notes_text'):
+        if self.notes_text is None:
             return
         self.notes_text.delete("1.0", tk.END)
         if self.pairing_plan_notes:
             self.notes_text.insert("1.0", self.pairing_plan_notes)
 
     def _save_pairing_notes(self):
-        if not hasattr(self, 'notes_text'):
+        if self.notes_text is None:
             return
         notes = self.notes_text.get("1.0", tk.END).rstrip()
         max_chars = 4096
@@ -3428,7 +3606,7 @@ class UiManager:
         self.db_preferences.set_pairing_plan_notes(notes)
 
     def _clear_pairing_notes(self):
-        if not hasattr(self, 'notes_text'):
+        if self.notes_text is None:
             return
         self.notes_text.delete("1.0", tk.END)
         self.pairing_plan_notes = ""
@@ -3472,6 +3650,18 @@ class UiManager:
                 anchor=tk.W
             )
             self.summary_spread_label.pack(fill=tk.X)
+
+            self.summary_explain_label = tk.Label(
+                summary_frame,
+                text="Explainability: select a tree node to view C2/Q2/R2 and strategic factors.",
+                font=("Arial", 8),
+                bg="lightyellow",
+                fg="#333333",
+                justify=tk.LEFT,
+                anchor=tk.W,
+                wraplength=360
+            )
+            self.summary_explain_label.pack(fill=tk.X, pady=(2, 0))
 
             self.summary_histogram = tk.Canvas(
                 summary_frame,
@@ -3583,6 +3773,116 @@ class UiManager:
             self.summary_spread_label.config(text="Best/Worst spread: --")
 
         self._render_confidence_histogram(ratings)
+
+        selected_item = self.treeview.tree.selection() if hasattr(self, 'treeview') else []
+        self._update_explainability_card(selected_item[0] if selected_item else None)
+
+    def _get_tag_value(self, node_id: Optional[str], prefix: str, default: int = 0) -> int:
+        if not node_id:
+            return default
+        try:
+            tags = self.treeview.tree.item(node_id, 'tags') or []
+            for tag in tags:
+                tag_str = str(tag)
+                if tag_str.startswith(prefix):
+                    return int(tag_str.replace(prefix, ''))
+        except (ValueError, TypeError):
+            return default
+        return default
+
+    def _get_mode_profile_text(self) -> str:
+        profile = {
+            "cumulative": "Mode: Cumulative (aggressive opponent-aware accumulation)",
+            "confidence": "Mode: Confidence (low-variance 3/5 reliability)",
+            "resistance": "Mode: Counter (exploitability resistance)",
+            "strategic3": "Mode: Strategic Fusion (balanced C2/Q2/R2 + bounded guardrail)",
+        }
+        active_mode = self.active_sort_mode or "none"
+        return profile.get(active_mode, "Mode: Unsorted (raw tree order)")
+
+    def _format_explainability_text(self, node_id: Optional[str]) -> str:
+        if not node_id:
+            return "Explainability: select a tree node to view C2/Q2/R2 and strategic factors."
+
+        c2 = self.tree_generator.get_cumulative2_from_tags(node_id)
+        q2 = self.tree_generator.get_confidence2_from_tags(node_id)
+        r2 = self.tree_generator.get_resistance2_from_tags(node_id)
+        regret = self.tree_generator.get_regret2_from_tags(node_id)
+        floor2 = self._get_tag_value(node_id, 'floor2_', default=q2)
+        ceiling2 = self._get_tag_value(node_id, 'ceiling2_', default=q2)
+        downside = max(0, ceiling2 - floor2)
+        strategic = self.tree_generator.get_strategic3_from_tags(node_id)
+        exploit = self.tree_generator.get_strategic3_exploitability_from_tags(node_id)
+        children = self.treeview.tree.get_children(node_id)
+        sibling_count = len(self.treeview.tree.get_children(self.treeview.tree.parent(node_id) or ""))
+
+        lines = [
+            self._get_mode_profile_text(),
+            f"C2/Q2/R2: {c2} / {q2} / {r2}",
+            f"Regret/Downside: {regret} / {downside}",
+            f"Strategic/Exploitability: {strategic} / {exploit}",
+            f"Round-win guardrail signal: {q2 - 50:+d}",
+            f"Context: siblings={sibling_count}, remaining children={len(children)}",
+            "Bus context: advisory only (YES/NO from calc-grid thresholds)",
+        ]
+        return "\n".join(lines)
+
+    def _update_explainability_card(self, node_id: Optional[str]):
+        if not hasattr(self, 'summary_explain_label'):
+            return
+        self.summary_explain_label.config(text=self._format_explainability_text(node_id))
+
+    def _on_tree_selection_changed(self, _event=None):
+        selected = self.treeview.tree.selection()
+        self._update_explainability_card(selected[0] if selected else None)
+
+    def _ensure_tree_explain_tooltip(self):
+        if self._tree_explain_tooltip:
+            return
+        self._tree_explain_tooltip = tk.Toplevel(self.root)
+        self._tree_explain_tooltip.wm_overrideredirect(True)
+        self._tree_explain_tooltip.wm_attributes("-topmost", True)
+        self._tree_explain_tooltip.withdraw()
+        self._tree_explain_tooltip_label = tk.Label(
+            self._tree_explain_tooltip,
+            text="",
+            justify=tk.LEFT,
+            background="#fff9d8",
+            relief=tk.SOLID,
+            borderwidth=1,
+            padx=6,
+            pady=4,
+            font=("Consolas", 8)
+        )
+        self._tree_explain_tooltip_label.pack(fill=tk.BOTH, expand=True)
+
+    def _hide_tree_explain_tooltip(self, _event=None):
+        if self._tree_explain_tooltip:
+            self._tree_explain_tooltip.withdraw()
+        self._tree_explain_last_node = None
+
+    def _on_tree_hover_explain(self, event):
+        node_id = self.treeview.tree.identify_row(event.y)
+        if not node_id:
+            self._hide_tree_explain_tooltip()
+            return
+        if node_id == self._tree_explain_last_node:
+            return
+
+        self._ensure_tree_explain_tooltip()
+        if self._tree_explain_tooltip is None or self._tree_explain_tooltip_label is None:
+            return
+
+        text = self._format_explainability_text(node_id)
+        self._tree_explain_tooltip_label.config(text=text)
+        self._tree_explain_tooltip.update_idletasks()
+
+        x = self.treeview.tree.winfo_rootx() + event.x + 18
+        y = self.treeview.tree.winfo_rooty() + event.y + 18
+        self._tree_explain_tooltip.geometry(f"+{x}+{y}")
+        self._tree_explain_tooltip.deiconify()
+        self._tree_explain_tooltip.lift()
+        self._tree_explain_last_node = node_id
 
     def _parse_rating_value(self, rating: Any) -> Optional[float]:
         if rating is None:
