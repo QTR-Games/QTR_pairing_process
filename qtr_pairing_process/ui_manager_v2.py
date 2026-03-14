@@ -882,6 +882,8 @@ class UiManager:
         if self._tree_cache:
             self._tree_cache.clear()
         self._tree_cache_key = None
+        if hasattr(self, 'tree_generator') and self.tree_generator:
+            self.tree_generator.clear_memoization(reason=reason)
         if reason and self.perf.enabled:
             self._log_perf_entry("tree.cache.invalidate", 0.0, reason=reason)
 
@@ -1942,6 +1944,16 @@ class UiManager:
         self.current_sort_mode = "strategic3"
         self.active_sort_mode = "strategic3"
         self.apply_combined_sort(compute_primary_tags=True)
+        memo_stats = self.tree_generator.get_memoization_stats()
+        if self.perf.enabled:
+            self._log_perf_entry(
+                "strategic.memo.stats",
+                0.0,
+                hits=memo_stats["hits"],
+                misses=memo_stats["misses"],
+                hit_rate=f"{memo_stats['hit_rate']:.2%}",
+                entries=memo_stats["entries"],
+            )
         self.update_sort_value_column()
         self.update_column_headers()
         self.is_sorted = True

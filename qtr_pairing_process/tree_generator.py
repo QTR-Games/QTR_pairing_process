@@ -38,6 +38,10 @@ class TreeGenerator:
             self.strategic3_weights = tuple(w / weight_sum for w in safe_weights)
         self.strategic3_rho = self._read_pref(("strategic3", "rho"), 0.20, 0.0, 5.0)
         self.strategic3_lam = self._read_pref(("strategic3", "lam"), 0.30, 0.0, 5.0)
+        self._strategic_memo_context = None
+        self._strategic_memo = {}
+        self._strategic_memo_hits = 0
+        self._strategic_memo_misses = 0
 
     def _read_pref(self, path, fallback, min_value, max_value):
         current = self.strategic_preferences
@@ -595,6 +599,50 @@ class TreeGenerator:
     def _clamp(self, value, min_value, max_value):
         return max(min_value, min(max_value, value))
 
+    def clear_memoization(self, reason=""):
+        """Clear strategic memoization cache. Optional reason for diagnostics."""
+        self._strategic_memo_context = None
+        self._strategic_memo = {}
+
+    def get_memoization_stats(self):
+        """Return cumulative memoization statistics for strategic scoring."""
+        total = self._strategic_memo_hits + self._strategic_memo_misses
+        hit_rate = (self._strategic_memo_hits / total) if total else 0.0
+        return {
+            "hits": self._strategic_memo_hits,
+            "misses": self._strategic_memo_misses,
+            "hit_rate": hit_rate,
+            "entries": len(self._strategic_memo),
+        }
+
+    def _compute_parameter_signature(self):
+        guardrail_strength = str(
+            self.strategic_preferences.get('strategic3', {}).get('round_win_guardrail_strength', 'medium')
+        ).lower()
+        return (
+            tuple(round(w, 6) for w in self.strategic3_weights),
+            round(float(self.strategic3_rho), 6),
+            round(float(self.strategic3_lam), 6),
+            guardrail_strength,
+        )
+
+    def _compute_tree_signature(self, node=""):
+        """Build a stable structural signature from tree text + rating values."""
+        child_signatures = []
+        for child in self.treeview.tree.get_children(node):
+            item = self.treeview.tree.item(child)
+            values = item.get('values', ()) or ()
+            rating = 0
+            try:
+                rating = int(values[0]) if len(values) > 0 else 0
+            except (ValueError, TypeError):
+                rating = 0
+            child_signatures.append((item.get('text', ''), rating, self._compute_tree_signature(child)))
+        return tuple(child_signatures)
+
+    def _build_strategic_memo_context(self):
+        return ("strategic3", self._compute_parameter_signature(), self._compute_tree_signature(""))
+
     def calculate_all_path_values_enhanced(self, node, alpha=None):
         """Enhanced cumulative scoring that is optimistic for us and adversarial for opponent turns."""
         alpha = self.cumulative2_alpha if alpha is None else alpha
@@ -766,6 +814,11 @@ class TreeGenerator:
         }.get(guardrail_strength, 0.14)
 
         if node == "":
+            memo_context = self._build_strategic_memo_context()
+            if memo_context != self._strategic_memo_context:
+                self._strategic_memo_context = memo_context
+                self._strategic_memo = {}
+
             all_nodes = []
 
             def collect_nodes(parent):
@@ -787,6 +840,13 @@ class TreeGenerator:
                 'r_min': min(r_values) if r_values else 0,
                 'r_max': max(r_values) if r_values else 100,
             }
+
+        if node:
+            memo_key = node
+            if memo_key in self._strategic_memo:
+                self._strategic_memo_hits += 1
+                return self._strategic_memo[memo_key]
+            self._strategic_memo_misses += 1
 
         children = self.treeview.tree.get_children(node)
 
@@ -830,6 +890,7 @@ class TreeGenerator:
             self._replace_prefixed_tag(node, 'strategic3_', strategic_value)
             self._replace_prefixed_tag(node, 'strategic3_exploit_', int(round(exploitability)))
             self.update_node_strategic_display(node, strategic_value)
+            self._strategic_memo[node] = strategic_value
             return strategic_value
 
         return max(child_scores) if child_scores else 0
