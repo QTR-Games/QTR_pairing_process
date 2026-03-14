@@ -70,6 +70,7 @@ class UiManager:
         # Check db_preferences first, fallback to old settings manager if not found
         config_rating_system = None
         ui_prefs = self.db_preferences.get_ui_preferences()
+        self.strategic_preferences = self.db_preferences.get_strategic_preferences()
         config_rating_system = ui_prefs.get('rating_system')
 
         self.tree_autogen_enabled = self.db_preferences.get_tree_autogen_enabled()
@@ -290,7 +291,11 @@ class UiManager:
 
         # create treeview and tree generator
         self.treeview = LazyTreeView(master=self.tree_view_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
-        self.tree_generator = TreeGenerator(treeview=self.treeview, sort_alpha=self.sort_alpha.get())
+        self.tree_generator = TreeGenerator(
+            treeview=self.treeview,
+            sort_alpha=self.sort_alpha.get(),
+            strategic_preferences=self.strategic_preferences,
+        )
         
         # Track current sorting mode for column display
         self.current_sort_mode = "none"

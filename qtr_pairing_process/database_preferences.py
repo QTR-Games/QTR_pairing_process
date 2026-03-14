@@ -57,6 +57,7 @@ class DatabasePreferences:
                 "matchup_output_format": "standard",
                 "perf_logging_enabled": False
             },
+            "strategic_preferences": self._get_default_strategic_preferences(),
             "logging": {
                 "level": "verbose",
                 "enabled": True
@@ -64,6 +65,127 @@ class DatabasePreferences:
             "created": datetime.now().isoformat(),
             "last_modified": datetime.now().isoformat()
         }
+
+    def _get_default_strategic_preferences(self) -> Dict[str, Any]:
+        """Return default strategic/v2 scoring preferences."""
+        return {
+            "cumulative2": {
+                "alpha": 0.80
+            },
+            "confidence2": {
+                "k": 0.85,
+                "u": 12.0
+            },
+            "resistance2": {
+                "beta": 1.0,
+                "gamma": 2.0
+            },
+            "strategic3": {
+                "weights": [0.40, 0.35, 0.25],
+                "rho": 0.20,
+                "lam": 0.30,
+                "round_win_guardrail_strength": "medium",
+                "tie_break_order": "confidence_then_cumulative",
+                "auto_sort_after_generate": True,
+                "auto_sort_toggle_enabled": True
+            },
+            "bus": {
+                "threshold_policy": "scenario_dependent",
+                "global_threshold": 60,
+                "scenario_thresholds": {},
+                "depth_thresholds": {
+                    "1": 65,
+                    "2": 62,
+                    "3": 58,
+                    "4": 55,
+                    "5": 52
+                }
+            }
+        }
+
+    def _clamp(self, value: Any, min_value: float, max_value: float, fallback: float) -> float:
+        """Convert to float and clamp safely."""
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            numeric = float(fallback)
+        return max(min_value, min(max_value, numeric))
+
+    def get_strategic_preferences(self) -> Dict[str, Any]:
+        """Get validated strategic/v2 preferences merged with defaults."""
+        config = self.load_config()
+        defaults = self._get_default_strategic_preferences()
+        raw = config.get("strategic_preferences", {})
+
+        cumulative2 = raw.get("cumulative2", {})
+        confidence2 = raw.get("confidence2", {})
+        resistance2 = raw.get("resistance2", {})
+        strategic3 = raw.get("strategic3", {})
+        bus = raw.get("bus", {})
+
+        validated = {
+            "cumulative2": {
+                "alpha": self._clamp(cumulative2.get("alpha", defaults["cumulative2"]["alpha"]), 0.0, 1.0, defaults["cumulative2"]["alpha"])
+            },
+            "confidence2": {
+                "k": self._clamp(confidence2.get("k", defaults["confidence2"]["k"]), 0.0, 5.0, defaults["confidence2"]["k"]),
+                "u": self._clamp(confidence2.get("u", defaults["confidence2"]["u"]), 0.0, 100.0, defaults["confidence2"]["u"])
+            },
+            "resistance2": {
+                "beta": self._clamp(resistance2.get("beta", defaults["resistance2"]["beta"]), 0.0, 10.0, defaults["resistance2"]["beta"]),
+                "gamma": self._clamp(resistance2.get("gamma", defaults["resistance2"]["gamma"]), 0.0, 10.0, defaults["resistance2"]["gamma"])
+            },
+            "strategic3": {
+                "weights": strategic3.get("weights", defaults["strategic3"]["weights"]),
+                "rho": self._clamp(strategic3.get("rho", defaults["strategic3"]["rho"]), 0.0, 5.0, defaults["strategic3"]["rho"]),
+                "lam": self._clamp(strategic3.get("lam", defaults["strategic3"]["lam"]), 0.0, 5.0, defaults["strategic3"]["lam"]),
+                "round_win_guardrail_strength": strategic3.get("round_win_guardrail_strength", defaults["strategic3"]["round_win_guardrail_strength"]),
+                "tie_break_order": strategic3.get("tie_break_order", defaults["strategic3"]["tie_break_order"]),
+                "auto_sort_after_generate": bool(strategic3.get("auto_sort_after_generate", defaults["strategic3"]["auto_sort_after_generate"])),
+                "auto_sort_toggle_enabled": bool(strategic3.get("auto_sort_toggle_enabled", defaults["strategic3"]["auto_sort_toggle_enabled"]))
+            },
+            "bus": {
+                "threshold_policy": bus.get("threshold_policy", defaults["bus"]["threshold_policy"]),
+                "global_threshold": int(self._clamp(bus.get("global_threshold", defaults["bus"]["global_threshold"]), 0.0, 100.0, defaults["bus"]["global_threshold"])),
+                "scenario_thresholds": bus.get("scenario_thresholds", defaults["bus"]["scenario_thresholds"]),
+                "depth_thresholds": bus.get("depth_thresholds", defaults["bus"]["depth_thresholds"])
+            }
+        }
+
+        # Ensure strategic weights are a valid 3-value list that sums to 1.
+        weights = validated["strategic3"]["weights"]
+        if not isinstance(weights, list) or len(weights) != 3:
+            weights = defaults["strategic3"]["weights"]
+        safe_weights = [self._clamp(w, 0.0, 1.0, d) for w, d in zip(weights, defaults["strategic3"]["weights"])]
+        total = sum(safe_weights)
+        if total <= 0:
+            safe_weights = defaults["strategic3"]["weights"]
+        else:
+            safe_weights = [w / total for w in safe_weights]
+        validated["strategic3"]["weights"] = safe_weights
+
+        return validated
+
+    def set_strategic_preferences(self, preferences: Dict[str, Any]) -> bool:
+        """Update strategic/v2 preferences and persist config."""
+        config = self.load_config()
+        existing = config.get("strategic_preferences", self._get_default_strategic_preferences())
+
+        # Shallow merge by section for predictable behavior.
+        merged = dict(existing)
+        for section, values in preferences.items():
+            if isinstance(values, dict) and isinstance(merged.get(section), dict):
+                section_dict = dict(merged[section])
+                section_dict.update(values)
+                merged[section] = section_dict
+            else:
+                merged[section] = values
+
+        config["strategic_preferences"] = merged
+        success = self.save_config(config)
+        if success:
+            self.logger.info("Strategic preferences updated")
+        return success
     
     def load_config(self) -> Dict[str, Any]:
         """Load configuration from JSON file"""

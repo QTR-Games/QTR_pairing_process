@@ -10,13 +10,55 @@ class TreeGenerator:
     def __init__(
         self,
         treeview,
-        sort_alpha
+        sort_alpha,
+        strategic_preferences=None
     ):
         self.treeview = treeview
         self.sort_alpha = sort_alpha
         self.original_order = {}
         self.fRatings = None
         self.our_team_first = True  # Will be set during generation
+
+        # Runtime-tunable strategic/v2 parameters.
+        self.strategic_preferences = strategic_preferences or {}
+        self.cumulative2_alpha = self._read_pref(("cumulative2", "alpha"), 0.80, 0.0, 1.0)
+        self.confidence2_k = self._read_pref(("confidence2", "k"), 0.85, 0.0, 5.0)
+        self.confidence2_u = self._read_pref(("confidence2", "u"), 12.0, 0.0, 100.0)
+        self.resistance2_beta = self._read_pref(("resistance2", "beta"), 1.0, 0.0, 10.0)
+        self.resistance2_gamma = self._read_pref(("resistance2", "gamma"), 2.0, 0.0, 10.0)
+
+        raw_weights = self._read_pref(("strategic3", "weights"), [0.40, 0.35, 0.25], None, None)
+        if not isinstance(raw_weights, list) or len(raw_weights) != 3:
+            raw_weights = [0.40, 0.35, 0.25]
+        safe_weights = [self._clamp(float(w), 0.0, 1.0) for w in raw_weights]
+        weight_sum = sum(safe_weights)
+        if weight_sum <= 0:
+            self.strategic3_weights = (0.40, 0.35, 0.25)
+        else:
+            self.strategic3_weights = tuple(w / weight_sum for w in safe_weights)
+        self.strategic3_rho = self._read_pref(("strategic3", "rho"), 0.20, 0.0, 5.0)
+        self.strategic3_lam = self._read_pref(("strategic3", "lam"), 0.30, 0.0, 5.0)
+
+    def _read_pref(self, path, fallback, min_value, max_value):
+        current = self.strategic_preferences
+        try:
+            for key in path:
+                current = current.get(key, {})
+            value = current
+        except AttributeError:
+            value = fallback
+
+        if value == {}:
+            value = fallback
+
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return fallback
+
+        if min_value is not None and max_value is not None:
+            return self._clamp(numeric, min_value, max_value)
+        return numeric
 
     def generate_combinations(self, fNames, oNames, fRatings, oRatings, our_team_first=True):
         self.fRatings = fRatings
@@ -553,8 +595,9 @@ class TreeGenerator:
     def _clamp(self, value, min_value, max_value):
         return max(min_value, min(max_value, value))
 
-    def calculate_all_path_values_enhanced(self, node, alpha=0.80):
+    def calculate_all_path_values_enhanced(self, node, alpha=None):
         """Enhanced cumulative scoring that is optimistic for us and adversarial for opponent turns."""
+        alpha = self.cumulative2_alpha if alpha is None else alpha
         children = self.treeview.tree.get_children(node)
 
         if not children:
@@ -597,8 +640,10 @@ class TreeGenerator:
         """Extract enhanced cumulative value from node tags."""
         return self._extract_prefixed_tag_value(node, 'cumulative2_', default=0)
 
-    def calculate_confidence_scores_enhanced(self, node, k=0.85, u=12.0):
+    def calculate_confidence_scores_enhanced(self, node, k=None, u=None):
         """Enhanced confidence with volatility and sample-size penalties."""
+        k = self.confidence2_k if k is None else k
+        u = self.confidence2_u if u is None else u
         children = self.treeview.tree.get_children(node)
 
         if not children:
@@ -652,8 +697,10 @@ class TreeGenerator:
         """Extract enhanced confidence value from node tags."""
         return self._extract_prefixed_tag_value(node, 'confidence2_', default=0)
 
-    def calculate_counter_resistance_scores_enhanced(self, node, beta=1.0, gamma=2.0):
+    def calculate_counter_resistance_scores_enhanced(self, node, beta=None, gamma=None):
         """Enhanced resistance with opponent-regret penalty."""
+        beta = self.resistance2_beta if beta is None else beta
+        gamma = self.resistance2_gamma if gamma is None else gamma
         children = self.treeview.tree.get_children(node)
 
         if not children:
@@ -697,8 +744,11 @@ class TreeGenerator:
         """Extract enhanced resistance value from node tags."""
         return self._extract_prefixed_tag_value(node, 'resistance2_', default=0)
 
-    def calculate_strategic3_scores(self, node, weights=(0.40, 0.35, 0.25), rho=0.20, lam=0.30):
+    def calculate_strategic3_scores(self, node, weights=None, rho=None, lam=None):
         """Strategic fusion score built from enhanced cumulative/confidence/resistance metrics."""
+        weights = self.strategic3_weights if weights is None else weights
+        rho = self.strategic3_rho if rho is None else rho
+        lam = self.strategic3_lam if lam is None else lam
         if node == "":
             all_nodes = []
 
