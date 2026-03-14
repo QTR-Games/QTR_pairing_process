@@ -20,7 +20,7 @@ Find a way to learn from the enhanced math and...
 - optimize the right grid numbers and calc.
 figure out how to do bussing (aka throwing someone under the bus)
 - Bussing definition:
-- Bussing is done when you have the choice to throw one of your own players into a very very bad matchup, usually a 1. The trade off is that this decision NOW will result in much better choices for the rest of the players in later rounds. This is an expected value calculation. But it has to be worth the risk. How do you determine which bad decisions in the present will pinch the opponent into making certain moves later which will give you and advantage. Can we leverage the math we've just implemented in the v2 calculations and the strategic calculations to figure out how to measure bussing?
+- Bussing is done when you have the choice to throw one of your own players into a extremely poor matchup, usually a 1. The trade off is that this decision NOW will result in much better choices for the rest of the players in later rounds. This is an expected value calculation. But it has to be worth the risk. How do you determine which bad decisions in the present will pinch the opponent into making certain moves later which will give you and advantage. Can we leverage the math we've just implemented in the v2 calculations and the strategic calculations to figure out how to measure bussing?
 
 Enhance the calc grid.
 - Originally, I had the FLOOR column because I wanted to know at a glance, which of the players you can choose to play first would have the least worst matchups. The floor is a sum of all the ratings left to right for each person's row. The player with the highest floor has the best games into the widest field.

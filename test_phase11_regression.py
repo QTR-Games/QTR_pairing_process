@@ -10,6 +10,8 @@ from qtr_pairing_process.ui_manager_v2 import UiManager
 
 
 class DummyTreeView:
+    """Minimal tree wrapper fixture so TreeGenerator can run without full UI wiring."""
+
     def __init__(self, tree):
         self.tree = tree
 
@@ -122,9 +124,14 @@ def test_lock_in_bus_threshold_dynamics():
     ui.row_checkboxes[0].set(1)
     threshold_round2 = ui._get_bus_threshold()
 
+    # With default prefs and scenario-dependent policy (no scenario override),
+    # threshold = average(global_threshold, depth_threshold).
+    # round1 depth=1 => (60 + 65) / 2 = 62
+    # round2 depth=2 => (60 + 62) / 2 = 61
     assert isinstance(threshold_round1, int)
     assert isinstance(threshold_round2, int)
-    assert threshold_round1 != threshold_round2
+    assert threshold_round1 == 62
+    assert threshold_round2 == 61
     root.destroy()
 
 
@@ -160,12 +167,15 @@ def test_memoization_hit_rate_increases_on_repeat_sort():
     tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
     gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_base_prefs())
 
-    _build_sample_tree(gen, tree)
+    root_node = _build_sample_tree(gen, tree)
+    scores_after_first = [gen.get_strategic3_from_tags(node) for node in tree.get_children(root_node)]
     stats_after_first = gen.get_memoization_stats().copy()
     gen.calculate_strategic3_scores("")
+    scores_after_second = [gen.get_strategic3_from_tags(node) for node in tree.get_children(root_node)]
     stats_after_second = gen.get_memoization_stats().copy()
 
     root.destroy()
+    assert scores_after_second == scores_after_first
     assert stats_after_second["hits"] > stats_after_first["hits"]
 
 
