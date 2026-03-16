@@ -23,8 +23,9 @@ All items from the previous backlog are now implemented.
   - [x] My Team First checked: chooser-direction flips correctly by depth owner.
 - [x] Flip Grid display bug fixed (model updates now trigger UI refresh while remaining display-only).
 - [x] Quick guide added for reading tree choices and sort behavior.
+- [x] Tooltip numbers guide added to explain C2/Q2/R2 and pop-up explainability values, with Data Management access.
+- [x] Full user guide added for main app workflows, with separate Data Management access.
 
 ## New Backlog
 
-- Add a guide for the user which informs them how to read the yellow pop up info window that shows when you hover over a node in the tree. This should explain what the numers mean for C2/Q2/R2 especially. This should be visible from a button in the data management window.
-- Add a full user's guide explaining how to use the main functions of the app. Separate this from the guide about the pop up numbers. This should be visible from a different button in the data management menu.
+- None currently.

@@ -2012,6 +2012,74 @@ class UiManager:
             )
         except Exception as exc:
             messagebox.showerror("Tree Cache", f"Failed to clear all tree cache entries: {exc}")
+
+    def _open_markdown_guide(self, title: str, relative_path: str):
+        """Open a markdown guide in a simple in-app reader window."""
+        try:
+            guide_path = Path(__file__).parent.parent / relative_path
+            if not guide_path.exists():
+                messagebox.showerror("Guide", f"Guide file not found:\n{guide_path}")
+                return
+
+            content = guide_path.read_text(encoding="utf-8")
+
+            guide_window = tk.Toplevel(self.root)
+            guide_window.title(title)
+            guide_window.geometry("900x700")
+            guide_window.transient(self.root)
+
+            header = tk.Label(
+                guide_window,
+                text=title,
+                font=("Arial", 13, "bold"),
+                bg="lightcyan",
+                anchor="w",
+                padx=10,
+                pady=8,
+            )
+            header.pack(fill=tk.X)
+
+            frame = tk.Frame(guide_window)
+            frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+
+            scrollbar = tk.Scrollbar(frame)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            text_widget = tk.Text(
+                frame,
+                wrap=tk.WORD,
+                yscrollcommand=scrollbar.set,
+                font=("Consolas", 10),
+            )
+            text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.config(command=text_widget.yview)
+
+            text_widget.insert("1.0", content)
+            text_widget.config(state=tk.DISABLED)
+
+            footer = tk.Frame(guide_window)
+            footer.pack(fill=tk.X, padx=8, pady=(0, 8))
+
+            tk.Button(
+                footer,
+                text="Close",
+                width=14,
+                command=guide_window.destroy,
+            ).pack(side=tk.RIGHT)
+        except Exception as exc:
+            messagebox.showerror("Guide", f"Failed to open guide: {exc}")
+
+    def open_tooltip_numbers_guide(self):
+        self._open_markdown_guide(
+            title="Tree Tooltip Numbers Guide",
+            relative_path="docs/NODE_TOOLTIP_NUMBERS_GUIDE.md",
+        )
+
+    def open_full_user_guide(self):
+        self._open_markdown_guide(
+            title="QTR Pairing Process User Guide",
+            relative_path="docs/FULL_USER_GUIDE.md",
+        )
     
     def show_data_management_menu(self):
         """Show a popup menu with data management options."""
@@ -2092,6 +2160,12 @@ class UiManager:
                      relief=tk.RAISED, borderwidth=1).pack(pady=3)
             tk.Button(data_mgmt_frame, text="Clear All Tree Cache", width=20, height=1,
                      command=lambda: self._menu_action(menu_window, self.clear_generated_tree_cache_all_matchups),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
+            tk.Button(data_mgmt_frame, text="Tooltip Numbers Guide", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.open_tooltip_numbers_guide),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
+            tk.Button(data_mgmt_frame, text="Full User Guide", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.open_full_user_guide),
                      relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
             
             # BOTTOM LEFT: Team Management section
