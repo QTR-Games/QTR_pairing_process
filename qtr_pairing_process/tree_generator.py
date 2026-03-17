@@ -4,6 +4,7 @@ from itertools import combinations, permutations
 import tkinter
 import math
 import hashlib
+import json
 
 import qtr_pairing_process.utility_funcs as uf
 
@@ -50,6 +51,13 @@ class TreeGenerator:
         self._memo_last_clear_bucket = ""
         self._memo_last_cleared_entries = 0
         self._memo_key_mode = "structural_path_text_base_rating"
+        self._memo_schema_version = 1
+        self.persistent_memo_enabled = bool(
+            self._read_raw_pref(("strategic3", "persistent_memo_enabled"), False)
+        )
+        self.persistent_memo_max_entries = int(
+            self._read_numeric_pref(("strategic3", "persistent_memo_max_entries"), 50000, 1000, 250000)
+        )
 
     def _read_raw_pref(self, path, fallback):
         current = self.strategic_preferences
@@ -723,6 +731,94 @@ class TreeGenerator:
             current = self.treeview.tree.parent(current)
         lineage.reverse()
         return tuple(lineage)
+
+    def get_memo_state_token(self):
+        return self._memo_state_token
+
+    def get_memo_schema_version(self) -> int:
+        return int(self._memo_schema_version)
+
+    def get_persistent_memo_signature(self):
+        return {
+            "schema_version": self.get_memo_schema_version(),
+            "parameter_signature": self._compute_parameter_signature(),
+            "memo_state_token": self.get_memo_state_token(),
+            "memo_key_mode": self._memo_key_mode,
+        }
+
+    def export_memoization_snapshot(self, max_entries=None):
+        if not self.persistent_memo_enabled:
+            return None
+        if self._strategic_memo_context is None or not self._strategic_memo:
+            return None
+
+        entry_cap = int(max_entries if max_entries is not None else self.persistent_memo_max_entries)
+        entry_cap = max(1, entry_cap)
+
+        entries = []
+        for idx, (memo_key, score) in enumerate(self._strategic_memo.items()):
+            if idx >= entry_cap:
+                break
+            entries.append([
+                json.loads(json.dumps(memo_key, ensure_ascii=False, default=str)),
+                int(score),
+            ])
+
+        return {
+            "schema_version": self.get_memo_schema_version(),
+            "memo_key_mode": self._memo_key_mode,
+            "memo_context": json.loads(json.dumps(self._strategic_memo_context, ensure_ascii=False, default=str)),
+            "memo_state_token": self.get_memo_state_token(),
+            "parameter_signature": json.loads(json.dumps(self._compute_parameter_signature(), ensure_ascii=False, default=str)),
+            "entries": entries,
+        }
+
+    def _tupleize_nested(self, value):
+        if isinstance(value, list):
+            return tuple(self._tupleize_nested(item) for item in value)
+        return value
+
+    def import_memoization_snapshot(self, payload):
+        if not self.persistent_memo_enabled:
+            return False
+        if not isinstance(payload, dict):
+            return False
+
+        schema_version = int(payload.get("schema_version", 0) or 0)
+        if schema_version != self.get_memo_schema_version():
+            return False
+        if payload.get("memo_key_mode") != self._memo_key_mode:
+            return False
+
+        state_token = payload.get("memo_state_token")
+        if state_token != self.get_memo_state_token():
+            return False
+
+        persisted_params = self._tupleize_nested(payload.get("parameter_signature"))
+        if persisted_params != self._compute_parameter_signature():
+            return False
+
+        persisted_context = self._tupleize_nested(payload.get("memo_context"))
+        if persisted_context != self._build_strategic_memo_context():
+            return False
+
+        restored = {}
+        for item in payload.get("entries", []):
+            if not isinstance(item, list) or len(item) != 2:
+                continue
+            key_raw, score_raw = item
+            key_tuple = self._tupleize_nested(key_raw)
+            try:
+                restored[key_tuple] = int(score_raw)
+            except (TypeError, ValueError):
+                continue
+
+        if not restored:
+            return False
+
+        self._strategic_memo_context = persisted_context
+        self._strategic_memo = restored
+        return True
 
     def calculate_all_path_values_enhanced(self, node, alpha=None):
         """Enhanced cumulative scoring that is optimistic for us and adversarial for opponent turns."""

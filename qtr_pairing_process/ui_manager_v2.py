@@ -1175,6 +1175,143 @@ class UiManager:
         except Exception as exc:
             self.logger.warning(f"Could not ensure generated_tree_cache table: {exc}")
 
+    def _is_persistent_strategic_memo_enabled(self) -> bool:
+        if not hasattr(self, 'tree_generator') or not self.tree_generator:
+            return False
+        return bool(getattr(self.tree_generator, 'persistent_memo_enabled', False))
+
+    def _ensure_strategic_memo_cache_table(self):
+        if not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
+            return
+        sql = """
+            CREATE TABLE IF NOT EXISTS strategic_memo_cache (
+                team_1_name TEXT NOT NULL,
+                team_2_name TEXT NOT NULL,
+                scenario_id INTEGER NOT NULL,
+                rating_system TEXT NOT NULL,
+                team_first INTEGER NOT NULL,
+                ratings_signature TEXT NOT NULL,
+                schema_version INTEGER NOT NULL,
+                parameter_signature TEXT NOT NULL,
+                memo_state_token TEXT NOT NULL,
+                memo_json TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (
+                    team_1_name,
+                    team_2_name,
+                    scenario_id,
+                    rating_system,
+                    team_first,
+                    ratings_signature,
+                    schema_version,
+                    parameter_signature,
+                    memo_state_token
+                )
+            )
+        """
+        try:
+            self.db_manager.execute_sql(sql)
+        except Exception as exc:
+            self.logger.warning(f"Could not ensure strategic_memo_cache table: {exc}")
+
+    def _load_persistent_strategic_memo(self, cache_key: tuple):
+        if not cache_key or not self._is_persistent_strategic_memo_enabled():
+            return None
+        if not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
+            return None
+
+        self._ensure_strategic_memo_cache_table()
+        signature = self.tree_generator.get_persistent_memo_signature()
+        parameter_signature = json.dumps(signature.get("parameter_signature"), ensure_ascii=False, default=str)
+        memo_state_token = str(signature.get("memo_state_token") or "")
+        if not memo_state_token:
+            return None
+
+        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = cache_key
+        try:
+            with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT memo_json
+                    FROM strategic_memo_cache
+                    WHERE team_1_name = ?
+                      AND team_2_name = ?
+                      AND scenario_id = ?
+                      AND rating_system = ?
+                      AND team_first = ?
+                      AND ratings_signature = ?
+                      AND schema_version = ?
+                      AND parameter_signature = ?
+                      AND memo_state_token = ?
+                    """,
+                    (
+                        team_1,
+                        team_2,
+                        int(scenario_id),
+                        str(rating_system),
+                        int(bool(team_first)),
+                        str(ratings_signature),
+                        int(signature.get("schema_version", 0)),
+                        parameter_signature,
+                        memo_state_token,
+                    ),
+                )
+                row = cur.fetchone()
+            if not row:
+                return None
+            return json.loads(row[0])
+        except Exception as exc:
+            self.logger.warning(f"Failed to load persistent strategic memo: {exc}")
+            return None
+
+    def _save_persistent_strategic_memo(self, cache_key: tuple, payload: Dict[str, Any]):
+        if not cache_key or not payload or not self._is_persistent_strategic_memo_enabled():
+            return
+        if not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
+            return
+
+        self._ensure_strategic_memo_cache_table()
+        signature = self.tree_generator.get_persistent_memo_signature()
+        parameter_signature = json.dumps(signature.get("parameter_signature"), ensure_ascii=False, default=str)
+        memo_state_token = str(signature.get("memo_state_token") or "")
+        if not memo_state_token:
+            return
+
+        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = cache_key
+        try:
+            memo_json = json.dumps(payload, ensure_ascii=False)
+            with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO strategic_memo_cache
+                    (team_1_name, team_2_name, scenario_id, rating_system, team_first, ratings_signature,
+                     schema_version, parameter_signature, memo_state_token, memo_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(team_1_name, team_2_name, scenario_id, rating_system, team_first, ratings_signature,
+                                schema_version, parameter_signature, memo_state_token)
+                    DO UPDATE SET
+                        memo_json = excluded.memo_json,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        team_1,
+                        team_2,
+                        int(scenario_id),
+                        str(rating_system),
+                        int(bool(team_first)),
+                        str(ratings_signature),
+                        int(signature.get("schema_version", 0)),
+                        parameter_signature,
+                        memo_state_token,
+                        memo_json,
+                    ),
+                )
+                conn.commit()
+        except Exception as exc:
+            self.logger.warning(f"Failed to save persistent strategic memo: {exc}")
+
     def _load_persistent_tree_snapshot(self, cache_key: tuple):
         if not cache_key or not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
             return None
@@ -2605,10 +2742,22 @@ class UiManager:
             self._strategic_sort_invocation_id = 0
         self._strategic_sort_invocation_id += 1
         strategic_invocation_id = self._strategic_sort_invocation_id
+        cache_key = self._build_tree_cache_key()
+        self._set_tree_memo_state_token(cache_key)
         with self.perf.span(
             "strategic.sort.end_to_end",
             strategic_invocation_id=strategic_invocation_id,
         ):
+            if self._is_persistent_strategic_memo_enabled() and cache_key:
+                persisted_payload = self._load_persistent_strategic_memo(cache_key)
+                loaded = self.tree_generator.import_memoization_snapshot(persisted_payload)
+                if loaded:
+                    self._log_perf_entry(
+                        "strategic.memo.persist.load",
+                        0.0,
+                        strategic_invocation_id=strategic_invocation_id,
+                    )
+
             self.current_sort_mode = "strategic3"
             self.active_sort_mode = "strategic3"
 
@@ -2649,6 +2798,17 @@ class UiManager:
                 self.update_sort_button_states()
             with self.perf.span("strategic.sort.update_sort_hint"):
                 self._update_sort_hint()
+
+            if self._is_persistent_strategic_memo_enabled() and cache_key:
+                memo_payload = self.tree_generator.export_memoization_snapshot()
+                if memo_payload:
+                    self._save_persistent_strategic_memo(cache_key, memo_payload)
+                    self._log_perf_entry(
+                        "strategic.memo.persist.save",
+                        0.0,
+                        strategic_invocation_id=strategic_invocation_id,
+                        entries=len(memo_payload.get("entries", [])),
+                    )
     
     def unsort_tree(self):
         """Remove all sorting and return to default order"""

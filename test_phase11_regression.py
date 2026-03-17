@@ -39,6 +39,11 @@ class DummyTokenTreeGenerator:
 
 
 class DummyMemoStatsTreeGenerator:
+    persistent_memo_enabled = False
+
+    def set_memo_state_token(self, _token):
+        return None
+
     def get_memoization_stats(self):
         return {
             "hits": 7,
@@ -55,6 +60,13 @@ class DummyMemoStatsTreeGenerator:
             "memo_clear_bucket": "state_change",
             "memo_cleared_entries": 2,
         }
+
+
+def _persistent_prefs():
+    prefs = _base_prefs()
+    prefs["strategic3"]["persistent_memo_enabled"] = True
+    prefs["strategic3"]["persistent_memo_max_entries"] = 50000
+    return prefs
 
 
 def _base_prefs():
@@ -343,6 +355,7 @@ def test_sort_by_strategic_emits_new_telemetry_fields(tmp_path):
     ui = UiManager.__new__(UiManager)
     setattr(ui, "tree_generator", cast(Any, DummyMemoStatsTreeGenerator()))
     setattr(ui, "perf", cast(Any, PerfTimer(enabled=True, log_path=tmp_path / "perf_test.log")))
+    ui._tree_generation_id = 1
 
     ui.apply_combined_sort = lambda compute_primary_tags=True: None
     ui.update_sort_value_column = lambda: None
@@ -362,6 +375,54 @@ def test_sort_by_strategic_emits_new_telemetry_fields(tmp_path):
     assert "memo_clear_reason=memo_state_change" in log_text
     assert "memo_clear_bucket=state_change" in log_text
     assert "memo_cleared_entries=2" in log_text
+
+
+def test_persistent_memo_snapshot_roundtrip_with_strict_signature():
+    gen = TreeGenerator(treeview=DummyTreeView(object()), strategic_preferences=_persistent_prefs())
+    gen.set_memo_state_token("stable-token")
+    gen._strategic_memo_context = gen._build_strategic_memo_context()
+    gen._strategic_memo = {
+        (("Pairings", 0), ("A vs X", 5)): 17,
+        (("Pairings", 0), ("B vs Y", 3)): 11,
+    }
+
+    payload = gen.export_memoization_snapshot()
+    assert payload is not None
+    assert payload.get("entries")
+
+    gen2 = TreeGenerator(treeview=DummyTreeView(object()), strategic_preferences=_persistent_prefs())
+    gen2.set_memo_state_token("stable-token")
+
+    imported = gen2.import_memoization_snapshot(payload)
+    assert imported is True
+    assert len(gen2._strategic_memo) > 0
+
+
+def test_persistent_memo_snapshot_rejects_state_or_param_mismatch():
+    gen = TreeGenerator(treeview=DummyTreeView(object()), strategic_preferences=_persistent_prefs())
+    gen.set_memo_state_token("state-A")
+    gen._strategic_memo_context = gen._build_strategic_memo_context()
+    gen._strategic_memo = {(("Pairings", 0), ("A vs X", 5)): 9}
+    payload = gen.export_memoization_snapshot()
+    assert payload is not None
+
+    # State mismatch should reject import.
+    gen_state_mismatch = TreeGenerator(
+        treeview=DummyTreeView(object()),
+        strategic_preferences=_persistent_prefs(),
+    )
+    gen_state_mismatch.set_memo_state_token("state-B")
+    assert gen_state_mismatch.import_memoization_snapshot(payload) is False
+
+    # Parameter mismatch should reject import.
+    param_mismatch_prefs = _persistent_prefs()
+    param_mismatch_prefs["strategic3"]["lam"] = 0.99
+    gen_param_mismatch = TreeGenerator(
+        treeview=DummyTreeView(object()),
+        strategic_preferences=param_mismatch_prefs,
+    )
+    gen_param_mismatch.set_memo_state_token("state-A")
+    assert gen_param_mismatch.import_memoization_snapshot(payload) is False
 
 
 def test_apply_combined_strategic_reuses_fresh_base_metrics():

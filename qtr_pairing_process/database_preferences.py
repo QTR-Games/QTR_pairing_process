@@ -18,7 +18,7 @@ class DatabasePreferences:
             if config_file is not None
             else Path(__file__).parent.parent / "KLIK_KLAK_KONFIG.json"
         )
-        self.max_config_backups = 5
+        self.max_config_backups = 3
         self.logger = self._setup_logger()
 
     def _normalize_database_reference(self, path: Optional[str], name: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
@@ -122,7 +122,9 @@ class DatabasePreferences:
                 "round_win_guardrail_strength": "medium",
                 "tie_break_order": "confidence_then_cumulative",
                 "auto_sort_after_generate": True,
-                "auto_sort_toggle_enabled": True
+                "auto_sort_toggle_enabled": True,
+                "persistent_memo_enabled": False,
+                "persistent_memo_max_entries": 50000
             },
             "bus": {
                 "threshold_policy": "scenario_dependent",
@@ -177,7 +179,9 @@ class DatabasePreferences:
                 "round_win_guardrail_strength": strategic3.get("round_win_guardrail_strength", defaults["strategic3"]["round_win_guardrail_strength"]),
                 "tie_break_order": strategic3.get("tie_break_order", defaults["strategic3"]["tie_break_order"]),
                 "auto_sort_after_generate": bool(strategic3.get("auto_sort_after_generate", defaults["strategic3"]["auto_sort_after_generate"])),
-                "auto_sort_toggle_enabled": bool(strategic3.get("auto_sort_toggle_enabled", defaults["strategic3"]["auto_sort_toggle_enabled"]))
+                "auto_sort_toggle_enabled": bool(strategic3.get("auto_sort_toggle_enabled", defaults["strategic3"]["auto_sort_toggle_enabled"])),
+                "persistent_memo_enabled": bool(strategic3.get("persistent_memo_enabled", defaults["strategic3"]["persistent_memo_enabled"])),
+                "persistent_memo_max_entries": int(self._clamp(strategic3.get("persistent_memo_max_entries", defaults["strategic3"]["persistent_memo_max_entries"]), 1000.0, 250000.0, defaults["strategic3"]["persistent_memo_max_entries"]))
             },
             "bus": {
                 "threshold_policy": bus.get("threshold_policy", defaults["bus"]["threshold_policy"]),
