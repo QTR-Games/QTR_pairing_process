@@ -39,6 +39,7 @@ class TreeGenerator:
         self.strategic3_rho = self._read_pref(("strategic3", "rho"), 0.20, 0.0, 5.0)
         self.strategic3_lam = self._read_pref(("strategic3", "lam"), 0.30, 0.0, 5.0)
         self._generation_id = 0
+        self._memo_state_token = None
         self._strategic_memo_context = None
         self._strategic_memo = {}
         self._strategic_memo_hits = 0
@@ -599,8 +600,14 @@ class TreeGenerator:
             for tag in tags:
                 tag_str = str(tag)
                 if tag_str.startswith(prefix):
-                    return int(tag_str.replace(prefix, ''))
-        except (ValueError, TypeError):
+                    suffix = tag_str[len(prefix):]
+                    try:
+                        return int(suffix)
+                    except ValueError:
+                        # Ignore non-numeric sibling prefixes, e.g. strategic3_exploit_
+                        # when reading strategic3_.
+                        continue
+        except TypeError:
             pass
         return default
 
@@ -613,14 +620,19 @@ class TreeGenerator:
         self._strategic_memo = {}
 
     def set_generation_id(self, generation_id):
-        """Set tree generation token used for strategic memoization context."""
+        """Set tree generation token used for diagnostics and cache bookkeeping."""
         try:
             normalized = int(generation_id)
         except (TypeError, ValueError):
             normalized = 0
-        if normalized != self._generation_id:
-            self._generation_id = normalized
-            self.clear_memoization(reason="generation_change")
+        self._generation_id = normalized
+
+    def set_memo_state_token(self, token):
+        """Set memo state token and clear memo only when score-relevant state changes."""
+        normalized = None if token is None else str(token)
+        if normalized != self._memo_state_token:
+            self._memo_state_token = normalized
+            self.clear_memoization(reason="memo_state_change")
 
     def get_memoization_stats(self):
         """Return cumulative memoization statistics for strategic scoring."""
@@ -655,7 +667,7 @@ class TreeGenerator:
         }.get(self._get_guardrail_strength(), 0.14)
 
     def _build_strategic_memo_context(self):
-        return ("strategic3", self._compute_parameter_signature(), self._generation_id)
+        return ("strategic3", self._compute_parameter_signature(), self._memo_state_token)
 
     def calculate_all_path_values_enhanced(self, node, alpha=None):
         """Enhanced cumulative scoring that is optimistic for us and adversarial for opponent turns."""

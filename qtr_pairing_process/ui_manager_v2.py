@@ -83,6 +83,15 @@ class UiManager:
         config_rating_system = ui_prefs.get('rating_system')
 
         self.tree_autogen_enabled = self.db_preferences.get_tree_autogen_enabled()
+        self.lazy_sort_on_expand = bool(ui_prefs.get("lazy_sort_on_expand", False))
+        self.lazy_sort_mode = str(
+            ui_prefs.get(
+                "lazy_sort_mode",
+                "fast_expand_first" if self.lazy_sort_on_expand else "strict",
+            )
+        )
+        if self.lazy_sort_mode == "fast_expand_first":
+            self.lazy_sort_on_expand = True
         
         self.current_rating_system = config_rating_system or self.settings_manager.get_rating_system()
         self.rating_config = RATING_SYSTEMS[self.current_rating_system]
@@ -138,6 +147,11 @@ class UiManager:
         self._tree_cache_key = None
         self._tree_generation_id = 0
         self._calc_grid_cache = {}
+        self._primary_metrics_dirty = True
+        self._last_primary_metrics_signature = None
+        self._metric_signatures = {}
+        self._sorted_children_cache = {}
+        self._available_explainability_metrics = set()
         
         
         # Initialize logger
@@ -236,6 +250,7 @@ class UiManager:
         self.matchup_output_container.grid(row=0, column=2, padx=(0, 10), pady=10, sticky="nsew")
 
         self.tree_autogen_var = tk.IntVar(value=1 if self.tree_autogen_enabled else 0)
+        self.lazy_sort_on_expand_var = tk.IntVar(value=1 if self.lazy_sort_on_expand else 0)
         self.create_matchup_output_panel()
         self.matchup_output_panel_created = True
 
@@ -413,6 +428,7 @@ class UiManager:
         self.treeview.tree.tag_configure('4', background="greenyellow")
         self.treeview.tree.tag_configure('5', background="lime")
         self.treeview.tree.bind("<<TreeviewSelect>>", self._on_tree_selection_changed, add='+')
+        self.treeview.tree.bind("<<TreeviewOpen>>", self._on_tree_node_opened, add='+')
         self.treeview.tree.bind("<Motion>", self._on_tree_hover_explain, add='+')
         self.treeview.tree.bind("<Leave>", self._hide_tree_explain_tooltip, add='+')
         self.treeview.pack(expand=1, fill='both')
@@ -461,14 +477,11 @@ class UiManager:
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
 
-        with self.perf.span("startup.update_combobox_colors"):
-            self.update_combobox_colors()
-        with self.perf.span("startup.init_display_headers"):
-            self.init_display_headers()
+        self.update_combobox_colors()
+        self.init_display_headers()
         
         # Create status bar
-        with self.perf.span("startup.create_status_bar"):
-            self.create_status_bar()
+        self.create_status_bar()
         self._refresh_paste_button_state()
         
         # Show welcome dialog if this is first time or user hasn't disabled it
@@ -805,6 +818,38 @@ class UiManager:
         self.db_preferences.set_tree_autogen_enabled(enabled)
         self._notify_restart_required("Tree auto-generation", enabled)
 
+    def _on_lazy_sort_toggle(self):
+        enabled = bool(self.lazy_sort_on_expand_var.get())
+        self.lazy_sort_on_expand = enabled
+        self.lazy_sort_mode = "fast_expand_first" if enabled else "strict"
+        self.db_preferences.update_ui_preferences(
+            {
+                "lazy_sort_on_expand": enabled,
+                "lazy_sort_mode": self.lazy_sort_mode,
+            }
+        )
+
+    def _on_tree_node_opened(self, _event=None):
+        if not getattr(self, "lazy_sort_on_expand", False):
+            return
+        if not self.active_sort_mode and not self.active_column_sort:
+            return
+
+        node = ""
+        try:
+            node = self.treeview.tree.focus() or ""
+        except Exception:
+            node = ""
+        if not node:
+            return
+
+        self._sort_children_combined(
+            node,
+            self.active_sort_mode,
+            self.active_column_sort,
+            recurse_mode="expanded",
+        )
+
     def _set_grid_dirty(self, is_dirty: bool):
         if self._grid_dirty != is_dirty:
             self._grid_dirty = is_dirty
@@ -1004,6 +1049,10 @@ class UiManager:
             self._tree_cache.clear()
         self._tree_cache_key = None
         self._invalidate_calc_grid_cache()
+        self._sorted_children_cache.clear()
+        self._primary_metrics_dirty = True
+        self._last_primary_metrics_signature = None
+        self._metric_signatures.clear()
         if hasattr(self, 'tree_generator') and self.tree_generator:
             self.tree_generator.clear_memoization(reason=reason)
         if reason and self.perf.enabled:
@@ -1041,6 +1090,17 @@ class UiManager:
         self._tree_generation_id = normalized
         if hasattr(self, 'tree_generator') and self.tree_generator:
             self.tree_generator.set_generation_id(normalized)
+
+    def _set_tree_memo_state_token(self, cache_key=None):
+        if not hasattr(self, 'tree_generator') or not self.tree_generator:
+            return
+
+        token_source = cache_key if cache_key is not None else self._build_tree_cache_key()
+        if token_source is None:
+            token_source = ("uncached", self._tree_generation_id)
+
+        token = json.dumps(token_source, ensure_ascii=False, default=str)
+        self.tree_generator.set_memo_state_token(token)
 
     def _ensure_generated_tree_cache_table(self):
         if not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
@@ -1190,10 +1250,116 @@ class UiManager:
         self.current_sort_mode = "none"
         self.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
         self.active_column_sort = None
+        self._sorted_children_cache.clear()
+        self._primary_metrics_dirty = True
+        self._last_primary_metrics_signature = None
+        self._metric_signatures.clear()
+        self._available_explainability_metrics.clear()
         self.update_column_headers()
         self.update_sort_value_column()
         self.update_sort_button_states()
         self._update_sort_hint()
+
+    def _mark_explainability_metrics_available(self, primary_mode):
+        if primary_mode == "cumulative":
+            self._available_explainability_metrics.add("cumulative")
+        elif primary_mode == "confidence":
+            self._available_explainability_metrics.add("confidence")
+            self._available_explainability_metrics.add("regret")
+            self._available_explainability_metrics.add("downside")
+            self._available_explainability_metrics.add("guardrail")
+        elif primary_mode == "resistance":
+            self._available_explainability_metrics.add("resistance")
+        elif primary_mode == "strategic3":
+            self._available_explainability_metrics.add("strategic")
+            self._available_explainability_metrics.add("exploit")
+
+    def _format_explainability_metric(self, metric_key, value):
+        if metric_key in self._available_explainability_metrics:
+            return str(value)
+        return "--"
+
+    def _build_primary_metrics_signature(self, primary_mode):
+        if not primary_mode:
+            return None
+
+        metric_signature = self._build_metric_signature(primary_mode)
+        return (primary_mode, metric_signature)
+
+    def _base_cache_signature(self):
+        cache_key = self._build_tree_cache_key()
+        if cache_key is None:
+            scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
+            team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
+            ratings_signature = self._get_grid_ratings_signature() if hasattr(self, 'grid_data_model') else None
+            cache_key = (
+                self.team1_var.get().strip() if hasattr(self, 'team1_var') else "",
+                self.team2_var.get().strip() if hasattr(self, 'team2_var') else "",
+                scenario_id,
+                getattr(self, 'current_rating_system', ''),
+                team_first,
+                ratings_signature,
+            )
+        return cache_key
+
+    def _build_metric_signature(self, metric_key):
+        cache_key = self._base_cache_signature()
+        if not hasattr(self, 'tree_generator') or not self.tree_generator:
+            return (metric_key, cache_key)
+
+        tree_gen = self.tree_generator
+
+        def numeric(value, default=0.0):
+            try:
+                return round(float(value), 6)
+            except (TypeError, ValueError):
+                return round(float(default), 6)
+
+        if metric_key == "cumulative":
+            return (metric_key, cache_key, numeric(tree_gen.cumulative2_alpha, 0.8))
+        if metric_key == "confidence":
+            return (
+                metric_key,
+                cache_key,
+                numeric(tree_gen.confidence2_k, 0.85),
+                numeric(tree_gen.confidence2_u, 12.0),
+            )
+        if metric_key == "resistance":
+            return (
+                metric_key,
+                cache_key,
+                numeric(tree_gen.resistance2_beta, 1.0),
+                numeric(tree_gen.resistance2_gamma, 2.0),
+            )
+        if metric_key == "strategic3":
+            return (
+                metric_key,
+                cache_key,
+                tree_gen._compute_parameter_signature(),
+                self._build_metric_signature("cumulative"),
+                self._build_metric_signature("confidence"),
+                self._build_metric_signature("resistance"),
+            )
+
+        return (metric_key, cache_key)
+
+    def _is_metric_stale(self, metric_key):
+        if self._primary_metrics_dirty:
+            return True
+        return self._metric_signatures.get(metric_key) != self._build_metric_signature(metric_key)
+
+    def _mark_metric_fresh(self, metric_key):
+        self._metric_signatures[metric_key] = self._build_metric_signature(metric_key)
+
+    def _should_recompute_primary_on_column_click(self):
+        if not self.active_sort_mode:
+            return False
+
+        if self._primary_metrics_dirty:
+            return True
+
+        current_signature = self._build_primary_metrics_signature(self.active_sort_mode)
+        return current_signature != self._last_primary_metrics_signature
 
     def _log_perf_entry(self, label: str, elapsed_ms: float, **meta: Any):
         if not self.perf.enabled:
@@ -1661,8 +1827,7 @@ class UiManager:
 
     def _run_scenario_calculations(self):
         self._scenario_calc_job = None
-        with self.perf.span("grid.scenario_calculations"):
-            self._on_scenario_calculations()
+        self._on_scenario_calculations()
 
     def _on_scenario_calculations(self):
         # Guard: Don't run calculations if teams are not selected
@@ -1681,9 +1846,6 @@ class UiManager:
         if cached_rows is None:
             cached_rows = self._compute_calc_grid_rows_for_current_state()
             self._calc_grid_cache[cache_key] = cached_rows
-            self._log_perf_entry("calc_grid.cache.miss", 0.0, entries=len(self._calc_grid_cache))
-        else:
-            self._log_perf_entry("calc_grid.cache.hit", 0.0, entries=len(self._calc_grid_cache))
 
         self._apply_calc_grid_rows(cached_rows)
 
@@ -2220,6 +2382,25 @@ class UiManager:
                 bg="mistyrose"
             )
             tree_autogen_toggle.pack(pady=(0, 10))
+
+            lazy_sort_toggle = tk.Checkbutton(
+                database_frame,
+                text="Enable Fast Lazy Sorting",
+                variable=self.lazy_sort_on_expand_var,
+                command=self._on_lazy_sort_toggle,
+                bg="mistyrose"
+            )
+            lazy_sort_toggle.pack(pady=(0, 6))
+
+            tk.Label(
+                database_frame,
+                text="Sorts expanded branches first; deeper branches sort on expand.",
+                bg="mistyrose",
+                fg="#5b2c2c",
+                font=("Arial", 8),
+                wraplength=220,
+                justify=tk.LEFT,
+            ).pack(pady=(0, 10))
             print("Database section added successfully!")  # Debug output
             
             # Close button frame at the bottom
@@ -2270,6 +2451,7 @@ class UiManager:
             if cache_key == self._tree_cache_key and self._tree_has_nodes():
                 self.tree_generator.our_team_first = our_team_first
                 self._set_tree_generation_id(self._tree_generation_id)
+                self._set_tree_memo_state_token(cache_key)
                 self._log_perf_entry("tree.cache.hit", 0.0, reason="active")
                 self._reset_tree_sort_state()
                 return
@@ -2289,6 +2471,7 @@ class UiManager:
                 self._tree_cache_key = cache_key
                 self.tree_generator.our_team_first = our_team_first
                 self._set_tree_generation_id(generation_id)
+                self._set_tree_memo_state_token(cache_key)
                 self._log_perf_entry("tree.cache.hit", 0.0, reason="restore")
                 self._reset_tree_sort_state()
                 return
@@ -2317,6 +2500,7 @@ class UiManager:
                 our_team_first=False,
             )
         self._set_tree_generation_id(self._next_tree_generation_id())
+        self._set_tree_memo_state_token(cache_key)
         
         # Automatically expand the root "Pairings" node
         root_nodes = self.treeview.tree.get_children()
@@ -2375,24 +2559,34 @@ class UiManager:
 
     def sort_by_strategic(self):
         """Sort tree by unified strategic score using enhanced metric foundations."""
-        self.current_sort_mode = "strategic3"
-        self.active_sort_mode = "strategic3"
-        self.apply_combined_sort(compute_primary_tags=True)
-        memo_stats = self.tree_generator.get_memoization_stats()
-        if self.perf.enabled:
-            self._log_perf_entry(
-                "strategic.memo.stats",
-                0.0,
-                hits=memo_stats["hits"],
-                misses=memo_stats["misses"],
-                hit_rate=f"{memo_stats['hit_rate']:.2%}",
-                entries=memo_stats["entries"],
-            )
-        self.update_sort_value_column()
-        self.update_column_headers()
-        self.is_sorted = True
-        self.update_sort_button_states()
-        self._update_sort_hint()
+        with self.perf.span("strategic.sort.end_to_end"):
+            self.current_sort_mode = "strategic3"
+            self.active_sort_mode = "strategic3"
+
+            with self.perf.span("strategic.sort.apply_combined"):
+                self.apply_combined_sort(compute_primary_tags=True)
+
+            memo_stats = self.tree_generator.get_memoization_stats()
+            if self.perf.enabled:
+                self._log_perf_entry(
+                    "strategic.memo.stats",
+                    0.0,
+                    hits=memo_stats["hits"],
+                    misses=memo_stats["misses"],
+                    hit_rate=f"{memo_stats['hit_rate']:.2%}",
+                    entries=memo_stats["entries"],
+                )
+
+            with self.perf.span("strategic.sort.update_sort_value_column"):
+                self.update_sort_value_column()
+            with self.perf.span("strategic.sort.update_column_headers"):
+                self.update_column_headers()
+
+            self.is_sorted = True
+            with self.perf.span("strategic.sort.update_sort_button_states"):
+                self.update_sort_button_states()
+            with self.perf.span("strategic.sort.update_sort_hint"):
+                self._update_sort_hint()
     
     def unsort_tree(self):
         """Remove all sorting and return to default order"""
@@ -2468,7 +2662,8 @@ class UiManager:
         self.column_sort_states[column_id] = new_state
         self.active_column_sort = column_id if new_state != "none" else None
 
-        self.apply_combined_sort(compute_primary_tags=True)
+        recompute_primary = self._should_recompute_primary_on_column_click()
+        self.apply_combined_sort(compute_primary_tags=recompute_primary)
         self.update_sort_value_column()
         self.update_column_headers()
 
@@ -2504,29 +2699,100 @@ class UiManager:
         primary_mode = self.active_sort_mode
         secondary_column = self.active_column_sort
 
-        if not primary_mode and not secondary_column:
-            self.tree_generator.unsort_tree()
-            return
+        with self.perf.span(
+            "sort.apply_combined.total",
+            primary=(primary_mode or "none"),
+            secondary=(secondary_column or "none"),
+            compute_primary=int(bool(compute_primary_tags)),
+        ):
+            if not primary_mode and not secondary_column:
+                with self.perf.span("sort.apply_combined.unsort_tree"):
+                    self.tree_generator.unsort_tree()
+                return
 
-        if compute_primary_tags and primary_mode:
-            if primary_mode == "cumulative":
-                self.tree_generator.calculate_all_path_values_enhanced("")
-            elif primary_mode == "confidence":
-                self.tree_generator.calculate_confidence_scores_enhanced("")
-            elif primary_mode == "resistance":
-                self.tree_generator.calculate_counter_resistance_scores_enhanced("")
-            elif primary_mode == "strategic3":
-                self.tree_generator.calculate_all_path_values_enhanced("")
-                self.tree_generator.calculate_confidence_scores_enhanced("")
-                self.tree_generator.calculate_counter_resistance_scores_enhanced("")
-                self.tree_generator.calculate_strategic3_scores("")
+            if compute_primary_tags and primary_mode:
+                self._set_tree_memo_state_token()
+                recomputed_any = False
 
-        self._sort_children_combined("", primary_mode, secondary_column)
+                def run_metric(metric_key, span_label, compute_func):
+                    nonlocal recomputed_any
+                    if not self._is_metric_stale(metric_key):
+                        return False
+                    with self.perf.span(span_label):
+                        compute_func("")
+                    self._mark_metric_fresh(metric_key)
+                    recomputed_any = True
+                    return True
 
-    def _sort_children_combined(self, node, primary_mode, secondary_column):
+                if primary_mode == "cumulative":
+                    run_metric("cumulative", "sort.compute.cumulative2", self.tree_generator.calculate_all_path_values_enhanced)
+                elif primary_mode == "confidence":
+                    run_metric("confidence", "sort.compute.confidence2", self.tree_generator.calculate_confidence_scores_enhanced)
+                elif primary_mode == "resistance":
+                    run_metric("resistance", "sort.compute.resistance2", self.tree_generator.calculate_counter_resistance_scores_enhanced)
+                elif primary_mode == "strategic3":
+                    recomputed_c2 = run_metric(
+                        "cumulative",
+                        "sort.compute.strategic3.cumulative2",
+                        self.tree_generator.calculate_all_path_values_enhanced,
+                    )
+                    recomputed_q2 = run_metric(
+                        "confidence",
+                        "sort.compute.strategic3.confidence2",
+                        self.tree_generator.calculate_confidence_scores_enhanced,
+                    )
+                    recomputed_r2 = run_metric(
+                        "resistance",
+                        "sort.compute.strategic3.resistance2",
+                        self.tree_generator.calculate_counter_resistance_scores_enhanced,
+                    )
+
+                    if self._is_metric_stale("strategic3") or recomputed_c2 or recomputed_q2 or recomputed_r2:
+                        with self.perf.span("sort.compute.strategic3.final"):
+                            self.tree_generator.calculate_strategic3_scores("")
+                        self._mark_metric_fresh("strategic3")
+                        recomputed_any = True
+
+                self._last_primary_metrics_signature = self._build_primary_metrics_signature(primary_mode)
+                self._primary_metrics_dirty = False
+                self._mark_explainability_metrics_available(primary_mode)
+
+            recurse_mode = "expanded" if getattr(self, "lazy_sort_on_expand", False) else "all"
+            self._sort_children_combined("", primary_mode, secondary_column, recurse_mode=recurse_mode)
+
+    def _sort_children_combined(self, node, primary_mode, secondary_column, _profile=None, _depth=0, recurse_mode="all"):
+        profile_owner = _profile is None
+        perf_enabled = bool(getattr(getattr(self, 'perf', None), 'enabled', False))
+        if profile_owner and perf_enabled and primary_mode:
+            _profile = {
+                "mode": primary_mode,
+                "nodes": 0,
+                "sibling_total": 0,
+                "max_siblings": 0,
+                "max_depth": 0,
+                "leaf_calls": 0,
+                "text_sort_ms": 0.0,
+                "tie_break_ms": 0.0,
+                "secondary_ms": 0.0,
+                "primary_ms": 0.0,
+                "reorder_ms": 0.0,
+                "recurse_ms": 0.0,
+                "cache_hit_nodes": 0,
+                "cache_miss_nodes": 0,
+                "start": time.perf_counter(),
+            }
+
         children = self.treeview.tree.get_children(node)
         if not children:
+            if _profile is not None:
+                _profile["leaf_calls"] += 1
             return
+
+        if _profile is not None:
+            _profile["nodes"] += 1
+            _profile["sibling_total"] += len(children)
+            _profile["max_siblings"] = max(_profile["max_siblings"], len(children))
+            _profile["max_depth"] = max(_profile["max_depth"], _depth)
 
         secondary_state = "none"
         if secondary_column:
@@ -2619,29 +2885,113 @@ class UiManager:
 
             return [metric for metric in configured if metric not in excluded]
 
-        children_sorted = list(children)
+        child_set_key = tuple(sorted(children))
+        tie_break_order = getattr(self, 'tie_break_order', 'confidence_then_cumulative')
+        current_sort_mode = getattr(self, 'current_sort_mode', 'none')
+        primary_signature = getattr(self, '_last_primary_metrics_signature', None)
+        sort_context_key = (
+            primary_mode or "none",
+            secondary_column or "none",
+            secondary_state,
+            bool(primary_reverse),
+            tie_break_order,
+            primary_signature,
+        )
+        cache_key = (node, child_set_key, sort_context_key)
+        sort_cache = getattr(self, '_sorted_children_cache', None)
+        if sort_cache is None:
+            sort_cache = {}
+            setattr(self, '_sorted_children_cache', sort_cache)
+        cached_order = sort_cache.get(cache_key)
 
-        # Final deterministic fallback for equal numeric metrics.
-        children_sorted.sort(key=lambda child_id: (self.treeview.tree.item(child_id, 'text') or "").lower())
+        if cached_order is not None:
+            children_sorted = list(cached_order)
+            if _profile is not None:
+                _profile["cache_hit_nodes"] += 1
+        else:
+            if _profile is not None:
+                _profile["cache_miss_nodes"] += 1
+            children_sorted = list(children)
 
-        # Deterministic tie-break chain obeys same decision-owner direction as primary mode.
-        if primary_mode:
-            for tie_metric in reversed(resolve_tie_break_chain()):
-                children_sorted.sort(key=lambda child_id, m=tie_metric: metric_value(child_id, m), reverse=primary_reverse)
+            # Final deterministic fallback for equal numeric metrics.
+            section_start = time.perf_counter()
+            children_sorted.sort(key=lambda child_id: (self.treeview.tree.item(child_id, 'text') or "").lower())
+            if _profile is not None:
+                _profile["text_sort_ms"] += (time.perf_counter() - section_start) * 1000.0
 
-        if secondary_column and secondary_state != "none":
-            children_sorted.sort(key=secondary_key, reverse=secondary_reverse)
+            # Deterministic tie-break chain obeys same decision-owner direction as primary mode.
+            if primary_mode:
+                section_start = time.perf_counter()
+                for tie_metric in reversed(resolve_tie_break_chain()):
+                    children_sorted.sort(key=lambda child_id, m=tie_metric: metric_value(child_id, m), reverse=primary_reverse)
+                if _profile is not None:
+                    _profile["tie_break_ms"] += (time.perf_counter() - section_start) * 1000.0
 
-        if primary_mode:
-            children_sorted.sort(key=primary_key, reverse=primary_reverse)
+            if secondary_column and secondary_state != "none":
+                section_start = time.perf_counter()
+                children_sorted.sort(key=secondary_key, reverse=secondary_reverse)
+                if _profile is not None:
+                    _profile["secondary_ms"] += (time.perf_counter() - section_start) * 1000.0
 
+            if primary_mode:
+                section_start = time.perf_counter()
+                children_sorted.sort(key=primary_key, reverse=primary_reverse)
+                if _profile is not None:
+                    _profile["primary_ms"] += (time.perf_counter() - section_start) * 1000.0
+
+            sort_cache[cache_key] = tuple(children_sorted)
+
+        section_start = time.perf_counter()
         for child in children_sorted:
             self.treeview.tree.detach(child)
         for child in children_sorted:
             self.treeview.tree.move(child, node, 'end')
+        if _profile is not None:
+            _profile["reorder_ms"] += (time.perf_counter() - section_start) * 1000.0
 
+        section_start = time.perf_counter()
         for child in children_sorted:
-            self._sort_children_combined(child, primary_mode, secondary_column)
+            should_recurse = recurse_mode == "all"
+            if recurse_mode == "expanded":
+                try:
+                    should_recurse = bool(self.treeview.tree.item(child, "open"))
+                except Exception:
+                    should_recurse = False
+            if not should_recurse:
+                continue
+            self._sort_children_combined(
+                child,
+                primary_mode,
+                secondary_column,
+                _profile=_profile,
+                _depth=_depth + 1,
+                recurse_mode=recurse_mode,
+            )
+        if _profile is not None:
+            _profile["recurse_ms"] += (time.perf_counter() - section_start) * 1000.0
+
+        if profile_owner and _profile is not None:
+            total_ms = (time.perf_counter() - _profile["start"]) * 1000.0
+            nodes = int(_profile["nodes"]) if _profile["nodes"] else 0
+            avg_siblings = (_profile["sibling_total"] / nodes) if nodes else 0.0
+            self._log_perf_entry(
+                "sort.children.profile",
+                total_ms,
+                mode=_profile["mode"],
+                nodes=nodes,
+                cache_hits=int(_profile["cache_hit_nodes"]),
+                cache_misses=int(_profile["cache_miss_nodes"]),
+                leaf_calls=int(_profile["leaf_calls"]),
+                max_depth=int(_profile["max_depth"]),
+                avg_siblings=f"{avg_siblings:.2f}",
+                max_siblings=int(_profile["max_siblings"]),
+                text_ms=f"{_profile['text_sort_ms']:.2f}",
+                tie_ms=f"{_profile['tie_break_ms']:.2f}",
+                secondary_ms=f"{_profile['secondary_ms']:.2f}",
+                primary_ms=f"{_profile['primary_ms']:.2f}",
+                reorder_ms=f"{_profile['reorder_ms']:.2f}",
+                recurse_ms=f"{_profile['recurse_ms']:.2f}",
+            )
 
     def update_scenario_box(self):
         scenarios = []
@@ -2829,9 +3179,8 @@ class UiManager:
 
     def set_team_dropdowns(self):
         team_names = self.select_team_names()
-        with self.perf.span("team_dropdowns.set_values"):
-            self.combobox_1['values'] = team_names
-            self.combobox_2['values'] = team_names
+        self.combobox_1['values'] = team_names
+        self.combobox_2['values'] = team_names
 
         if not self._team_dropdowns_initialized:
             self._team_dropdowns_initialized = True
@@ -2889,8 +3238,7 @@ class UiManager:
             print("DEBUG: No debugger detected - skipping auto-population")
 
     def load_grid_data_from_db(self, refresh_ui: bool = True):
-        with self.perf.span("grid.load_from_db"):
-            self._start_grid_load(refresh_ui=refresh_ui)
+        self._start_grid_load(refresh_ui=refresh_ui)
 
     def _start_grid_load(self, refresh_ui: bool = True):
         team_1 = self.combobox_1.get().strip()
@@ -2925,9 +3273,7 @@ class UiManager:
         self._apply_grid_snapshot(snapshot, refresh_ui)
 
     def _background_grid_load_worker(self, generation: int, team_1: str, team_2: str, scenario_id: int, refresh_ui: bool):
-        start = time.perf_counter()
         snapshot = self._fetch_grid_snapshot(team_1, team_2, scenario_id)
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
 
         def apply_snapshot():
             if generation != self._grid_load_generation:
@@ -2936,7 +3282,6 @@ class UiManager:
             if snapshot is None:
                 return
             self._apply_grid_snapshot(snapshot, refresh_ui)
-            self._log_perf_entry("grid.load.background", elapsed_ms, rows=len(snapshot.get('ratings_rows', [])))
 
         if hasattr(self, 'root'):
             self.root.after(0, apply_snapshot)
@@ -3608,24 +3953,23 @@ class UiManager:
 
     def update_comment_indicators(self):
         """Update corner indicators for cells that have comments"""
-        with self.perf.span("comments.update_indicators"):
-            # Clear existing indicators first
-            self.clear_comment_indicators()
+        # Clear existing indicators first
+        self.clear_comment_indicators()
 
-            comment_map = self._get_comment_map_for_current_selection()
-            if not comment_map:
-                return
+        comment_map = self._get_comment_map_for_current_selection()
+        if not comment_map:
+            return
 
-            for row in range(1, 6):
-                friendly_player = self.grid_data_model.get_rating(row, 0)
-                if not friendly_player:
+        for row in range(1, 6):
+            friendly_player = self.grid_data_model.get_rating(row, 0)
+            if not friendly_player:
+                continue
+            for col in range(1, 6):
+                opponent_player = self.grid_data_model.get_rating(0, col)
+                if not opponent_player:
                     continue
-                for col in range(1, 6):
-                    opponent_player = self.grid_data_model.get_rating(0, col)
-                    if not opponent_player:
-                        continue
-                    if (friendly_player, opponent_player) in comment_map:
-                        self.add_comment_indicator(row, col)
+                if (friendly_player, opponent_player) in comment_map:
+                    self.add_comment_indicator(row, col)
 
     def add_comment_indicator(self, row, col):
         """Add a small corner indicator for comments"""
@@ -4272,10 +4616,26 @@ class UiManager:
 
         lines = [
             self._get_mode_profile_text(),
-            f"C2/Q2/R2: {c2} / {q2} / {r2}",
-            f"Regret/Downside: {regret} / {downside}",
-            f"Strategic/Exploitability: {strategic} / {exploit}",
-            f"Round-win guardrail signal: {q2 - 50:+d}",
+            (
+                "C2/Q2/R2: "
+                f"{self._format_explainability_metric('cumulative', c2)} / "
+                f"{self._format_explainability_metric('confidence', q2)} / "
+                f"{self._format_explainability_metric('resistance', r2)}"
+            ),
+            (
+                "Regret/Downside: "
+                f"{self._format_explainability_metric('regret', regret)} / "
+                f"{self._format_explainability_metric('downside', downside)}"
+            ),
+            (
+                "Strategic/Exploitability: "
+                f"{self._format_explainability_metric('strategic', strategic)} / "
+                f"{self._format_explainability_metric('exploit', exploit)}"
+            ),
+            (
+                "Round-win guardrail signal: "
+                f"{self._format_explainability_metric('guardrail', f'{q2 - 50:+d}')}"
+            ),
             f"Context: siblings={sibling_count}, remaining children={len(children)}",
             "Bus context: advisory only (YES/NO from calc-grid thresholds)",
         ]

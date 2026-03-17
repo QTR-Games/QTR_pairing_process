@@ -52,6 +52,8 @@ class DatabasePreferences:
                 "rating_system": "1-5",
                 "auto_tree_sync": False,
                 "tree_autogen_enabled": True,
+                "lazy_sort_on_expand": False,
+                "lazy_sort_mode": "strict",
                 "right_column_panel": "notes",
                 "pairing_plan_notes": "",
                 "matchup_output_format": "standard",

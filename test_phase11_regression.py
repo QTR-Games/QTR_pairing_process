@@ -3,6 +3,7 @@
 
 import tkinter as tk
 from tkinter import ttk
+from contextlib import nullcontext
 from typing import cast
 
 from qtr_pairing_process.tree_generator import TreeGenerator
@@ -14,6 +15,13 @@ class DummyTreeView:
 
     def __init__(self, tree):
         self.tree = tree
+
+
+class DummyPerf:
+    enabled = False
+
+    def span(self, *_args, **_kwargs):
+        return nullcontext()
 
 
 def _base_prefs():
@@ -179,6 +187,79 @@ def test_memoization_hit_rate_increases_on_repeat_sort():
     assert stats_after_second["hits"] > stats_after_first["hits"]
 
 
+def test_apply_combined_strategic_reuses_fresh_base_metrics():
+    root = tk.Tk()
+    root.withdraw()
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_base_prefs())
+    _build_sample_tree(gen, tree)
+
+    call_counts = {
+        "cumulative": 0,
+        "confidence": 0,
+        "resistance": 0,
+        "strategic": 0,
+    }
+
+    orig_cumulative = gen.calculate_all_path_values_enhanced
+    orig_confidence = gen.calculate_confidence_scores_enhanced
+    orig_resistance = gen.calculate_counter_resistance_scores_enhanced
+    orig_strategic = gen.calculate_strategic3_scores
+
+    def wrapped_cumulative(node, *args, **kwargs):
+        if node == "":
+            call_counts["cumulative"] += 1
+        return orig_cumulative(node, *args, **kwargs)
+
+    def wrapped_confidence(node, *args, **kwargs):
+        if node == "":
+            call_counts["confidence"] += 1
+        return orig_confidence(node, *args, **kwargs)
+
+    def wrapped_resistance(node, *args, **kwargs):
+        if node == "":
+            call_counts["resistance"] += 1
+        return orig_resistance(node, *args, **kwargs)
+
+    def wrapped_strategic(node, *args, **kwargs):
+        if node == "":
+            call_counts["strategic"] += 1
+        return orig_strategic(node, *args, **kwargs)
+
+    gen.calculate_all_path_values_enhanced = wrapped_cumulative
+    gen.calculate_confidence_scores_enhanced = wrapped_confidence
+    gen.calculate_counter_resistance_scores_enhanced = wrapped_resistance
+    gen.calculate_strategic3_scores = wrapped_strategic
+
+    ui = UiManager.__new__(UiManager)
+    ui.treeview = DummyTreeView(tree)  # type: ignore[assignment]
+    ui.tree_generator = gen
+    setattr(ui, "perf", DummyPerf())
+    ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+    ui.active_sort_mode = "strategic3"
+    ui.active_column_sort = None
+    ui.current_sort_mode = "strategic3"
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._primary_metrics_dirty = True
+    ui._last_primary_metrics_signature = None
+    ui._metric_signatures = {}
+    ui._sorted_children_cache = {}
+    ui._available_explainability_metrics = set()
+    ui._tree_generation_id = 1
+
+    ui.apply_combined_sort(compute_primary_tags=True)
+    first_counts = call_counts.copy()
+
+    ui.apply_combined_sort(compute_primary_tags=True)
+
+    root.destroy()
+    assert first_counts["cumulative"] == 1
+    assert first_counts["confidence"] == 1
+    assert first_counts["resistance"] == 1
+    assert first_counts["strategic"] == 1
+    assert call_counts == first_counts
+
+
 def test_strategic_preferences_are_loaded_into_generator():
     prefs = _base_prefs()
     prefs["cumulative2"]["alpha"] = 0.67
@@ -324,3 +405,24 @@ def test_enemy_choice_node_orders_worst_for_us_first():
     root.destroy()
     assert ordered[0] == worse_for_us
     assert ordered[1] == better_for_us
+
+
+def test_strategic_tag_reader_ignores_exploit_prefix_collision():
+    root = tk.Tk()
+    root.withdraw()
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_base_prefs())
+
+    root_node = tree.insert("", "end", text="Pairings", values=(0, 0), tags=("0",))
+    node = tree.insert(
+        root_node,
+        "end",
+        text="Sample",
+        values=(0, 0),
+        tags=("strategic3_exploit_12", "strategic3_-108"),
+    )
+
+    strategic_value = gen.get_strategic3_from_tags(node)
+
+    root.destroy()
+    assert strategic_value == -108
