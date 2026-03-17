@@ -1,65 +1,77 @@
 #!/usr/bin/env python3
-"""
-Test script for database persistence feature
-"""
+"""Tests for database persistence feature."""
 
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from pathlib import Path
 
 from qtr_pairing_process.database_preferences import DatabasePreferences
 
-def test_database_preferences():
-    """Test database preferences functionality"""
-    print("🧪 Testing Database Preferences System")
-    print("=" * 50)
-    
-    # Create preferences manager
-    db_prefs = DatabasePreferences(print_output=True)
-    print(f"✅ DatabasePreferences created")
-    print(f"📁 Config file location: {db_prefs.get_config_file_path()}")
-    
-    # Test config loading
+
+def test_database_preferences(tmp_path):
+    """Validate database preference persistence using an isolated config file."""
+    config_path = tmp_path / "KLIK_KLAK_KONFIG.test.json"
+    db_prefs = DatabasePreferences(print_output=True, config_file=config_path)
+
     config = db_prefs.load_config()
-    print(f"✅ Config loaded: {list(config.keys())}")
-    
-    # Test database preference saving
-    test_path = "C:/test/path/test.db"
-    test_name = "test.db"
-    
-    success = db_prefs.save_database_preference(test_path, test_name)
-    print(f"✅ Database preference saved: {success}")
-    
-    # Test database preference retrieval
+    assert "database" in config
+
+    # Save using full file path form and ensure normalization is preserved.
+    test_db_file = tmp_path / "test.db"
+    success = db_prefs.save_database_preference(str(test_db_file), "test.db")
+    assert success is True
+
     saved_path, saved_name = db_prefs.get_last_database()
-    print(f"✅ Retrieved database: {saved_name} at {saved_path}")
-    
-    # Test welcome message preference
-    show_welcome = db_prefs.should_show_welcome_message()
-    print(f"✅ Show welcome message: {show_welcome}")
-    
-    # Test preference update
+    assert saved_path == str(tmp_path)
+    assert saved_name == "test.db"
+
+    # UI preference updates should still persist in isolated config.
     db_prefs.set_welcome_message_preference(False)
-    show_welcome_after = db_prefs.should_show_welcome_message()
-    print(f"✅ Welcome message after update: {show_welcome_after}")
-    
-    # Test database validation
-    valid = db_prefs.validate_database_exists(test_path, test_name)
-    print(f"✅ Database validation (should be False): {valid}")
-    
-    # Test backup creation
+    assert db_prefs.should_show_welcome_message() is False
+
+    # Validation should fail when file does not exist and pass after creation.
+    assert db_prefs.validate_database_exists(saved_path, saved_name) is False
+    Path(test_db_file).write_text("", encoding="utf-8")
+    assert db_prefs.validate_database_exists(saved_path, saved_name) is True
+
+    # Backup and clear should operate on isolated config only.
     backup_path = db_prefs.backup_config()
-    print(f"✅ Config backup created: {backup_path}")
-    
-    # Test clear preference
+    assert backup_path is not None
+
     cleared = db_prefs.clear_database_preference()
-    print(f"✅ Database preference cleared: {cleared}")
-    
-    # Verify clearing worked
+    assert cleared is True
     cleared_path, cleared_name = db_prefs.get_last_database()
-    print(f"✅ After clearing: {cleared_name} at {cleared_path}")
-    
-    print("\n🎉 All tests completed successfully!")
+    assert cleared_path is None
+    assert cleared_name is None
+
+
+def test_backup_config_deduplicates_and_prunes(tmp_path):
+    config_path = tmp_path / "KLIK_KLAK_KONFIG.test.json"
+    db_prefs = DatabasePreferences(print_output=False, config_file=config_path)
+    db_prefs.max_config_backups = 3
+
+    # Ensure config exists and first backup is created.
+    db_prefs.save_database_preference(str(tmp_path), "one.db")
+    first_backup = db_prefs.backup_config()
+    assert first_backup is not None
+
+    # Repeated backup without changes should reuse newest backup, not create a new file.
+    second_backup = db_prefs.backup_config()
+    assert second_backup == first_backup
+
+    backup_pattern = "KLIK_KLAK_KONFIG.test.backup_*.json"
+    backups_after_dedupe = list(tmp_path.glob(backup_pattern))
+    assert len(backups_after_dedupe) == 1
+
+    # Create more distinct states; backup count should remain capped at 3.
+    for idx in range(1, 7):
+        db_prefs.save_database_preference(str(tmp_path), f"{idx}.db")
+        assert db_prefs.backup_config() is not None
+
+    backups_after_prune = list(tmp_path.glob(backup_pattern))
+    assert len(backups_after_prune) <= 3
+
 
 if __name__ == "__main__":
-    test_database_preferences()
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        test_database_preferences(Path(tmp_dir))

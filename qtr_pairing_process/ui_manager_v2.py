@@ -8,6 +8,7 @@ import json
 import sqlite3
 import time
 import threading
+import hashlib
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 import tkinter.font as tkfont
@@ -152,6 +153,10 @@ class UiManager:
         self._metric_signatures = {}
         self._sorted_children_cache = {}
         self._available_explainability_metrics = set()
+        self._strategic_sort_invocation_id = 0
+        self._last_tree_memo_token_hash = ""
+        self._tree_memo_token_set_count = 0
+        self._tree_memo_token_change_count = 0
         
         
         # Initialize logger
@@ -310,6 +315,7 @@ class UiManager:
         self._comment_editor_open = False
         self._popup_pending = False
         self.notes_text: Optional[tk.Text] = None
+        self.summary_explain_label: Optional[tk.Label] = None
         self._tree_explain_tooltip: Optional[tk.Toplevel] = None
         self._tree_explain_tooltip_label: Optional[tk.Label] = None
         self._tree_explain_last_node: Optional[str] = None
@@ -1109,12 +1115,33 @@ class UiManager:
     def _set_tree_memo_state_token(self, cache_key=None):
         if not hasattr(self, 'tree_generator') or not self.tree_generator:
             return
+        if not hasattr(self, '_last_tree_memo_token_hash'):
+            self._last_tree_memo_token_hash = ""
+        if not hasattr(self, '_tree_memo_token_set_count'):
+            self._tree_memo_token_set_count = 0
+        if not hasattr(self, '_tree_memo_token_change_count'):
+            self._tree_memo_token_change_count = 0
 
         token_source = cache_key if cache_key is not None else self._build_tree_cache_key()
         if token_source is None:
             token_source = ("uncached", self._tree_generation_id)
 
         token = json.dumps(token_source, ensure_ascii=False, default=str)
+        token_hash = hashlib.sha1(token.encode("utf-8")).hexdigest()[:12]
+        changed = token_hash != self._last_tree_memo_token_hash
+        self._tree_memo_token_set_count += 1
+        if changed:
+            self._tree_memo_token_change_count += 1
+        self._last_tree_memo_token_hash = token_hash
+        if hasattr(self, 'perf') and self.perf.enabled:
+            self._log_perf_entry(
+                "tree.memo.token.set",
+                0.0,
+                token_hash=token_hash,
+                changed=int(changed),
+                set_count=int(self._tree_memo_token_set_count),
+                change_count=int(self._tree_memo_token_change_count),
+            )
         self.tree_generator.set_memo_state_token(token)
 
     def _ensure_generated_tree_cache_table(self):
@@ -2574,11 +2601,21 @@ class UiManager:
 
     def sort_by_strategic(self):
         """Sort tree by unified strategic score using enhanced metric foundations."""
-        with self.perf.span("strategic.sort.end_to_end"):
+        if not hasattr(self, "_strategic_sort_invocation_id"):
+            self._strategic_sort_invocation_id = 0
+        self._strategic_sort_invocation_id += 1
+        strategic_invocation_id = self._strategic_sort_invocation_id
+        with self.perf.span(
+            "strategic.sort.end_to_end",
+            strategic_invocation_id=strategic_invocation_id,
+        ):
             self.current_sort_mode = "strategic3"
             self.active_sort_mode = "strategic3"
 
-            with self.perf.span("strategic.sort.apply_combined"):
+            with self.perf.span(
+                "strategic.sort.apply_combined",
+                strategic_invocation_id=strategic_invocation_id,
+            ):
                 self.apply_combined_sort(compute_primary_tags=True)
 
             memo_stats = self.tree_generator.get_memoization_stats()
@@ -2592,7 +2629,14 @@ class UiManager:
                     entries=memo_stats["entries"],
                     clear_count=memo_stats.get("clear_count", 0),
                     last_clear_reason=memo_stats.get("last_clear_reason", ""),
+                    last_clear_bucket=memo_stats.get("last_clear_bucket", ""),
                     last_cleared_entries=memo_stats.get("last_cleared_entries", 0),
+                    memo_context_hash=memo_stats.get("memo_context_hash", ""),
+                    memo_key_mode=memo_stats.get("memo_key_mode", ""),
+                    memo_clear_reason=memo_stats.get("memo_clear_reason", ""),
+                    memo_clear_bucket=memo_stats.get("memo_clear_bucket", ""),
+                    memo_cleared_entries=memo_stats.get("memo_cleared_entries", 0),
+                    strategic_invocation_id=strategic_invocation_id,
                 )
 
             with self.perf.span("strategic.sort.update_sort_value_column"):
@@ -2714,6 +2758,8 @@ class UiManager:
 
     def apply_combined_sort(self, compute_primary_tags=True):
         """Apply advanced sort as primary and column sort as secondary per sibling set."""
+        if not hasattr(self, "_strategic_sort_invocation_id"):
+            self._strategic_sort_invocation_id = 0
         primary_mode = self.active_sort_mode
         secondary_column = self.active_column_sort
 
@@ -2722,6 +2768,9 @@ class UiManager:
             primary=(primary_mode or "none"),
             secondary=(secondary_column or "none"),
             compute_primary=int(bool(compute_primary_tags)),
+            strategic_invocation_id=(
+                self._strategic_sort_invocation_id if primary_mode == "strategic3" else 0
+            ),
         ):
             if not primary_mode and not secondary_column:
                 with self.perf.span("sort.apply_combined.unsort_tree"):
@@ -2766,7 +2815,10 @@ class UiManager:
                     )
 
                     if self._is_metric_stale("strategic3") or recomputed_c2 or recomputed_q2 or recomputed_r2:
-                        with self.perf.span("sort.compute.strategic3.final"):
+                        with self.perf.span(
+                            "sort.compute.strategic3.final",
+                            strategic_invocation_id=self._strategic_sort_invocation_id,
+                        ):
                             self.tree_generator.calculate_strategic3_scores("")
                         self._mark_metric_fresh("strategic3")
                         recomputed_any = True
@@ -2992,10 +3044,18 @@ class UiManager:
             total_ms = (time.perf_counter() - _profile["start"]) * 1000.0
             nodes = int(_profile["nodes"]) if _profile["nodes"] else 0
             avg_siblings = (_profile["sibling_total"] / nodes) if nodes else 0.0
+            strategic_invocation_id = 0
+            memo_context_hash = ""
+            if _profile["mode"] == "strategic3":
+                strategic_invocation_id = int(getattr(self, "_strategic_sort_invocation_id", 0))
+                if hasattr(self, "tree_generator") and self.tree_generator:
+                    memo_context_hash = self.tree_generator.get_memoization_stats().get("memo_context_hash", "")
             self._log_perf_entry(
                 "sort.children.profile",
                 total_ms,
                 mode=_profile["mode"],
+                strategic_invocation_id=strategic_invocation_id,
+                memo_context_hash=memo_context_hash,
                 nodes=nodes,
                 cache_hits=int(_profile["cache_hit_nodes"]),
                 cache_misses=int(_profile["cache_miss_nodes"]),
@@ -4467,18 +4527,6 @@ class UiManager:
             )
             self.summary_spread_label.pack(fill=tk.X)
 
-            self.summary_explain_label = tk.Label(
-                summary_frame,
-                text="Explainability: select a tree node to view C2/Q2/R2 and strategic factors.",
-                font=("Arial", 8),
-                bg="lightyellow",
-                fg="#333333",
-                justify=tk.LEFT,
-                anchor=tk.W,
-                wraplength=360
-            )
-            self.summary_explain_label.pack(fill=tk.X, pady=(2, 0))
-
             self.summary_histogram = tk.Canvas(
                 summary_frame,
                 height=60,
@@ -4660,7 +4708,7 @@ class UiManager:
         return "\n".join(lines)
 
     def _update_explainability_card(self, node_id: Optional[str]):
-        if not hasattr(self, 'summary_explain_label'):
+        if self.summary_explain_label is None:
             return
         self.summary_explain_label.config(text=self._format_explainability_text(node_id))
 

@@ -3,6 +3,7 @@
 from itertools import combinations, permutations
 import tkinter
 import math
+import hashlib
 
 import qtr_pairing_process.utility_funcs as uf
 
@@ -46,7 +47,9 @@ class TreeGenerator:
         self._strategic_memo_misses = 0
         self._memo_clear_count = 0
         self._memo_last_clear_reason = ""
+        self._memo_last_clear_bucket = ""
         self._memo_last_cleared_entries = 0
+        self._memo_key_mode = "structural_path_text_base_rating"
 
     def _read_raw_pref(self, path, fallback):
         current = self.strategic_preferences
@@ -624,11 +627,27 @@ class TreeGenerator:
     def clear_memoization(self, reason=""):
         """Clear strategic memoization cache. Optional reason for diagnostics."""
         cleared_entries = len(self._strategic_memo)
+        normalized_reason = str(reason or "unspecified")
         self._memo_clear_count += 1
-        self._memo_last_clear_reason = str(reason or "unspecified")
+        self._memo_last_clear_reason = normalized_reason
+        self._memo_last_clear_bucket = self._classify_clear_reason(normalized_reason)
         self._memo_last_cleared_entries = cleared_entries
         self._strategic_memo_context = None
         self._strategic_memo = {}
+
+    def _classify_clear_reason(self, reason):
+        normalized = str(reason or "").strip().lower()
+        if normalized in {"memo_state_change"}:
+            return "state_change"
+        if normalized in {"memo_context_change"}:
+            return "context_mismatch"
+        if "param" in normalized:
+            return "param_change"
+        if "clear_" in normalized and "cache" in normalized:
+            return "tree_cache_reset"
+        if normalized.startswith("manual"):
+            return "manual_clear"
+        return "state_change"
 
     def set_generation_id(self, generation_id):
         """Set tree generation token used for diagnostics and cache bookkeeping."""
@@ -649,6 +668,8 @@ class TreeGenerator:
         """Return cumulative memoization statistics for strategic scoring."""
         total = self._strategic_memo_hits + self._strategic_memo_misses
         hit_rate = (self._strategic_memo_hits / total) if total else 0.0
+        context_repr = repr(self._strategic_memo_context)
+        context_hash = hashlib.sha1(context_repr.encode("utf-8")).hexdigest()[:12]
         return {
             "hits": self._strategic_memo_hits,
             "misses": self._strategic_memo_misses,
@@ -656,7 +677,13 @@ class TreeGenerator:
             "entries": len(self._strategic_memo),
             "clear_count": self._memo_clear_count,
             "last_clear_reason": self._memo_last_clear_reason,
+            "last_clear_bucket": self._memo_last_clear_bucket,
             "last_cleared_entries": self._memo_last_cleared_entries,
+            "memo_context_hash": context_hash,
+            "memo_key_mode": self._memo_key_mode,
+            "memo_clear_reason": self._memo_last_clear_reason,
+            "memo_clear_bucket": self._memo_last_clear_bucket,
+            "memo_cleared_entries": self._memo_last_cleared_entries,
         }
 
     def _compute_parameter_signature(self):

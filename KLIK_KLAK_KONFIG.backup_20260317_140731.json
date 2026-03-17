@@ -5,7 +5,7 @@
   "database": {
     "path": "C:/test/path/test.db",
     "name": "test.db",
-    "last_used": "2026-03-17T13:35:59.761627"
+    "last_used": "2026-03-17T14:07:31.614187"
   },
   "ui_preferences": {
     "_comment": "User interface preferences - Safe to modify these values",
@@ -32,6 +32,6 @@
   },
   "created": "2025-10-23T09:31:34.469763",
   "_created_comment": "Initial config creation timestamp - Do not modify manually",
-  "last_modified": "2026-03-17T13:35:59.761627",
+  "last_modified": "2026-03-17T14:07:31.617185",
   "_last_modified_comment": "Last config update timestamp - Updated automatically when any setting changes"
 }

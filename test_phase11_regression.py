@@ -4,8 +4,9 @@
 import tkinter as tk
 from tkinter import ttk
 from contextlib import nullcontext
-from typing import cast
+from typing import cast, Any
 
+from qtr_pairing_process.perf_timer import PerfTimer
 from qtr_pairing_process.tree_generator import TreeGenerator
 from qtr_pairing_process.ui_manager_v2 import UiManager
 
@@ -22,6 +23,38 @@ class DummyPerf:
 
     def span(self, *_args, **_kwargs):
         return nullcontext()
+
+
+class DummyUIPrefs:
+    def get_matchup_output_format(self):
+        return "standard"
+
+
+class DummyTokenTreeGenerator:
+    def __init__(self):
+        self.tokens = []
+
+    def set_memo_state_token(self, token):
+        self.tokens.append(token)
+
+
+class DummyMemoStatsTreeGenerator:
+    def get_memoization_stats(self):
+        return {
+            "hits": 7,
+            "misses": 3,
+            "hit_rate": 0.7,
+            "entries": 4,
+            "clear_count": 1,
+            "last_clear_reason": "memo_state_change",
+            "last_clear_bucket": "state_change",
+            "last_cleared_entries": 2,
+            "memo_context_hash": "abc123def456",
+            "memo_key_mode": "structural_path_text_base_rating",
+            "memo_clear_reason": "memo_state_change",
+            "memo_clear_bucket": "state_change",
+            "memo_cleared_entries": 2,
+        }
 
 
 def _base_prefs():
@@ -185,6 +218,150 @@ def test_memoization_hit_rate_increases_on_repeat_sort():
     root.destroy()
     assert scores_after_second == scores_after_first
     assert stats_after_second["hits"] > stats_after_first["hits"]
+
+
+def test_memoization_stats_include_diagnostics_fields():
+    gen = TreeGenerator(treeview=DummyTreeView(object()), strategic_preferences=_base_prefs())
+    stats = gen.get_memoization_stats()
+
+    assert "memo_context_hash" in stats
+    assert "memo_key_mode" in stats
+    assert "memo_clear_reason" in stats
+    assert "memo_clear_bucket" in stats
+    assert "memo_cleared_entries" in stats
+    assert isinstance(stats["memo_context_hash"], str)
+    assert len(stats["memo_context_hash"]) == 12
+    assert stats["memo_key_mode"] == "structural_path_text_base_rating"
+    assert stats["memo_clear_bucket"] in {
+        "",
+        "state_change",
+        "param_change",
+        "tree_cache_reset",
+        "manual_clear",
+        "context_mismatch",
+    }
+
+
+def test_matchup_output_panel_does_not_render_explainability_summary_label():
+    root = tk.Tk()
+    root.withdraw()
+
+    ui = UiManager.__new__(UiManager)
+    setattr(ui, "db_preferences", cast(Any, DummyUIPrefs()))
+    parent = tk.Frame(root)
+    parent.pack()
+
+    ui.create_matchup_output_panel(parent=parent)
+
+    all_labels = [
+        child
+        for child in ui.output_panel_frame.winfo_children()
+        if isinstance(child, tk.Label)
+    ]
+    nested_labels = []
+    for child in ui.output_panel_frame.winfo_children():
+        nested_labels.extend(
+            [grandchild for grandchild in child.winfo_children() if isinstance(grandchild, tk.Label)]
+        )
+    label_texts = [label.cget("text") for label in all_labels + nested_labels]
+
+    root.destroy()
+    assert not any("Explainability:" in text for text in label_texts)
+
+
+def test_should_invalidate_strategic_memo_reason_policy():
+    ui = UiManager.__new__(UiManager)
+
+    assert ui._should_invalidate_strategic_memo("clear_active_generated_tree_cache") is False
+    assert ui._should_invalidate_strategic_memo("clear_all_generated_tree_cache") is False
+    assert ui._should_invalidate_strategic_memo("generated_tree_snapshot_pruned") is False
+    assert ui._should_invalidate_strategic_memo("rating_change") is True
+    assert ui._should_invalidate_strategic_memo("scenario_change") is True
+
+
+def test_set_tree_memo_state_token_tracks_token_churn():
+    ui = UiManager.__new__(UiManager)
+    setattr(ui, "tree_generator", cast(Any, DummyTokenTreeGenerator()))
+    ui._tree_generation_id = 1
+    setattr(ui, "perf", cast(Any, DummyPerf()))
+
+    cache_key = ("TeamA", "TeamB", 1, "1-5", True, "sig")
+    ui._set_tree_memo_state_token(cache_key)
+    ui._set_tree_memo_state_token(cache_key)
+    ui._set_tree_memo_state_token(("TeamA", "TeamB", 2, "1-5", True, "sig"))
+
+    token_gen = cast(DummyTokenTreeGenerator, getattr(ui, "tree_generator"))
+    assert len(token_gen.tokens) == 3
+    assert ui._tree_memo_token_set_count == 3
+    assert ui._tree_memo_token_change_count == 2
+
+
+def test_memoization_reuses_entries_after_tree_rebuild_same_state():
+    root = tk.Tk()
+    root.withdraw()
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_base_prefs())
+
+    gen.set_memo_state_token("stable-state")
+    _build_sample_tree(gen, tree)
+    stats_after_first = gen.get_memoization_stats().copy()
+
+    tree.delete(*tree.get_children())
+    _build_sample_tree(gen, tree)
+    stats_after_rebuild = gen.get_memoization_stats().copy()
+
+    root.destroy()
+    assert stats_after_rebuild["hits"] > stats_after_first["hits"]
+
+
+def test_memo_state_change_clears_with_expected_reason_bucket():
+    gen = TreeGenerator(treeview=DummyTreeView(object()), strategic_preferences=_base_prefs())
+
+    # Seed one memo entry so clear telemetry can assert cleared entry count.
+    gen._strategic_memo = {"seed": 1}
+
+    gen.set_memo_state_token("state-A")
+    stats_after_first_set = gen.get_memoization_stats().copy()
+
+    # Same token should not clear again.
+    gen.set_memo_state_token("state-A")
+    stats_after_same_token = gen.get_memoization_stats().copy()
+
+    # Different token is score-relevant and must clear with state_change bucket.
+    gen._strategic_memo = {"seed": 2}
+    gen.set_memo_state_token("state-B")
+    stats_after_change = gen.get_memoization_stats().copy()
+
+    assert stats_after_same_token["clear_count"] == stats_after_first_set["clear_count"]
+    assert stats_after_change["clear_count"] == stats_after_first_set["clear_count"] + 1
+    assert stats_after_change["memo_clear_reason"] == "memo_state_change"
+    assert stats_after_change["memo_clear_bucket"] == "state_change"
+    assert stats_after_change["memo_cleared_entries"] == 1
+
+
+def test_sort_by_strategic_emits_new_telemetry_fields(tmp_path):
+    ui = UiManager.__new__(UiManager)
+    setattr(ui, "tree_generator", cast(Any, DummyMemoStatsTreeGenerator()))
+    setattr(ui, "perf", cast(Any, PerfTimer(enabled=True, log_path=tmp_path / "perf_test.log")))
+
+    ui.apply_combined_sort = lambda compute_primary_tags=True: None
+    ui.update_sort_value_column = lambda: None
+    ui.update_column_headers = lambda: None
+    ui.update_sort_button_states = lambda: None
+    ui._update_sort_hint = lambda: None
+
+    ui.sort_by_strategic()
+    ui.perf.close()
+
+    log_text = (tmp_path / "perf_test.log").read_text(encoding="utf-8")
+    assert "strategic.sort.end_to_end" in log_text
+    assert "strategic_invocation_id=1" in log_text
+    assert "strategic.memo.stats" in log_text
+    assert "memo_context_hash=abc123def456" in log_text
+    assert "memo_key_mode=structural_path_text_base_rating" in log_text
+    assert "memo_clear_reason=memo_state_change" in log_text
+    assert "memo_clear_bucket=state_change" in log_text
+    assert "memo_cleared_entries=2" in log_text
 
 
 def test_apply_combined_strategic_reuses_fresh_base_metrics():

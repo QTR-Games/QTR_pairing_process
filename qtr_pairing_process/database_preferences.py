@@ -11,10 +11,43 @@ from tkinter import messagebox
 class DatabasePreferences:
     """Manages database preferences and application configuration"""
     
-    def __init__(self, print_output: bool = False):
+    def __init__(self, print_output: bool = False, config_file: Optional[Path] = None):
         self.print_output = print_output
-        self.config_file = Path(__file__).parent.parent / "KLIK_KLAK_KONFIG.json"
+        self.config_file = (
+            Path(config_file)
+            if config_file is not None
+            else Path(__file__).parent.parent / "KLIK_KLAK_KONFIG.json"
+        )
+        self.max_config_backups = 5
         self.logger = self._setup_logger()
+
+    def _normalize_database_reference(self, path: Optional[str], name: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+        """Normalize database reference into directory path + filename.
+
+        Accepts either:
+        - path=directory, name=filename
+        - path=full_file_path, name optional
+        """
+        if not path and not name:
+            return None, None
+
+        raw_path = str(path).strip() if path is not None else ""
+        raw_name = str(name).strip() if name is not None else ""
+
+        if not raw_path:
+            return None, raw_name or None
+
+        path_obj = Path(raw_path)
+
+        # If the provided path already looks like a DB file path, split it.
+        if path_obj.suffix.lower() == ".db":
+            return str(path_obj.parent), path_obj.name
+
+        # If path is a directory and name is provided, keep as-is.
+        if raw_name:
+            return raw_path, raw_name
+
+        return raw_path, None
         
     def _setup_logger(self) -> logging.Logger:
         """Setup logging for database preferences"""
@@ -245,8 +278,10 @@ class DatabasePreferences:
         config = self.load_config()
         db_config = config.get("database", {})
         
-        path = db_config.get("path")
-        name = db_config.get("name")
+        path, name = self._normalize_database_reference(
+            db_config.get("path"),
+            db_config.get("name"),
+        )
         
         if path and name:
             self.logger.info(f"Retrieved last database: {name} at {path}")
@@ -258,10 +293,14 @@ class DatabasePreferences:
     def save_database_preference(self, path: str, name: str) -> bool:
         """Save database preference to config"""
         config = self.load_config()
+        normalized_path, normalized_name = self._normalize_database_reference(path, name)
+        if not normalized_path or not normalized_name:
+            self.logger.error(f"Invalid database preference input: path={path}, name={name}")
+            return False
         
         config["database"] = {
-            "path": str(path),
-            "name": str(name),
+            "path": str(normalized_path),
+            "name": str(normalized_name),
             "last_used": datetime.now().isoformat()
         }
         
@@ -276,8 +315,13 @@ class DatabasePreferences:
     def validate_database_exists(self, path: str, name: str) -> bool:
         """Check if database file exists and is accessible"""
         try:
+            normalized_path, normalized_name = self._normalize_database_reference(path, name)
+            if not normalized_path or not normalized_name:
+                self.logger.warning(f"Database validation failed due to invalid reference: {path}/{name}")
+                return False
+
             # Construct full path from directory path and filename
-            full_path = Path(path) / name
+            full_path = Path(normalized_path) / normalized_name
             if full_path.exists() and full_path.is_file():
                 self.logger.debug(f"Database validation successful: {full_path}")
                 return True
@@ -438,12 +482,26 @@ class DatabasePreferences:
         try:
             if not self.config_file.exists():
                 return None
+
+            backup_files = self._list_config_backups()
+            if backup_files:
+                newest_backup = backup_files[0]
+                try:
+                    # Avoid creating duplicate backups when config content is unchanged.
+                    if newest_backup.read_bytes() == self.config_file.read_bytes():
+                        self._prune_config_backups(self.max_config_backups)
+                        self.logger.info(f"Config backup skipped (unchanged): {newest_backup}")
+                        return str(newest_backup)
+                except Exception:
+                    # If any read/compare issue occurs, fall through to normal backup creation.
+                    pass
             
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             backup_file = self.config_file.with_suffix(f'.backup_{timestamp}.json')
             
             import shutil
             shutil.copy2(self.config_file, backup_file)
+            self._prune_config_backups(self.max_config_backups)
             
             self.logger.info(f"Config backup created: {backup_file}")
             return str(backup_file)
@@ -451,3 +509,18 @@ class DatabasePreferences:
         except Exception as e:
             self.logger.error(f"Failed to create config backup: {e}")
             return None
+
+    def _list_config_backups(self) -> list[Path]:
+        pattern = f"{self.config_file.stem}.backup_*.json"
+        candidates = list(self.config_file.parent.glob(pattern))
+        candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+        return candidates
+
+    def _prune_config_backups(self, keep_count: int):
+        keep_count = max(1, int(keep_count))
+        backups = self._list_config_backups()
+        for old_backup in backups[keep_count:]:
+            try:
+                old_backup.unlink(missing_ok=True)
+            except Exception:
+                pass
