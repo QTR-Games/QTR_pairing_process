@@ -5,6 +5,7 @@ from tkinter import ttk, messagebox
 class LazyTreeView(ttk.Frame):
     def __init__(self, print_output, master, **kwargs):
         self.print_output = print_output
+        self.enable_demo_population = bool(kwargs.pop("enable_demo_population", False))
         super().__init__(master)
         
         self.tree = ttk.Treeview(self, **kwargs)
@@ -60,7 +61,9 @@ class LazyTreeView(ttk.Frame):
         item = self.tree.focus()
         if self.print_output:
             print(f"Opened {item}")
-        if not self.tree.get_children(item):
+        # Demo placeholder expansion is disabled for production trees.
+        # Real children are created by TreeGenerator.
+        if self.enable_demo_population and not self.tree.get_children(item):
             self.populate_tree(item)
 
     def on_select(self, event):

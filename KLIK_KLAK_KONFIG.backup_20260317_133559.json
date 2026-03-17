@@ -3,9 +3,9 @@
   "version": "1.0",
   "_version_comment": "Config file format version - Do not modify manually",
   "database": {
-    "path": "C:/Users/Daniel.Raven",
-    "name": "dapper badgers.db",
-    "last_used": "2026-03-17T13:39:41.243988"
+    "path": "C:/test/path/test.db",
+    "name": "test.db",
+    "last_used": "2026-03-17T13:35:59.761627"
   },
   "ui_preferences": {
     "_comment": "User interface preferences - Safe to modify these values",
@@ -32,6 +32,6 @@
   },
   "created": "2025-10-23T09:31:34.469763",
   "_created_comment": "Initial config creation timestamp - Do not modify manually",
-  "last_modified": "2026-03-17T13:39:41.243988",
+  "last_modified": "2026-03-17T13:35:59.761627",
   "_last_modified_comment": "Last config update timestamp - Updated automatically when any setting changes"
 }

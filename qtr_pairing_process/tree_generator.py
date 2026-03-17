@@ -21,13 +21,13 @@ class TreeGenerator:
 
         # Runtime-tunable strategic/v2 parameters.
         self.strategic_preferences = strategic_preferences or {}
-        self.cumulative2_alpha = self._read_pref(("cumulative2", "alpha"), 0.80, 0.0, 1.0)
-        self.confidence2_k = self._read_pref(("confidence2", "k"), 0.85, 0.0, 5.0)
-        self.confidence2_u = self._read_pref(("confidence2", "u"), 12.0, 0.0, 100.0)
-        self.resistance2_beta = self._read_pref(("resistance2", "beta"), 1.0, 0.0, 10.0)
-        self.resistance2_gamma = self._read_pref(("resistance2", "gamma"), 2.0, 0.0, 10.0)
+        self.cumulative2_alpha = self._read_numeric_pref(("cumulative2", "alpha"), 0.80, 0.0, 1.0)
+        self.confidence2_k = self._read_numeric_pref(("confidence2", "k"), 0.85, 0.0, 5.0)
+        self.confidence2_u = self._read_numeric_pref(("confidence2", "u"), 12.0, 0.0, 100.0)
+        self.resistance2_beta = self._read_numeric_pref(("resistance2", "beta"), 1.0, 0.0, 10.0)
+        self.resistance2_gamma = self._read_numeric_pref(("resistance2", "gamma"), 2.0, 0.0, 10.0)
 
-        raw_weights = self._read_pref(("strategic3", "weights"), [0.40, 0.35, 0.25], None, None)
+        raw_weights = self._read_raw_pref(("strategic3", "weights"), [0.40, 0.35, 0.25])
         if not isinstance(raw_weights, list) or len(raw_weights) != 3:
             raw_weights = [0.40, 0.35, 0.25]
         safe_weights = [self._clamp(float(w), 0.0, 1.0) for w in raw_weights]
@@ -36,16 +36,19 @@ class TreeGenerator:
             self.strategic3_weights = (0.40, 0.35, 0.25)
         else:
             self.strategic3_weights = tuple(w / weight_sum for w in safe_weights)
-        self.strategic3_rho = self._read_pref(("strategic3", "rho"), 0.20, 0.0, 5.0)
-        self.strategic3_lam = self._read_pref(("strategic3", "lam"), 0.30, 0.0, 5.0)
+        self.strategic3_rho = self._read_numeric_pref(("strategic3", "rho"), 0.20, 0.0, 5.0)
+        self.strategic3_lam = self._read_numeric_pref(("strategic3", "lam"), 0.30, 0.0, 5.0)
         self._generation_id = 0
         self._memo_state_token = None
         self._strategic_memo_context = None
         self._strategic_memo = {}
         self._strategic_memo_hits = 0
         self._strategic_memo_misses = 0
+        self._memo_clear_count = 0
+        self._memo_last_clear_reason = ""
+        self._memo_last_cleared_entries = 0
 
-    def _read_pref(self, path, fallback, min_value, max_value):
+    def _read_raw_pref(self, path, fallback):
         current = self.strategic_preferences
         try:
             for key in path:
@@ -57,9 +60,13 @@ class TreeGenerator:
         if value == {}:
             value = fallback
 
-        # Raw preference mode: return values like lists/strings directly.
-        if min_value is None and max_value is None:
-            return value
+        return value
+
+    def _read_numeric_pref(self, path, fallback, min_value, max_value):
+        value = self._read_raw_pref(path, fallback)
+
+        if not isinstance(value, (int, float, str)):
+            return fallback
 
         try:
             numeric = float(value)
@@ -616,6 +623,10 @@ class TreeGenerator:
 
     def clear_memoization(self, reason=""):
         """Clear strategic memoization cache. Optional reason for diagnostics."""
+        cleared_entries = len(self._strategic_memo)
+        self._memo_clear_count += 1
+        self._memo_last_clear_reason = str(reason or "unspecified")
+        self._memo_last_cleared_entries = cleared_entries
         self._strategic_memo_context = None
         self._strategic_memo = {}
 
@@ -643,6 +654,9 @@ class TreeGenerator:
             "misses": self._strategic_memo_misses,
             "hit_rate": hit_rate,
             "entries": len(self._strategic_memo),
+            "clear_count": self._memo_clear_count,
+            "last_clear_reason": self._memo_last_clear_reason,
+            "last_cleared_entries": self._memo_last_cleared_entries,
         }
 
     def _compute_parameter_signature(self):
@@ -668,6 +682,20 @@ class TreeGenerator:
 
     def _build_strategic_memo_context(self):
         return ("strategic3", self._compute_parameter_signature(), self._memo_state_token)
+
+    def _build_structural_memo_key(self, node):
+        """Build a stable node signature from root-to-node text/value path."""
+        lineage = []
+        current = node
+        while current:
+            item = self.treeview.tree.item(current)
+            text = str(item.get('text', ''))
+            values = item.get('values', ())
+            base_rating = values[0] if values else None
+            lineage.append((text, base_rating))
+            current = self.treeview.tree.parent(current)
+        lineage.reverse()
+        return tuple(lineage)
 
     def calculate_all_path_values_enhanced(self, node, alpha=None):
         """Enhanced cumulative scoring that is optimistic for us and adversarial for opponent turns."""
@@ -835,8 +863,8 @@ class TreeGenerator:
         if node == "":
             memo_context = self._build_strategic_memo_context()
             if memo_context != self._strategic_memo_context:
+                self.clear_memoization(reason="memo_context_change")
                 self._strategic_memo_context = memo_context
-                self._strategic_memo = {}
 
             all_nodes = []
 
@@ -861,7 +889,7 @@ class TreeGenerator:
             }
 
         if node:
-            memo_key = node
+            memo_key = self._build_structural_memo_key(node)
             if memo_key in self._strategic_memo:
                 self._strategic_memo_hits += 1
                 return self._strategic_memo[memo_key]
@@ -881,6 +909,7 @@ class TreeGenerator:
             c_raw = self.get_cumulative2_from_tags(node)
             q_raw = self.get_confidence2_from_tags(node)
             r_raw = self.get_resistance2_from_tags(node)
+            memo_key = self._build_structural_memo_key(node)
             floor2 = self._extract_prefixed_tag_value(node, 'floor2_', default=q_raw)
             ceiling2 = self._extract_prefixed_tag_value(node, 'ceiling2_', default=q_raw)
 
@@ -910,7 +939,7 @@ class TreeGenerator:
             self._replace_prefixed_tag(node, 'strategic3_', strategic_value)
             self._replace_prefixed_tag(node, 'strategic3_exploit_', int(round(exploitability)))
             self.update_node_strategic_display(node, strategic_value)
-            self._strategic_memo[node] = strategic_value
+            self._strategic_memo[memo_key] = strategic_value
             return strategic_value
 
         return max(child_scores) if child_scores else 0

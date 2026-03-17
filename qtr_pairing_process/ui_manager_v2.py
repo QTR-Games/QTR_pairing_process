@@ -1053,10 +1053,25 @@ class UiManager:
         self._primary_metrics_dirty = True
         self._last_primary_metrics_signature = None
         self._metric_signatures.clear()
-        if hasattr(self, 'tree_generator') and self.tree_generator:
-            self.tree_generator.clear_memoization(reason=reason)
+        if self._should_invalidate_strategic_memo(reason):
+            if hasattr(self, 'tree_generator') and self.tree_generator:
+                self.tree_generator.clear_memoization(reason=reason)
+        elif reason and self.perf.enabled:
+            self._log_perf_entry("strategic.memo.preserved", 0.0, reason=reason)
         if reason and self.perf.enabled:
             self._log_perf_entry("tree.cache.invalidate", 0.0, reason=reason)
+
+    def _should_invalidate_strategic_memo(self, reason: str) -> bool:
+        """Return True when invalidation reason changes strategic score inputs."""
+        normalized = str(reason or "").strip().lower()
+        non_score_reasons = {
+            "clear_active_generated_tree_cache",
+            "clear_all_generated_tree_cache",
+            "generated_tree_snapshot_pruned",
+        }
+        if normalized in non_score_reasons:
+            return False
+        return True
 
     def _tree_has_nodes(self) -> bool:
         if not hasattr(self, 'treeview'):
@@ -2143,8 +2158,8 @@ class UiManager:
             }
             if self._tree_cache_key and tuple(self._tree_cache_key[:5]) == active_prefix:
                 self._tree_cache_key = None
-            if hasattr(self, 'tree_generator') and self.tree_generator:
-                self.tree_generator.clear_memoization(reason="clear_active_generated_tree_cache")
+            if self.perf.enabled:
+                self._log_perf_entry("strategic.memo.preserved", 0.0, reason="clear_active_generated_tree_cache")
 
             messagebox.showinfo(
                 "Tree Cache",
@@ -2165,8 +2180,8 @@ class UiManager:
 
             self._tree_cache.clear()
             self._tree_cache_key = None
-            if hasattr(self, 'tree_generator') and self.tree_generator:
-                self.tree_generator.clear_memoization(reason="clear_all_generated_tree_cache")
+            if self.perf.enabled:
+                self._log_perf_entry("strategic.memo.preserved", 0.0, reason="clear_all_generated_tree_cache")
 
             messagebox.showinfo(
                 "Tree Cache",
@@ -2575,6 +2590,9 @@ class UiManager:
                     misses=memo_stats["misses"],
                     hit_rate=f"{memo_stats['hit_rate']:.2%}",
                     entries=memo_stats["entries"],
+                    clear_count=memo_stats.get("clear_count", 0),
+                    last_clear_reason=memo_stats.get("last_clear_reason", ""),
+                    last_cleared_entries=memo_stats.get("last_cleared_entries", 0),
                 )
 
             with self.perf.span("strategic.sort.update_sort_value_column"):
