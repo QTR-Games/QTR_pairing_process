@@ -1,34 +1,37 @@
 # Project To Do
 
-Finish the following tasks:
-- Parameterization via config in KLIK_KLAK_KONFIG.json is not wired yet.
-- Automated regression tests for v2 and strategic3 are not added yet.
-- No performance memoization yet for strategic3 recursion.
+All items from the previous backlog are now implemented.
 
-finish the implementation of v2 calc:
-- Wire all tuning parameters to config with safe defaults and runtime loading.
-- Add targeted tests for deterministic ordering, first-click non-zero values, and legacy-vs-v2 behavior.
-- Add a small strategic breakdown view (C2, Q2, R2, downside, final strategic score) for explainability.
+## Completed
 
-find a way to sort the best possible tree nodes to the top of the list...
-- at first pass...
-- after clicking a button...
-- do this by learning from how the enhanced math works.
-- Ensure that the 'best' possible sorted options rise to the top of the choices you can make AT EACH LEVEL OF THE TREE.
+- [x] Parameterization via config in KLIK_KLAK_KONFIG.json is wired.
+- [x] Automated regression tests for v2 and strategic3 are added.
+- [x] Performance memoization for strategic3 recursion is implemented.
+- [x] v2 tuning parameters load from config with safe defaults and validation.
+- [x] Deterministic ordering and first-pass strategic behavior are covered by targeted tests.
+- [x] Explainability includes strategic breakdown details (C2/Q2/R2/downside/final score surfaces).
+- [x] Best-node sorting is applied at each tree decision level for first pass and manual sort actions.
+- [x] Calc grid optimization and lock-in-aware caching are implemented.
+- [x] BUS advisory logic is implemented as display guidance.
+- [x] Basic strategy heuristics are incorporated into ratings/sorting logic.
+- [x] Alphabetic sorting default path is removed from normal advanced sorting workflow.
+- [x] Default for "My Team First" is unchecked.
+- [x] Integration test module for generated_tree_cache persistence and generation-id propagation is added.
+- [x] Data Management actions to clear generated_tree_cache for active matchup or all matchups are added.
+- [x] Targeted chooser-direction regression tests are added:
+  - [x] My Team First unchecked: friendly-choice sibling sort is descending by strategic value.
+  - [x] My Team First checked: chooser-direction flips correctly by depth owner.
+- [x] Flip Grid display bug fixed (model updates now trigger UI refresh while remaining display-only).
+- [x] Quick guide added for reading tree choices and sort behavior.
+- [x] Tooltip numbers guide added to explain C2/Q2/R2 and pop-up explainability values, with Data Management access.
+- [x] Full user guide added for main app workflows, with separate Data Management access.
 
-Find a way to learn from the enhanced math and...
-- optimize the right grid numbers and calc.
-figure out how to do bussing (aka throwing someone under the bus)
-- Bussing definition:
-- Bussing is done when you have the choice to throw one of your own players into a extremely poor matchup, usually a 1. The trade off is that this decision NOW will result in much better choices for the rest of the players in later rounds. This is an expected value calculation. But it has to be worth the risk. How do you determine which bad decisions in the present will pinch the opponent into making certain moves later which will give you and advantage. Can we leverage the math we've just implemented in the v2 calculations and the strategic calculations to figure out how to measure bussing?
+## New Backlog
 
-Enhance the calc grid.
-- Originally, I had the FLOOR column because I wanted to know at a glance, which of the players you can choose to play first would have the least worst matchups. The floor is a sum of all the ratings left to right for each person's row. The player with the highest floor has the best games into the widest field.
-- work toward this goal for the other columns in the calc grid as well.
-
-Find a way to incorporate basic strategies that even a human can see and make sure the ratings and sorting calculations are taking this into account.
-- You never want to drop a player that has two red matchups (1's) while both of those matchups are still 'on the table'. It's too easy for the enemy team to lock that person into having to pick between the two opponents they have a 1 against.
-
-Remove alphabetic sorting. With advanced math we don't need it.
-
-Remove the default setting for "my team first".
+- [ ] Harden `_normalize_database_reference` for Windows path edge cases:
+  - [ ] UNC paths and mixed separators
+  - [ ] Relative paths resolved against config location
+  - [ ] Symlink/realpath normalization policy
+- [ ] Add a compatibility unit test for `TreeGenerator._read_pref` parity:
+  - [ ] Assert raw-path behavior matches `_read_raw_pref`
+  - [ ] Assert bounded numeric-path behavior matches `_read_numeric_pref`

@@ -4,8 +4,11 @@ from multiprocessing import Value
 import os
 import sys
 import csv
+import json
+import sqlite3
 import time
 import threading
+import hashlib
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 import tkinter.font as tkfont
@@ -81,6 +84,15 @@ class UiManager:
         config_rating_system = ui_prefs.get('rating_system')
 
         self.tree_autogen_enabled = self.db_preferences.get_tree_autogen_enabled()
+        self.lazy_sort_on_expand = bool(ui_prefs.get("lazy_sort_on_expand", False))
+        self.lazy_sort_mode = str(
+            ui_prefs.get(
+                "lazy_sort_mode",
+                "fast_expand_first" if self.lazy_sort_on_expand else "strict",
+            )
+        )
+        if self.lazy_sort_mode == "fast_expand_first":
+            self.lazy_sort_on_expand = True
         
         self.current_rating_system = config_rating_system or self.settings_manager.get_rating_system()
         self.rating_config = RATING_SYSTEMS[self.current_rating_system]
@@ -96,7 +108,10 @@ class UiManager:
         self.perf_logging_enabled = perf_is_enabled
         self.perf = PerfTimer(
             enabled=perf_is_enabled,
-            log_path=Path(__file__).parent.parent / "perf_log.txt"
+            log_dir=Path(__file__).parent.parent / "perf_logs",
+            buffered=True,
+            buffer_size=25,
+            max_daily_files=5,
         )
 
         # Initialize other UI components
@@ -131,6 +146,17 @@ class UiManager:
         self._tree_cache_enabled = True
         self._tree_cache = {}
         self._tree_cache_key = None
+        self._tree_generation_id = 0
+        self._calc_grid_cache = {}
+        self._primary_metrics_dirty = True
+        self._last_primary_metrics_signature = None
+        self._metric_signatures = {}
+        self._sorted_children_cache = {}
+        self._available_explainability_metrics = set()
+        self._strategic_sort_invocation_id = 0
+        self._last_tree_memo_token_hash = ""
+        self._tree_memo_token_set_count = 0
+        self._tree_memo_token_change_count = 0
         
         
         # Initialize logger
@@ -158,6 +184,7 @@ class UiManager:
                 self.db_path = last_path
                 self.db_name = last_name
                 self.db_manager = DbManager(path=self.db_path, name=self.db_name)
+                self._ensure_generated_tree_cache_table()
                 self.logger.info(f"Auto-loaded last database: {self.db_name} from {self.db_path}")
                 return
             else:
@@ -172,6 +199,7 @@ class UiManager:
             self.db_manager = DbManager()
         else:
             self.db_manager = DbManager(path=self.db_path, name=self.db_name)
+            self._ensure_generated_tree_cache_table()
             # Save this database as the preferred one
             if self.db_path and self.db_name:
                 self.db_preferences.save_database_preference(self.db_path, self.db_name)
@@ -195,6 +223,7 @@ class UiManager:
         self.root.bind('<FocusOut>', lambda event: self._hide_all_popups(), add='+')
         self.root.bind('<Button-1>', self._on_root_click_for_popups, add='+')
         self.root.bind('<Configure>', self._on_root_configure, add='+')
+        self.root.protocol("WM_DELETE_WINDOW", self._on_app_close)
 
         self._last_root_size = (self.root.winfo_width(), self.root.winfo_height())
 
@@ -226,6 +255,7 @@ class UiManager:
         self.matchup_output_container.grid(row=0, column=2, padx=(0, 10), pady=10, sticky="nsew")
 
         self.tree_autogen_var = tk.IntVar(value=1 if self.tree_autogen_enabled else 0)
+        self.lazy_sort_on_expand_var = tk.IntVar(value=1 if self.lazy_sort_on_expand else 0)
         self.create_matchup_output_panel()
         self.matchup_output_panel_created = True
 
@@ -285,6 +315,7 @@ class UiManager:
         self._comment_editor_open = False
         self._popup_pending = False
         self.notes_text: Optional[tk.Text] = None
+        self.summary_explain_label: Optional[tk.Label] = None
         self._tree_explain_tooltip: Optional[tk.Toplevel] = None
         self._tree_explain_tooltip_label: Optional[tk.Label] = None
         self._tree_explain_last_node: Optional[str] = None
@@ -300,6 +331,7 @@ class UiManager:
             treeview=self.treeview,
             strategic_preferences=self.strategic_preferences,
         )
+        self.tree_generator.set_generation_id(self._tree_generation_id)
         
         # Track current sorting mode for column display
         self.current_sort_mode = "none"
@@ -402,6 +434,7 @@ class UiManager:
         self.treeview.tree.tag_configure('4', background="greenyellow")
         self.treeview.tree.tag_configure('5', background="lime")
         self.treeview.tree.bind("<<TreeviewSelect>>", self._on_tree_selection_changed, add='+')
+        self.treeview.tree.bind("<<TreeviewOpen>>", self._on_tree_node_opened, add='+')
         self.treeview.tree.bind("<Motion>", self._on_tree_hover_explain, add='+')
         self.treeview.tree.bind("<Leave>", self._hide_tree_explain_tooltip, add='+')
         self.treeview.pack(expand=1, fill='both')
@@ -439,9 +472,6 @@ class UiManager:
         # Set initial button states (all inactive)
         self.update_sort_button_states()
         
-        # Add tooltip
-        self.create_tooltip(self.treeview, "Generated combinations will be displayed here\nNavigate the tree with arrow keys!")
-        
         # Matchup output panel is created on startup
         
         # Load grid once widgets exist
@@ -450,14 +480,11 @@ class UiManager:
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
         self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
 
-        with self.perf.span("startup.update_combobox_colors"):
-            self.update_combobox_colors()
-        with self.perf.span("startup.init_display_headers"):
-            self.init_display_headers()
+        self.update_combobox_colors()
+        self.init_display_headers()
         
         # Create status bar
-        with self.perf.span("startup.create_status_bar"):
-            self.create_status_bar()
+        self.create_status_bar()
         self._refresh_paste_button_state()
         
         # Show welcome dialog if this is first time or user hasn't disabled it
@@ -465,6 +492,8 @@ class UiManager:
             self.root.after(500, self.show_welcome_dialog)  # Delay to ensure UI is ready
 
         self.root.mainloop()
+        if hasattr(self, 'perf') and self.perf:
+            self.perf.close()
 
     def create_ui_grids(self):
         self.row_checkboxes = []
@@ -792,6 +821,55 @@ class UiManager:
         self.db_preferences.set_tree_autogen_enabled(enabled)
         self._notify_restart_required("Tree auto-generation", enabled)
 
+    def _on_lazy_sort_toggle(self):
+        enabled = bool(self.lazy_sort_on_expand_var.get())
+        self.lazy_sort_on_expand = enabled
+        self.lazy_sort_mode = "fast_expand_first" if enabled else "strict"
+        self.db_preferences.update_ui_preferences(
+            {
+                "lazy_sort_on_expand": enabled,
+                "lazy_sort_mode": self.lazy_sort_mode,
+            }
+        )
+
+    def _on_persistent_memo_toggle(self):
+        enabled = bool(self.persistent_memo_var.get())
+        self.db_preferences.set_strategic_preferences(
+            {
+                "strategic3": {
+                    "persistent_memo_enabled": enabled,
+                }
+            }
+        )
+
+        if isinstance(getattr(self, "strategic_preferences", None), dict):
+            strategic3 = self.strategic_preferences.setdefault("strategic3", {})
+            strategic3["persistent_memo_enabled"] = enabled
+
+        if hasattr(self, "tree_generator") and self.tree_generator:
+            self.tree_generator.persistent_memo_enabled = enabled
+
+    def _on_tree_node_opened(self, _event=None):
+        if not getattr(self, "lazy_sort_on_expand", False):
+            return
+        if not self.active_sort_mode and not self.active_column_sort:
+            return
+
+        node = ""
+        try:
+            node = self.treeview.tree.focus() or ""
+        except Exception:
+            node = ""
+        if not node:
+            return
+
+        self._sort_children_combined(
+            node,
+            self.active_sort_mode,
+            self.active_column_sort,
+            recurse_mode="expanded",
+        )
+
     def _set_grid_dirty(self, is_dirty: bool):
         if self._grid_dirty != is_dirty:
             self._grid_dirty = is_dirty
@@ -867,17 +945,153 @@ class UiManager:
     def _on_root_focus_in(self):
         self._refresh_paste_button_state()
 
+    def _on_app_close(self):
+        try:
+            if hasattr(self, 'perf') and self.perf:
+                self.perf.close()
+        finally:
+            self.root.destroy()
+
     def _mark_grid_color_dirty(self):
         self._grid_color_dirty = True
+
+    def _invalidate_calc_grid_cache(self):
+        self._calc_grid_cache.clear()
+
+    def _current_lock_masks(self):
+        row_mask = tuple(int(v.get()) for v in self.row_checkboxes) if self.row_checkboxes else (0, 0, 0, 0, 0)
+        col_mask = tuple(int(v.get()) for v in self.column_checkboxes) if self.column_checkboxes else (0, 0, 0, 0, 0)
+        return row_mask, col_mask
+
+    def _get_grid_ratings_signature(self):
+        matrix = []
+        for row in range(1, 6):
+            row_values = []
+            for col in range(1, 6):
+                value = self.grid_data_model.get_rating(row, col)
+                if isinstance(value, int):
+                    row_values.append(value)
+                else:
+                    row_values.append(None)
+            matrix.append(tuple(row_values))
+        return tuple(matrix)
+
+    def _build_calc_grid_cache_key(self):
+        team_1 = self.combobox_1.get().strip() if hasattr(self, 'combobox_1') else ""
+        team_2 = self.combobox_2.get().strip() if hasattr(self, 'combobox_2') else ""
+        scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
+        row_mask, col_mask = self._current_lock_masks()
+        return (team_1, team_2, scenario_id, row_mask, col_mask, self._get_grid_ratings_signature())
+
+    def _compute_calc_grid_rows_for_current_state(self):
+        row_mask, _ = self._current_lock_masks()
+        floor_values = {}
+        pinned_values = {}
+        can_pin_values = {}
+        protect_values = {}
+        bus_values = {}
+
+        for row in range(1, 6):
+            if row_mask[row - 1] == 1:
+                floor_values[row] = "---"
+                continue
+            floor_rating_sum = 0
+            for col in range(1, 6):
+                widget = self.grid_widgets[row][col]
+                if widget is not None and widget.cget('state') != 'disabled':
+                    cell_value = self.grid_data_model.get_rating(row, col)
+                    if isinstance(cell_value, int):
+                        floor_rating_sum += cell_value
+            floor_values[row] = floor_rating_sum
+
+        for row in range(1, 6):
+            if row_mask[row - 1] == 1:
+                pinned_values[row] = "---"
+                can_pin_values[row] = "---"
+                protect_values[row] = "---"
+                bus_values[row] = "---"
+                continue
+
+            num_bad_matchups = 0
+            good_matchups = 0
+            for col in range(1, 6):
+                widget = self.grid_widgets[row][col]
+                if widget is not None and widget.cget('state') != 'disabled':
+                    cell_value = self.grid_data_model.get_rating(row, col)
+                    if isinstance(cell_value, int):
+                        if cell_value < 3:
+                            num_bad_matchups += 1
+                        if cell_value > 3:
+                            good_matchups += 1
+
+            pinned_values[row] = "PINNED!" if num_bad_matchups > 1 else "---"
+            can_pin_values[row] = "PIN" if good_matchups > 1 else "---"
+            protect_values[row] = "Yes" if (pinned_values[row] != "---" or can_pin_values[row] != "---") else "No"
+
+            floor_value = floor_values[row]
+            if floor_value == "---":
+                bus_values[row] = "---"
+                continue
+
+            all_margins = []
+            for col in range(1, 6):
+                col_margin_sum = 0
+                for row1 in range(1, 6):
+                    widget = self.grid_widgets[row1][col]
+                    if widget is not None and widget.cget('state') != 'disabled':
+                        cell_value = self.grid_data_model.get_rating(row1, col)
+                        if isinstance(cell_value, int):
+                            col_margin_sum += cell_value
+                all_margins.append(int(floor_value) - col_margin_sum)
+
+            max_margin = max(all_margins)
+            min_margin = min(all_margins)
+            bus_values[row] = self._get_bus_advisory_label(max_margin=max_margin, min_margin=min_margin)
+
+        return {
+            "floor": floor_values,
+            "pinned": pinned_values,
+            "can_pin": can_pin_values,
+            "protect": protect_values,
+            "bus": bus_values,
+        }
+
+    def _apply_calc_grid_rows(self, rows):
+        for row in range(1, 6):
+            self.update_display_fields(row, 0, rows["floor"].get(row, "---"))
+            self.update_display_fields(row, 1, rows["pinned"].get(row, "---"))
+            self.update_display_fields(row, 2, rows["can_pin"].get(row, "---"))
+            self.update_display_fields(row, 3, rows["protect"].get(row, "---"))
+            self.update_display_fields(row, 4, rows["bus"].get(row, "---"))
 
     def _invalidate_tree_cache(self, reason: str = ""):
         if self._tree_cache:
             self._tree_cache.clear()
         self._tree_cache_key = None
-        if hasattr(self, 'tree_generator') and self.tree_generator:
-            self.tree_generator.clear_memoization(reason=reason)
+        self._invalidate_calc_grid_cache()
+        self._sorted_children_cache.clear()
+        self._primary_metrics_dirty = True
+        self._last_primary_metrics_signature = None
+        self._metric_signatures.clear()
+        if self._should_invalidate_strategic_memo(reason):
+            if hasattr(self, 'tree_generator') and self.tree_generator:
+                self.tree_generator.clear_memoization(reason=reason)
+        elif reason and self.perf.enabled:
+            self._log_perf_entry("strategic.memo.preserved", 0.0, reason=reason)
         if reason and self.perf.enabled:
             self._log_perf_entry("tree.cache.invalidate", 0.0, reason=reason)
+
+    def _should_invalidate_strategic_memo(self, reason: str) -> bool:
+        """Return True when invalidation reason changes strategic score inputs."""
+        normalized = str(reason or "").strip().lower()
+        non_score_reasons = {
+            "clear_active_generated_tree_cache",
+            "clear_all_generated_tree_cache",
+            "generated_tree_snapshot_pruned",
+        }
+        if normalized in non_score_reasons:
+            return False
+        return True
 
     def _tree_has_nodes(self) -> bool:
         if not hasattr(self, 'treeview'):
@@ -894,7 +1108,299 @@ class UiManager:
         scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
         rating_system = self.current_rating_system
         team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
-        return (team_1, team_2, scenario_id, rating_system, team_first)
+        ratings_signature = json.dumps(self._get_grid_ratings_signature(), ensure_ascii=False)
+        return (team_1, team_2, scenario_id, rating_system, team_first, ratings_signature)
+
+    def _next_tree_generation_id(self) -> int:
+        self._tree_generation_id += 1
+        return self._tree_generation_id
+
+    def _set_tree_generation_id(self, generation_id: int):
+        try:
+            normalized = int(generation_id)
+        except (TypeError, ValueError):
+            normalized = 0
+        if normalized <= 0:
+            normalized = self._next_tree_generation_id()
+        self._tree_generation_id = normalized
+        if hasattr(self, 'tree_generator') and self.tree_generator:
+            self.tree_generator.set_generation_id(normalized)
+
+    def _set_tree_memo_state_token(self, cache_key=None):
+        if not hasattr(self, 'tree_generator') or not self.tree_generator:
+            return
+        if not hasattr(self, '_last_tree_memo_token_hash'):
+            self._last_tree_memo_token_hash = ""
+        if not hasattr(self, '_tree_memo_token_set_count'):
+            self._tree_memo_token_set_count = 0
+        if not hasattr(self, '_tree_memo_token_change_count'):
+            self._tree_memo_token_change_count = 0
+
+        token_source = cache_key if cache_key is not None else self._build_tree_cache_key()
+        if token_source is None:
+            token_source = ("uncached", self._tree_generation_id)
+
+        token = json.dumps(token_source, ensure_ascii=False, default=str)
+        token_hash = hashlib.sha1(token.encode("utf-8")).hexdigest()[:12]
+        changed = token_hash != self._last_tree_memo_token_hash
+        self._tree_memo_token_set_count += 1
+        if changed:
+            self._tree_memo_token_change_count += 1
+        self._last_tree_memo_token_hash = token_hash
+        if hasattr(self, 'perf') and self.perf.enabled:
+            self._log_perf_entry(
+                "tree.memo.token.set",
+                0.0,
+                token_hash=token_hash,
+                changed=int(changed),
+                set_count=int(self._tree_memo_token_set_count),
+                change_count=int(self._tree_memo_token_change_count),
+            )
+        self.tree_generator.set_memo_state_token(token)
+
+    def _ensure_generated_tree_cache_table(self):
+        if not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
+            return
+        sql = """
+            CREATE TABLE IF NOT EXISTS generated_tree_cache (
+                team_1_name TEXT NOT NULL,
+                team_2_name TEXT NOT NULL,
+                scenario_id INTEGER NOT NULL,
+                rating_system TEXT NOT NULL,
+                team_first INTEGER NOT NULL,
+                ratings_signature TEXT NOT NULL,
+                generation_id INTEGER NOT NULL,
+                snapshot_json TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (team_1_name, team_2_name, scenario_id, rating_system, team_first, ratings_signature)
+            )
+        """
+        try:
+            self.db_manager.execute_sql(sql)
+            with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
+                cur = conn.cursor()
+                cur.execute("PRAGMA table_info(generated_tree_cache)")
+                existing_columns = {row[1] for row in cur.fetchall()}
+                if "ratings_signature" not in existing_columns:
+                    # Cache table is versioned by schema; recreate to guarantee exact-input keys.
+                    cur.execute("DROP TABLE IF EXISTS generated_tree_cache")
+                    cur.execute(sql)
+                    conn.commit()
+        except Exception as exc:
+            self.logger.warning(f"Could not ensure generated_tree_cache table: {exc}")
+
+    def _is_persistent_strategic_memo_enabled(self) -> bool:
+        if not hasattr(self, 'tree_generator') or not self.tree_generator:
+            return False
+        return bool(getattr(self.tree_generator, 'persistent_memo_enabled', False))
+
+    def _ensure_strategic_memo_cache_table(self):
+        if not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
+            return
+        sql = """
+            CREATE TABLE IF NOT EXISTS strategic_memo_cache (
+                team_1_name TEXT NOT NULL,
+                team_2_name TEXT NOT NULL,
+                scenario_id INTEGER NOT NULL,
+                rating_system TEXT NOT NULL,
+                team_first INTEGER NOT NULL,
+                ratings_signature TEXT NOT NULL,
+                schema_version INTEGER NOT NULL,
+                parameter_signature TEXT NOT NULL,
+                memo_state_token TEXT NOT NULL,
+                memo_json TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (
+                    team_1_name,
+                    team_2_name,
+                    scenario_id,
+                    rating_system,
+                    team_first,
+                    ratings_signature,
+                    schema_version,
+                    parameter_signature,
+                    memo_state_token
+                )
+            )
+        """
+        try:
+            self.db_manager.execute_sql(sql)
+        except Exception as exc:
+            self.logger.warning(f"Could not ensure strategic_memo_cache table: {exc}")
+
+    def _load_persistent_strategic_memo(self, cache_key: tuple):
+        if not cache_key or not self._is_persistent_strategic_memo_enabled():
+            return None
+        if not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
+            return None
+
+        self._ensure_strategic_memo_cache_table()
+        signature = self.tree_generator.get_persistent_memo_signature()
+        parameter_signature = json.dumps(signature.get("parameter_signature"), ensure_ascii=False, default=str)
+        memo_state_token = str(signature.get("memo_state_token") or "")
+        if not memo_state_token:
+            return None
+
+        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = cache_key
+        try:
+            with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT memo_json
+                    FROM strategic_memo_cache
+                    WHERE team_1_name = ?
+                      AND team_2_name = ?
+                      AND scenario_id = ?
+                      AND rating_system = ?
+                      AND team_first = ?
+                      AND ratings_signature = ?
+                      AND schema_version = ?
+                      AND parameter_signature = ?
+                      AND memo_state_token = ?
+                    """,
+                    (
+                        team_1,
+                        team_2,
+                        int(scenario_id),
+                        str(rating_system),
+                        int(bool(team_first)),
+                        str(ratings_signature),
+                        int(signature.get("schema_version", 0)),
+                        parameter_signature,
+                        memo_state_token,
+                    ),
+                )
+                row = cur.fetchone()
+            if not row:
+                return None
+            return json.loads(row[0])
+        except Exception as exc:
+            self.logger.warning(f"Failed to load persistent strategic memo: {exc}")
+            return None
+
+    def _save_persistent_strategic_memo(self, cache_key: tuple, payload: Dict[str, Any]):
+        if not cache_key or not payload or not self._is_persistent_strategic_memo_enabled():
+            return
+        if not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
+            return
+
+        self._ensure_strategic_memo_cache_table()
+        signature = self.tree_generator.get_persistent_memo_signature()
+        parameter_signature = json.dumps(signature.get("parameter_signature"), ensure_ascii=False, default=str)
+        memo_state_token = str(signature.get("memo_state_token") or "")
+        if not memo_state_token:
+            return
+
+        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = cache_key
+        try:
+            memo_json = json.dumps(payload, ensure_ascii=False)
+            with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO strategic_memo_cache
+                    (team_1_name, team_2_name, scenario_id, rating_system, team_first, ratings_signature,
+                     schema_version, parameter_signature, memo_state_token, memo_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(team_1_name, team_2_name, scenario_id, rating_system, team_first, ratings_signature,
+                                schema_version, parameter_signature, memo_state_token)
+                    DO UPDATE SET
+                        memo_json = excluded.memo_json,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        team_1,
+                        team_2,
+                        int(scenario_id),
+                        str(rating_system),
+                        int(bool(team_first)),
+                        str(ratings_signature),
+                        int(signature.get("schema_version", 0)),
+                        parameter_signature,
+                        memo_state_token,
+                        memo_json,
+                    ),
+                )
+                conn.commit()
+        except Exception as exc:
+            self.logger.warning(f"Failed to save persistent strategic memo: {exc}")
+
+    def _load_persistent_tree_snapshot(self, cache_key: tuple):
+        if not cache_key or not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
+            return None
+        self._ensure_generated_tree_cache_table()
+        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = cache_key
+        try:
+            with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT snapshot_json, generation_id
+                    FROM generated_tree_cache
+                    WHERE team_1_name = ?
+                      AND team_2_name = ?
+                      AND scenario_id = ?
+                      AND rating_system = ?
+                      AND team_first = ?
+                                            AND ratings_signature = ?
+                    """,
+                                        (
+                                                team_1,
+                                                team_2,
+                                                int(scenario_id),
+                                                str(rating_system),
+                                                int(bool(team_first)),
+                                                str(ratings_signature),
+                                        ),
+                )
+                row = cur.fetchone()
+            if not row:
+                return None
+            snapshot_json, generation_id = row
+            return {
+                "snapshot": json.loads(snapshot_json),
+                "generation_id": int(generation_id),
+            }
+        except Exception as exc:
+            self.logger.warning(f"Failed to load persistent tree cache: {exc}")
+            return None
+
+    def _save_persistent_tree_snapshot(self, cache_key: tuple, payload: Dict[str, Any]):
+        if not cache_key or not payload or not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
+            return
+        self._ensure_generated_tree_cache_table()
+        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = cache_key
+        try:
+            snapshot_json = json.dumps(payload.get("snapshot", []), ensure_ascii=False)
+            generation_id = int(payload.get("generation_id", self._tree_generation_id or 1))
+            with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO generated_tree_cache
+                    (team_1_name, team_2_name, scenario_id, rating_system, team_first, ratings_signature, generation_id, snapshot_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(team_1_name, team_2_name, scenario_id, rating_system, team_first, ratings_signature)
+                    DO UPDATE SET
+                        generation_id = excluded.generation_id,
+                        snapshot_json = excluded.snapshot_json,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        team_1,
+                        team_2,
+                        int(scenario_id),
+                        str(rating_system),
+                        int(bool(team_first)),
+                        str(ratings_signature),
+                        generation_id,
+                        snapshot_json,
+                    ),
+                )
+                conn.commit()
+        except (sqlite3.Error, TypeError, ValueError) as exc:
+            self.logger.warning(f"Failed to persist tree cache snapshot: {exc}")
 
     def _capture_tree_snapshot(self):
         def walk(node_id):
@@ -937,10 +1443,171 @@ class UiManager:
         self.current_sort_mode = "none"
         self.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
         self.active_column_sort = None
+        self._sorted_children_cache.clear()
+        self._primary_metrics_dirty = True
+        self._last_primary_metrics_signature = None
+        self._metric_signatures.clear()
+        self._available_explainability_metrics.clear()
         self.update_column_headers()
         self.update_sort_value_column()
         self.update_sort_button_states()
         self._update_sort_hint()
+
+    def _mark_explainability_metrics_available(self, primary_mode):
+        if primary_mode == "cumulative":
+            self._available_explainability_metrics.add("cumulative")
+        elif primary_mode == "confidence":
+            self._available_explainability_metrics.add("confidence")
+            self._available_explainability_metrics.add("regret")
+            self._available_explainability_metrics.add("downside")
+            self._available_explainability_metrics.add("guardrail")
+        elif primary_mode == "resistance":
+            self._available_explainability_metrics.add("resistance")
+        elif primary_mode == "strategic3":
+            # Strategic mode is composed from C2/Q2/R2, so expose component
+            # metrics and derived fields in the explainability tooltip.
+            self._available_explainability_metrics.add("cumulative")
+            self._available_explainability_metrics.add("confidence")
+            self._available_explainability_metrics.add("resistance")
+            self._available_explainability_metrics.add("regret")
+            self._available_explainability_metrics.add("downside")
+            self._available_explainability_metrics.add("guardrail")
+            self._available_explainability_metrics.add("strategic")
+            self._available_explainability_metrics.add("exploit")
+
+    def _format_explainability_metric(self, metric_key, value):
+        if metric_key in self._available_explainability_metrics:
+            return str(value)
+        return "--"
+
+    def _build_primary_metrics_signature(self, primary_mode):
+        if not primary_mode:
+            return None
+
+        metric_signature = self._build_metric_signature(primary_mode)
+        return (primary_mode, metric_signature)
+
+    def _base_cache_signature(self):
+        cache_key = self._build_tree_cache_key()
+        if cache_key is None:
+            scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
+            team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
+            ratings_signature = self._get_grid_ratings_signature() if hasattr(self, 'grid_data_model') else None
+            cache_key = (
+                self.team1_var.get().strip() if hasattr(self, 'team1_var') else "",
+                self.team2_var.get().strip() if hasattr(self, 'team2_var') else "",
+                scenario_id,
+                getattr(self, 'current_rating_system', ''),
+                team_first,
+                ratings_signature,
+            )
+        return cache_key
+
+    def _build_metric_signature(self, metric_key):
+        cache_key = self._base_cache_signature()
+        if not hasattr(self, 'tree_generator') or not self.tree_generator:
+            return (metric_key, cache_key)
+
+        tree_gen = self.tree_generator
+
+        def numeric(value, default=0.0):
+            try:
+                return round(float(value), 6)
+            except (TypeError, ValueError):
+                return round(float(default), 6)
+
+        if metric_key == "cumulative":
+            return (metric_key, cache_key, numeric(tree_gen.cumulative2_alpha, 0.8))
+        if metric_key == "confidence":
+            return (
+                metric_key,
+                cache_key,
+                numeric(tree_gen.confidence2_k, 0.85),
+                numeric(tree_gen.confidence2_u, 12.0),
+            )
+        if metric_key == "resistance":
+            return (
+                metric_key,
+                cache_key,
+                numeric(tree_gen.resistance2_beta, 1.0),
+                numeric(tree_gen.resistance2_gamma, 2.0),
+            )
+        if metric_key == "strategic3":
+            return (
+                metric_key,
+                cache_key,
+                tree_gen._compute_parameter_signature(),
+                self._build_metric_signature("cumulative"),
+                self._build_metric_signature("confidence"),
+                self._build_metric_signature("resistance"),
+            )
+
+        return (metric_key, cache_key)
+
+    def _is_metric_stale(self, metric_key):
+        if self._primary_metrics_dirty:
+            return True
+        if not self._has_metric_tags(metric_key):
+            return True
+        return self._metric_signatures.get(metric_key) != self._build_metric_signature(metric_key)
+
+    def _has_metric_tags(self, metric_key):
+        if not hasattr(self, 'treeview') or not self.treeview:
+            return False
+
+        prefix_map = {
+            "cumulative": "cumulative2_",
+            "confidence": "confidence2_",
+            "resistance": "resistance2_",
+            "strategic3": "strategic3_",
+        }
+        prefix = prefix_map.get(metric_key)
+        if not prefix:
+            return True
+
+        roots = self.treeview.tree.get_children("")
+        if not roots:
+            return False
+
+        def walk(node_id):
+            tags = self.treeview.tree.item(node_id, 'tags') or ()
+            if not any(str(tag).startswith(prefix) for tag in tags):
+                return False
+            for child_id in self.treeview.tree.get_children(node_id):
+                if not walk(child_id):
+                    return False
+            return True
+
+        return any(walk(root_id) for root_id in roots)
+
+    def _all_strategic_scores_are_zero(self) -> bool:
+        if not hasattr(self, 'treeview') or not self.treeview:
+            return False
+        roots = self.treeview.tree.get_children("")
+        if not roots:
+            return False
+        def walk(node_id):
+            score = self.tree_generator.get_strategic3_from_tags(node_id)
+            if score != 0:
+                return False
+            for child_id in self.treeview.tree.get_children(node_id):
+                if not walk(child_id):
+                    return False
+            return True
+        return all(walk(root_id) for root_id in roots)
+
+    def _mark_metric_fresh(self, metric_key):
+        self._metric_signatures[metric_key] = self._build_metric_signature(metric_key)
+
+    def _should_recompute_primary_on_column_click(self):
+        if not self.active_sort_mode:
+            return False
+
+        if self._primary_metrics_dirty:
+            return True
+
+        current_signature = self._build_primary_metrics_signature(self.active_sort_mode)
+        return current_signature != self._last_primary_metrics_signature
 
     def _log_perf_entry(self, label: str, elapsed_ms: float, **meta: Any):
         if not self.perf.enabled:
@@ -1408,8 +2075,7 @@ class UiManager:
 
     def _run_scenario_calculations(self):
         self._scenario_calc_job = None
-        with self.perf.span("grid.scenario_calculations"):
-            self._on_scenario_calculations()
+        self._on_scenario_calculations()
 
     def _on_scenario_calculations(self):
         # Guard: Don't run calculations if teams are not selected
@@ -1422,12 +2088,14 @@ class UiManager:
                 for col in range(0, 6):
                     self.update_display_fields(row, col, "---")
             return
-        
-        self.set_floor_values()  # info_col 0
-        self.check_pinned_players()  # info_col 1
-        self.check_for_pins()  # info_col 2
-        self.check_protect()  # info_col 3
-        self.check_margins()  # info_col 4
+
+        cache_key = self._build_calc_grid_cache_key()
+        cached_rows = self._calc_grid_cache.get(cache_key)
+        if cached_rows is None:
+            cached_rows = self._compute_calc_grid_rows_for_current_state()
+            self._calc_grid_cache[cache_key] = cached_rows
+
+        self._apply_calc_grid_rows(cached_rows)
 
     def check_margins(self):
         for row in range(1, 6):
@@ -1683,6 +2351,181 @@ class UiManager:
         except Exception as e:
             print(f"Error configuring rating system: {e}")
             messagebox.showerror("Error", f"Failed to configure rating system: {e}")
+
+    def clear_generated_tree_cache_active_matchup(self):
+        """Clear persisted tree snapshots for the active matchup selection only."""
+        team_1 = self.combobox_1.get().strip() if hasattr(self, 'combobox_1') else ""
+        team_2 = self.combobox_2.get().strip() if hasattr(self, 'combobox_2') else ""
+        if not team_1 or not team_2:
+            messagebox.showwarning(
+                "Tree Cache",
+                "Select both teams before clearing cache for the active matchup.",
+            )
+            return
+
+        scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
+        rating_system = self.current_rating_system
+        team_first = int(bool(self.team_b.get())) if hasattr(self, 'team_b') else 1
+
+        try:
+            self._ensure_generated_tree_cache_table()
+            self._ensure_strategic_memo_cache_table()
+            with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    DELETE FROM generated_tree_cache
+                    WHERE team_1_name = ?
+                      AND team_2_name = ?
+                      AND scenario_id = ?
+                      AND rating_system = ?
+                      AND team_first = ?
+                    """,
+                    (team_1, team_2, int(scenario_id), str(rating_system), team_first),
+                )
+                removed = cur.rowcount if cur.rowcount is not None else 0
+
+                cur.execute(
+                    """
+                    DELETE FROM strategic_memo_cache
+                    WHERE team_1_name = ?
+                      AND team_2_name = ?
+                      AND scenario_id = ?
+                      AND rating_system = ?
+                      AND team_first = ?
+                    """,
+                    (team_1, team_2, int(scenario_id), str(rating_system), team_first),
+                )
+                memo_removed = cur.rowcount if cur.rowcount is not None else 0
+                conn.commit()
+
+            active_prefix = (team_1, team_2, int(scenario_id), str(rating_system), bool(team_first))
+            self._tree_cache = {
+                key: value for key, value in self._tree_cache.items() if tuple(key[:5]) != active_prefix
+            }
+            if self._tree_cache_key and tuple(self._tree_cache_key[:5]) == active_prefix:
+                self._tree_cache_key = None
+
+            if hasattr(self, 'tree_generator') and self.tree_generator:
+                self.tree_generator.clear_memoization(reason="clear_active_generated_tree_cache")
+
+            if self.perf.enabled:
+                self._log_perf_entry(
+                    "strategic.memo.cleared",
+                    0.0,
+                    reason="clear_active_generated_tree_cache",
+                    removed=int(memo_removed),
+                )
+
+            messagebox.showinfo(
+                "Tree Cache",
+                f"Removed {removed} cached tree snapshot(s) and {memo_removed} strategic memo snapshot(s) for the active matchup.",
+            )
+        except Exception as exc:
+            messagebox.showerror("Tree Cache", f"Failed to clear active matchup cache: {exc}")
+
+    def clear_generated_tree_cache_all_matchups(self):
+        """Clear all persisted tree snapshots across all matchups."""
+        try:
+            self._ensure_generated_tree_cache_table()
+            self._ensure_strategic_memo_cache_table()
+            with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
+                cur = conn.cursor()
+                cur.execute("DELETE FROM generated_tree_cache")
+                removed = cur.rowcount if cur.rowcount is not None else 0
+
+                cur.execute("DELETE FROM strategic_memo_cache")
+                memo_removed = cur.rowcount if cur.rowcount is not None else 0
+                conn.commit()
+
+            self._tree_cache.clear()
+            self._tree_cache_key = None
+
+            if hasattr(self, 'tree_generator') and self.tree_generator:
+                self.tree_generator.clear_memoization(reason="clear_all_generated_tree_cache")
+
+            if self.perf.enabled:
+                self._log_perf_entry(
+                    "strategic.memo.cleared",
+                    0.0,
+                    reason="clear_all_generated_tree_cache",
+                    removed=int(memo_removed),
+                )
+
+            messagebox.showinfo(
+                "Tree Cache",
+                f"Removed {removed} cached tree snapshot(s) and {memo_removed} strategic memo snapshot(s) across all matchups.",
+            )
+        except Exception as exc:
+            messagebox.showerror("Tree Cache", f"Failed to clear all tree cache entries: {exc}")
+
+    def _open_markdown_guide(self, title: str, relative_path: str):
+        """Open a markdown guide in a simple in-app reader window."""
+        try:
+            guide_path = Path(__file__).parent.parent / relative_path
+            if not guide_path.exists():
+                messagebox.showerror("Guide", f"Guide file not found:\n{guide_path}")
+                return
+
+            content = guide_path.read_text(encoding="utf-8")
+
+            guide_window = tk.Toplevel(self.root)
+            guide_window.title(title)
+            guide_window.geometry("900x700")
+            guide_window.transient(self.root)
+
+            header = tk.Label(
+                guide_window,
+                text=title,
+                font=("Arial", 13, "bold"),
+                bg="lightcyan",
+                anchor="w",
+                padx=10,
+                pady=8,
+            )
+            header.pack(fill=tk.X)
+
+            frame = tk.Frame(guide_window)
+            frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+
+            scrollbar = tk.Scrollbar(frame)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            text_widget = tk.Text(
+                frame,
+                wrap=tk.WORD,
+                yscrollcommand=scrollbar.set,
+                font=("Consolas", 10),
+            )
+            text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.config(command=text_widget.yview)
+
+            text_widget.insert("1.0", content)
+            text_widget.config(state=tk.DISABLED)
+
+            footer = tk.Frame(guide_window)
+            footer.pack(fill=tk.X, padx=8, pady=(0, 8))
+
+            tk.Button(
+                footer,
+                text="Close",
+                width=14,
+                command=guide_window.destroy,
+            ).pack(side=tk.RIGHT)
+        except Exception as exc:
+            messagebox.showerror("Guide", f"Failed to open guide: {exc}")
+
+    def open_tooltip_numbers_guide(self):
+        self._open_markdown_guide(
+            title="Tree Tooltip Numbers Guide",
+            relative_path="docs/NODE_TOOLTIP_NUMBERS_GUIDE.md",
+        )
+
+    def open_full_user_guide(self):
+        self._open_markdown_guide(
+            title="QTR Pairing Process User Guide",
+            relative_path="docs/FULL_USER_GUIDE.md",
+        )
     
     def show_data_management_menu(self):
         """Show a popup menu with data management options."""
@@ -1758,6 +2601,18 @@ class UiManager:
             tk.Button(data_mgmt_frame, text="Refresh UI", width=20, height=1,
                      command=lambda: self._menu_action(menu_window, self.update_ui),
                      relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
+            tk.Button(data_mgmt_frame, text="Clear Active Tree Cache", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.clear_generated_tree_cache_active_matchup),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
+            tk.Button(data_mgmt_frame, text="Clear All Tree Cache", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.clear_generated_tree_cache_all_matchups),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
+            tk.Button(data_mgmt_frame, text="Tooltip Numbers Guide", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.open_tooltip_numbers_guide),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
+            tk.Button(data_mgmt_frame, text="Full User Guide", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.open_full_user_guide),
+                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
             
             # BOTTOM LEFT: Team Management section
             team_mgmt_frame = tk.Frame(main_frame, bg="lightyellow", relief=tk.RAISED, borderwidth=2)
@@ -1811,6 +2666,37 @@ class UiManager:
                 bg="mistyrose"
             )
             tree_autogen_toggle.pack(pady=(0, 10))
+
+            lazy_sort_toggle = tk.Checkbutton(
+                database_frame,
+                text="Enable Fast Lazy Sorting",
+                variable=self.lazy_sort_on_expand_var,
+                command=self._on_lazy_sort_toggle,
+                bg="mistyrose"
+            )
+            lazy_sort_toggle.pack(pady=(0, 6))
+
+            self.persistent_memo_var = tk.IntVar(
+                value=1 if self._is_persistent_strategic_memo_enabled() else 0
+            )
+            persistent_memo_toggle = tk.Checkbutton(
+                database_frame,
+                text="Persistent Strategic Memo",
+                variable=self.persistent_memo_var,
+                command=self._on_persistent_memo_toggle,
+                bg="mistyrose"
+            )
+            persistent_memo_toggle.pack(pady=(0, 6))
+
+            tk.Label(
+                database_frame,
+                text="Sorts expanded branches first; deeper branches sort on expand.",
+                bg="mistyrose",
+                fg="#5b2c2c",
+                font=("Arial", 8),
+                wraplength=220,
+                justify=tk.LEFT,
+            ).pack(pady=(0, 10))
             print("Database section added successfully!")  # Debug output
             
             # Close button frame at the bottom
@@ -1856,15 +2742,32 @@ class UiManager:
             self.matchup_output_panel_created = True
 
         cache_key = self._build_tree_cache_key()
+        our_team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
         if self._tree_cache_enabled and cache_key:
             if cache_key == self._tree_cache_key and self._tree_has_nodes():
+                self.tree_generator.our_team_first = our_team_first
+                self._set_tree_generation_id(self._tree_generation_id)
+                self._set_tree_memo_state_token(cache_key)
                 self._log_perf_entry("tree.cache.hit", 0.0, reason="active")
                 self._reset_tree_sort_state()
                 return
-            cached_snapshot = self._tree_cache.get(cache_key)
-            if cached_snapshot:
-                self._restore_tree_snapshot(cached_snapshot)
+            cached_payload = self._tree_cache.get(cache_key)
+            if not cached_payload:
+                cached_payload = self._load_persistent_tree_snapshot(cache_key)
+                if cached_payload:
+                    self._tree_cache[cache_key] = cached_payload
+            if cached_payload:
+                if isinstance(cached_payload, dict):
+                    snapshot = cached_payload.get("snapshot", [])
+                    generation_id = cached_payload.get("generation_id", self._next_tree_generation_id())
+                else:
+                    snapshot = cached_payload
+                    generation_id = self._next_tree_generation_id()
+                self._restore_tree_snapshot(snapshot)
                 self._tree_cache_key = cache_key
+                self.tree_generator.our_team_first = our_team_first
+                self._set_tree_generation_id(generation_id)
+                self._set_tree_memo_state_token(cache_key)
                 self._log_perf_entry("tree.cache.hit", 0.0, reason="restore")
                 self._reset_tree_sort_state()
                 return
@@ -1876,10 +2779,24 @@ class UiManager:
             print(f"fRatings: {fRatings}\n")
             print(f"oRatings: {oRatings}\n")
         self.validate_grid_data()
-        if self.team_b.get():
-            self.tree_generator.generate_combinations(fNames, oNames, fRatings, oRatings)
+        if our_team_first:
+            self.tree_generator.generate_combinations(
+                fNames,
+                oNames,
+                fRatings,
+                oRatings,
+                our_team_first=True,
+            )
         else:
-            self.tree_generator.generate_combinations(oNames, fNames, oRatings, fRatings)
+            self.tree_generator.generate_combinations(
+                oNames,
+                fNames,
+                oRatings,
+                fRatings,
+                our_team_first=False,
+            )
+        self._set_tree_generation_id(self._next_tree_generation_id())
+        self._set_tree_memo_state_token(cache_key)
         
         # Automatically expand the root "Pairings" node
         root_nodes = self.treeview.tree.get_children()
@@ -1887,15 +2804,18 @@ class UiManager:
             self.treeview.tree.item(root_nodes[0], open=True)
 
         if self._tree_cache_enabled and cache_key:
-            self._tree_cache[cache_key] = self._capture_tree_snapshot()
+            cache_payload = {
+                "snapshot": self._capture_tree_snapshot(),
+                "generation_id": self._tree_generation_id,
+            }
+            self._tree_cache[cache_key] = cache_payload
+            self._save_persistent_tree_snapshot(cache_key, cache_payload)
             self._tree_cache_key = cache_key
             self._log_perf_entry("tree.cache.store", 0.0)
 
-        # Reset all sorting states when generating new combinations
+        # Reset all sorting states when generating new combinations.
+        # Strategic sorting is intentionally user-initiated.
         self._reset_tree_sort_state()
-        if self.auto_sort_toggle_enabled and self.auto_sort_after_generate:
-            # Run first-pass strategic sort through the same path as manual button clicks.
-            self.sort_by_strategic()
         self._update_matchup_summary([])
         
     def sort_by_confidence(self):
@@ -1933,24 +2853,92 @@ class UiManager:
 
     def sort_by_strategic(self):
         """Sort tree by unified strategic score using enhanced metric foundations."""
-        self.current_sort_mode = "strategic3"
-        self.active_sort_mode = "strategic3"
-        self.apply_combined_sort(compute_primary_tags=True)
-        memo_stats = self.tree_generator.get_memoization_stats()
-        if self.perf.enabled:
-            self._log_perf_entry(
-                "strategic.memo.stats",
-                0.0,
-                hits=memo_stats["hits"],
-                misses=memo_stats["misses"],
-                hit_rate=f"{memo_stats['hit_rate']:.2%}",
-                entries=memo_stats["entries"],
-            )
-        self.update_sort_value_column()
-        self.update_column_headers()
-        self.is_sorted = True
-        self.update_sort_button_states()
-        self._update_sort_hint()
+        if not hasattr(self, "_strategic_sort_invocation_id"):
+            self._strategic_sort_invocation_id = 0
+        self._strategic_sort_invocation_id += 1
+        strategic_invocation_id = self._strategic_sort_invocation_id
+        cache_key = self._build_tree_cache_key()
+        self._set_tree_memo_state_token(cache_key)
+        with self.perf.span(
+            "strategic.sort.end_to_end",
+            strategic_invocation_id=strategic_invocation_id,
+        ):
+            if self._is_persistent_strategic_memo_enabled() and cache_key:
+                persisted_payload = self._load_persistent_strategic_memo(cache_key)
+                loaded = self.tree_generator.import_memoization_snapshot(persisted_payload)
+                if loaded:
+                    self._log_perf_entry(
+                        "strategic.memo.persist.load",
+                        0.0,
+                        strategic_invocation_id=strategic_invocation_id,
+                    )
+
+            self.current_sort_mode = "strategic3"
+            self.active_sort_mode = "strategic3"
+
+            with self.perf.span(
+                "strategic.sort.apply_combined",
+                strategic_invocation_id=strategic_invocation_id,
+            ):
+                self.apply_combined_sort(compute_primary_tags=True)
+
+            memo_stats = self.tree_generator.get_memoization_stats()
+            if self.perf.enabled:
+                self._log_perf_entry(
+                    "strategic.memo.stats",
+                    0.0,
+                    hits=memo_stats["hits"],
+                    misses=memo_stats["misses"],
+                    hit_rate=f"{memo_stats['hit_rate']:.2%}",
+                    entries=memo_stats["entries"],
+                    clear_count=memo_stats.get("clear_count", 0),
+                    last_clear_reason=memo_stats.get("last_clear_reason", ""),
+                    last_clear_bucket=memo_stats.get("last_clear_bucket", ""),
+                    last_cleared_entries=memo_stats.get("last_cleared_entries", 0),
+                    memo_context_hash=memo_stats.get("memo_context_hash", ""),
+                    memo_key_mode=memo_stats.get("memo_key_mode", ""),
+                    memo_clear_reason=memo_stats.get("memo_clear_reason", ""),
+                    memo_clear_bucket=memo_stats.get("memo_clear_bucket", ""),
+                    memo_cleared_entries=memo_stats.get("memo_cleared_entries", 0),
+                    strategic_invocation_id=strategic_invocation_id,
+                )
+                metrics_available = set(getattr(self, "_available_explainability_metrics", set()))
+                self._log_perf_entry(
+                    "strategic.explainability.metrics",
+                    0.0,
+                    strategic_invocation_id=strategic_invocation_id,
+                    has_c2=int("cumulative" in metrics_available),
+                    has_q2=int("confidence" in metrics_available),
+                    has_r2=int("resistance" in metrics_available),
+                    has_regret=int("regret" in metrics_available),
+                    has_downside=int("downside" in metrics_available),
+                    has_guardrail=int("guardrail" in metrics_available),
+                    has_strategic=int("strategic" in metrics_available),
+                    has_exploit=int("exploit" in metrics_available),
+                    available_count=len(metrics_available),
+                )
+
+            with self.perf.span("strategic.sort.update_sort_value_column"):
+                self.update_sort_value_column()
+            with self.perf.span("strategic.sort.update_column_headers"):
+                self.update_column_headers()
+
+            self.is_sorted = True
+            with self.perf.span("strategic.sort.update_sort_button_states"):
+                self.update_sort_button_states()
+            with self.perf.span("strategic.sort.update_sort_hint"):
+                self._update_sort_hint()
+
+            if self._is_persistent_strategic_memo_enabled() and cache_key:
+                memo_payload = self.tree_generator.export_memoization_snapshot()
+                if memo_payload and not self._all_strategic_scores_are_zero():
+                    self._save_persistent_strategic_memo(cache_key, memo_payload)
+                    self._log_perf_entry(
+                        "strategic.memo.persist.save",
+                        0.0,
+                        strategic_invocation_id=strategic_invocation_id,
+                        entries=len(memo_payload.get("entries", [])),
+                    )
     
     def unsort_tree(self):
         """Remove all sorting and return to default order"""
@@ -2026,7 +3014,8 @@ class UiManager:
         self.column_sort_states[column_id] = new_state
         self.active_column_sort = column_id if new_state != "none" else None
 
-        self.apply_combined_sort(compute_primary_tags=True)
+        recompute_primary = self._should_recompute_primary_on_column_click()
+        self.apply_combined_sort(compute_primary_tags=recompute_primary)
         self.update_sort_value_column()
         self.update_column_headers()
 
@@ -2059,32 +3048,111 @@ class UiManager:
 
     def apply_combined_sort(self, compute_primary_tags=True):
         """Apply advanced sort as primary and column sort as secondary per sibling set."""
+        if not hasattr(self, "_strategic_sort_invocation_id"):
+            self._strategic_sort_invocation_id = 0
         primary_mode = self.active_sort_mode
         secondary_column = self.active_column_sort
 
-        if not primary_mode and not secondary_column:
-            self.tree_generator.unsort_tree()
-            return
+        with self.perf.span(
+            "sort.apply_combined.total",
+            primary=(primary_mode or "none"),
+            secondary=(secondary_column or "none"),
+            compute_primary=int(bool(compute_primary_tags)),
+            strategic_invocation_id=(
+                self._strategic_sort_invocation_id if primary_mode == "strategic3" else 0
+            ),
+        ):
+            if not primary_mode and not secondary_column:
+                with self.perf.span("sort.apply_combined.unsort_tree"):
+                    self.tree_generator.unsort_tree()
+                return
 
-        if compute_primary_tags and primary_mode:
-            if primary_mode == "cumulative":
-                self.tree_generator.calculate_all_path_values_enhanced("")
-            elif primary_mode == "confidence":
-                self.tree_generator.calculate_confidence_scores_enhanced("")
-            elif primary_mode == "resistance":
-                self.tree_generator.calculate_counter_resistance_scores_enhanced("")
-            elif primary_mode == "strategic3":
-                self.tree_generator.calculate_all_path_values_enhanced("")
-                self.tree_generator.calculate_confidence_scores_enhanced("")
-                self.tree_generator.calculate_counter_resistance_scores_enhanced("")
-                self.tree_generator.calculate_strategic3_scores("")
+            if compute_primary_tags and primary_mode:
+                self._set_tree_memo_state_token()
+                recomputed_any = False
 
-        self._sort_children_combined("", primary_mode, secondary_column)
+                def run_metric(metric_key, span_label, compute_func):
+                    nonlocal recomputed_any
+                    if not self._is_metric_stale(metric_key):
+                        return False
+                    with self.perf.span(span_label):
+                        compute_func("")
+                    self._mark_metric_fresh(metric_key)
+                    recomputed_any = True
+                    return True
 
-    def _sort_children_combined(self, node, primary_mode, secondary_column):
+                if primary_mode == "cumulative":
+                    run_metric("cumulative", "sort.compute.cumulative2", self.tree_generator.calculate_all_path_values_enhanced)
+                elif primary_mode == "confidence":
+                    run_metric("confidence", "sort.compute.confidence2", self.tree_generator.calculate_confidence_scores_enhanced)
+                elif primary_mode == "resistance":
+                    run_metric("resistance", "sort.compute.resistance2", self.tree_generator.calculate_counter_resistance_scores_enhanced)
+                elif primary_mode == "strategic3":
+                    recomputed_c2 = run_metric(
+                        "cumulative",
+                        "sort.compute.strategic3.cumulative2",
+                        self.tree_generator.calculate_all_path_values_enhanced,
+                    )
+                    recomputed_q2 = run_metric(
+                        "confidence",
+                        "sort.compute.strategic3.confidence2",
+                        self.tree_generator.calculate_confidence_scores_enhanced,
+                    )
+                    recomputed_r2 = run_metric(
+                        "resistance",
+                        "sort.compute.strategic3.resistance2",
+                        self.tree_generator.calculate_counter_resistance_scores_enhanced,
+                    )
+
+                    if self._is_metric_stale("strategic3") or recomputed_c2 or recomputed_q2 or recomputed_r2:
+                        with self.perf.span(
+                            "sort.compute.strategic3.final",
+                            strategic_invocation_id=self._strategic_sort_invocation_id,
+                        ):
+                            self.tree_generator.calculate_strategic3_scores("")
+                        self._mark_metric_fresh("strategic3")
+                        recomputed_any = True
+
+                self._last_primary_metrics_signature = self._build_primary_metrics_signature(primary_mode)
+                self._primary_metrics_dirty = False
+                self._mark_explainability_metrics_available(primary_mode)
+
+            recurse_mode = "expanded" if getattr(self, "lazy_sort_on_expand", False) else "all"
+            self._sort_children_combined("", primary_mode, secondary_column, recurse_mode=recurse_mode)
+
+    def _sort_children_combined(self, node, primary_mode, secondary_column, _profile=None, _depth=0, recurse_mode="all"):
+        profile_owner = _profile is None
+        perf_enabled = bool(getattr(getattr(self, 'perf', None), 'enabled', False))
+        if profile_owner and perf_enabled and primary_mode:
+            _profile = {
+                "mode": primary_mode,
+                "nodes": 0,
+                "sibling_total": 0,
+                "max_siblings": 0,
+                "max_depth": 0,
+                "leaf_calls": 0,
+                "text_sort_ms": 0.0,
+                "tie_break_ms": 0.0,
+                "secondary_ms": 0.0,
+                "primary_ms": 0.0,
+                "reorder_ms": 0.0,
+                "recurse_ms": 0.0,
+                "cache_hit_nodes": 0,
+                "cache_miss_nodes": 0,
+                "start": time.perf_counter(),
+            }
+
         children = self.treeview.tree.get_children(node)
         if not children:
+            if _profile is not None:
+                _profile["leaf_calls"] += 1
             return
+
+        if _profile is not None:
+            _profile["nodes"] += 1
+            _profile["sibling_total"] += len(children)
+            _profile["max_siblings"] = max(_profile["max_siblings"], len(children))
+            _profile["max_depth"] = max(_profile["max_depth"], _depth)
 
         secondary_state = "none"
         if secondary_column:
@@ -2093,7 +3161,17 @@ class UiManager:
 
         primary_reverse = False
         if primary_mode:
-            primary_reverse = not self.tree_generator._is_opponent_choice_level(children[0])
+            # Choice ownership for sibling ordering belongs to the current decision node.
+            # For root sorting and the synthetic "Pairings" node, depth-1 children
+            # represent the first real decision owner.
+            decision_node = node
+            if not decision_node:
+                decision_node = children[0]
+            else:
+                node_text = (self.treeview.tree.item(decision_node, 'text') or "").strip().lower()
+                if node_text == "pairings":
+                    decision_node = children[0]
+            primary_reverse = not self.tree_generator._is_opponent_choice_level(decision_node)
 
         def primary_key(child_id):
             if primary_mode == "cumulative":
@@ -2167,29 +3245,121 @@ class UiManager:
 
             return [metric for metric in configured if metric not in excluded]
 
-        children_sorted = list(children)
+        child_set_key = tuple(sorted(children))
+        tie_break_order = getattr(self, 'tie_break_order', 'confidence_then_cumulative')
+        current_sort_mode = getattr(self, 'current_sort_mode', 'none')
+        primary_signature = getattr(self, '_last_primary_metrics_signature', None)
+        sort_context_key = (
+            primary_mode or "none",
+            secondary_column or "none",
+            secondary_state,
+            bool(primary_reverse),
+            tie_break_order,
+            primary_signature,
+        )
+        cache_key = (node, child_set_key, sort_context_key)
+        sort_cache = getattr(self, '_sorted_children_cache', None)
+        if sort_cache is None:
+            sort_cache = {}
+            setattr(self, '_sorted_children_cache', sort_cache)
+        cached_order = sort_cache.get(cache_key)
 
-        # Final deterministic fallback for equal numeric metrics.
-        children_sorted.sort(key=lambda child_id: (self.treeview.tree.item(child_id, 'text') or "").lower())
+        if cached_order is not None:
+            children_sorted = list(cached_order)
+            if _profile is not None:
+                _profile["cache_hit_nodes"] += 1
+        else:
+            if _profile is not None:
+                _profile["cache_miss_nodes"] += 1
+            children_sorted = list(children)
 
-        # Deterministic tie-break chain obeys same decision-owner direction as primary mode.
-        if primary_mode:
-            for tie_metric in reversed(resolve_tie_break_chain()):
-                children_sorted.sort(key=lambda child_id, m=tie_metric: metric_value(child_id, m), reverse=primary_reverse)
+            # Final deterministic fallback for equal numeric metrics.
+            section_start = time.perf_counter()
+            children_sorted.sort(key=lambda child_id: (self.treeview.tree.item(child_id, 'text') or "").lower())
+            if _profile is not None:
+                _profile["text_sort_ms"] += (time.perf_counter() - section_start) * 1000.0
 
-        if secondary_column and secondary_state != "none":
-            children_sorted.sort(key=secondary_key, reverse=secondary_reverse)
+            # Deterministic tie-break chain obeys same decision-owner direction as primary mode.
+            if primary_mode:
+                section_start = time.perf_counter()
+                for tie_metric in reversed(resolve_tie_break_chain()):
+                    children_sorted.sort(key=lambda child_id, m=tie_metric: metric_value(child_id, m), reverse=primary_reverse)
+                if _profile is not None:
+                    _profile["tie_break_ms"] += (time.perf_counter() - section_start) * 1000.0
 
-        if primary_mode:
-            children_sorted.sort(key=primary_key, reverse=primary_reverse)
+            if secondary_column and secondary_state != "none":
+                section_start = time.perf_counter()
+                children_sorted.sort(key=secondary_key, reverse=secondary_reverse)
+                if _profile is not None:
+                    _profile["secondary_ms"] += (time.perf_counter() - section_start) * 1000.0
 
+            if primary_mode:
+                section_start = time.perf_counter()
+                children_sorted.sort(key=primary_key, reverse=primary_reverse)
+                if _profile is not None:
+                    _profile["primary_ms"] += (time.perf_counter() - section_start) * 1000.0
+
+            sort_cache[cache_key] = tuple(children_sorted)
+
+        section_start = time.perf_counter()
         for child in children_sorted:
             self.treeview.tree.detach(child)
         for child in children_sorted:
             self.treeview.tree.move(child, node, 'end')
+        if _profile is not None:
+            _profile["reorder_ms"] += (time.perf_counter() - section_start) * 1000.0
 
+        section_start = time.perf_counter()
         for child in children_sorted:
-            self._sort_children_combined(child, primary_mode, secondary_column)
+            should_recurse = recurse_mode == "all"
+            if recurse_mode == "expanded":
+                try:
+                    should_recurse = bool(self.treeview.tree.item(child, "open"))
+                except Exception:
+                    should_recurse = False
+            if not should_recurse:
+                continue
+            self._sort_children_combined(
+                child,
+                primary_mode,
+                secondary_column,
+                _profile=_profile,
+                _depth=_depth + 1,
+                recurse_mode=recurse_mode,
+            )
+        if _profile is not None:
+            _profile["recurse_ms"] += (time.perf_counter() - section_start) * 1000.0
+
+        if profile_owner and _profile is not None:
+            total_ms = (time.perf_counter() - _profile["start"]) * 1000.0
+            nodes = int(_profile["nodes"]) if _profile["nodes"] else 0
+            avg_siblings = (_profile["sibling_total"] / nodes) if nodes else 0.0
+            strategic_invocation_id = 0
+            memo_context_hash = ""
+            if _profile["mode"] == "strategic3":
+                strategic_invocation_id = int(getattr(self, "_strategic_sort_invocation_id", 0))
+                if hasattr(self, "tree_generator") and self.tree_generator:
+                    memo_context_hash = self.tree_generator.get_memoization_stats().get("memo_context_hash", "")
+            self._log_perf_entry(
+                "sort.children.profile",
+                total_ms,
+                mode=_profile["mode"],
+                strategic_invocation_id=strategic_invocation_id,
+                memo_context_hash=memo_context_hash,
+                nodes=nodes,
+                cache_hits=int(_profile["cache_hit_nodes"]),
+                cache_misses=int(_profile["cache_miss_nodes"]),
+                leaf_calls=int(_profile["leaf_calls"]),
+                max_depth=int(_profile["max_depth"]),
+                avg_siblings=f"{avg_siblings:.2f}",
+                max_siblings=int(_profile["max_siblings"]),
+                text_ms=f"{_profile['text_sort_ms']:.2f}",
+                tie_ms=f"{_profile['tie_break_ms']:.2f}",
+                secondary_ms=f"{_profile['secondary_ms']:.2f}",
+                primary_ms=f"{_profile['primary_ms']:.2f}",
+                reorder_ms=f"{_profile['reorder_ms']:.2f}",
+                recurse_ms=f"{_profile['recurse_ms']:.2f}",
+            )
 
     def update_scenario_box(self):
         scenarios = []
@@ -2377,9 +3547,8 @@ class UiManager:
 
     def set_team_dropdowns(self):
         team_names = self.select_team_names()
-        with self.perf.span("team_dropdowns.set_values"):
-            self.combobox_1['values'] = team_names
-            self.combobox_2['values'] = team_names
+        self.combobox_1['values'] = team_names
+        self.combobox_2['values'] = team_names
 
         if not self._team_dropdowns_initialized:
             self._team_dropdowns_initialized = True
@@ -2437,8 +3606,7 @@ class UiManager:
             print("DEBUG: No debugger detected - skipping auto-population")
 
     def load_grid_data_from_db(self, refresh_ui: bool = True):
-        with self.perf.span("grid.load_from_db"):
-            self._start_grid_load(refresh_ui=refresh_ui)
+        self._start_grid_load(refresh_ui=refresh_ui)
 
     def _start_grid_load(self, refresh_ui: bool = True):
         team_1 = self.combobox_1.get().strip()
@@ -2473,9 +3641,7 @@ class UiManager:
         self._apply_grid_snapshot(snapshot, refresh_ui)
 
     def _background_grid_load_worker(self, generation: int, team_1: str, team_2: str, scenario_id: int, refresh_ui: bool):
-        start = time.perf_counter()
         snapshot = self._fetch_grid_snapshot(team_1, team_2, scenario_id)
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
 
         def apply_snapshot():
             if generation != self._grid_load_generation:
@@ -2484,7 +3650,6 @@ class UiManager:
             if snapshot is None:
                 return
             self._apply_grid_snapshot(snapshot, refresh_ui)
-            self._log_perf_entry("grid.load.background", elapsed_ms, rows=len(snapshot.get('ratings_rows', [])))
 
         if hasattr(self, 'root'):
             self.root.after(0, apply_snapshot)
@@ -3156,24 +4321,23 @@ class UiManager:
 
     def update_comment_indicators(self):
         """Update corner indicators for cells that have comments"""
-        with self.perf.span("comments.update_indicators"):
-            # Clear existing indicators first
-            self.clear_comment_indicators()
+        # Clear existing indicators first
+        self.clear_comment_indicators()
 
-            comment_map = self._get_comment_map_for_current_selection()
-            if not comment_map:
-                return
+        comment_map = self._get_comment_map_for_current_selection()
+        if not comment_map:
+            return
 
-            for row in range(1, 6):
-                friendly_player = self.grid_data_model.get_rating(row, 0)
-                if not friendly_player:
+        for row in range(1, 6):
+            friendly_player = self.grid_data_model.get_rating(row, 0)
+            if not friendly_player:
+                continue
+            for col in range(1, 6):
+                opponent_player = self.grid_data_model.get_rating(0, col)
+                if not opponent_player:
                     continue
-                for col in range(1, 6):
-                    opponent_player = self.grid_data_model.get_rating(0, col)
-                    if not opponent_player:
-                        continue
-                    if (friendly_player, opponent_player) in comment_map:
-                        self.add_comment_indicator(row, col)
+                if (friendly_player, opponent_player) in comment_map:
+                    self.add_comment_indicator(row, col)
 
     def add_comment_indicator(self, row, col):
         """Add a small corner indicator for comments"""
@@ -3556,6 +4720,8 @@ class UiManager:
                             self.grid_data_model.set_rating(row, col, flipped_rating, notify=False)
                 
                 self.grid_data_model.end_batch()
+                # Batch mutation used notify=False for performance; emit one refresh event.
+                self.grid_data_model._notify_observers('grid_loaded')
                 self.grid_is_flipped = True
                 print("Grid flipped to opponent's perspective")
                 
@@ -3650,18 +4816,6 @@ class UiManager:
                 anchor=tk.W
             )
             self.summary_spread_label.pack(fill=tk.X)
-
-            self.summary_explain_label = tk.Label(
-                summary_frame,
-                text="Explainability: select a tree node to view C2/Q2/R2 and strategic factors.",
-                font=("Arial", 8),
-                bg="lightyellow",
-                fg="#333333",
-                justify=tk.LEFT,
-                anchor=tk.W,
-                wraplength=360
-            )
-            self.summary_explain_label.pack(fill=tk.X, pady=(2, 0))
 
             self.summary_histogram = tk.Canvas(
                 summary_frame,
@@ -3818,17 +4972,33 @@ class UiManager:
 
         lines = [
             self._get_mode_profile_text(),
-            f"C2/Q2/R2: {c2} / {q2} / {r2}",
-            f"Regret/Downside: {regret} / {downside}",
-            f"Strategic/Exploitability: {strategic} / {exploit}",
-            f"Round-win guardrail signal: {q2 - 50:+d}",
+            (
+                "C2/Q2/R2: "
+                f"{self._format_explainability_metric('cumulative', c2)} / "
+                f"{self._format_explainability_metric('confidence', q2)} / "
+                f"{self._format_explainability_metric('resistance', r2)}"
+            ),
+            (
+                "Regret/Downside: "
+                f"{self._format_explainability_metric('regret', regret)} / "
+                f"{self._format_explainability_metric('downside', downside)}"
+            ),
+            (
+                "Strategic/Exploitability: "
+                f"{self._format_explainability_metric('strategic', strategic)} / "
+                f"{self._format_explainability_metric('exploit', exploit)}"
+            ),
+            (
+                "Round-win guardrail signal: "
+                f"{self._format_explainability_metric('guardrail', f'{q2 - 50:+d}')}"
+            ),
             f"Context: siblings={sibling_count}, remaining children={len(children)}",
             "Bus context: advisory only (YES/NO from calc-grid thresholds)",
         ]
         return "\n".join(lines)
 
     def _update_explainability_card(self, node_id: Optional[str]):
-        if not hasattr(self, 'summary_explain_label'):
+        if self.summary_explain_label is None:
             return
         self.summary_explain_label.config(text=self._format_explainability_text(node_id))
 
@@ -4192,6 +5362,7 @@ class UiManager:
         """
         if event_type == 'rating_changed':
             row, col, value = args
+            self._invalidate_calc_grid_cache()
             self._update_entry_from_model(row, col)
             self.update_color_on_change(None, None, None, row, col)
         
@@ -4206,6 +5377,7 @@ class UiManager:
         
         elif event_type == 'cell_disabled':
             row, col, is_disabled = args
+            self._invalidate_calc_grid_cache()
             widget = self.grid_widgets[row][col]
             if widget:
                 if is_disabled:
@@ -4222,6 +5394,7 @@ class UiManager:
         
         elif event_type == 'grid_cleared':
             self._invalidate_tree_cache("grid_cleared")
+            self._invalidate_calc_grid_cache()
             # Refresh entire grid
             for r in range(6):
                 for c in range(6):
@@ -4229,6 +5402,7 @@ class UiManager:
                     self._update_display_entry_from_model(r, c)
         
         elif event_type == 'grid_loaded':
+            self._invalidate_calc_grid_cache()
             # Refresh entire grid after load
             for r in range(6):
                 for c in range(6):
