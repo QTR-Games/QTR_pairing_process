@@ -9,6 +9,7 @@ import sqlite3
 import time
 import threading
 import hashlib
+from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 import tkinter.font as tkfont
@@ -307,6 +308,15 @@ class UiManager:
         self._status_font_emphasis = ("Arial", 8, "bold")
         self._status_fg_normal = "#666666"
         self._status_fg_emphasis = "#000000"
+        self._busy_operation_depth = 0
+        self._busy_operation_message = "Loading"
+        self._busy_status_phase = 0
+        self._busy_status_job = None
+        self._busy_started_at = 0.0
+        self._busy_min_visible_ms = 350
+        self.busy_status_frame = None
+        self.busy_status_label = None
+        self.busy_progress = None
 
         # Clipboard paste helpers
         self._paste_5x5_button = None
@@ -849,6 +859,26 @@ class UiManager:
             fg=self._status_fg_normal
         )
         self.dynamic_status_label.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=2, pady=1)
+
+        # Busy indicator for long-running generation/sort operations.
+        self.busy_status_frame = tk.Frame(self.status_frame, width=230, height=22)
+        self.busy_status_frame.pack_propagate(False)
+
+        self.busy_status_label = tk.Label(
+            self.busy_status_frame,
+            text="Loading...",
+            anchor=tk.W,
+            font=self._status_font_normal,
+            fg="#0d47a1"
+        )
+        self.busy_status_label.pack(side=tk.LEFT, padx=(2, 6))
+
+        self.busy_progress = ttk.Progressbar(
+            self.busy_status_frame,
+            mode='indeterminate',
+            length=95,
+        )
+        self.busy_progress.pack(side=tk.RIGHT, padx=(0, 2), pady=2)
         
         # Add color preview
         color_frame = tk.Frame(self.status_frame)
@@ -862,6 +892,127 @@ class UiManager:
             color_box.pack(side=tk.LEFT, padx=1)
 
         self._refresh_status_messages()
+
+    def _set_heavy_controls_enabled(self, enabled: bool):
+        state = tk.NORMAL if enabled else tk.DISABLED
+        for name in ("generate_button", "cumulative_button", "confidence_button", "counter_button", "strategic_button"):
+            control = getattr(self, name, None)
+            if control is not None:
+                try:
+                    control.config(state=state)
+                except Exception:
+                    pass
+
+    def _cancel_busy_animation(self):
+        busy_job = getattr(self, "_busy_status_job", None)
+        root = getattr(self, "root", None)
+        if busy_job is not None and root is not None:
+            try:
+                root.after_cancel(busy_job)
+            except Exception:
+                pass
+        self._busy_status_job = None
+
+    def _rotate_busy_status(self):
+        if getattr(self, "_busy_operation_depth", 0) <= 0 or getattr(self, "busy_status_label", None) is None:
+            self._busy_status_job = None
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            self._busy_status_job = None
+            return
+
+        dots = "." * ((self._busy_status_phase % 3) + 1)
+        self.busy_status_label.config(text=f"{self._busy_operation_message}{dots}")
+        self._busy_status_phase += 1
+        self._busy_status_job = root.after(320, self._rotate_busy_status)
+
+    def _begin_busy_ui(self, message: str):
+        self._busy_operation_depth = getattr(self, "_busy_operation_depth", 0) + 1
+        if self._busy_operation_depth > 1:
+            return
+
+        self._busy_operation_message = message or "Loading"
+        self._busy_started_at = time.perf_counter()
+        self._busy_status_phase = 0
+        self._cancel_busy_animation()
+        self._cancel_status_rotation()
+
+        dynamic_status = getattr(self, "dynamic_status_label", None)
+        if dynamic_status is not None:
+            dynamic_status.config(
+                text=f"{self._busy_operation_message}...",
+                font=self._status_font_emphasis,
+                fg="#0d47a1",
+            )
+
+        if getattr(self, "busy_status_frame", None) is not None:
+            self.busy_status_frame.pack(side=tk.RIGHT, padx=(0, 8), pady=2)
+        if getattr(self, "busy_progress", None) is not None:
+            self.busy_progress.start(12)
+
+        self._set_heavy_controls_enabled(False)
+        root = getattr(self, "root", None)
+        try:
+            if root is not None:
+                root.config(cursor="watch")
+        except Exception:
+            pass
+
+        self._rotate_busy_status()
+        # Force paint before expensive work begins.
+        if root is not None:
+            root.update_idletasks()
+
+    def _end_busy_ui(self):
+        if getattr(self, "_busy_operation_depth", 0) <= 0:
+            return
+
+        self._busy_operation_depth -= 1
+        if self._busy_operation_depth > 0:
+            return
+
+        root = getattr(self, "root", None)
+        elapsed_ms = max(0.0, (time.perf_counter() - getattr(self, "_busy_started_at", 0.0)) * 1000.0)
+        remaining_ms = max(0, int(getattr(self, "_busy_min_visible_ms", 350) - elapsed_ms))
+        if remaining_ms > 0 and root is not None:
+            try:
+                root.after(remaining_ms, self._finalize_busy_ui)
+                return
+            except Exception:
+                pass
+
+        self._finalize_busy_ui()
+
+    def _finalize_busy_ui(self):
+        if getattr(self, "_busy_operation_depth", 0) > 0:
+            return
+
+        self._cancel_busy_animation()
+        if getattr(self, "busy_progress", None) is not None:
+            self.busy_progress.stop()
+        if getattr(self, "busy_status_frame", None) is not None:
+            self.busy_status_frame.pack_forget()
+
+        self._set_heavy_controls_enabled(True)
+        root = getattr(self, "root", None)
+        try:
+            if root is not None:
+                root.config(cursor="")
+        except Exception:
+            pass
+
+        self._busy_operation_message = "Loading"
+        if hasattr(self, "_grid_dirty"):
+            self._refresh_status_messages()
+
+    @contextmanager
+    def _busy_ui_operation(self, message: str):
+        self._begin_busy_ui(message)
+        try:
+            yield
+        finally:
+            self._end_busy_ui()
     
     def update_status_bar(self):
         """Update status bar information"""
@@ -996,12 +1147,14 @@ class UiManager:
         self._rotate_status_message()
 
     def _cancel_status_rotation(self):
-        if self._status_message_job is not None:
+        status_job = getattr(self, "_status_message_job", None)
+        root = getattr(self, "root", None)
+        if status_job is not None and root is not None:
             try:
-                self.root.after_cancel(self._status_message_job)
+                root.after_cancel(status_job)
             except Exception:
                 pass
-            self._status_message_job = None
+        self._status_message_job = None
 
     def _rotate_status_message(self):
         if not self._status_messages or not hasattr(self, 'dynamic_status_label'):
@@ -2891,225 +3044,230 @@ class UiManager:
             messagebox.showerror("Error", f"Failed to export XLSX: {e}")
     
     def on_generate_combinations(self):
-        # Create matchup output panel on first use
-        if not self.matchup_output_panel_created:
-            self.create_matchup_output_panel()
-            self.matchup_output_panel_created = True
+        with self._busy_ui_operation("Loading - generating combinations"):
+            # Create matchup output panel on first use
+            if not self.matchup_output_panel_created:
+                self.create_matchup_output_panel()
+                self.matchup_output_panel_created = True
 
-        cache_key = self._build_tree_cache_key()
-        our_team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
-        if self._tree_cache_enabled and cache_key:
-            if cache_key == self._tree_cache_key and self._tree_has_nodes():
-                self.tree_generator.our_team_first = our_team_first
-                self._set_tree_generation_id(self._tree_generation_id)
-                self._set_tree_memo_state_token(cache_key)
-                self._log_perf_entry("tree.cache.hit", 0.0, reason="active")
-                self._reset_tree_sort_state()
-                return
-            cached_payload = self._tree_cache.get(cache_key)
-            if not cached_payload:
-                cached_payload = self._load_persistent_tree_snapshot(cache_key)
+            cache_key = self._build_tree_cache_key()
+            our_team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
+            if self._tree_cache_enabled and cache_key:
+                if cache_key == self._tree_cache_key and self._tree_has_nodes():
+                    self.tree_generator.our_team_first = our_team_first
+                    self._set_tree_generation_id(self._tree_generation_id)
+                    self._set_tree_memo_state_token(cache_key)
+                    self._log_perf_entry("tree.cache.hit", 0.0, reason="active")
+                    self._reset_tree_sort_state()
+                    return
+                cached_payload = self._tree_cache.get(cache_key)
+                if not cached_payload:
+                    cached_payload = self._load_persistent_tree_snapshot(cache_key)
+                    if cached_payload:
+                        self._tree_cache[cache_key] = cached_payload
                 if cached_payload:
-                    self._tree_cache[cache_key] = cached_payload
-            if cached_payload:
-                if isinstance(cached_payload, dict):
-                    snapshot = cached_payload.get("snapshot", [])
-                    generation_id = cached_payload.get("generation_id", self._next_tree_generation_id())
-                else:
-                    snapshot = cached_payload
-                    generation_id = self._next_tree_generation_id()
-                self._restore_tree_snapshot(snapshot)
+                    if isinstance(cached_payload, dict):
+                        snapshot = cached_payload.get("snapshot", [])
+                        generation_id = cached_payload.get("generation_id", self._next_tree_generation_id())
+                    else:
+                        snapshot = cached_payload
+                        generation_id = self._next_tree_generation_id()
+                    self._restore_tree_snapshot(snapshot)
+                    self._tree_cache_key = cache_key
+                    self.tree_generator.our_team_first = our_team_first
+                    self._set_tree_generation_id(generation_id)
+                    self._set_tree_memo_state_token(cache_key)
+                    self._log_perf_entry("tree.cache.hit", 0.0, reason="restore")
+                    self._reset_tree_sort_state()
+                    return
+                self._log_perf_entry("tree.cache.miss", 0.0)
+            
+            fNames, oNames = self.prep_names()
+            fRatings, oRatings = self.prep_ratings(fNames,oNames)
+            if self.print_output:
+                print(f"fRatings: {fRatings}\n")
+                print(f"oRatings: {oRatings}\n")
+            self.validate_grid_data()
+            if our_team_first:
+                self.tree_generator.generate_combinations(
+                    fNames,
+                    oNames,
+                    fRatings,
+                    oRatings,
+                    our_team_first=True,
+                )
+            else:
+                self.tree_generator.generate_combinations(
+                    oNames,
+                    fNames,
+                    oRatings,
+                    fRatings,
+                    our_team_first=False,
+                )
+            self._set_tree_generation_id(self._next_tree_generation_id())
+            self._set_tree_memo_state_token(cache_key)
+            
+            # Automatically expand the root "Pairings" node
+            root_nodes = self.treeview.tree.get_children()
+            if root_nodes:
+                self.treeview.tree.item(root_nodes[0], open=True)
+
+            if self._tree_cache_enabled and cache_key:
+                cache_payload = {
+                    "snapshot": self._capture_tree_snapshot(),
+                    "generation_id": self._tree_generation_id,
+                }
+                self._tree_cache[cache_key] = cache_payload
+                self._save_persistent_tree_snapshot(cache_key, cache_payload)
                 self._tree_cache_key = cache_key
-                self.tree_generator.our_team_first = our_team_first
-                self._set_tree_generation_id(generation_id)
-                self._set_tree_memo_state_token(cache_key)
-                self._log_perf_entry("tree.cache.hit", 0.0, reason="restore")
-                self._reset_tree_sort_state()
-                return
-            self._log_perf_entry("tree.cache.miss", 0.0)
-        
-        fNames, oNames = self.prep_names()
-        fRatings, oRatings = self.prep_ratings(fNames,oNames)
-        if self.print_output:
-            print(f"fRatings: {fRatings}\n")
-            print(f"oRatings: {oRatings}\n")
-        self.validate_grid_data()
-        if our_team_first:
-            self.tree_generator.generate_combinations(
-                fNames,
-                oNames,
-                fRatings,
-                oRatings,
-                our_team_first=True,
-            )
-        else:
-            self.tree_generator.generate_combinations(
-                oNames,
-                fNames,
-                oRatings,
-                fRatings,
-                our_team_first=False,
-            )
-        self._set_tree_generation_id(self._next_tree_generation_id())
-        self._set_tree_memo_state_token(cache_key)
-        
-        # Automatically expand the root "Pairings" node
-        root_nodes = self.treeview.tree.get_children()
-        if root_nodes:
-            self.treeview.tree.item(root_nodes[0], open=True)
+                self._log_perf_entry("tree.cache.store", 0.0)
 
-        if self._tree_cache_enabled and cache_key:
-            cache_payload = {
-                "snapshot": self._capture_tree_snapshot(),
-                "generation_id": self._tree_generation_id,
-            }
-            self._tree_cache[cache_key] = cache_payload
-            self._save_persistent_tree_snapshot(cache_key, cache_payload)
-            self._tree_cache_key = cache_key
-            self._log_perf_entry("tree.cache.store", 0.0)
-
-        # Reset all sorting states when generating new combinations.
-        # Strategic sorting is intentionally user-initiated.
-        self._reset_tree_sort_state()
-        self._update_matchup_summary([])
+            # Reset all sorting states when generating new combinations.
+            # Strategic sorting is intentionally user-initiated.
+            self._reset_tree_sort_state()
+            self._update_matchup_summary([])
         
     def sort_by_confidence(self):
         """Sort tree by risk-adjusted confidence scores"""
-        self.current_sort_mode = "confidence"
-        self.active_sort_mode = "confidence"
-        self.apply_combined_sort(compute_primary_tags=True)
-        self.update_sort_value_column()
-        self.update_column_headers()
-        self.is_sorted = True
-        self.update_sort_button_states()
-        self._update_sort_hint()
+        with self._busy_ui_operation("Loading - sorting by confidence"):
+            self.current_sort_mode = "confidence"
+            self.active_sort_mode = "confidence"
+            self.apply_combined_sort(compute_primary_tags=True)
+            self.update_sort_value_column()
+            self.update_column_headers()
+            self.is_sorted = True
+            self.update_sort_button_states()
+            self._update_sort_hint()
 
     def sort_by_counter_resistance(self):
         """Sort tree by counter-resistance against opponent strategies"""
-        self.current_sort_mode = "resistance"
-        self.active_sort_mode = "resistance"
-        self.apply_combined_sort(compute_primary_tags=True)
-        self.update_sort_value_column()
-        self.update_column_headers()
-        self.is_sorted = True
-        self.update_sort_button_states()
-        self._update_sort_hint()
+        with self._busy_ui_operation("Loading - sorting by counter resistance"):
+            self.current_sort_mode = "resistance"
+            self.active_sort_mode = "resistance"
+            self.apply_combined_sort(compute_primary_tags=True)
+            self.update_sort_value_column()
+            self.update_column_headers()
+            self.is_sorted = True
+            self.update_sort_button_states()
+            self._update_sort_hint()
 
     def sort_by_cumulative(self):
         """Sort tree by cumulative value"""
-        self.current_sort_mode = "cumulative"
-        self.active_sort_mode = "cumulative"
-        self.apply_combined_sort(compute_primary_tags=True)
-        self.update_sort_value_column()
-        self.update_column_headers()
-        self.is_sorted = True
-        self.update_sort_button_states()
-        self._update_sort_hint()
+        with self._busy_ui_operation("Loading - sorting by cumulative"):
+            self.current_sort_mode = "cumulative"
+            self.active_sort_mode = "cumulative"
+            self.apply_combined_sort(compute_primary_tags=True)
+            self.update_sort_value_column()
+            self.update_column_headers()
+            self.is_sorted = True
+            self.update_sort_button_states()
+            self._update_sort_hint()
 
     def sort_by_strategic(self):
         """Sort tree by unified strategic score using enhanced metric foundations."""
-        if not hasattr(self, "_strategic_sort_invocation_id"):
-            self._strategic_sort_invocation_id = 0
-        self._strategic_sort_invocation_id += 1
-        strategic_invocation_id = self._strategic_sort_invocation_id
-        cache_key = self._build_tree_cache_key()
-        self._set_tree_memo_state_token(cache_key)
-        with self.perf.span(
-            "strategic.sort.end_to_end",
-            strategic_invocation_id=strategic_invocation_id,
-        ):
-            if self._is_persistent_strategic_memo_enabled() and cache_key:
-                persisted_payload = self._load_persistent_strategic_memo(cache_key)
-                loaded = self.tree_generator.import_memoization_snapshot(persisted_payload)
-                if loaded:
-                    self._log_perf_entry(
-                        "strategic.memo.persist.load",
-                        0.0,
-                        strategic_invocation_id=strategic_invocation_id,
-                    )
-
-            self.current_sort_mode = "strategic3"
-            self.active_sort_mode = "strategic3"
-
+        with self._busy_ui_operation("Loading - sorting by strategic fusion"):
+            if not hasattr(self, "_strategic_sort_invocation_id"):
+                self._strategic_sort_invocation_id = 0
+            self._strategic_sort_invocation_id += 1
+            strategic_invocation_id = self._strategic_sort_invocation_id
+            cache_key = self._build_tree_cache_key()
+            self._set_tree_memo_state_token(cache_key)
             with self.perf.span(
-                "strategic.sort.apply_combined",
+                "strategic.sort.end_to_end",
                 strategic_invocation_id=strategic_invocation_id,
             ):
-                self.apply_combined_sort(compute_primary_tags=True)
+                if self._is_persistent_strategic_memo_enabled() and cache_key:
+                    persisted_payload = self._load_persistent_strategic_memo(cache_key)
+                    loaded = self.tree_generator.import_memoization_snapshot(persisted_payload)
+                    if loaded:
+                        self._log_perf_entry(
+                            "strategic.memo.persist.load",
+                            0.0,
+                            strategic_invocation_id=strategic_invocation_id,
+                        )
 
-            # Defensive recovery for stale memo/tag states that can survive cross-branch
-            # upgrades and manifest as all-zero strategic displays.
-            self._recover_zeroed_strategic_scores()
+                self.current_sort_mode = "strategic3"
+                self.active_sort_mode = "strategic3"
 
-            memo_stats = self.tree_generator.get_memoization_stats()
-            if self.perf.enabled:
-                self._log_perf_entry(
-                    "strategic.memo.stats",
-                    0.0,
-                    hits=memo_stats["hits"],
-                    misses=memo_stats["misses"],
-                    hit_rate=f"{memo_stats['hit_rate']:.2%}",
-                    entries=memo_stats["entries"],
-                    clear_count=memo_stats.get("clear_count", 0),
-                    last_clear_reason=memo_stats.get("last_clear_reason", ""),
-                    last_clear_bucket=memo_stats.get("last_clear_bucket", ""),
-                    last_cleared_entries=memo_stats.get("last_cleared_entries", 0),
-                    memo_context_hash=memo_stats.get("memo_context_hash", ""),
-                    memo_key_mode=memo_stats.get("memo_key_mode", ""),
-                    memo_clear_reason=memo_stats.get("memo_clear_reason", ""),
-                    memo_clear_bucket=memo_stats.get("memo_clear_bucket", ""),
-                    memo_cleared_entries=memo_stats.get("memo_cleared_entries", 0),
+                with self.perf.span(
+                    "strategic.sort.apply_combined",
                     strategic_invocation_id=strategic_invocation_id,
-                )
-                metrics_available = set(getattr(self, "_available_explainability_metrics", set()))
-                self._log_perf_entry(
-                    "strategic.explainability.metrics",
-                    0.0,
-                    strategic_invocation_id=strategic_invocation_id,
-                    has_c2=int("cumulative" in metrics_available),
-                    has_q2=int("confidence" in metrics_available),
-                    has_r2=int("resistance" in metrics_available),
-                    has_regret=int("regret" in metrics_available),
-                    has_downside=int("downside" in metrics_available),
-                    has_guardrail=int("guardrail" in metrics_available),
-                    has_strategic=int("strategic" in metrics_available),
-                    has_exploit=int("exploit" in metrics_available),
-                    available_count=len(metrics_available),
-                )
+                ):
+                    self.apply_combined_sort(compute_primary_tags=True)
 
-            with self.perf.span("strategic.sort.update_sort_value_column"):
-                self.update_sort_value_column()
+                # Defensive recovery for stale memo/tag states that can survive cross-branch
+                # upgrades and manifest as all-zero strategic displays.
+                self._recover_zeroed_strategic_scores()
 
-            score_dist = self._get_strategic_score_distribution()
-            if score_dist is not None:
-                self._log_perf_entry(
-                    "strategic.display.score_distribution",
-                    0.0,
-                    strategic_invocation_id=strategic_invocation_id,
-                    total_nodes=score_dist["total"],
-                    non_zero_nodes=score_dist["non_zero"],
-                    zero_nodes=score_dist["zero"],
-                )
-
-            with self.perf.span("strategic.sort.update_column_headers"):
-                self.update_column_headers()
-
-            self.is_sorted = True
-            with self.perf.span("strategic.sort.update_sort_button_states"):
-                self.update_sort_button_states()
-            with self.perf.span("strategic.sort.update_sort_hint"):
-                self._update_sort_hint()
-
-            if self._is_persistent_strategic_memo_enabled() and cache_key:
-                memo_payload = self.tree_generator.export_memoization_snapshot()
-                if memo_payload and not self._all_strategic_scores_are_zero():
-                    self._save_persistent_strategic_memo(cache_key, memo_payload)
+                memo_stats = self.tree_generator.get_memoization_stats()
+                if self.perf.enabled:
                     self._log_perf_entry(
-                        "strategic.memo.persist.save",
+                        "strategic.memo.stats",
+                        0.0,
+                        hits=memo_stats["hits"],
+                        misses=memo_stats["misses"],
+                        hit_rate=f"{memo_stats['hit_rate']:.2%}",
+                        entries=memo_stats["entries"],
+                        clear_count=memo_stats.get("clear_count", 0),
+                        last_clear_reason=memo_stats.get("last_clear_reason", ""),
+                        last_clear_bucket=memo_stats.get("last_clear_bucket", ""),
+                        last_cleared_entries=memo_stats.get("last_cleared_entries", 0),
+                        memo_context_hash=memo_stats.get("memo_context_hash", ""),
+                        memo_key_mode=memo_stats.get("memo_key_mode", ""),
+                        memo_clear_reason=memo_stats.get("memo_clear_reason", ""),
+                        memo_clear_bucket=memo_stats.get("memo_clear_bucket", ""),
+                        memo_cleared_entries=memo_stats.get("memo_cleared_entries", 0),
+                        strategic_invocation_id=strategic_invocation_id,
+                    )
+                    metrics_available = set(getattr(self, "_available_explainability_metrics", set()))
+                    self._log_perf_entry(
+                        "strategic.explainability.metrics",
                         0.0,
                         strategic_invocation_id=strategic_invocation_id,
-                        entries=len(memo_payload.get("entries", [])),
+                        has_c2=int("cumulative" in metrics_available),
+                        has_q2=int("confidence" in metrics_available),
+                        has_r2=int("resistance" in metrics_available),
+                        has_regret=int("regret" in metrics_available),
+                        has_downside=int("downside" in metrics_available),
+                        has_guardrail=int("guardrail" in metrics_available),
+                        has_strategic=int("strategic" in metrics_available),
+                        has_exploit=int("exploit" in metrics_available),
+                        available_count=len(metrics_available),
                     )
+
+                with self.perf.span("strategic.sort.update_sort_value_column"):
+                    self.update_sort_value_column()
+
+                score_dist = self._get_strategic_score_distribution()
+                if score_dist is not None:
+                    self._log_perf_entry(
+                        "strategic.display.score_distribution",
+                        0.0,
+                        strategic_invocation_id=strategic_invocation_id,
+                        total_nodes=score_dist["total"],
+                        non_zero_nodes=score_dist["non_zero"],
+                        zero_nodes=score_dist["zero"],
+                    )
+
+                with self.perf.span("strategic.sort.update_column_headers"):
+                    self.update_column_headers()
+
+                self.is_sorted = True
+                with self.perf.span("strategic.sort.update_sort_button_states"):
+                    self.update_sort_button_states()
+                with self.perf.span("strategic.sort.update_sort_hint"):
+                    self._update_sort_hint()
+
+                if self._is_persistent_strategic_memo_enabled() and cache_key:
+                    memo_payload = self.tree_generator.export_memoization_snapshot()
+                    if memo_payload and not self._all_strategic_scores_are_zero():
+                        self._save_persistent_strategic_memo(cache_key, memo_payload)
+                        self._log_perf_entry(
+                            "strategic.memo.persist.save",
+                            0.0,
+                            strategic_invocation_id=strategic_invocation_id,
+                            entries=len(memo_payload.get("entries", [])),
+                        )
     
     def unsort_tree(self):
         """Remove all sorting and return to default order"""
@@ -3170,25 +3328,29 @@ class UiManager:
 
     def on_column_click(self, column_id):
         """Cycle sort state for a column and apply combined sorting."""
-        current_state = self.column_sort_states.get(column_id, "none")
+        if getattr(self, "_busy_operation_depth", 0) > 0:
+            return
 
-        if current_state == "none":
-            new_state = "desc"
-        elif current_state == "desc":
-            new_state = "asc"
-        else:
-            new_state = "none"
+        with self._busy_ui_operation(f"Loading - sorting by {column_id} column"):
+            current_state = self.column_sort_states.get(column_id, "none")
 
-        for col in self.column_sort_states:
-            self.column_sort_states[col] = "none"
+            if current_state == "none":
+                new_state = "desc"
+            elif current_state == "desc":
+                new_state = "asc"
+            else:
+                new_state = "none"
 
-        self.column_sort_states[column_id] = new_state
-        self.active_column_sort = column_id if new_state != "none" else None
+            for col in self.column_sort_states:
+                self.column_sort_states[col] = "none"
 
-        recompute_primary = self._should_recompute_primary_on_column_click()
-        self.apply_combined_sort(compute_primary_tags=recompute_primary)
-        self.update_sort_value_column()
-        self.update_column_headers()
+            self.column_sort_states[column_id] = new_state
+            self.active_column_sort = column_id if new_state != "none" else None
+
+            recompute_primary = self._should_recompute_primary_on_column_click()
+            self.apply_combined_sort(compute_primary_tags=recompute_primary)
+            self.update_sort_value_column()
+            self.update_column_headers()
 
     def _get_sort_value_header_base(self):
         if self.current_sort_mode == "confidence":
