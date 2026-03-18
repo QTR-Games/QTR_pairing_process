@@ -9,6 +9,7 @@ import sqlite3
 import time
 import threading
 import hashlib
+from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 import tkinter.font as tkfont
@@ -120,6 +121,12 @@ class UiManager:
         self.comment_indicator_callbacks: Dict[tuple, str] = {}  # Store after_idle callback IDs
         self.row_checkboxes: List[tk.IntVar] = []
         self.column_checkboxes: List[tk.IntVar] = []
+        self.row_checkbox_widgets: List[tk.Checkbutton] = []
+        self.column_checkbox_widgets: List[tk.Checkbutton] = []
+        self.row_checkbox_label_widget: Optional[tk.Label] = None
+        self.column_checkbox_label_widget: Optional[tk.Label] = None
+        self.grid_checkboxes_hidden = False
+        self.expand_grid_button: Optional[tk.Button] = None
         self._current_hover_cell = None
         self._team_dropdowns_initialized = False
         self._auto_populated_teams = False
@@ -249,6 +256,9 @@ class UiManager:
         # Vertical sort controls strip between grid and matchup extract.
         self.sort_controls_frame = tk.Frame(self.top_frame, relief=tk.GROOVE, borderwidth=1)
         self.sort_controls_frame.grid(row=0, column=1, padx=(0, 12), pady=10, sticky="ns")
+        # Sort controls are now shown in the middle row between grid and tree.
+        # Keep this frame collapsed to reclaim top-panel width.
+        self.sort_controls_frame.grid_remove()
 
         # Matchup output section (right of grid, above tree)
         self.matchup_output_container = tk.Frame(self.top_frame)
@@ -298,6 +308,15 @@ class UiManager:
         self._status_font_emphasis = ("Arial", 8, "bold")
         self._status_fg_normal = "#666666"
         self._status_fg_emphasis = "#000000"
+        self._busy_operation_depth = 0
+        self._busy_operation_message = "Loading"
+        self._busy_status_phase = 0
+        self._busy_status_job = None
+        self._busy_started_at = 0.0
+        self._busy_min_visible_ms = 350
+        self.busy_status_frame = None
+        self.busy_status_label = None
+        self.busy_progress = None
 
         # Clipboard paste helpers
         self._paste_5x5_button = None
@@ -415,6 +434,77 @@ class UiManager:
                                    bg="lightcyan", fg="darkgreen", font=("Arial", 9, "bold"),
                                    relief=tk.RAISED, borderwidth=2)
         data_mgmt_button.pack(side=tk.LEFT, padx=10, pady=5)
+
+        self.expand_grid_button = tk.Button(
+            self.button_row_frame,
+            text="Expand Grid",
+            command=self.toggle_grid_checkbox_visibility,
+            bg="lightsteelblue",
+            activebackground="lightsteelblue",
+            relief=tk.RAISED,
+            borderwidth=2,
+        )
+        self.expand_grid_button.pack(side=tk.LEFT, padx=5, pady=5)
+
+        # Middle-row sort controls (between top grid and tree).
+        self.sort_controls_row_frame = tk.Frame(self.button_row_frame)
+        self.sort_controls_row_frame.pack(side=tk.LEFT, padx=(20, 5), pady=4)
+
+        self.generate_button = tk.Button(
+            self.sort_controls_row_frame,
+            text="Generate\nCombinations",
+            command=self.on_generate_combinations,
+            width=16,
+        )
+        self.generate_button.pack(side=tk.LEFT, padx=(0, 6))
+
+        # Initialize sorting state tracking
+        self.active_sort_mode = None
+
+        self.cumulative_button = tk.Button(
+            self.sort_controls_row_frame,
+            text="Cumulative\nSort",
+            command=self.toggle_cumulative_sort,
+            width=16,
+        )
+        self.cumulative_button.pack(side=tk.LEFT, padx=6)
+
+        self.confidence_button = tk.Button(
+            self.sort_controls_row_frame,
+            text="Highest\nConfidence",
+            command=self.toggle_confidence_sort,
+            width=16,
+        )
+        self.confidence_button.pack(side=tk.LEFT, padx=6)
+
+        self.counter_button = tk.Button(
+            self.sort_controls_row_frame,
+            text="Counter\nPick",
+            command=self.toggle_counter_sort,
+            width=16,
+        )
+        self.counter_button.pack(side=tk.LEFT, padx=6)
+
+        self.strategic_button = tk.Button(
+            self.sort_controls_row_frame,
+            text="Strategic\nFusion",
+            command=self.toggle_strategic_sort,
+            width=16,
+        )
+        self.strategic_button.pack(side=tk.LEFT, padx=6)
+
+        self.sort_guidance_label = tk.Label(
+            self.sort_controls_row_frame,
+            text="Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
+            font=("Arial", 8),
+            fg="#333333",
+            justify=tk.LEFT,
+            anchor=tk.W,
+        )
+        self.sort_guidance_label.pack(side=tk.LEFT, padx=(10, 0))
+
+        # Set initial button states (all inactive)
+        self.update_sort_button_states()
         
 
         
@@ -438,39 +528,6 @@ class UiManager:
         self.treeview.tree.bind("<Motion>", self._on_tree_hover_explain, add='+')
         self.treeview.tree.bind("<Leave>", self._hide_tree_explain_tooltip, add='+')
         self.treeview.pack(expand=1, fill='both')
-        
-        # Create centered vertical sort strip between grid and matchup extract
-        generateButton = tk.Button(self.sort_controls_frame, text="Generate\nCombinations", command=self.on_generate_combinations, width=16)
-        generateButton.pack(fill=tk.X, padx=8, pady=(8, 5))
-
-        # Initialize sorting state tracking
-        self.active_sort_mode = None
-        
-        # Create sorting buttons with active/inactive states
-        self.cumulative_button = tk.Button(self.sort_controls_frame, text="Cumulative\nSort", command=self.toggle_cumulative_sort, width=16)
-        self.cumulative_button.pack(fill=tk.X, padx=8, pady=5)
-
-        self.confidence_button = tk.Button(self.sort_controls_frame, text="Highest\nConfidence", command=self.toggle_confidence_sort, width=16)
-        self.confidence_button.pack(fill=tk.X, padx=8, pady=5)
-
-        self.counter_button = tk.Button(self.sort_controls_frame, text="Counter\nPick", command=self.toggle_counter_sort, width=16)
-        self.counter_button.pack(fill=tk.X, padx=8, pady=5)
-
-        self.strategic_button = tk.Button(self.sort_controls_frame, text="Strategic\nFusion", command=self.toggle_strategic_sort, width=16)
-        self.strategic_button.pack(fill=tk.X, padx=8, pady=5)
-
-        self.sort_guidance_label = tk.Label(
-            self.sort_controls_frame,
-            text="Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
-            font=("Arial", 8),
-            fg="#333333",
-            justify=tk.LEFT,
-            anchor=tk.W
-        )
-        self.sort_guidance_label.pack(fill=tk.X, padx=8, pady=(6, 8))
-        
-        # Set initial button states (all inactive)
-        self.update_sort_button_states()
         
         # Matchup output panel is created on startup
         
@@ -498,6 +555,10 @@ class UiManager:
     def create_ui_grids(self):
         self.row_checkboxes = []
         self.column_checkboxes = []
+        self.row_checkbox_widgets = []
+        self.column_checkbox_widgets = []
+        self.row_checkbox_label_widget = None
+        self.column_checkbox_label_widget = None
 
         # Single unified grid title
         grid_label = tk.Label(self.grid_frame, text="Team Matchup Analysis Grid", font=("Arial", 14, "bold"), bg="lightcyan")
@@ -576,15 +637,23 @@ class UiManager:
                     display_entry.insert(0, self.grid_data_model.get_display(r, c))
                     display_entry.config(state='readonly')
 
-        # Use minimal grid weights to reduce resize lag
-        for i in range(2, 8):  # rows 2-7 for grid data
-            self.grid_frame.grid_rowconfigure(i, weight=0)  # Fixed height
-        for i in range(12):  # columns 0-11
-            self.grid_frame.grid_columnconfigure(i, weight=0)  # Fixed width
+        # Let matrix/calculation cells expand to consume available panel space.
+        # Keep checkbox and separator lanes fixed so lock controls remain readable.
+        for i in range(2, 8):  # rows 2-7 for matrix + calculation cells
+            self.grid_frame.grid_rowconfigure(i, weight=1, uniform="analysis_rows")
+
+        # Rating matrix block (cols 0-5)
+        for i in range(0, 6):
+            self.grid_frame.grid_columnconfigure(i, weight=1, uniform="rating_cols")
+
+        # Calculation block (cols 7-11)
+        for i in range(7, 12):
+            self.grid_frame.grid_columnconfigure(i, weight=1, uniform="calc_cols")
 
         # Add row checkboxes (column 12)
         checkbox_label = tk.Label(self.grid_frame, text="Row\nSelect", font=("Arial", 9, "bold"))
         checkbox_label.grid(row=1, column=12, pady=(0, 2))
+        self.row_checkbox_label_widget = checkbox_label
         
         for r in range(1, 6):
             var = tk.IntVar()
@@ -592,10 +661,12 @@ class UiManager:
             entry.grid(row=r + 2, column=12, padx=2, pady=1, sticky="w")
             var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
             self.row_checkboxes.append(var)
+            self.row_checkbox_widgets.append(entry)
 
         # Add column checkboxes (row 8, columns 1-5)
         col_label = tk.Label(self.grid_frame, text="Column Select", font=("Arial", 9, "bold"))
         col_label.grid(row=8, column=1, columnspan=5, pady=(5, 0))
+        self.column_checkbox_label_widget = col_label
         
         for c in range(1, 6):
             var = tk.IntVar()
@@ -603,14 +674,59 @@ class UiManager:
             entry.grid(row=9, column=c, padx=1, pady=2, sticky="n")
             var.trace_add('write', lambda name, index, mode, col=c, var=var: self.on_column_checkbox_change(col, var))
             self.column_checkboxes.append(var)
+            self.column_checkbox_widgets.append(entry)
 
-        # Configure weights for checkbox and header areas
+        # Keep checkbox and separator lanes fixed.
+        self.grid_frame.grid_rowconfigure(0, weight=0)
+        self.grid_frame.grid_rowconfigure(1, weight=0)
         self.grid_frame.grid_rowconfigure(8, weight=0)
         self.grid_frame.grid_rowconfigure(9, weight=0)
-        self.grid_frame.grid_columnconfigure(6, weight=0)
-        self.grid_frame.grid_columnconfigure(12, weight=0)
+        self.grid_frame.grid_columnconfigure(6, weight=0, minsize=10)
+        self.grid_frame.grid_columnconfigure(12, weight=0, minsize=72)
+
+        # Re-apply current checkbox visibility state when rebuilding the grid.
+        self._set_grid_checkbox_visibility(visible=not self.grid_checkboxes_hidden)
         
         # Per-cell bindings handle comment editing and click-to-show popups.
+
+    def toggle_grid_checkbox_visibility(self):
+        """Toggle visibility of row/column lock checkboxes to maximize grid viewing area."""
+        self._set_grid_checkbox_visibility(visible=self.grid_checkboxes_hidden)
+
+    def _set_grid_checkbox_visibility(self, visible: bool):
+        """Show or hide checkbox controls and reclaim/release their layout space."""
+        self.grid_checkboxes_hidden = not visible
+
+        widgets = []
+        if self.row_checkbox_label_widget is not None:
+            widgets.append(self.row_checkbox_label_widget)
+        if self.column_checkbox_label_widget is not None:
+            widgets.append(self.column_checkbox_label_widget)
+        widgets.extend(self.row_checkbox_widgets)
+        widgets.extend(self.column_checkbox_widgets)
+
+        if visible:
+            for widget in widgets:
+                widget.grid()
+            self.grid_frame.grid_columnconfigure(12, weight=0, minsize=72)
+            if self.expand_grid_button is not None:
+                self.expand_grid_button.config(
+                    text="Expand Grid",
+                    relief=tk.RAISED,
+                    bg="lightsteelblue",
+                    activebackground="lightsteelblue",
+                )
+        else:
+            for widget in widgets:
+                widget.grid_remove()
+            self.grid_frame.grid_columnconfigure(12, weight=0, minsize=0)
+            if self.expand_grid_button is not None:
+                self.expand_grid_button.config(
+                    text="Show checkboxes",
+                    relief=tk.SUNKEN,
+                    bg="lightcoral",
+                    activebackground="lightcoral",
+                )
 
     def on_row_checkbox_change(self, row, var):
         for col in range(1,6):
@@ -680,14 +796,11 @@ class UiManager:
         # Convert to string for color map lookup
         value_str = str(value) if value != '' else ''
         widget = self.grid_widgets[row][col]
-        
-        # Check if cell has comment (comment indicator takes precedence)
         if not widget:
             return
 
-        if self._has_comment_cached(row, col):
-            new_color = '#ffffcc'
-        elif value_str in self.color_map:
+        # Preserve rating-based color even when comments exist.
+        if value_str in self.color_map:
             new_color = self.color_map[value_str]
         else:
             new_color = 'white'
@@ -701,21 +814,16 @@ class UiManager:
             self._mark_grid_color_dirty()
             return
         self._grid_color_dirty = False
-        comment_map = self._get_comment_map_for_current_selection()
         for row in range(1, 6):
             for col in range(1, 6):
                 # V2: Get value from GridDataModel (may be int or str)
                 value = self.grid_data_model.get_rating(row, col)
                 value_str = str(value) if value != '' else ''
                 widget = self.grid_widgets[row][col]
-                
-                # Check for comment indicator first
                 if not widget:
                     continue
 
-                if self._has_comment_cached(row, col, comment_map=comment_map):
-                    new_color = '#ffffcc'
-                elif value_str in self.color_map:
+                if value_str in self.color_map:
                     new_color = self.color_map[value_str]
                 else:
                     new_color = 'white'
@@ -751,6 +859,26 @@ class UiManager:
             fg=self._status_fg_normal
         )
         self.dynamic_status_label.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=2, pady=1)
+
+        # Busy indicator for long-running generation/sort operations.
+        self.busy_status_frame = tk.Frame(self.status_frame, width=230, height=22)
+        self.busy_status_frame.pack_propagate(False)
+
+        self.busy_status_label = tk.Label(
+            self.busy_status_frame,
+            text="Loading...",
+            anchor=tk.W,
+            font=self._status_font_normal,
+            fg="#0d47a1"
+        )
+        self.busy_status_label.pack(side=tk.LEFT, padx=(2, 6))
+
+        self.busy_progress = ttk.Progressbar(
+            self.busy_status_frame,
+            mode='indeterminate',
+            length=95,
+        )
+        self.busy_progress.pack(side=tk.RIGHT, padx=(0, 2), pady=2)
         
         # Add color preview
         color_frame = tk.Frame(self.status_frame)
@@ -764,6 +892,127 @@ class UiManager:
             color_box.pack(side=tk.LEFT, padx=1)
 
         self._refresh_status_messages()
+
+    def _set_heavy_controls_enabled(self, enabled: bool):
+        state = tk.NORMAL if enabled else tk.DISABLED
+        for name in ("generate_button", "cumulative_button", "confidence_button", "counter_button", "strategic_button"):
+            control = getattr(self, name, None)
+            if control is not None:
+                try:
+                    control.config(state=state)
+                except Exception:
+                    pass
+
+    def _cancel_busy_animation(self):
+        busy_job = getattr(self, "_busy_status_job", None)
+        root = getattr(self, "root", None)
+        if busy_job is not None and root is not None:
+            try:
+                root.after_cancel(busy_job)
+            except Exception:
+                pass
+        self._busy_status_job = None
+
+    def _rotate_busy_status(self):
+        if getattr(self, "_busy_operation_depth", 0) <= 0 or getattr(self, "busy_status_label", None) is None:
+            self._busy_status_job = None
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            self._busy_status_job = None
+            return
+
+        dots = "." * ((self._busy_status_phase % 3) + 1)
+        self.busy_status_label.config(text=f"{self._busy_operation_message}{dots}")
+        self._busy_status_phase += 1
+        self._busy_status_job = root.after(320, self._rotate_busy_status)
+
+    def _begin_busy_ui(self, message: str):
+        self._busy_operation_depth = getattr(self, "_busy_operation_depth", 0) + 1
+        if self._busy_operation_depth > 1:
+            return
+
+        self._busy_operation_message = message or "Loading"
+        self._busy_started_at = time.perf_counter()
+        self._busy_status_phase = 0
+        self._cancel_busy_animation()
+        self._cancel_status_rotation()
+
+        dynamic_status = getattr(self, "dynamic_status_label", None)
+        if dynamic_status is not None:
+            dynamic_status.config(
+                text=f"{self._busy_operation_message}...",
+                font=self._status_font_emphasis,
+                fg="#0d47a1",
+            )
+
+        if getattr(self, "busy_status_frame", None) is not None:
+            self.busy_status_frame.pack(side=tk.RIGHT, padx=(0, 8), pady=2)
+        if getattr(self, "busy_progress", None) is not None:
+            self.busy_progress.start(12)
+
+        self._set_heavy_controls_enabled(False)
+        root = getattr(self, "root", None)
+        try:
+            if root is not None:
+                root.config(cursor="watch")
+        except Exception:
+            pass
+
+        self._rotate_busy_status()
+        # Force paint before expensive work begins.
+        if root is not None:
+            root.update_idletasks()
+
+    def _end_busy_ui(self):
+        if getattr(self, "_busy_operation_depth", 0) <= 0:
+            return
+
+        self._busy_operation_depth -= 1
+        if self._busy_operation_depth > 0:
+            return
+
+        root = getattr(self, "root", None)
+        elapsed_ms = max(0.0, (time.perf_counter() - getattr(self, "_busy_started_at", 0.0)) * 1000.0)
+        remaining_ms = max(0, int(getattr(self, "_busy_min_visible_ms", 350) - elapsed_ms))
+        if remaining_ms > 0 and root is not None:
+            try:
+                root.after(remaining_ms, self._finalize_busy_ui)
+                return
+            except Exception:
+                pass
+
+        self._finalize_busy_ui()
+
+    def _finalize_busy_ui(self):
+        if getattr(self, "_busy_operation_depth", 0) > 0:
+            return
+
+        self._cancel_busy_animation()
+        if getattr(self, "busy_progress", None) is not None:
+            self.busy_progress.stop()
+        if getattr(self, "busy_status_frame", None) is not None:
+            self.busy_status_frame.pack_forget()
+
+        self._set_heavy_controls_enabled(True)
+        root = getattr(self, "root", None)
+        try:
+            if root is not None:
+                root.config(cursor="")
+        except Exception:
+            pass
+
+        self._busy_operation_message = "Loading"
+        if hasattr(self, "_grid_dirty"):
+            self._refresh_status_messages()
+
+    @contextmanager
+    def _busy_ui_operation(self, message: str):
+        self._begin_busy_ui(message)
+        try:
+            yield
+        finally:
+            self._end_busy_ui()
     
     def update_status_bar(self):
         """Update status bar information"""
@@ -898,12 +1147,14 @@ class UiManager:
         self._rotate_status_message()
 
     def _cancel_status_rotation(self):
-        if self._status_message_job is not None:
+        status_job = getattr(self, "_status_message_job", None)
+        root = getattr(self, "root", None)
+        if status_job is not None and root is not None:
             try:
-                self.root.after_cancel(self._status_message_job)
+                root.after_cancel(status_job)
             except Exception:
                 pass
-            self._status_message_job = None
+        self._status_message_job = None
 
     def _rotate_status_message(self):
         if not self._status_messages or not hasattr(self, 'dynamic_status_label'):
@@ -2793,225 +3044,230 @@ class UiManager:
             messagebox.showerror("Error", f"Failed to export XLSX: {e}")
     
     def on_generate_combinations(self):
-        # Create matchup output panel on first use
-        if not self.matchup_output_panel_created:
-            self.create_matchup_output_panel()
-            self.matchup_output_panel_created = True
+        with self._busy_ui_operation("Loading - generating combinations"):
+            # Create matchup output panel on first use
+            if not self.matchup_output_panel_created:
+                self.create_matchup_output_panel()
+                self.matchup_output_panel_created = True
 
-        cache_key = self._build_tree_cache_key()
-        our_team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
-        if self._tree_cache_enabled and cache_key:
-            if cache_key == self._tree_cache_key and self._tree_has_nodes():
-                self.tree_generator.our_team_first = our_team_first
-                self._set_tree_generation_id(self._tree_generation_id)
-                self._set_tree_memo_state_token(cache_key)
-                self._log_perf_entry("tree.cache.hit", 0.0, reason="active")
-                self._reset_tree_sort_state()
-                return
-            cached_payload = self._tree_cache.get(cache_key)
-            if not cached_payload:
-                cached_payload = self._load_persistent_tree_snapshot(cache_key)
+            cache_key = self._build_tree_cache_key()
+            our_team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
+            if self._tree_cache_enabled and cache_key:
+                if cache_key == self._tree_cache_key and self._tree_has_nodes():
+                    self.tree_generator.our_team_first = our_team_first
+                    self._set_tree_generation_id(self._tree_generation_id)
+                    self._set_tree_memo_state_token(cache_key)
+                    self._log_perf_entry("tree.cache.hit", 0.0, reason="active")
+                    self._reset_tree_sort_state()
+                    return
+                cached_payload = self._tree_cache.get(cache_key)
+                if not cached_payload:
+                    cached_payload = self._load_persistent_tree_snapshot(cache_key)
+                    if cached_payload:
+                        self._tree_cache[cache_key] = cached_payload
                 if cached_payload:
-                    self._tree_cache[cache_key] = cached_payload
-            if cached_payload:
-                if isinstance(cached_payload, dict):
-                    snapshot = cached_payload.get("snapshot", [])
-                    generation_id = cached_payload.get("generation_id", self._next_tree_generation_id())
-                else:
-                    snapshot = cached_payload
-                    generation_id = self._next_tree_generation_id()
-                self._restore_tree_snapshot(snapshot)
+                    if isinstance(cached_payload, dict):
+                        snapshot = cached_payload.get("snapshot", [])
+                        generation_id = cached_payload.get("generation_id", self._next_tree_generation_id())
+                    else:
+                        snapshot = cached_payload
+                        generation_id = self._next_tree_generation_id()
+                    self._restore_tree_snapshot(snapshot)
+                    self._tree_cache_key = cache_key
+                    self.tree_generator.our_team_first = our_team_first
+                    self._set_tree_generation_id(generation_id)
+                    self._set_tree_memo_state_token(cache_key)
+                    self._log_perf_entry("tree.cache.hit", 0.0, reason="restore")
+                    self._reset_tree_sort_state()
+                    return
+                self._log_perf_entry("tree.cache.miss", 0.0)
+            
+            fNames, oNames = self.prep_names()
+            fRatings, oRatings = self.prep_ratings(fNames,oNames)
+            if self.print_output:
+                print(f"fRatings: {fRatings}\n")
+                print(f"oRatings: {oRatings}\n")
+            self.validate_grid_data()
+            if our_team_first:
+                self.tree_generator.generate_combinations(
+                    fNames,
+                    oNames,
+                    fRatings,
+                    oRatings,
+                    our_team_first=True,
+                )
+            else:
+                self.tree_generator.generate_combinations(
+                    oNames,
+                    fNames,
+                    oRatings,
+                    fRatings,
+                    our_team_first=False,
+                )
+            self._set_tree_generation_id(self._next_tree_generation_id())
+            self._set_tree_memo_state_token(cache_key)
+            
+            # Automatically expand the root "Pairings" node
+            root_nodes = self.treeview.tree.get_children()
+            if root_nodes:
+                self.treeview.tree.item(root_nodes[0], open=True)
+
+            if self._tree_cache_enabled and cache_key:
+                cache_payload = {
+                    "snapshot": self._capture_tree_snapshot(),
+                    "generation_id": self._tree_generation_id,
+                }
+                self._tree_cache[cache_key] = cache_payload
+                self._save_persistent_tree_snapshot(cache_key, cache_payload)
                 self._tree_cache_key = cache_key
-                self.tree_generator.our_team_first = our_team_first
-                self._set_tree_generation_id(generation_id)
-                self._set_tree_memo_state_token(cache_key)
-                self._log_perf_entry("tree.cache.hit", 0.0, reason="restore")
-                self._reset_tree_sort_state()
-                return
-            self._log_perf_entry("tree.cache.miss", 0.0)
-        
-        fNames, oNames = self.prep_names()
-        fRatings, oRatings = self.prep_ratings(fNames,oNames)
-        if self.print_output:
-            print(f"fRatings: {fRatings}\n")
-            print(f"oRatings: {oRatings}\n")
-        self.validate_grid_data()
-        if our_team_first:
-            self.tree_generator.generate_combinations(
-                fNames,
-                oNames,
-                fRatings,
-                oRatings,
-                our_team_first=True,
-            )
-        else:
-            self.tree_generator.generate_combinations(
-                oNames,
-                fNames,
-                oRatings,
-                fRatings,
-                our_team_first=False,
-            )
-        self._set_tree_generation_id(self._next_tree_generation_id())
-        self._set_tree_memo_state_token(cache_key)
-        
-        # Automatically expand the root "Pairings" node
-        root_nodes = self.treeview.tree.get_children()
-        if root_nodes:
-            self.treeview.tree.item(root_nodes[0], open=True)
+                self._log_perf_entry("tree.cache.store", 0.0)
 
-        if self._tree_cache_enabled and cache_key:
-            cache_payload = {
-                "snapshot": self._capture_tree_snapshot(),
-                "generation_id": self._tree_generation_id,
-            }
-            self._tree_cache[cache_key] = cache_payload
-            self._save_persistent_tree_snapshot(cache_key, cache_payload)
-            self._tree_cache_key = cache_key
-            self._log_perf_entry("tree.cache.store", 0.0)
-
-        # Reset all sorting states when generating new combinations.
-        # Strategic sorting is intentionally user-initiated.
-        self._reset_tree_sort_state()
-        self._update_matchup_summary([])
+            # Reset all sorting states when generating new combinations.
+            # Strategic sorting is intentionally user-initiated.
+            self._reset_tree_sort_state()
+            self._update_matchup_summary([])
         
     def sort_by_confidence(self):
         """Sort tree by risk-adjusted confidence scores"""
-        self.current_sort_mode = "confidence"
-        self.active_sort_mode = "confidence"
-        self.apply_combined_sort(compute_primary_tags=True)
-        self.update_sort_value_column()
-        self.update_column_headers()
-        self.is_sorted = True
-        self.update_sort_button_states()
-        self._update_sort_hint()
+        with self._busy_ui_operation("Loading - sorting by confidence"):
+            self.current_sort_mode = "confidence"
+            self.active_sort_mode = "confidence"
+            self.apply_combined_sort(compute_primary_tags=True)
+            self.update_sort_value_column()
+            self.update_column_headers()
+            self.is_sorted = True
+            self.update_sort_button_states()
+            self._update_sort_hint()
 
     def sort_by_counter_resistance(self):
         """Sort tree by counter-resistance against opponent strategies"""
-        self.current_sort_mode = "resistance"
-        self.active_sort_mode = "resistance"
-        self.apply_combined_sort(compute_primary_tags=True)
-        self.update_sort_value_column()
-        self.update_column_headers()
-        self.is_sorted = True
-        self.update_sort_button_states()
-        self._update_sort_hint()
+        with self._busy_ui_operation("Loading - sorting by counter resistance"):
+            self.current_sort_mode = "resistance"
+            self.active_sort_mode = "resistance"
+            self.apply_combined_sort(compute_primary_tags=True)
+            self.update_sort_value_column()
+            self.update_column_headers()
+            self.is_sorted = True
+            self.update_sort_button_states()
+            self._update_sort_hint()
 
     def sort_by_cumulative(self):
         """Sort tree by cumulative value"""
-        self.current_sort_mode = "cumulative"
-        self.active_sort_mode = "cumulative"
-        self.apply_combined_sort(compute_primary_tags=True)
-        self.update_sort_value_column()
-        self.update_column_headers()
-        self.is_sorted = True
-        self.update_sort_button_states()
-        self._update_sort_hint()
+        with self._busy_ui_operation("Loading - sorting by cumulative"):
+            self.current_sort_mode = "cumulative"
+            self.active_sort_mode = "cumulative"
+            self.apply_combined_sort(compute_primary_tags=True)
+            self.update_sort_value_column()
+            self.update_column_headers()
+            self.is_sorted = True
+            self.update_sort_button_states()
+            self._update_sort_hint()
 
     def sort_by_strategic(self):
         """Sort tree by unified strategic score using enhanced metric foundations."""
-        if not hasattr(self, "_strategic_sort_invocation_id"):
-            self._strategic_sort_invocation_id = 0
-        self._strategic_sort_invocation_id += 1
-        strategic_invocation_id = self._strategic_sort_invocation_id
-        cache_key = self._build_tree_cache_key()
-        self._set_tree_memo_state_token(cache_key)
-        with self.perf.span(
-            "strategic.sort.end_to_end",
-            strategic_invocation_id=strategic_invocation_id,
-        ):
-            if self._is_persistent_strategic_memo_enabled() and cache_key:
-                persisted_payload = self._load_persistent_strategic_memo(cache_key)
-                loaded = self.tree_generator.import_memoization_snapshot(persisted_payload)
-                if loaded:
-                    self._log_perf_entry(
-                        "strategic.memo.persist.load",
-                        0.0,
-                        strategic_invocation_id=strategic_invocation_id,
-                    )
-
-            self.current_sort_mode = "strategic3"
-            self.active_sort_mode = "strategic3"
-
+        with self._busy_ui_operation("Loading - sorting by strategic fusion"):
+            if not hasattr(self, "_strategic_sort_invocation_id"):
+                self._strategic_sort_invocation_id = 0
+            self._strategic_sort_invocation_id += 1
+            strategic_invocation_id = self._strategic_sort_invocation_id
+            cache_key = self._build_tree_cache_key()
+            self._set_tree_memo_state_token(cache_key)
             with self.perf.span(
-                "strategic.sort.apply_combined",
+                "strategic.sort.end_to_end",
                 strategic_invocation_id=strategic_invocation_id,
             ):
-                self.apply_combined_sort(compute_primary_tags=True)
+                if self._is_persistent_strategic_memo_enabled() and cache_key:
+                    persisted_payload = self._load_persistent_strategic_memo(cache_key)
+                    loaded = self.tree_generator.import_memoization_snapshot(persisted_payload)
+                    if loaded:
+                        self._log_perf_entry(
+                            "strategic.memo.persist.load",
+                            0.0,
+                            strategic_invocation_id=strategic_invocation_id,
+                        )
 
-            # Defensive recovery for stale memo/tag states that can survive cross-branch
-            # upgrades and manifest as all-zero strategic displays.
-            self._recover_zeroed_strategic_scores()
+                self.current_sort_mode = "strategic3"
+                self.active_sort_mode = "strategic3"
 
-            memo_stats = self.tree_generator.get_memoization_stats()
-            if self.perf.enabled:
-                self._log_perf_entry(
-                    "strategic.memo.stats",
-                    0.0,
-                    hits=memo_stats["hits"],
-                    misses=memo_stats["misses"],
-                    hit_rate=f"{memo_stats['hit_rate']:.2%}",
-                    entries=memo_stats["entries"],
-                    clear_count=memo_stats.get("clear_count", 0),
-                    last_clear_reason=memo_stats.get("last_clear_reason", ""),
-                    last_clear_bucket=memo_stats.get("last_clear_bucket", ""),
-                    last_cleared_entries=memo_stats.get("last_cleared_entries", 0),
-                    memo_context_hash=memo_stats.get("memo_context_hash", ""),
-                    memo_key_mode=memo_stats.get("memo_key_mode", ""),
-                    memo_clear_reason=memo_stats.get("memo_clear_reason", ""),
-                    memo_clear_bucket=memo_stats.get("memo_clear_bucket", ""),
-                    memo_cleared_entries=memo_stats.get("memo_cleared_entries", 0),
+                with self.perf.span(
+                    "strategic.sort.apply_combined",
                     strategic_invocation_id=strategic_invocation_id,
-                )
-                metrics_available = set(getattr(self, "_available_explainability_metrics", set()))
-                self._log_perf_entry(
-                    "strategic.explainability.metrics",
-                    0.0,
-                    strategic_invocation_id=strategic_invocation_id,
-                    has_c2=int("cumulative" in metrics_available),
-                    has_q2=int("confidence" in metrics_available),
-                    has_r2=int("resistance" in metrics_available),
-                    has_regret=int("regret" in metrics_available),
-                    has_downside=int("downside" in metrics_available),
-                    has_guardrail=int("guardrail" in metrics_available),
-                    has_strategic=int("strategic" in metrics_available),
-                    has_exploit=int("exploit" in metrics_available),
-                    available_count=len(metrics_available),
-                )
+                ):
+                    self.apply_combined_sort(compute_primary_tags=True)
 
-            with self.perf.span("strategic.sort.update_sort_value_column"):
-                self.update_sort_value_column()
+                # Defensive recovery for stale memo/tag states that can survive cross-branch
+                # upgrades and manifest as all-zero strategic displays.
+                self._recover_zeroed_strategic_scores()
 
-            score_dist = self._get_strategic_score_distribution()
-            if score_dist is not None:
-                self._log_perf_entry(
-                    "strategic.display.score_distribution",
-                    0.0,
-                    strategic_invocation_id=strategic_invocation_id,
-                    total_nodes=score_dist["total"],
-                    non_zero_nodes=score_dist["non_zero"],
-                    zero_nodes=score_dist["zero"],
-                )
-
-            with self.perf.span("strategic.sort.update_column_headers"):
-                self.update_column_headers()
-
-            self.is_sorted = True
-            with self.perf.span("strategic.sort.update_sort_button_states"):
-                self.update_sort_button_states()
-            with self.perf.span("strategic.sort.update_sort_hint"):
-                self._update_sort_hint()
-
-            if self._is_persistent_strategic_memo_enabled() and cache_key:
-                memo_payload = self.tree_generator.export_memoization_snapshot()
-                if memo_payload and not self._all_strategic_scores_are_zero():
-                    self._save_persistent_strategic_memo(cache_key, memo_payload)
+                memo_stats = self.tree_generator.get_memoization_stats()
+                if self.perf.enabled:
                     self._log_perf_entry(
-                        "strategic.memo.persist.save",
+                        "strategic.memo.stats",
+                        0.0,
+                        hits=memo_stats["hits"],
+                        misses=memo_stats["misses"],
+                        hit_rate=f"{memo_stats['hit_rate']:.2%}",
+                        entries=memo_stats["entries"],
+                        clear_count=memo_stats.get("clear_count", 0),
+                        last_clear_reason=memo_stats.get("last_clear_reason", ""),
+                        last_clear_bucket=memo_stats.get("last_clear_bucket", ""),
+                        last_cleared_entries=memo_stats.get("last_cleared_entries", 0),
+                        memo_context_hash=memo_stats.get("memo_context_hash", ""),
+                        memo_key_mode=memo_stats.get("memo_key_mode", ""),
+                        memo_clear_reason=memo_stats.get("memo_clear_reason", ""),
+                        memo_clear_bucket=memo_stats.get("memo_clear_bucket", ""),
+                        memo_cleared_entries=memo_stats.get("memo_cleared_entries", 0),
+                        strategic_invocation_id=strategic_invocation_id,
+                    )
+                    metrics_available = set(getattr(self, "_available_explainability_metrics", set()))
+                    self._log_perf_entry(
+                        "strategic.explainability.metrics",
                         0.0,
                         strategic_invocation_id=strategic_invocation_id,
-                        entries=len(memo_payload.get("entries", [])),
+                        has_c2=int("cumulative" in metrics_available),
+                        has_q2=int("confidence" in metrics_available),
+                        has_r2=int("resistance" in metrics_available),
+                        has_regret=int("regret" in metrics_available),
+                        has_downside=int("downside" in metrics_available),
+                        has_guardrail=int("guardrail" in metrics_available),
+                        has_strategic=int("strategic" in metrics_available),
+                        has_exploit=int("exploit" in metrics_available),
+                        available_count=len(metrics_available),
                     )
+
+                with self.perf.span("strategic.sort.update_sort_value_column"):
+                    self.update_sort_value_column()
+
+                score_dist = self._get_strategic_score_distribution()
+                if score_dist is not None:
+                    self._log_perf_entry(
+                        "strategic.display.score_distribution",
+                        0.0,
+                        strategic_invocation_id=strategic_invocation_id,
+                        total_nodes=score_dist["total"],
+                        non_zero_nodes=score_dist["non_zero"],
+                        zero_nodes=score_dist["zero"],
+                    )
+
+                with self.perf.span("strategic.sort.update_column_headers"):
+                    self.update_column_headers()
+
+                self.is_sorted = True
+                with self.perf.span("strategic.sort.update_sort_button_states"):
+                    self.update_sort_button_states()
+                with self.perf.span("strategic.sort.update_sort_hint"):
+                    self._update_sort_hint()
+
+                if self._is_persistent_strategic_memo_enabled() and cache_key:
+                    memo_payload = self.tree_generator.export_memoization_snapshot()
+                    if memo_payload and not self._all_strategic_scores_are_zero():
+                        self._save_persistent_strategic_memo(cache_key, memo_payload)
+                        self._log_perf_entry(
+                            "strategic.memo.persist.save",
+                            0.0,
+                            strategic_invocation_id=strategic_invocation_id,
+                            entries=len(memo_payload.get("entries", [])),
+                        )
     
     def unsort_tree(self):
         """Remove all sorting and return to default order"""
@@ -3072,25 +3328,29 @@ class UiManager:
 
     def on_column_click(self, column_id):
         """Cycle sort state for a column and apply combined sorting."""
-        current_state = self.column_sort_states.get(column_id, "none")
+        if getattr(self, "_busy_operation_depth", 0) > 0:
+            return
 
-        if current_state == "none":
-            new_state = "desc"
-        elif current_state == "desc":
-            new_state = "asc"
-        else:
-            new_state = "none"
+        with self._busy_ui_operation(f"Loading - sorting by {column_id} column"):
+            current_state = self.column_sort_states.get(column_id, "none")
 
-        for col in self.column_sort_states:
-            self.column_sort_states[col] = "none"
+            if current_state == "none":
+                new_state = "desc"
+            elif current_state == "desc":
+                new_state = "asc"
+            else:
+                new_state = "none"
 
-        self.column_sort_states[column_id] = new_state
-        self.active_column_sort = column_id if new_state != "none" else None
+            for col in self.column_sort_states:
+                self.column_sort_states[col] = "none"
 
-        recompute_primary = self._should_recompute_primary_on_column_click()
-        self.apply_combined_sort(compute_primary_tags=recompute_primary)
-        self.update_sort_value_column()
-        self.update_column_headers()
+            self.column_sort_states[column_id] = new_state
+            self.active_column_sort = column_id if new_state != "none" else None
+
+            recompute_primary = self._should_recompute_primary_on_column_click()
+            self.apply_combined_sort(compute_primary_tags=recompute_primary)
+            self.update_sort_value_column()
+            self.update_column_headers()
 
     def _get_sort_value_header_base(self):
         if self.current_sort_mode == "confidence":
@@ -5554,14 +5814,31 @@ class UiManager:
             widget.config(state='readonly')
     
     def _update_comment_indicator(self, row: int, col: int, has_comment: bool):
-        """Update visual comment indicator for cell"""
+        """Update visual comment indicator for cell without altering rating-based color."""
         widget = self.grid_widgets[row][col]
-        if widget and row > 0 and col > 0:  # Only matchup cells
-            if has_comment:
-                widget.config(bg='#ffffcc')  # Light yellow for comments
-            else:
-                # Restore color based on rating
-                self.update_color_on_change(None, None, None, row, col)
+        if not (widget and row > 0 and col > 0):
+            return
+
+        callback_id = self.comment_indicator_callbacks.pop((row, col), None)
+        if callback_id:
+            try:
+                self.root.after_cancel(callback_id)
+            except Exception:
+                pass
+
+        existing = self.comment_indicators.pop((row, col), None)
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.destroy()
+            except Exception:
+                pass
+
+        if has_comment:
+            self.add_comment_indicator(row, col)
+
+        # Always preserve the rating color map for commented cells.
+        self.update_color_on_change(None, None, None, row, col)
     
     def _update_comment_overlay_geometry(self):
         """Calculate and update CommentOverlay geometry after grid layout"""
