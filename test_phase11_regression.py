@@ -373,6 +373,16 @@ def test_sort_by_strategic_emits_new_telemetry_fields(tmp_path):
     setattr(ui, "tree_generator", cast(Any, DummyMemoStatsTreeGenerator()))
     setattr(ui, "perf", cast(Any, PerfTimer(enabled=True, log_path=tmp_path / "perf_test.log")))
     ui._tree_generation_id = 1
+    ui._available_explainability_metrics = {
+        "cumulative",
+        "confidence",
+        "resistance",
+        "regret",
+        "downside",
+        "guardrail",
+        "strategic",
+        "exploit",
+    }
 
     ui.apply_combined_sort = lambda compute_primary_tags=True: None
     ui.update_sort_value_column = lambda: None
@@ -387,11 +397,15 @@ def test_sort_by_strategic_emits_new_telemetry_fields(tmp_path):
     assert "strategic.sort.end_to_end" in log_text
     assert "strategic_invocation_id=1" in log_text
     assert "strategic.memo.stats" in log_text
+    assert "strategic.explainability.metrics" in log_text
     assert "memo_context_hash=abc123def456" in log_text
     assert "memo_key_mode=structural_path_text_base_rating" in log_text
     assert "memo_clear_reason=memo_state_change" in log_text
     assert "memo_clear_bucket=state_change" in log_text
     assert "memo_cleared_entries=2" in log_text
+    assert "has_c2=1" in log_text
+    assert "has_q2=1" in log_text
+    assert "has_r2=1" in log_text
 
 
 def test_persistent_memo_snapshot_roundtrip_with_strict_signature():
@@ -442,6 +456,32 @@ def test_persistent_memo_snapshot_rejects_state_or_param_mismatch():
     assert gen_param_mismatch.import_memoization_snapshot(payload) is False
 
 
+def test_strategic_memo_hit_materializes_strategic_tags():
+    root = tk.Tk()
+    root.withdraw()
+
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_persistent_prefs())
+
+    root_node = tree.insert("", "end", text="Pairings", values=(0, 0), tags=("0",))
+    child = tree.insert(root_node, "end", text="A vs X", values=(5, 0), tags=("5",))
+
+    memo_key = gen._build_structural_memo_key(child)
+    gen._strategic_memo[memo_key] = 42
+
+    assert gen.get_strategic3_from_tags(child) == 0
+    stats_before = gen.get_memoization_stats().copy()
+
+    score = gen.calculate_strategic3_scores(child)
+
+    stats_after = gen.get_memoization_stats().copy()
+    assert score == 42
+    assert stats_after["hits"] > stats_before["hits"]
+    assert gen.get_strategic3_from_tags(child) == 42
+    assert any(str(tag).startswith("strategic3_") for tag in tree.item(child, "tags"))
+    root.destroy()
+
+
 def test_persistent_memo_toggle_updates_runtime_and_prefs():
     ui = UiManager.__new__(UiManager)
     prefs_store = DummyStrategicPrefsStore()
@@ -459,6 +499,22 @@ def test_persistent_memo_toggle_updates_runtime_and_prefs():
             "persistent_memo_enabled": False,
         }
     }
+
+
+def test_strategic_mode_exposes_component_explainability_metrics():
+    ui = UiManager.__new__(UiManager)
+    ui._available_explainability_metrics = set()
+
+    ui._mark_explainability_metrics_available("strategic3")
+
+    assert "cumulative" in ui._available_explainability_metrics
+    assert "confidence" in ui._available_explainability_metrics
+    assert "resistance" in ui._available_explainability_metrics
+    assert "regret" in ui._available_explainability_metrics
+    assert "downside" in ui._available_explainability_metrics
+    assert "guardrail" in ui._available_explainability_metrics
+    assert "strategic" in ui._available_explainability_metrics
+    assert "exploit" in ui._available_explainability_metrics
 
 
 def test_apply_combined_strategic_reuses_fresh_base_metrics():

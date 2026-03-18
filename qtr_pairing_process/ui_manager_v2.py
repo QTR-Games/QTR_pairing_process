@@ -472,9 +472,6 @@ class UiManager:
         # Set initial button states (all inactive)
         self.update_sort_button_states()
         
-        # Add tooltip
-        self.create_tooltip(self.treeview, "Generated combinations will be displayed here\nNavigate the tree with arrow keys!")
-        
         # Matchup output panel is created on startup
         
         # Load grid once widgets exist
@@ -1467,6 +1464,14 @@ class UiManager:
         elif primary_mode == "resistance":
             self._available_explainability_metrics.add("resistance")
         elif primary_mode == "strategic3":
+            # Strategic mode is composed from C2/Q2/R2, so expose component
+            # metrics and derived fields in the explainability tooltip.
+            self._available_explainability_metrics.add("cumulative")
+            self._available_explainability_metrics.add("confidence")
+            self._available_explainability_metrics.add("resistance")
+            self._available_explainability_metrics.add("regret")
+            self._available_explainability_metrics.add("downside")
+            self._available_explainability_metrics.add("guardrail")
             self._available_explainability_metrics.add("strategic")
             self._available_explainability_metrics.add("exploit")
 
@@ -1542,7 +1547,54 @@ class UiManager:
     def _is_metric_stale(self, metric_key):
         if self._primary_metrics_dirty:
             return True
+        if not self._has_metric_tags(metric_key):
+            return True
         return self._metric_signatures.get(metric_key) != self._build_metric_signature(metric_key)
+
+    def _has_metric_tags(self, metric_key):
+        if not hasattr(self, 'treeview') or not self.treeview:
+            return False
+
+        prefix_map = {
+            "cumulative": "cumulative2_",
+            "confidence": "confidence2_",
+            "resistance": "resistance2_",
+            "strategic3": "strategic3_",
+        }
+        prefix = prefix_map.get(metric_key)
+        if not prefix:
+            return True
+
+        roots = self.treeview.tree.get_children("")
+        if not roots:
+            return False
+
+        def walk(node_id):
+            tags = self.treeview.tree.item(node_id, 'tags') or ()
+            if not any(str(tag).startswith(prefix) for tag in tags):
+                return False
+            for child_id in self.treeview.tree.get_children(node_id):
+                if not walk(child_id):
+                    return False
+            return True
+
+        return any(walk(root_id) for root_id in roots)
+
+    def _all_strategic_scores_are_zero(self) -> bool:
+        if not hasattr(self, 'treeview') or not self.treeview:
+            return False
+        roots = self.treeview.tree.get_children("")
+        if not roots:
+            return False
+        def walk(node_id):
+            score = self.tree_generator.get_strategic3_from_tags(node_id)
+            if score != 0:
+                return False
+            for child_id in self.treeview.tree.get_children(node_id):
+                if not walk(child_id):
+                    return False
+            return True
+        return all(walk(root_id) for root_id in roots)
 
     def _mark_metric_fresh(self, metric_key):
         self._metric_signatures[metric_key] = self._build_metric_signature(metric_key)
@@ -2317,6 +2369,7 @@ class UiManager:
 
         try:
             self._ensure_generated_tree_cache_table()
+            self._ensure_strategic_memo_cache_table()
             with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
                 cur = conn.cursor()
                 cur.execute(
@@ -2331,6 +2384,19 @@ class UiManager:
                     (team_1, team_2, int(scenario_id), str(rating_system), team_first),
                 )
                 removed = cur.rowcount if cur.rowcount is not None else 0
+
+                cur.execute(
+                    """
+                    DELETE FROM strategic_memo_cache
+                    WHERE team_1_name = ?
+                      AND team_2_name = ?
+                      AND scenario_id = ?
+                      AND rating_system = ?
+                      AND team_first = ?
+                    """,
+                    (team_1, team_2, int(scenario_id), str(rating_system), team_first),
+                )
+                memo_removed = cur.rowcount if cur.rowcount is not None else 0
                 conn.commit()
 
             active_prefix = (team_1, team_2, int(scenario_id), str(rating_system), bool(team_first))
@@ -2339,12 +2405,21 @@ class UiManager:
             }
             if self._tree_cache_key and tuple(self._tree_cache_key[:5]) == active_prefix:
                 self._tree_cache_key = None
+
+            if hasattr(self, 'tree_generator') and self.tree_generator:
+                self.tree_generator.clear_memoization(reason="clear_active_generated_tree_cache")
+
             if self.perf.enabled:
-                self._log_perf_entry("strategic.memo.preserved", 0.0, reason="clear_active_generated_tree_cache")
+                self._log_perf_entry(
+                    "strategic.memo.cleared",
+                    0.0,
+                    reason="clear_active_generated_tree_cache",
+                    removed=int(memo_removed),
+                )
 
             messagebox.showinfo(
                 "Tree Cache",
-                f"Removed {removed} cached tree snapshot(s) for the active matchup.",
+                f"Removed {removed} cached tree snapshot(s) and {memo_removed} strategic memo snapshot(s) for the active matchup.",
             )
         except Exception as exc:
             messagebox.showerror("Tree Cache", f"Failed to clear active matchup cache: {exc}")
@@ -2353,20 +2428,33 @@ class UiManager:
         """Clear all persisted tree snapshots across all matchups."""
         try:
             self._ensure_generated_tree_cache_table()
+            self._ensure_strategic_memo_cache_table()
             with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
                 cur = conn.cursor()
                 cur.execute("DELETE FROM generated_tree_cache")
                 removed = cur.rowcount if cur.rowcount is not None else 0
+
+                cur.execute("DELETE FROM strategic_memo_cache")
+                memo_removed = cur.rowcount if cur.rowcount is not None else 0
                 conn.commit()
 
             self._tree_cache.clear()
             self._tree_cache_key = None
+
+            if hasattr(self, 'tree_generator') and self.tree_generator:
+                self.tree_generator.clear_memoization(reason="clear_all_generated_tree_cache")
+
             if self.perf.enabled:
-                self._log_perf_entry("strategic.memo.preserved", 0.0, reason="clear_all_generated_tree_cache")
+                self._log_perf_entry(
+                    "strategic.memo.cleared",
+                    0.0,
+                    reason="clear_all_generated_tree_cache",
+                    removed=int(memo_removed),
+                )
 
             messagebox.showinfo(
                 "Tree Cache",
-                f"Removed {removed} cached tree snapshot(s) across all matchups.",
+                f"Removed {removed} cached tree snapshot(s) and {memo_removed} strategic memo snapshot(s) across all matchups.",
             )
         except Exception as exc:
             messagebox.showerror("Tree Cache", f"Failed to clear all tree cache entries: {exc}")
@@ -2725,11 +2813,9 @@ class UiManager:
             self._tree_cache_key = cache_key
             self._log_perf_entry("tree.cache.store", 0.0)
 
-        # Reset all sorting states when generating new combinations
+        # Reset all sorting states when generating new combinations.
+        # Strategic sorting is intentionally user-initiated.
         self._reset_tree_sort_state()
-        if self.auto_sort_toggle_enabled and self.auto_sort_after_generate:
-            # Run first-pass strategic sort through the same path as manual button clicks.
-            self.sort_by_strategic()
         self._update_matchup_summary([])
         
     def sort_by_confidence(self):
@@ -2816,6 +2902,21 @@ class UiManager:
                     memo_cleared_entries=memo_stats.get("memo_cleared_entries", 0),
                     strategic_invocation_id=strategic_invocation_id,
                 )
+                metrics_available = set(getattr(self, "_available_explainability_metrics", set()))
+                self._log_perf_entry(
+                    "strategic.explainability.metrics",
+                    0.0,
+                    strategic_invocation_id=strategic_invocation_id,
+                    has_c2=int("cumulative" in metrics_available),
+                    has_q2=int("confidence" in metrics_available),
+                    has_r2=int("resistance" in metrics_available),
+                    has_regret=int("regret" in metrics_available),
+                    has_downside=int("downside" in metrics_available),
+                    has_guardrail=int("guardrail" in metrics_available),
+                    has_strategic=int("strategic" in metrics_available),
+                    has_exploit=int("exploit" in metrics_available),
+                    available_count=len(metrics_available),
+                )
 
             with self.perf.span("strategic.sort.update_sort_value_column"):
                 self.update_sort_value_column()
@@ -2830,7 +2931,7 @@ class UiManager:
 
             if self._is_persistent_strategic_memo_enabled() and cache_key:
                 memo_payload = self.tree_generator.export_memoization_snapshot()
-                if memo_payload:
+                if memo_payload and not self._all_strategic_scores_are_zero():
                     self._save_persistent_strategic_memo(cache_key, memo_payload)
                     self._log_perf_entry(
                         "strategic.memo.persist.save",

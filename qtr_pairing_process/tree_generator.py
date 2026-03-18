@@ -816,6 +816,9 @@ class TreeGenerator:
         if not restored:
             return False
 
+        if all(v == 0 for v in restored.values()):
+            return False
+
         self._strategic_memo_context = persisted_context
         self._strategic_memo = restored
         return True
@@ -1002,6 +1005,16 @@ class TreeGenerator:
             q_values = [self.get_confidence2_from_tags(n) for n in all_nodes]
             r_values = [self.get_resistance2_from_tags(n) for n in all_nodes]
 
+            if not all_nodes:
+                return 0
+
+            has_c = any(v != 0 for v in c_values)
+            has_q = any(v != 0 for v in q_values)
+            has_r = any(v != 0 for v in r_values)
+
+            if not (has_c and has_q and has_r):
+                return 0
+
             self._strategic3_ranges = {
                 'c_min': min(c_values) if c_values else 0,
                 'c_max': max(c_values) if c_values else 1,
@@ -1015,7 +1028,10 @@ class TreeGenerator:
             memo_key = self._build_structural_memo_key(node)
             if memo_key in self._strategic_memo:
                 self._strategic_memo_hits += 1
-                return self._strategic_memo[memo_key]
+                strategic_value = int(self._strategic_memo[memo_key])
+                self._replace_prefixed_tag(node, 'strategic3_', strategic_value)
+                self.update_node_strategic_display(node, strategic_value)
+                return strategic_value
             self._strategic_memo_misses += 1
 
         children = self.treeview.tree.get_children(node)
