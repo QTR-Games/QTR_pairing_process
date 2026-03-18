@@ -120,6 +120,12 @@ class UiManager:
         self.comment_indicator_callbacks: Dict[tuple, str] = {}  # Store after_idle callback IDs
         self.row_checkboxes: List[tk.IntVar] = []
         self.column_checkboxes: List[tk.IntVar] = []
+        self.row_checkbox_widgets: List[tk.Checkbutton] = []
+        self.column_checkbox_widgets: List[tk.Checkbutton] = []
+        self.row_checkbox_label_widget: Optional[tk.Label] = None
+        self.column_checkbox_label_widget: Optional[tk.Label] = None
+        self.grid_checkboxes_hidden = False
+        self.expand_grid_button: Optional[tk.Button] = None
         self._current_hover_cell = None
         self._team_dropdowns_initialized = False
         self._auto_populated_teams = False
@@ -249,6 +255,9 @@ class UiManager:
         # Vertical sort controls strip between grid and matchup extract.
         self.sort_controls_frame = tk.Frame(self.top_frame, relief=tk.GROOVE, borderwidth=1)
         self.sort_controls_frame.grid(row=0, column=1, padx=(0, 12), pady=10, sticky="ns")
+        # Sort controls are now shown in the middle row between grid and tree.
+        # Keep this frame collapsed to reclaim top-panel width.
+        self.sort_controls_frame.grid_remove()
 
         # Matchup output section (right of grid, above tree)
         self.matchup_output_container = tk.Frame(self.top_frame)
@@ -415,6 +424,77 @@ class UiManager:
                                    bg="lightcyan", fg="darkgreen", font=("Arial", 9, "bold"),
                                    relief=tk.RAISED, borderwidth=2)
         data_mgmt_button.pack(side=tk.LEFT, padx=10, pady=5)
+
+        self.expand_grid_button = tk.Button(
+            self.button_row_frame,
+            text="Expand Grid",
+            command=self.toggle_grid_checkbox_visibility,
+            bg="lightsteelblue",
+            activebackground="lightsteelblue",
+            relief=tk.RAISED,
+            borderwidth=2,
+        )
+        self.expand_grid_button.pack(side=tk.LEFT, padx=5, pady=5)
+
+        # Middle-row sort controls (between top grid and tree).
+        self.sort_controls_row_frame = tk.Frame(self.button_row_frame)
+        self.sort_controls_row_frame.pack(side=tk.LEFT, padx=(20, 5), pady=4)
+
+        self.generate_button = tk.Button(
+            self.sort_controls_row_frame,
+            text="Generate\nCombinations",
+            command=self.on_generate_combinations,
+            width=16,
+        )
+        self.generate_button.pack(side=tk.LEFT, padx=(0, 6))
+
+        # Initialize sorting state tracking
+        self.active_sort_mode = None
+
+        self.cumulative_button = tk.Button(
+            self.sort_controls_row_frame,
+            text="Cumulative\nSort",
+            command=self.toggle_cumulative_sort,
+            width=16,
+        )
+        self.cumulative_button.pack(side=tk.LEFT, padx=6)
+
+        self.confidence_button = tk.Button(
+            self.sort_controls_row_frame,
+            text="Highest\nConfidence",
+            command=self.toggle_confidence_sort,
+            width=16,
+        )
+        self.confidence_button.pack(side=tk.LEFT, padx=6)
+
+        self.counter_button = tk.Button(
+            self.sort_controls_row_frame,
+            text="Counter\nPick",
+            command=self.toggle_counter_sort,
+            width=16,
+        )
+        self.counter_button.pack(side=tk.LEFT, padx=6)
+
+        self.strategic_button = tk.Button(
+            self.sort_controls_row_frame,
+            text="Strategic\nFusion",
+            command=self.toggle_strategic_sort,
+            width=16,
+        )
+        self.strategic_button.pack(side=tk.LEFT, padx=6)
+
+        self.sort_guidance_label = tk.Label(
+            self.sort_controls_row_frame,
+            text="Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
+            font=("Arial", 8),
+            fg="#333333",
+            justify=tk.LEFT,
+            anchor=tk.W,
+        )
+        self.sort_guidance_label.pack(side=tk.LEFT, padx=(10, 0))
+
+        # Set initial button states (all inactive)
+        self.update_sort_button_states()
         
 
         
@@ -438,39 +518,6 @@ class UiManager:
         self.treeview.tree.bind("<Motion>", self._on_tree_hover_explain, add='+')
         self.treeview.tree.bind("<Leave>", self._hide_tree_explain_tooltip, add='+')
         self.treeview.pack(expand=1, fill='both')
-        
-        # Create centered vertical sort strip between grid and matchup extract
-        generateButton = tk.Button(self.sort_controls_frame, text="Generate\nCombinations", command=self.on_generate_combinations, width=16)
-        generateButton.pack(fill=tk.X, padx=8, pady=(8, 5))
-
-        # Initialize sorting state tracking
-        self.active_sort_mode = None
-        
-        # Create sorting buttons with active/inactive states
-        self.cumulative_button = tk.Button(self.sort_controls_frame, text="Cumulative\nSort", command=self.toggle_cumulative_sort, width=16)
-        self.cumulative_button.pack(fill=tk.X, padx=8, pady=5)
-
-        self.confidence_button = tk.Button(self.sort_controls_frame, text="Highest\nConfidence", command=self.toggle_confidence_sort, width=16)
-        self.confidence_button.pack(fill=tk.X, padx=8, pady=5)
-
-        self.counter_button = tk.Button(self.sort_controls_frame, text="Counter\nPick", command=self.toggle_counter_sort, width=16)
-        self.counter_button.pack(fill=tk.X, padx=8, pady=5)
-
-        self.strategic_button = tk.Button(self.sort_controls_frame, text="Strategic\nFusion", command=self.toggle_strategic_sort, width=16)
-        self.strategic_button.pack(fill=tk.X, padx=8, pady=5)
-
-        self.sort_guidance_label = tk.Label(
-            self.sort_controls_frame,
-            text="Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
-            font=("Arial", 8),
-            fg="#333333",
-            justify=tk.LEFT,
-            anchor=tk.W
-        )
-        self.sort_guidance_label.pack(fill=tk.X, padx=8, pady=(6, 8))
-        
-        # Set initial button states (all inactive)
-        self.update_sort_button_states()
         
         # Matchup output panel is created on startup
         
@@ -498,6 +545,10 @@ class UiManager:
     def create_ui_grids(self):
         self.row_checkboxes = []
         self.column_checkboxes = []
+        self.row_checkbox_widgets = []
+        self.column_checkbox_widgets = []
+        self.row_checkbox_label_widget = None
+        self.column_checkbox_label_widget = None
 
         # Single unified grid title
         grid_label = tk.Label(self.grid_frame, text="Team Matchup Analysis Grid", font=("Arial", 14, "bold"), bg="lightcyan")
@@ -576,15 +627,23 @@ class UiManager:
                     display_entry.insert(0, self.grid_data_model.get_display(r, c))
                     display_entry.config(state='readonly')
 
-        # Use minimal grid weights to reduce resize lag
-        for i in range(2, 8):  # rows 2-7 for grid data
-            self.grid_frame.grid_rowconfigure(i, weight=0)  # Fixed height
-        for i in range(12):  # columns 0-11
-            self.grid_frame.grid_columnconfigure(i, weight=0)  # Fixed width
+        # Let matrix/calculation cells expand to consume available panel space.
+        # Keep checkbox and separator lanes fixed so lock controls remain readable.
+        for i in range(2, 8):  # rows 2-7 for matrix + calculation cells
+            self.grid_frame.grid_rowconfigure(i, weight=1, uniform="analysis_rows")
+
+        # Rating matrix block (cols 0-5)
+        for i in range(0, 6):
+            self.grid_frame.grid_columnconfigure(i, weight=1, uniform="rating_cols")
+
+        # Calculation block (cols 7-11)
+        for i in range(7, 12):
+            self.grid_frame.grid_columnconfigure(i, weight=1, uniform="calc_cols")
 
         # Add row checkboxes (column 12)
         checkbox_label = tk.Label(self.grid_frame, text="Row\nSelect", font=("Arial", 9, "bold"))
         checkbox_label.grid(row=1, column=12, pady=(0, 2))
+        self.row_checkbox_label_widget = checkbox_label
         
         for r in range(1, 6):
             var = tk.IntVar()
@@ -592,10 +651,12 @@ class UiManager:
             entry.grid(row=r + 2, column=12, padx=2, pady=1, sticky="w")
             var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
             self.row_checkboxes.append(var)
+            self.row_checkbox_widgets.append(entry)
 
         # Add column checkboxes (row 8, columns 1-5)
         col_label = tk.Label(self.grid_frame, text="Column Select", font=("Arial", 9, "bold"))
         col_label.grid(row=8, column=1, columnspan=5, pady=(5, 0))
+        self.column_checkbox_label_widget = col_label
         
         for c in range(1, 6):
             var = tk.IntVar()
@@ -603,14 +664,59 @@ class UiManager:
             entry.grid(row=9, column=c, padx=1, pady=2, sticky="n")
             var.trace_add('write', lambda name, index, mode, col=c, var=var: self.on_column_checkbox_change(col, var))
             self.column_checkboxes.append(var)
+            self.column_checkbox_widgets.append(entry)
 
-        # Configure weights for checkbox and header areas
+        # Keep checkbox and separator lanes fixed.
+        self.grid_frame.grid_rowconfigure(0, weight=0)
+        self.grid_frame.grid_rowconfigure(1, weight=0)
         self.grid_frame.grid_rowconfigure(8, weight=0)
         self.grid_frame.grid_rowconfigure(9, weight=0)
-        self.grid_frame.grid_columnconfigure(6, weight=0)
-        self.grid_frame.grid_columnconfigure(12, weight=0)
+        self.grid_frame.grid_columnconfigure(6, weight=0, minsize=10)
+        self.grid_frame.grid_columnconfigure(12, weight=0, minsize=72)
+
+        # Re-apply current checkbox visibility state when rebuilding the grid.
+        self._set_grid_checkbox_visibility(visible=not self.grid_checkboxes_hidden)
         
         # Per-cell bindings handle comment editing and click-to-show popups.
+
+    def toggle_grid_checkbox_visibility(self):
+        """Toggle visibility of row/column lock checkboxes to maximize grid viewing area."""
+        self._set_grid_checkbox_visibility(visible=self.grid_checkboxes_hidden)
+
+    def _set_grid_checkbox_visibility(self, visible: bool):
+        """Show or hide checkbox controls and reclaim/release their layout space."""
+        self.grid_checkboxes_hidden = not visible
+
+        widgets = []
+        if self.row_checkbox_label_widget is not None:
+            widgets.append(self.row_checkbox_label_widget)
+        if self.column_checkbox_label_widget is not None:
+            widgets.append(self.column_checkbox_label_widget)
+        widgets.extend(self.row_checkbox_widgets)
+        widgets.extend(self.column_checkbox_widgets)
+
+        if visible:
+            for widget in widgets:
+                widget.grid()
+            self.grid_frame.grid_columnconfigure(12, weight=0, minsize=72)
+            if self.expand_grid_button is not None:
+                self.expand_grid_button.config(
+                    text="Expand Grid",
+                    relief=tk.RAISED,
+                    bg="lightsteelblue",
+                    activebackground="lightsteelblue",
+                )
+        else:
+            for widget in widgets:
+                widget.grid_remove()
+            self.grid_frame.grid_columnconfigure(12, weight=0, minsize=0)
+            if self.expand_grid_button is not None:
+                self.expand_grid_button.config(
+                    text="Show checkboxes",
+                    relief=tk.SUNKEN,
+                    bg="lightcoral",
+                    activebackground="lightcoral",
+                )
 
     def on_row_checkbox_change(self, row, var):
         for col in range(1,6):
@@ -680,14 +786,11 @@ class UiManager:
         # Convert to string for color map lookup
         value_str = str(value) if value != '' else ''
         widget = self.grid_widgets[row][col]
-        
-        # Check if cell has comment (comment indicator takes precedence)
         if not widget:
             return
 
-        if self._has_comment_cached(row, col):
-            new_color = '#ffffcc'
-        elif value_str in self.color_map:
+        # Preserve rating-based color even when comments exist.
+        if value_str in self.color_map:
             new_color = self.color_map[value_str]
         else:
             new_color = 'white'
@@ -701,21 +804,16 @@ class UiManager:
             self._mark_grid_color_dirty()
             return
         self._grid_color_dirty = False
-        comment_map = self._get_comment_map_for_current_selection()
         for row in range(1, 6):
             for col in range(1, 6):
                 # V2: Get value from GridDataModel (may be int or str)
                 value = self.grid_data_model.get_rating(row, col)
                 value_str = str(value) if value != '' else ''
                 widget = self.grid_widgets[row][col]
-                
-                # Check for comment indicator first
                 if not widget:
                     continue
 
-                if self._has_comment_cached(row, col, comment_map=comment_map):
-                    new_color = '#ffffcc'
-                elif value_str in self.color_map:
+                if value_str in self.color_map:
                     new_color = self.color_map[value_str]
                 else:
                     new_color = 'white'
@@ -5554,14 +5652,31 @@ class UiManager:
             widget.config(state='readonly')
     
     def _update_comment_indicator(self, row: int, col: int, has_comment: bool):
-        """Update visual comment indicator for cell"""
+        """Update visual comment indicator for cell without altering rating-based color."""
         widget = self.grid_widgets[row][col]
-        if widget and row > 0 and col > 0:  # Only matchup cells
-            if has_comment:
-                widget.config(bg='#ffffcc')  # Light yellow for comments
-            else:
-                # Restore color based on rating
-                self.update_color_on_change(None, None, None, row, col)
+        if not (widget and row > 0 and col > 0):
+            return
+
+        callback_id = self.comment_indicator_callbacks.pop((row, col), None)
+        if callback_id:
+            try:
+                self.root.after_cancel(callback_id)
+            except Exception:
+                pass
+
+        existing = self.comment_indicators.pop((row, col), None)
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.destroy()
+            except Exception:
+                pass
+
+        if has_comment:
+            self.add_comment_indicator(row, col)
+
+        # Always preserve the rating color map for commented cells.
+        self.update_color_on_change(None, None, None, row, col)
     
     def _update_comment_overlay_geometry(self):
         """Calculate and update CommentOverlay geometry after grid layout"""
