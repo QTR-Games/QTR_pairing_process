@@ -7,7 +7,7 @@
 - Release date: 2026-03-18
 - Build timestamp (UTC): 2026-03-18T19:36:31Z
 - Branch: main
-- Commit: a7d8b67
+- Commit: db342d2
 - Release tag: v2.0.0
 - Fallback tag: v2.0.0-fallback
 - Build host OS: Windows
