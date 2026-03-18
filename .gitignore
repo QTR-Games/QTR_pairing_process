@@ -181,7 +181,7 @@ finish-feature.ps1
 new-feature.ps1
 
 # Local runtime / venv artifacts
-Scripts/
+.venv/Scripts/
 share/
 pyvenv.cfg
 ipykernel_launcher.py

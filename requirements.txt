@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # QTR Pairing Process - Requirements
 # Core dependencies for the application
 
@@ -17,24 +16,4 @@ openpyxl>=3.0.0
 # - itertools (included)
 # - statistics (included)
 # - multiprocessing (included)
-=======
-# QTR Pairing Process - Requirements
-# Core dependencies for the application
-
-# Excel file processing
-openpyxl>=3.0.0
-
-# GUI framework (usually included with Python, but listed for completeness)
-# tkinter - included with standard Python installation
-
-# Database (included with Python)
-# sqlite3 - included with standard Python installation
-
-# Standard library modules used:
-# - csv (included)
-# - os (included) 
-# - itertools (included)
-# - statistics (included)
-# - multiprocessing (included)
->>>>>>> origin/main
 # - urllib (included)
