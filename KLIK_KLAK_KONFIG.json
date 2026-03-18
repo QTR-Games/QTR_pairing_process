@@ -20,8 +20,8 @@
     "matchup_output_format": "standard",
     "_matchup_output_format_comment": "Matchup extraction display format - Options: 'standard' (concise summary) or 'verbose' (detailed decision path)",
     "perf_logging_enabled": false,
-    "lazy_sort_on_expand": false,
-    "lazy_sort_mode": "strict"
+    "lazy_sort_on_expand": true,
+    "lazy_sort_mode": "fast_expand_first"
   },
   "logging": {
     "_comment": "Logging preferences - Controls debug output and log files",
@@ -32,6 +32,6 @@
   },
   "created": "2025-10-23T09:31:34.469763",
   "_created_comment": "Initial config creation timestamp - Do not modify manually",
-  "last_modified": "2026-03-17T14:20:16.203375",
+  "last_modified": "2026-03-18T08:12:49.664108",
   "_last_modified_comment": "Last config update timestamp - Updated automatically when any setting changes"
 }

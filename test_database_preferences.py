@@ -70,6 +70,27 @@ def test_backup_config_deduplicates_and_prunes(tmp_path):
     assert len(backups_after_prune) <= 3
 
 
+def test_persistent_memo_enabled_defaults_to_true(tmp_path):
+    config_path = tmp_path / "KLIK_KLAK_KONFIG.test.json"
+    db_prefs = DatabasePreferences(print_output=False, config_file=config_path)
+
+    prefs = db_prefs.get_strategic_preferences()
+    assert prefs["strategic3"]["persistent_memo_enabled"] is True
+
+
+def test_persistent_memo_toggle_persists_roundtrip(tmp_path):
+    config_path = tmp_path / "KLIK_KLAK_KONFIG.test.json"
+    db_prefs = DatabasePreferences(print_output=False, config_file=config_path)
+
+    assert db_prefs.set_strategic_preferences({"strategic3": {"persistent_memo_enabled": False}})
+    prefs_after_disable = db_prefs.get_strategic_preferences()
+    assert prefs_after_disable["strategic3"]["persistent_memo_enabled"] is False
+
+    assert db_prefs.set_strategic_preferences({"strategic3": {"persistent_memo_enabled": True}})
+    prefs_after_enable = db_prefs.get_strategic_preferences()
+    assert prefs_after_enable["strategic3"]["persistent_memo_enabled"] is True
+
+
 if __name__ == "__main__":
     import tempfile
 

@@ -53,7 +53,7 @@ class TreeGenerator:
         self._memo_key_mode = "structural_path_text_base_rating"
         self._memo_schema_version = 1
         self.persistent_memo_enabled = bool(
-            self._read_raw_pref(("strategic3", "persistent_memo_enabled"), False)
+            self._read_raw_pref(("strategic3", "persistent_memo_enabled"), True)
         )
         self.persistent_memo_max_entries = int(
             self._read_numeric_pref(("strategic3", "persistent_memo_max_entries"), 50000, 1000, 250000)

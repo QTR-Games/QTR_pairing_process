@@ -123,7 +123,7 @@ class DatabasePreferences:
                 "tie_break_order": "confidence_then_cumulative",
                 "auto_sort_after_generate": True,
                 "auto_sort_toggle_enabled": True,
-                "persistent_memo_enabled": False,
+                "persistent_memo_enabled": True,
                 "persistent_memo_max_entries": 50000
             },
             "bus": {

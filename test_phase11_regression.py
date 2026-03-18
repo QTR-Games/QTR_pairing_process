@@ -30,6 +30,23 @@ class DummyUIPrefs:
         return "standard"
 
 
+class DummyStrategicPrefsStore:
+    def __init__(self):
+        self.calls = []
+
+    def set_strategic_preferences(self, prefs):
+        self.calls.append(prefs)
+        return True
+
+
+class DummyIntVar:
+    def __init__(self, value):
+        self._value = value
+
+    def get(self):
+        return self._value
+
+
 class DummyTokenTreeGenerator:
     def __init__(self):
         self.tokens = []
@@ -423,6 +440,25 @@ def test_persistent_memo_snapshot_rejects_state_or_param_mismatch():
     )
     gen_param_mismatch.set_memo_state_token("state-A")
     assert gen_param_mismatch.import_memoization_snapshot(payload) is False
+
+
+def test_persistent_memo_toggle_updates_runtime_and_prefs():
+    ui = UiManager.__new__(UiManager)
+    prefs_store = DummyStrategicPrefsStore()
+    setattr(ui, "db_preferences", cast(Any, prefs_store))
+    setattr(ui, "persistent_memo_var", cast(Any, DummyIntVar(0)))
+    setattr(ui, "tree_generator", cast(Any, DummyMemoStatsTreeGenerator()))
+    setattr(ui, "strategic_preferences", _persistent_prefs())
+
+    ui._on_persistent_memo_toggle()
+
+    assert ui.tree_generator.persistent_memo_enabled is False
+    assert ui.strategic_preferences["strategic3"]["persistent_memo_enabled"] is False
+    assert prefs_store.calls[-1] == {
+        "strategic3": {
+            "persistent_memo_enabled": False,
+        }
+    }
 
 
 def test_apply_combined_strategic_reuses_fresh_base_metrics():

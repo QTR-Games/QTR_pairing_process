@@ -835,6 +835,23 @@ class UiManager:
             }
         )
 
+    def _on_persistent_memo_toggle(self):
+        enabled = bool(self.persistent_memo_var.get())
+        self.db_preferences.set_strategic_preferences(
+            {
+                "strategic3": {
+                    "persistent_memo_enabled": enabled,
+                }
+            }
+        )
+
+        if isinstance(getattr(self, "strategic_preferences", None), dict):
+            strategic3 = self.strategic_preferences.setdefault("strategic3", {})
+            strategic3["persistent_memo_enabled"] = enabled
+
+        if hasattr(self, "tree_generator") and self.tree_generator:
+            self.tree_generator.persistent_memo_enabled = enabled
+
     def _on_tree_node_opened(self, _event=None):
         if not getattr(self, "lazy_sort_on_expand", False):
             return
@@ -2570,6 +2587,18 @@ class UiManager:
                 bg="mistyrose"
             )
             lazy_sort_toggle.pack(pady=(0, 6))
+
+            self.persistent_memo_var = tk.IntVar(
+                value=1 if self._is_persistent_strategic_memo_enabled() else 0
+            )
+            persistent_memo_toggle = tk.Checkbutton(
+                database_frame,
+                text="Persistent Strategic Memo",
+                variable=self.persistent_memo_var,
+                command=self._on_persistent_memo_toggle,
+                bg="mistyrose"
+            )
+            persistent_memo_toggle.pack(pady=(0, 6))
 
             tk.Label(
                 database_frame,
