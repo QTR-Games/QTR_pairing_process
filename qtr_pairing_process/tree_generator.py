@@ -1041,6 +1041,13 @@ class TreeGenerator:
                 strategic_value = int(self._strategic_memo[memo_key])
                 self._replace_prefixed_tag(node, 'strategic3_', strategic_value)
                 self.update_node_strategic_display(node, strategic_value)
+
+                # Materialize descendant strategic tags/displays as well.
+                # Without this, a memo hit on a parent (e.g. synthetic Pairings node)
+                # can short-circuit recursion and leave children at stale zeros.
+                for child in self.treeview.tree.get_children(node):
+                    self.calculate_strategic3_scores(child, weights=weights, rho=rho, lam=lam)
+
                 return strategic_value
             self._strategic_memo_misses += 1
 

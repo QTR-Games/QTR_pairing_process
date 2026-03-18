@@ -408,6 +408,53 @@ def test_sort_by_strategic_emits_new_telemetry_fields(tmp_path):
     assert "has_r2=1" in log_text
 
 
+def test_sort_by_strategic_recovers_from_all_zero_tags():
+    root = tk.Tk()
+    root.withdraw()
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+
+    root_node = tree.insert("", "end", text="Pairings", values=(0, 0), tags=("0",))
+    child = tree.insert(root_node, "end", text="A vs X", values=(4, 0), tags=("4", "strategic3_0"))
+
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_base_prefs())
+
+    def recalc_override(node, *args, **kwargs):
+        if node == "":
+            gen._replace_prefixed_tag(child, "strategic3_", 7)
+            return 7
+        return 0
+
+    gen.calculate_strategic3_scores = recalc_override
+
+    ui = UiManager.__new__(UiManager)
+    ui.treeview = DummyTreeView(tree)  # type: ignore[assignment]
+    ui.tree_generator = gen
+    ui.perf = DummyPerf()
+    ui._metric_signatures = {}
+    ui._primary_metrics_dirty = True
+    ui._last_primary_metrics_signature = None
+    ui._available_explainability_metrics = set()
+    ui._strategic_sort_invocation_id = 0
+    ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+    ui.active_column_sort = None
+    ui.active_sort_mode = None
+    ui.current_sort_mode = "none"
+    ui.apply_combined_sort = lambda compute_primary_tags=True: None
+    ui.update_column_headers = lambda: None
+    ui.update_sort_button_states = lambda: None
+    ui._update_sort_hint = lambda: None
+    ui._build_tree_cache_key = lambda: None
+    ui._set_tree_memo_state_token = lambda *_args, **_kwargs: None
+    ui._is_persistent_strategic_memo_enabled = lambda: False
+
+    ui.sort_by_strategic()
+
+    displayed = tree.item(child, "values")[1]
+    assert gen.get_strategic3_from_tags(child) == 7
+    assert str(displayed) == "7"
+    root.destroy()
+
+
 def test_persistent_memo_snapshot_roundtrip_with_strict_signature():
     gen = TreeGenerator(treeview=DummyTreeView(object()), strategic_preferences=_persistent_prefs())
     gen.set_memo_state_token("stable-token")
@@ -479,6 +526,53 @@ def test_strategic_memo_hit_materializes_strategic_tags():
     assert stats_after["hits"] > stats_before["hits"]
     assert gen.get_strategic3_from_tags(child) == 42
     assert any(str(tag).startswith("strategic3_") for tag in tree.item(child, "tags"))
+    root.destroy()
+
+
+def test_parent_memo_hit_materializes_descendant_strategic_tags():
+    root = tk.Tk()
+    root.withdraw()
+
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_persistent_prefs())
+
+    root_node = tree.insert("", "end", text="Pairings", values=(0, 0), tags=("0",))
+    parent = tree.insert(root_node, "end", text="A vs X", values=(4, 0), tags=("4",))
+    child = tree.insert(parent, "end", text="X rating 4", values=(4, 0), tags=("4",))
+
+    parent_key = gen._build_structural_memo_key(parent)
+    child_key = gen._build_structural_memo_key(child)
+    gen._strategic_memo[parent_key] = 55
+    gen._strategic_memo[child_key] = 31
+
+    assert gen.get_strategic3_from_tags(parent) == 0
+    assert gen.get_strategic3_from_tags(child) == 0
+
+    gen.calculate_strategic3_scores(parent)
+
+    assert gen.get_strategic3_from_tags(parent) == 55
+    assert gen.get_strategic3_from_tags(child) == 31
+    root.destroy()
+
+
+def test_strategic_score_distribution_counts_nodes():
+    root = tk.Tk()
+    root.withdraw()
+
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_base_prefs())
+
+    pairings = tree.insert("", "end", text="Pairings", values=(0, 0), tags=("0", "strategic3_0"))
+    a = tree.insert(pairings, "end", text="A vs X", values=(4, 0), tags=("4", "strategic3_7"))
+    tree.insert(a, "end", text="X rating 4", values=(4, 0), tags=("4", "strategic3_0"))
+
+    ui = UiManager.__new__(UiManager)
+    ui.treeview = DummyTreeView(tree)  # type: ignore[assignment]
+    ui.tree_generator = gen
+
+    dist = ui._get_strategic_score_distribution()
+
+    assert dist == {"total": 3, "non_zero": 1, "zero": 2}
     root.destroy()
 
 

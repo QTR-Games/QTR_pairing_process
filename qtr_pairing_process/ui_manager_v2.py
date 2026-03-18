@@ -1596,6 +1596,63 @@ class UiManager:
             return True
         return all(walk(root_id) for root_id in roots)
 
+    def _recover_zeroed_strategic_scores(self) -> bool:
+        """Force a one-time strategic recompute when all visible strategic tags resolve to zero."""
+        if not self._all_strategic_scores_are_zero():
+            return False
+
+        recalc = getattr(self.tree_generator, "calculate_strategic3_scores", None)
+        clear_memo = getattr(self.tree_generator, "clear_memoization", None)
+
+        if callable(clear_memo):
+            clear_memo(reason="strategic_zero_score_recompute")
+
+        if not callable(recalc):
+            return False
+
+        with self.perf.span("strategic.sort.zero_score_recovery"):
+            recalc("")
+
+        # Keep metric freshness/signature tracking coherent after fallback recompute.
+        self._mark_metric_fresh("strategic3")
+        self._last_primary_metrics_signature = self._build_primary_metrics_signature("strategic3")
+        self._primary_metrics_dirty = False
+        return not self._all_strategic_scores_are_zero()
+
+    def _get_strategic_score_distribution(self) -> Optional[Dict[str, int]]:
+        """Return basic visibility diagnostics for strategic score tags across current tree."""
+        if not hasattr(self, 'treeview') or not self.treeview:
+            return None
+
+        get_score = getattr(self.tree_generator, "get_strategic3_from_tags", None)
+        if not callable(get_score):
+            return None
+
+        roots = self.treeview.tree.get_children("")
+        if not roots:
+            return {"total": 0, "non_zero": 0, "zero": 0}
+
+        total = 0
+        non_zero = 0
+
+        def walk(node_id):
+            nonlocal total, non_zero
+            total += 1
+            score = get_score(node_id)
+            if score != 0:
+                non_zero += 1
+            for child_id in self.treeview.tree.get_children(node_id):
+                walk(child_id)
+
+        for root_id in roots:
+            walk(root_id)
+
+        return {
+            "total": total,
+            "non_zero": non_zero,
+            "zero": max(0, total - non_zero),
+        }
+
     def _mark_metric_fresh(self, metric_key):
         self._metric_signatures[metric_key] = self._build_metric_signature(metric_key)
 
@@ -2882,6 +2939,10 @@ class UiManager:
             ):
                 self.apply_combined_sort(compute_primary_tags=True)
 
+            # Defensive recovery for stale memo/tag states that can survive cross-branch
+            # upgrades and manifest as all-zero strategic displays.
+            self._recover_zeroed_strategic_scores()
+
             memo_stats = self.tree_generator.get_memoization_stats()
             if self.perf.enabled:
                 self._log_perf_entry(
@@ -2920,6 +2981,18 @@ class UiManager:
 
             with self.perf.span("strategic.sort.update_sort_value_column"):
                 self.update_sort_value_column()
+
+            score_dist = self._get_strategic_score_distribution()
+            if score_dist is not None:
+                self._log_perf_entry(
+                    "strategic.display.score_distribution",
+                    0.0,
+                    strategic_invocation_id=strategic_invocation_id,
+                    total_nodes=score_dist["total"],
+                    non_zero_nodes=score_dist["non_zero"],
+                    zero_nodes=score_dist["zero"],
+                )
+
             with self.perf.span("strategic.sort.update_column_headers"):
                 self.update_column_headers()
 

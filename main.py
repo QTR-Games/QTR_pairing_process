@@ -23,7 +23,7 @@ if __name__ == '__main__':
     perf_group.add_argument("--no-perf", action="store_true", help="Disable UI performance logging")
     args, _ = parser.parse_known_args()
 
-    perf_enabled = False
+    perf_enabled = True # Default to enabled if no explicit flag is provided.
     if args.perf:
         perf_enabled = True
     elif args.no_perf:
