@@ -28,4 +28,10 @@ All items from the previous backlog are now implemented.
 
 ## New Backlog
 
-- None currently.
+- [ ] Harden `_normalize_database_reference` for Windows path edge cases:
+  - [ ] UNC paths and mixed separators
+  - [ ] Relative paths resolved against config location
+  - [ ] Symlink/realpath normalization policy
+- [ ] Add a compatibility unit test for `TreeGenerator._read_pref` parity:
+  - [ ] Assert raw-path behavior matches `_read_raw_pref`
+  - [ ] Assert bounded numeric-path behavior matches `_read_numeric_pref`

@@ -3,6 +3,7 @@
 import json
 import os
 import logging
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
@@ -492,7 +493,7 @@ class DatabasePreferences:
                 newest_backup = backup_files[0]
                 try:
                     # Avoid creating duplicate backups when config content is unchanged.
-                    if newest_backup.read_bytes() == self.config_file.read_bytes():
+                    if self._file_sha256(newest_backup) == self._file_sha256(self.config_file):
                         self._prune_config_backups(self.max_config_backups)
                         self.logger.info(f"Config backup skipped (unchanged): {newest_backup}")
                         return str(newest_backup)
@@ -528,3 +529,10 @@ class DatabasePreferences:
                 old_backup.unlink(missing_ok=True)
             except Exception:
                 pass
+
+    def _file_sha256(self, path: Path) -> str:
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(65536), b""):
+                digest.update(chunk)
+        return digest.hexdigest()

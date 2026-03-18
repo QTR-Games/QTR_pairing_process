@@ -36,6 +36,11 @@ def _run_once_tk_preflight():
 
 
 def _is_tk_dependent(item) -> bool:
+    """Best-effort Tk dependency detection.
+
+    Prefer @pytest.mark.requires_tk for explicitness in tests that may not contain
+    direct tkinter calls in function source (for example helper-driven setups).
+    """
     marker = item.get_closest_marker("requires_tk")
     if marker is not None:
         return True

@@ -73,6 +73,16 @@ class TreeGenerator:
 
         return value
 
+    def _read_pref(self, path, fallback, min_value=None, max_value=None):
+        """Compatibility wrapper for legacy callers.
+
+        Prefer `_read_raw_pref` for non-numeric values and `_read_numeric_pref`
+        for clamped numeric values.
+        """
+        if min_value is None or max_value is None:
+            return self._read_raw_pref(path, fallback)
+        return self._read_numeric_pref(path, fallback, min_value, max_value)
+
     def _read_numeric_pref(self, path, fallback, min_value, max_value):
         value = self._read_raw_pref(path, fallback)
 

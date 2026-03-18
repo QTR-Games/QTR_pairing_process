@@ -43,6 +43,8 @@ class PerfTimer:
         base_dir.mkdir(parents=True, exist_ok=True)
         now = datetime.now()
         date_key = now.strftime("%Y%m%d")
+        # Keep microseconds to avoid same-second filename collisions during rapid
+        # restarts and short perf test loops.
         timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
         log_path = base_dir / f"perf_{timestamp}.log"
         log_path.touch(exist_ok=True)

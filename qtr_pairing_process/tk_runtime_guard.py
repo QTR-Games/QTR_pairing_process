@@ -13,9 +13,22 @@ def _possible_tcl_roots() -> list[str]:
     for base in {sys.base_prefix, sys.prefix}:
         if not base:
             continue
-        roots.append(str(Path(base) / "tcl"))
-        roots.append(str(Path(base) / "Library" / "lib"))
-    return roots
+        base_path = Path(base)
+        roots.extend(
+            [
+                str(base_path / "tcl"),
+                str(base_path / "tcl" / "tcl8.6"),
+                str(base_path / "tcl" / "tk8.6"),
+                str(base_path / "Lib" / "tcl8.6"),
+                str(base_path / "Library" / "lib"),
+                str(base_path / "Library" / "lib" / "tcl8.6"),
+                str(base_path / "Library" / "lib" / "tk8.6"),
+                str(base_path / "DLLs"),
+            ]
+        )
+
+    # Preserve order while removing duplicates.
+    return list(dict.fromkeys(roots))
 
 
 def collect_tk_environment() -> Dict[str, object]:
