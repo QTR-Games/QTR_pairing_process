@@ -235,6 +235,44 @@ class UiManager:
         self.root.bind('<Configure>', self._on_root_configure, add='+')
         self.root.protocol("WM_DELETE_WINDOW", self._on_app_close)
 
+        # Shared UI tokens for consistent spacing, typography, and emphasis.
+        self.ui_theme = {
+            "font_body": ("Arial", 9),
+            "font_body_bold": ("Arial", 9, "bold"),
+            "font_small": ("Arial", 8),
+            "font_small_bold": ("Arial", 8, "bold"),
+            "font_title": ("Arial", 12, "bold"),
+            "font_panel_title": ("Arial", 14, "bold"),
+            "font_mono": ("Consolas", 10),
+            "pad_xs": 2,
+            "pad_sm": 5,
+            "pad_md": 8,
+            "pad_lg": 10,
+            "pad_xl": 14,
+            "bg_panel": "#f7fbff",
+            "bg_panel_alt": "#f7f9fb",
+            "bg_primary": "#d8efe5",
+            "bg_secondary": "#e8eef5",
+            "bg_highlight": "#fff8db",
+            "fg_primary": "#103d2b",
+            "fg_muted": "#2f3b4a",
+            "fg_subtle": "#5b6675",
+            "status_busy": "#0d47a1",
+            "tooltip_bg": "#f8f4d8",
+            "tooltip_fg": "#2f3b4a",
+            "tooltip_mono_font": ("Consolas", 8),
+            "tooltip_body_font": ("Arial", 9),
+            "tooltip_pad_x": 7,
+            "tooltip_pad_y": 5,
+        }
+        self.sort_guidance_text = (
+            "Sort guidance:\n"
+            "Cumulative: steady paths\n"
+            "Confidence: low-variance wins\n"
+            "Counter: resilient picks\n"
+            "Strategic: balanced minimax"
+        )
+
         self._last_root_size = (self.root.winfo_width(), self.root.winfo_height())
 
         # Create the top team name and scenario display
@@ -376,26 +414,33 @@ class UiManager:
 
     
     def create_ui(self):
+        theme = getattr(self, "ui_theme", {})
+        pad_sm = theme.get("pad_sm", 5)
+        pad_md = theme.get("pad_md", 8)
+        pad_lg = theme.get("pad_lg", 10)
+        control_font = theme.get("font_body", ("Arial", 9))
+        control_font_bold = theme.get("font_body_bold", ("Arial", 9, "bold"))
+
         with self.perf.span("startup.create_ui_grids"):
             self.create_ui_grids()
 
-        tk.Label(self.drop_down_frame, text='Select Team 1:').pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Label(self.drop_down_frame, text='Select Team 1:', font=control_font).pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # Use a StringVar to hold the value of the Combobox
         self.team1_var = tk.StringVar()
         # create combobox
         self.combobox_1 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20, textvariable=self.team1_var)
-        self.combobox_1.pack(side=tk.LEFT, padx=5, pady=5)
+        self.combobox_1.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # Set an instance variable to keep track of the previous value
         self.previous_team1 = self.team1_var.get()
         # Attach a trace to the StringVar
         self.team1_var.trace_add('write', self._on_team_box_change_traced)
 		
-        tk.Label(self.drop_down_frame, text='Select Team 2:').pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Label(self.drop_down_frame, text='Select Team 2:', font=control_font).pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # Use a StringVar to hold the value of the Combobox
         self.team2_var = tk.StringVar()
         # create combobox
         self.combobox_2 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20, textvariable=self.team2_var)
-        self.combobox_2.pack(side=tk.LEFT, padx=5, pady=5)
+        self.combobox_2.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # Set an instance variable to keep track of the previous value
         self.previous_team2 = self.team2_var.get()
         # Attach a trace to the StringVar
@@ -403,13 +448,13 @@ class UiManager:
 
         # create combobox for scenario selection
         # create the label
-        tk.Label(self.drop_down_frame, text='Choose Scenario:').pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Label(self.drop_down_frame, text='Choose Scenario:', font=control_font).pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # create scenarios drop down box
         # Use a StringVar to hold the value of the Combobox
         self.scenario_var = tk.StringVar()
         self.scenario_box = ttk.Combobox(self.drop_down_frame, state='readonly', width=20, textvariable=self.scenario_var)
         # self.scenario_box.bind('<<ComboboxSelected>>', self.on_combobox_select)
-        self.scenario_box.pack(side=tk.LEFT, padx=5, pady=5)
+        self.scenario_box.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # Set an instance variable to keep track of the previous value
         self.previous_value = self.scenario_var.get()
         # Attach a trace to the StringVar
@@ -419,47 +464,65 @@ class UiManager:
         self.root.after(10, self._populate_dropdowns)
 
         # Add essential buttons to a row just above the pairing grid       
-        tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
-        self.flip_grid_button = tk.Button(self.button_row_frame, text="Flip Grid", command=lambda: self.flip_grid_perspective())
-        self.flip_grid_button.pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(
+            self.button_row_frame,
+            text="Save Grid",
+            command=lambda: self.save_grid_data_to_db(),
+            font=control_font,
+            bg=theme.get("bg_secondary", "lightgray"),
+        ).pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
+        self.flip_grid_button = tk.Button(
+            self.button_row_frame,
+            text="Flip Grid",
+            command=lambda: self.flip_grid_perspective(),
+            font=control_font,
+            bg=theme.get("bg_secondary", "lightgray"),
+        )
+        self.flip_grid_button.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
 
         self._paste_5x5_button = tk.Button(
             self.button_row_frame,
             text="Paste 5x5",
             command=self._on_paste_5x5_button,
-            state=tk.DISABLED
+            state=tk.DISABLED,
+            font=control_font,
+            bg=theme.get("bg_secondary", "lightgray"),
         )
-        self._paste_5x5_button.pack(side=tk.LEFT, padx=5, pady=5)
+        self._paste_5x5_button.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         
         # Data Management menu button
         data_mgmt_button = tk.Button(self.button_row_frame, text="Data Management", 
                                    command=lambda: self.show_data_management_menu(),
-                                   bg="lightcyan", fg="darkgreen", font=("Arial", 9, "bold"),
+                                   bg=theme.get("bg_primary", "lightcyan"),
+                                   fg=theme.get("fg_primary", "darkgreen"),
+                                   font=control_font_bold,
                                    relief=tk.RAISED, borderwidth=2)
-        data_mgmt_button.pack(side=tk.LEFT, padx=10, pady=5)
+        data_mgmt_button.pack(side=tk.LEFT, padx=pad_lg, pady=pad_sm)
 
         self.expand_grid_button = tk.Button(
             self.button_row_frame,
             text="Expand Grid",
             command=self.toggle_grid_checkbox_visibility,
-            bg="lightsteelblue",
-            activebackground="lightsteelblue",
+            bg=theme.get("bg_secondary", "lightsteelblue"),
+            activebackground=theme.get("bg_secondary", "lightsteelblue"),
+            font=control_font,
             relief=tk.RAISED,
             borderwidth=2,
         )
-        self.expand_grid_button.pack(side=tk.LEFT, padx=5, pady=5)
+        self.expand_grid_button.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
 
         # Middle-row sort controls (between top grid and tree).
         self.sort_controls_row_frame = tk.Frame(self.button_row_frame)
-        self.sort_controls_row_frame.pack(side=tk.LEFT, padx=(20, 5), pady=4)
+        self.sort_controls_row_frame.pack(side=tk.LEFT, padx=(pad_xl := theme.get("pad_xl", 14), pad_sm), pady=pad_sm)
 
         self.generate_button = tk.Button(
             self.sort_controls_row_frame,
             text="Generate\nCombinations",
             command=self.on_generate_combinations,
             width=16,
+            font=control_font_bold,
         )
-        self.generate_button.pack(side=tk.LEFT, padx=(0, 6))
+        self.generate_button.pack(side=tk.LEFT, padx=(0, pad_md))
 
         # Initialize sorting state tracking
         self.active_sort_mode = None
@@ -469,42 +532,46 @@ class UiManager:
             text="Cumulative\nSort",
             command=self.toggle_cumulative_sort,
             width=16,
+            font=control_font,
         )
-        self.cumulative_button.pack(side=tk.LEFT, padx=6)
+        self.cumulative_button.pack(side=tk.LEFT, padx=pad_md)
 
         self.confidence_button = tk.Button(
             self.sort_controls_row_frame,
             text="Highest\nConfidence",
             command=self.toggle_confidence_sort,
             width=16,
+            font=control_font,
         )
-        self.confidence_button.pack(side=tk.LEFT, padx=6)
+        self.confidence_button.pack(side=tk.LEFT, padx=pad_md)
 
         self.counter_button = tk.Button(
             self.sort_controls_row_frame,
             text="Counter\nPick",
             command=self.toggle_counter_sort,
             width=16,
+            font=control_font,
         )
-        self.counter_button.pack(side=tk.LEFT, padx=6)
+        self.counter_button.pack(side=tk.LEFT, padx=pad_md)
 
         self.strategic_button = tk.Button(
             self.sort_controls_row_frame,
             text="Strategic\nFusion",
             command=self.toggle_strategic_sort,
             width=16,
+            font=control_font,
         )
-        self.strategic_button.pack(side=tk.LEFT, padx=6)
+        self.strategic_button.pack(side=tk.LEFT, padx=pad_md)
 
         self.sort_guidance_label = tk.Label(
             self.sort_controls_row_frame,
-            text="Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
-            font=("Arial", 8),
-            fg="#333333",
+            text=self.sort_guidance_text,
+            font=theme.get("font_small", ("Arial", 8)),
+            fg=theme.get("fg_muted", "#333333"),
             justify=tk.LEFT,
             anchor=tk.W,
         )
-        self.sort_guidance_label.pack(side=tk.LEFT, padx=(10, 0))
+        self.sort_guidance_label.pack(side=tk.LEFT, padx=(pad_lg, 0))
 
         # Set initial button states (all inactive)
         self.update_sort_button_states()
@@ -556,6 +623,7 @@ class UiManager:
             self.perf.close()
 
     def create_ui_grids(self):
+        theme = getattr(self, "ui_theme", {})
         self.row_checkboxes = []
         self.column_checkboxes = []
         self.row_checkbox_widgets = []
@@ -564,18 +632,34 @@ class UiManager:
         self.column_checkbox_label_widget = None
 
         # Single unified grid title
-        grid_label = tk.Label(self.grid_frame, text="Team Matchup Analysis Grid", font=("Arial", 14, "bold"), bg="lightcyan")
+        grid_label = tk.Label(
+            self.grid_frame,
+            text="Team Matchup Analysis Grid",
+            font=theme.get("font_panel_title", ("Arial", 14, "bold")),
+            bg=theme.get("bg_primary", "lightcyan"),
+            fg=theme.get("fg_primary", "black"),
+        )
         grid_label.grid(row=0, column=0, columnspan=13, pady=(0, 5), sticky="ew")
 
         # Section headers
-        rating_header = tk.Label(self.grid_frame, text="Rating Matrix", font=("Arial", 11, "bold"), bg="lightblue")
+        rating_header = tk.Label(
+            self.grid_frame,
+            text="Rating Matrix",
+            font=theme.get("font_body_bold", ("Arial", 9, "bold")),
+            bg=theme.get("bg_secondary", "lightblue"),
+        )
         rating_header.grid(row=1, column=0, columnspan=6, pady=(0, 2), sticky="ew")
         
         # Visual separator
         separator = tk.Frame(self.grid_frame, width=3, bg="darkgray")
         separator.grid(row=1, column=6, rowspan=7, sticky="ns", padx=5)
         
-        calc_header = tk.Label(self.grid_frame, text="Calculations", font=("Arial", 11, "bold"), bg="lightgreen")
+        calc_header = tk.Label(
+            self.grid_frame,
+            text="Calculations",
+            font=theme.get("font_body_bold", ("Arial", 9, "bold")),
+            bg=theme.get("bg_primary", "lightgreen"),
+        )
         calc_header.grid(row=1, column=7, columnspan=5, pady=(0, 2), sticky="ew")
 
         # V2: Create the 6x6 rating grid WITHOUT StringVars or bindings
@@ -836,17 +920,37 @@ class UiManager:
     
     def create_status_bar(self):
         """Create status bar showing current rating system"""
-        self.status_frame = tk.Frame(self.root, relief=tk.SUNKEN, bd=1)
+        theme = getattr(self, "ui_theme", {})
+        self.status_frame = tk.Frame(
+            self.root,
+            relief=tk.SUNKEN,
+            bd=1,
+            bg=theme.get("bg_panel_alt", "#f7f9fb"),
+        )
         self.status_frame.pack(side=tk.BOTTOM, fill=tk.X)
         
         # Database info
         db_name = getattr(self, 'db_name', 'Unknown')
-        self.db_status = tk.Label(self.status_frame, text=f"Database: {db_name}", anchor=tk.W)
-        self.db_status.pack(side=tk.LEFT, padx=5)
+        self.db_status = tk.Label(
+            self.status_frame,
+            text=f"Database: {db_name}",
+            anchor=tk.W,
+            font=theme.get("font_small", ("Arial", 8)),
+            bg=theme.get("bg_panel_alt", "#f7f9fb"),
+            fg=theme.get("fg_muted", "#333333"),
+        )
+        self.db_status.pack(side=tk.LEFT, padx=theme.get("pad_sm", 5))
         
         # Rating system info
         system_info = f"Rating System: {self.rating_config['name']} ({self.rating_range[0]}-{self.rating_range[1]})"
-        self.rating_status = tk.Label(self.status_frame, text=system_info, anchor=tk.CENTER)
+        self.rating_status = tk.Label(
+            self.status_frame,
+            text=system_info,
+            anchor=tk.CENTER,
+            font=theme.get("font_small", ("Arial", 8)),
+            bg=theme.get("bg_panel_alt", "#f7f9fb"),
+            fg=theme.get("fg_muted", "#333333"),
+        )
         self.rating_status.pack(side=tk.LEFT, expand=True, padx=20)
 
         # Dynamic status messages (e.g., unsaved changes)
@@ -859,7 +963,8 @@ class UiManager:
             text="",
             anchor=tk.W,
             font=self._status_font_normal,
-            fg=self._status_fg_normal
+            fg=self._status_fg_normal,
+            bg=theme.get("bg_panel_alt", "#f7f9fb"),
         )
         self.dynamic_status_label.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=2, pady=1)
 
@@ -872,7 +977,8 @@ class UiManager:
             text="Loading...",
             anchor=tk.W,
             font=self._status_font_normal,
-            fg="#0d47a1"
+            fg=theme.get("status_busy", "#0d47a1"),
+            bg=theme.get("bg_panel_alt", "#f7f9fb"),
         )
         self.busy_status_label.pack(side=tk.LEFT, padx=(2, 6))
 
@@ -884,17 +990,39 @@ class UiManager:
         self.busy_progress.pack(side=tk.RIGHT, padx=(0, 2), pady=2)
         
         # Add color preview
-        color_frame = tk.Frame(self.status_frame)
-        color_frame.pack(side=tk.RIGHT, padx=5)
-        
-        tk.Label(color_frame, text="Colors:", font=("Arial", 8)).pack(side=tk.LEFT, padx=(0, 3))
-        
-        for rating in sorted(self.color_map.keys()):
-            color_box = tk.Label(color_frame, text=rating, bg=self.color_map[rating], 
-                               width=2, relief=tk.RAISED, borderwidth=1, font=("Arial", 7, "bold"))
-            color_box.pack(side=tk.LEFT, padx=1)
+        self.color_preview_frame = tk.Frame(self.status_frame, bg=theme.get("bg_panel_alt", "#f7f9fb"))
+        self.color_preview_frame.pack(side=tk.RIGHT, padx=theme.get("pad_sm", 5))
+        self._rebuild_color_preview()
 
         self._refresh_status_messages()
+
+    def _rebuild_color_preview(self):
+        if not hasattr(self, 'color_preview_frame'):
+            return
+
+        theme = getattr(self, "ui_theme", {})
+        for child in self.color_preview_frame.winfo_children():
+            child.destroy()
+
+        tk.Label(
+            self.color_preview_frame,
+            text="Colors:",
+            font=theme.get("font_small", ("Arial", 8)),
+            bg=theme.get("bg_panel_alt", "#f7f9fb"),
+            fg=theme.get("fg_subtle", "#4d4d4d"),
+        ).pack(side=tk.LEFT, padx=(0, 3))
+
+        for rating in sorted(self.color_map.keys()):
+            color_box = tk.Label(
+                self.color_preview_frame,
+                text=rating,
+                bg=self.color_map[rating],
+                width=2,
+                relief=tk.RAISED,
+                borderwidth=1,
+                font=theme.get("font_small_bold", ("Arial", 8, "bold")),
+            )
+            color_box.pack(side=tk.LEFT, padx=1)
 
     def _set_heavy_controls_enabled(self, enabled: bool):
         state = tk.NORMAL if enabled else tk.DISABLED
@@ -1027,27 +1155,7 @@ class UiManager:
             db_name = getattr(self, 'db_name', 'Unknown')
             self.db_status.config(text=f"Database: {db_name}")
         
-        # Recreate color preview with new colors
-        if hasattr(self, 'status_frame'):
-            # Remove old color frame
-            for widget in self.status_frame.winfo_children():
-                if isinstance(widget, tk.Frame) and widget.winfo_children():
-                    # Check if this frame contains color boxes
-                    for child in widget.winfo_children():
-                        if isinstance(child, tk.Label) and child.cget('text') in self.color_map:
-                            widget.destroy()
-                            break
-            
-            # Add new color frame
-            color_frame = tk.Frame(self.status_frame)
-            color_frame.pack(side=tk.RIGHT, padx=5)
-            
-            tk.Label(color_frame, text="Colors:", font=("Arial", 8)).pack(side=tk.LEFT, padx=(0, 3))
-            
-            for rating in sorted(self.color_map.keys()):
-                color_box = tk.Label(color_frame, text=rating, bg=self.color_map[rating], 
-                                   width=2, relief=tk.RAISED, borderwidth=1, font=("Arial", 7, "bold"))
-                color_box.pack(side=tk.LEFT, padx=1)
+        self._rebuild_color_preview()
 
         self._refresh_status_messages()
 
@@ -2119,6 +2227,8 @@ class UiManager:
         if self._name_tooltip_window:
             return
 
+        theme = getattr(self, "ui_theme", {})
+
         self._name_tooltip_window = tk.Toplevel(self.root)
         self._name_tooltip_window.wm_overrideredirect(True)
         self._name_tooltip_window.wm_attributes("-topmost", True)
@@ -2129,13 +2239,13 @@ class UiManager:
             text="",
             justify=tk.LEFT,
             anchor=tk.W,
-            bg="#1f2430",
-            fg="#f0f3f6",
-            font=("Arial", 10),
+            bg=theme.get("tooltip_bg", "#f8f4d8"),
+            fg=theme.get("tooltip_fg", "#2f3b4a"),
+            font=theme.get("tooltip_body_font", ("Arial", 9)),
             relief=tk.SOLID,
             borderwidth=1,
-            padx=8,
-            pady=6
+            padx=theme.get("tooltip_pad_x", 7),
+            pady=theme.get("tooltip_pad_y", 5),
         )
         self._name_tooltip_label.pack(fill=tk.BOTH, expand=True)
 
@@ -2197,6 +2307,8 @@ class UiManager:
         if self._comment_tooltip_window:
             return
 
+        theme = getattr(self, "ui_theme", {})
+
         self._comment_tooltip_window = tk.Toplevel(self.root)
         self._comment_tooltip_window.wm_overrideredirect(True)
         self._comment_tooltip_window.wm_attributes("-topmost", True)
@@ -2207,13 +2319,13 @@ class UiManager:
             text="",
             justify=tk.LEFT,
             anchor=tk.W,
-            bg="#1f2430",
-            fg="#f0f3f6",
-            font=("Arial", 10),
+            bg=theme.get("tooltip_bg", "#f8f4d8"),
+            fg=theme.get("tooltip_fg", "#2f3b4a"),
+            font=theme.get("tooltip_body_font", ("Arial", 9)),
             relief=tk.SOLID,
             borderwidth=1,
-            padx=8,
-            pady=6
+            padx=theme.get("tooltip_pad_x", 7),
+            pady=theme.get("tooltip_pad_y", 5),
         )
         self._comment_tooltip_label.pack(fill=tk.BOTH, expand=True)
 
@@ -5536,10 +5648,23 @@ class UiManager:
         return True
 
     def create_tooltip(self, widget, text):
+        theme = getattr(self, "ui_theme", {})
         tooltip = tk.Toplevel(widget)
         tooltip.wm_overrideredirect(True)
         tooltip.wm_geometry(f"+{widget.winfo_rootx() + 20}+{widget.winfo_rooty() + 20}")
-        label = tk.Label(tooltip, text=text, background="yellow", relief="solid", borderwidth=1, padx=2, pady=2)
+        label = tk.Label(
+            tooltip,
+            text=text,
+            background=theme.get("tooltip_bg", "#f8f4d8"),
+            foreground=theme.get("tooltip_fg", "#2f3b4a"),
+            relief="solid",
+            borderwidth=1,
+            padx=theme.get("tooltip_pad_x", 7),
+            pady=theme.get("tooltip_pad_y", 5),
+            font=theme.get("tooltip_body_font", ("Arial", 9)),
+            justify=tk.LEFT,
+            anchor=tk.W,
+        )
         label.pack()
         tooltip.withdraw()
 
@@ -6041,14 +6166,14 @@ class UiManager:
         if not hasattr(self, 'sort_guidance_label'):
             return
         hint_map = {
-            None: "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
-            "none": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
-            "cumulative": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
-            "confidence": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
-            "resistance": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
-            "strategic3": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax"
+            None: self.sort_guidance_text,
+            "none": self.sort_guidance_text,
+            "cumulative": self.sort_guidance_text,
+            "confidence": self.sort_guidance_text,
+            "resistance": self.sort_guidance_text,
+            "strategic3": self.sort_guidance_text,
         }
-        hint = hint_map.get(self.active_sort_mode, "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax")
+        hint = hint_map.get(self.active_sort_mode, self.sort_guidance_text)
         self.sort_guidance_label.config(text=hint)
 
     def _load_pairing_notes(self):
@@ -6080,25 +6205,42 @@ class UiManager:
     def create_matchup_output_panel(self, parent: Optional[tk.Frame] = None):
         """Create a panel to display the final 5 matchups in a simple format."""
         try:
+            theme = getattr(self, "ui_theme", {})
             target_parent = parent if parent is not None else self.matchup_output_container
             # Create output panel frame below the tree section
-            self.output_panel_frame = tk.Frame(target_parent, relief=tk.RIDGE, borderwidth=2, bg="lightyellow")
-            self.output_panel_frame.pack(side=tk.TOP, fill=tk.BOTH, padx=5, pady=5, expand=True)
+            self.output_panel_frame = tk.Frame(
+                target_parent,
+                relief=tk.RIDGE,
+                borderwidth=2,
+                bg=theme.get("bg_highlight", "lightyellow"),
+            )
+            self.output_panel_frame.pack(
+                side=tk.TOP,
+                fill=tk.BOTH,
+                padx=theme.get("pad_sm", 5),
+                pady=theme.get("pad_sm", 5),
+                expand=True,
+            )
             
             # Panel title
-            title_label = tk.Label(self.output_panel_frame, text="Final Matchups Output", 
-                                 font=("Arial", 12, "bold"), bg="lightyellow")
+            title_label = tk.Label(
+                self.output_panel_frame,
+                text="Final Matchups Output",
+                font=theme.get("font_title", ("Arial", 12, "bold")),
+                bg=theme.get("bg_highlight", "lightyellow"),
+                fg=theme.get("fg_primary", "black"),
+            )
             title_label.pack(pady=(5, 0))
 
-            summary_frame = tk.Frame(self.output_panel_frame, bg="lightyellow")
+            summary_frame = tk.Frame(self.output_panel_frame, bg=theme.get("bg_highlight", "lightyellow"))
             summary_frame.pack(fill=tk.X, padx=10, pady=(2, 6))
 
             self.summary_matchups_label = tk.Label(
                 summary_frame,
                 text="Final matchups: Not extracted yet",
-                font=("Arial", 9),
-                bg="lightyellow",
-                fg="#333333",
+                font=theme.get("font_body", ("Arial", 9)),
+                bg=theme.get("bg_highlight", "lightyellow"),
+                fg=theme.get("fg_muted", "#333333"),
                 justify=tk.LEFT,
                 anchor=tk.W,
                 wraplength=360
@@ -6108,9 +6250,9 @@ class UiManager:
             self.summary_spread_label = tk.Label(
                 summary_frame,
                 text="Best/Worst spread: --",
-                font=("Arial", 9),
-                bg="lightyellow",
-                fg="#333333",
+                font=theme.get("font_body", ("Arial", 9)),
+                bg=theme.get("bg_highlight", "lightyellow"),
+                fg=theme.get("fg_muted", "#333333"),
                 justify=tk.LEFT,
                 anchor=tk.W
             )
@@ -6128,17 +6270,25 @@ class UiManager:
             # Instructions
             instructions = tk.Label(self.output_panel_frame, 
                                   text="Select a pairing from the tree above, then click 'Extract Matchups' to display the 5 final matchups:",
-                                  font=("Arial", 9), bg="lightyellow", fg="darkblue")
+                                  font=theme.get("font_body", ("Arial", 9)),
+                                  bg=theme.get("bg_highlight", "lightyellow"),
+                                  fg=theme.get("fg_muted", "darkblue"))
             instructions.pack(pady=(0, 5))
             
             # Button and checkbox frame
-            button_frame = tk.Frame(self.output_panel_frame, bg="lightyellow")
+            button_frame = tk.Frame(self.output_panel_frame, bg=theme.get("bg_highlight", "lightyellow"))
             button_frame.pack(pady=5)
             
             # Extract button
-            extract_button = tk.Button(button_frame, text="Extract Matchups", 
-                                     command=self.extract_final_matchups, font=("Arial", 10, "bold"),
-                                     bg="lightgreen", relief=tk.RAISED)
+            extract_button = tk.Button(
+                button_frame,
+                text="Extract Matchups",
+                command=self.extract_final_matchups,
+                font=theme.get("font_body_bold", ("Arial", 9, "bold")),
+                bg=theme.get("bg_primary", "lightgreen"),
+                fg=theme.get("fg_primary", "black"),
+                relief=tk.RAISED,
+            )
             extract_button.pack(side=tk.LEFT, padx=(0, 10))
             
             # Verbose mode checkbox
@@ -6150,12 +6300,13 @@ class UiManager:
             verbose_checkbox = tk.Checkbutton(button_frame, text="Verbose Output",
                                             variable=self.verbose_matchup_var,
                                             command=self.on_verbose_mode_changed,
-                                            font=("Arial", 9), bg="lightyellow")
+                                            font=theme.get("font_body", ("Arial", 9)),
+                                            bg=theme.get("bg_highlight", "lightyellow"))
             verbose_checkbox.pack(side=tk.LEFT)
             
             # Text area for matchups display
             self.matchups_text = tk.Text(self.output_panel_frame, height=8, width=80, 
-                                       font=("Consolas", 10), bg="white", relief=tk.SUNKEN,
+                                       font=theme.get("font_mono", ("Consolas", 10)), bg="white", relief=tk.SUNKEN,
                                        borderwidth=2, wrap=tk.WORD)
             self.matchups_text.pack(padx=10, pady=(0, 10), fill=tk.BOTH, expand=True)
             
@@ -6167,8 +6318,9 @@ class UiManager:
             
             # Copy button
             copy_button = tk.Button(self.output_panel_frame, text="Copy to Clipboard", 
-                                  command=self.copy_matchups_to_clipboard, font=("Arial", 9),
-                                  bg="lightblue", relief=tk.RAISED)
+                                  command=self.copy_matchups_to_clipboard,
+                                  font=theme.get("font_body", ("Arial", 9)),
+                                  bg=theme.get("bg_secondary", "lightblue"), relief=tk.RAISED)
             copy_button.pack(pady=(0, 5))
             
         except Exception as e:
@@ -6308,6 +6460,7 @@ class UiManager:
     def _ensure_tree_explain_tooltip(self):
         if self._tree_explain_tooltip:
             return
+        theme = getattr(self, "ui_theme", {})
         self._tree_explain_tooltip = tk.Toplevel(self.root)
         self._tree_explain_tooltip.wm_overrideredirect(True)
         self._tree_explain_tooltip.wm_attributes("-topmost", True)
@@ -6316,12 +6469,13 @@ class UiManager:
             self._tree_explain_tooltip,
             text="",
             justify=tk.LEFT,
-            background="#fff9d8",
+            background=theme.get("tooltip_bg", "#f8f4d8"),
+            foreground=theme.get("tooltip_fg", "#2f3b4a"),
             relief=tk.SOLID,
             borderwidth=1,
-            padx=6,
-            pady=4,
-            font=("Consolas", 8)
+            padx=theme.get("tooltip_pad_x", 7),
+            pady=theme.get("tooltip_pad_y", 5),
+            font=theme.get("tooltip_mono_font", ("Consolas", 8)),
         )
         self._tree_explain_tooltip_label.pack(fill=tk.BOTH, expand=True)
 
