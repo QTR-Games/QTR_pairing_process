@@ -9,9 +9,10 @@ import sqlite3
 import time
 import threading
 import hashlib
+import traceback
 from contextlib import contextmanager
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple, cast
 import tkinter.font as tkfont
 
 # installed libraries
@@ -2891,6 +2892,15 @@ class UiManager:
             tk.Button(import_export_frame, text="Export XLSX", width=20, height=1,
                      command=lambda: self._menu_action(menu_window, self.export_xlsx),
                      relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
+            tk.Button(import_export_frame, text="Export Individual Ratings", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.export_individual_player_ratings),
+                     relief=tk.RAISED, borderwidth=1, bg="#e6f2ff").pack(pady=3)
+            tk.Button(import_export_frame, text="Import Individual Ratings", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.import_individual_player_ratings),
+                     relief=tk.RAISED, borderwidth=1, bg="#e6f2ff").pack(pady=3)
+            tk.Button(import_export_frame, text="Bulk Import Player Files", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.bulk_import_individual_player_ratings),
+                     relief=tk.RAISED, borderwidth=1, bg="#e6f2ff").pack(pady=(3, 10))
             
             # TOP RIGHT: Data Management section
             data_mgmt_frame = tk.Frame(main_frame, bg="lightgreen", relief=tk.RAISED, borderwidth=2)
@@ -2921,6 +2931,9 @@ class UiManager:
             tk.Button(data_mgmt_frame, text="Full User Guide", width=20, height=1,
                      command=lambda: self._menu_action(menu_window, self.open_full_user_guide),
                      relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
+            tk.Button(data_mgmt_frame, text="Open Import Logs Folder", width=20, height=1,
+                     command=lambda: self._menu_action(menu_window, self.open_import_logs_folder),
+                     relief=tk.RAISED, borderwidth=1, bg="#f3f8ff").pack(pady=(3, 10))
             
             # BOTTOM LEFT: Team Management section
             team_mgmt_frame = tk.Frame(main_frame, bg="lightyellow", relief=tk.RAISED, borderwidth=2)
@@ -3042,6 +3055,649 @@ class UiManager:
         except Exception as e:
             print(f"Error exporting XLSX: {e}")
             messagebox.showerror("Error", f"Failed to export XLSX: {e}")
+
+    def _import_diagnostics_dir(self):
+        directory = Path(__file__).parent.parent / "import_logs"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
+
+    def open_import_logs_folder(self):
+        """Open the import diagnostics folder in the system file explorer."""
+        try:
+            folder = self._import_diagnostics_dir()
+            if hasattr(os, "startfile"):
+                os.startfile(str(folder))
+            else:
+                messagebox.showinfo("Import Logs", f"Import logs folder:\n{folder}")
+            self.logger.info("Opened import logs folder: %s", folder)
+        except Exception as exc:
+            self.logger.exception("Failed to open import logs folder")
+            messagebox.showerror("Import Logs", f"Failed to open import logs folder:\n{exc}")
+
+    def _write_import_diagnostic_report(self, report: Dict[str, Any]) -> str:
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        millis = int((time.time() % 1) * 1000)
+        file_name = f"import_diagnostic_{timestamp}_{millis:03d}.json"
+        file_path = self._import_diagnostics_dir() / file_name
+        with open(file_path, "w", encoding="utf-8") as handle:
+            json.dump(report, handle, indent=2, ensure_ascii=True)
+        return str(file_path)
+
+    def _build_import_report(
+        self,
+        operation: str,
+        status: str,
+        details: Optional[Dict[str, Any]] = None,
+        exc: Optional[Exception] = None,
+    ):
+        team_name = ""
+        scenario_value = ""
+        try:
+            team_name = (self.combobox_1.get() or "").strip()
+        except Exception:
+            team_name = ""
+        try:
+            scenario_value = (self.scenario_box.get() or "").strip()
+        except Exception:
+            scenario_value = ""
+
+        report: Dict[str, Any] = {
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "operation": operation,
+            "status": status,
+            "selected_friendly_team": team_name,
+            "selected_scenario": scenario_value,
+            "database_path": getattr(self, "db_path", ""),
+            "database_name": getattr(self, "db_name", ""),
+            "details": details or {},
+        }
+
+        if exc is not None:
+            report["error"] = {
+                "type": type(exc).__name__,
+                "message": str(exc),
+                "traceback": traceback.format_exc(),
+            }
+
+        return report
+
+    def _individual_player_export_columns(self):
+        return [
+            "schema_version",
+            "app_export_version",
+            "source_db_fingerprint",
+            "source_roster_hash",
+            "source_team_id",
+            "source_team_name",
+            "source_player_id",
+            "source_player_name",
+            "opponent_team_id",
+            "opponent_team_name",
+            "opponent_player_id",
+            "opponent_player_name",
+            "scenario_id",
+            "rating",
+            "comment",
+        ]
+
+    def _get_selected_friendly_team(self):
+        team_name = (self.combobox_1.get() or "").strip()
+        if not team_name:
+            raise ValueError("Select a friendly team first.")
+        team_id = self.db_manager.query_team_id(team_name)
+        if team_id is None:
+            raise ValueError(f"Friendly team '{team_name}' was not found.")
+        return team_id, team_name
+
+    def _select_player_for_team(self, team_id, title, prompt):
+        players = self.db_manager.query_sql_params(
+            "SELECT player_id, player_name FROM players WHERE team_id = ? ORDER BY player_id",
+            (team_id,),
+        )
+        if not players:
+            raise ValueError("No players are available for the selected friendly team.")
+
+        selected: List[Optional[Tuple[int, str]]] = [None]
+        player_name_by_id = {pid: name for pid, name in players}
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("430x170")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        tk.Label(dialog, text=prompt, font=("Arial", 10)).pack(padx=12, pady=(15, 8), anchor="w")
+
+        var = tk.StringVar()
+        names = [name for _, name in players]
+        picker = ttk.Combobox(dialog, textvariable=var, values=names, state="readonly", width=45)
+        picker.pack(padx=12, pady=(0, 12), fill=tk.X)
+        if names:
+            var.set(names[0])
+
+        button_frame = tk.Frame(dialog)
+        button_frame.pack(fill=tk.X, padx=12, pady=(0, 12))
+
+        def on_ok():
+            chosen_name = (var.get() or "").strip()
+            if not chosen_name:
+                messagebox.showwarning("Selection Required", "Choose a player to continue.")
+                return
+            for player_id, player_name in players:
+                if player_name == chosen_name:
+                    selected[0] = (player_id, player_name)
+                    break
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        tk.Button(button_frame, text="Cancel", width=14, command=on_cancel).pack(side=tk.RIGHT, padx=(8, 0))
+        tk.Button(button_frame, text="OK", width=14, command=on_ok, bg="#dff0d8").pack(side=tk.RIGHT)
+
+        dialog.bind("<Return>", lambda _event: on_ok())
+        self.root.wait_window(dialog)
+
+        return selected[0]
+
+    def export_individual_player_ratings(self):
+        try:
+            with self._busy_ui_operation("Loading - exporting individual ratings"):
+                friendly_team_id, friendly_team_name = self._get_selected_friendly_team()
+                selected_player = self._select_player_for_team(
+                    friendly_team_id,
+                    "Export Individual Player Ratings",
+                    "Select the friendly player to export:",
+                )
+                if not selected_player:
+                    return
+
+                source_player_id = selected_player[0]
+                source_player_name = selected_player[1]
+                payload = self.db_manager.export_individual_player_ratings(friendly_team_id, source_player_id)
+                rows = payload.get("rows", [])
+
+                default_name = f"{friendly_team_name}_{source_player_name}_player_ratings_export_v1.csv".replace(" ", "_")
+                file_path = filedialog.asksaveasfilename(
+                    title="Export Individual Player Ratings",
+                    initialfile=default_name,
+                    defaultextension=".csv",
+                    filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+                )
+                if not file_path:
+                    return
+
+                schema_version = "player_ratings_export_v1"
+                export_version = "1.0"
+                source_db_fingerprint = self.db_manager.get_db_fingerprint()
+                source_roster_hash = self.db_manager.get_team_roster_hash(friendly_team_id)
+
+                columns = self._individual_player_export_columns()
+                with open(file_path, mode="w", newline="", encoding="utf-8") as csvfile:
+                    writer = csv.DictWriter(csvfile, fieldnames=columns)
+                    writer.writeheader()
+
+                    for row in rows:
+                        writer.writerow(
+                            {
+                                "schema_version": schema_version,
+                                "app_export_version": export_version,
+                                "source_db_fingerprint": source_db_fingerprint,
+                                "source_roster_hash": source_roster_hash,
+                                "source_team_id": payload["source_team_id"],
+                                "source_team_name": payload["source_team_name"],
+                                "source_player_id": payload["source_player_id"],
+                                "source_player_name": payload["source_player_name"],
+                                "opponent_team_id": row["opponent_team_id"],
+                                "opponent_team_name": row["opponent_team_name"],
+                                "opponent_player_id": row["opponent_player_id"],
+                                "opponent_player_name": row["opponent_player_name"],
+                                "scenario_id": row["scenario_id"],
+                                "rating": row["rating"],
+                                "comment": row.get("comment", ""),
+                            }
+                        )
+
+                report = self._build_import_report(
+                    operation="export_individual_player_ratings",
+                    status="success",
+                    details={
+                        "source_player_id": source_player_id,
+                        "source_player_name": source_player_name,
+                        "row_count": len(rows),
+                        "file_path": file_path,
+                    },
+                )
+                log_path = self._write_import_diagnostic_report(report)
+                self.logger.info("Individual player export succeeded: player=%s rows=%s file=%s", source_player_name, len(rows), file_path)
+
+                messagebox.showinfo(
+                    "Export Complete",
+                    f"Exported {len(rows)} rows for {source_player_name}.\n\nFile:\n{file_path}\n\nDiagnostics log:\n{log_path}",
+                )
+        except Exception as exc:
+            report = self._build_import_report(
+                operation="export_individual_player_ratings",
+                status="failure",
+                details={},
+                exc=exc,
+            )
+            log_path = self._write_import_diagnostic_report(report)
+            self.logger.exception("Individual player export failed")
+            messagebox.showerror(
+                "Export Failed",
+                f"Failed to export individual player ratings:\n{exc}\n\nDiagnostics log:\n{log_path}",
+            )
+
+    def _load_individual_player_csv_rows(self, file_path):
+        with open(file_path, mode="r", newline="", encoding="utf-8-sig") as csvfile:
+            reader = csv.DictReader(csvfile)
+            required_columns = self._individual_player_export_columns()
+            fieldnames = reader.fieldnames or []
+            missing = [column for column in required_columns if column not in fieldnames]
+            if missing:
+                raise ValueError(f"Missing required columns: {', '.join(missing)}")
+
+            rows = []
+            for row in reader:
+                if not any((value or "").strip() for value in row.values()):
+                    continue
+                rows.append(row)
+
+        if not rows:
+            raise ValueError("File has no importable data rows.")
+        return rows
+
+    def _validate_individual_import_rows(
+        self,
+        rows,
+        target_team_id,
+        target_team_name,
+        target_player_id,
+        target_player_name,
+    ):
+        warnings: List[str] = []
+
+        first = rows[0]
+        if first.get("schema_version") != "player_ratings_export_v1":
+            raise ValueError("Unsupported schema_version. Expected 'player_ratings_export_v1'.")
+
+        file_team_name = (first.get("source_team_name") or "").strip()
+        file_player_name = (first.get("source_player_name") or "").strip()
+
+        if file_team_name != target_team_name:
+            raise ValueError(
+                f"Team mismatch. File source team '{file_team_name}' does not match selected friendly team '{target_team_name}'."
+            )
+
+        if file_player_name != target_player_name:
+            raise ValueError(
+                f"Player mismatch. File source player '{file_player_name}' does not match target player '{target_player_name}'."
+            )
+
+        source_db_fingerprint = first.get("source_db_fingerprint", "")
+        source_roster_hash = first.get("source_roster_hash", "")
+        local_db_fingerprint = self.db_manager.get_db_fingerprint()
+        local_roster_hash = self.db_manager.get_team_roster_hash(target_team_id)
+        lineage_match = (
+            source_db_fingerprint == local_db_fingerprint
+            and source_roster_hash == local_roster_hash
+        )
+        if not lineage_match:
+            warnings.append(
+                "Source lineage fingerprint/roster hash did not match this database. Applying guarded fallback checks."
+            )
+
+        try:
+            file_source_player_id = DataValidator.validate_integer(first.get("source_player_id"), min_value=1)
+        except ValueError:
+            file_source_player_id = None
+
+        if lineage_match and file_source_player_id is not None and file_source_player_id != target_player_id:
+            raise ValueError(
+                f"Lineage matched but player ID mismatch: file={file_source_player_id}, target={target_player_id}."
+            )
+
+        import_rows = []
+        for idx, row in enumerate(rows, start=2):
+            for metadata_key in (
+                "schema_version",
+                "app_export_version",
+                "source_db_fingerprint",
+                "source_roster_hash",
+                "source_team_name",
+                "source_player_name",
+            ):
+                if (row.get(metadata_key) or "").strip() != (first.get(metadata_key) or "").strip():
+                    raise ValueError(f"Inconsistent file metadata in row {idx} for '{metadata_key}'.")
+
+            scenario_id = DataValidator.validate_integer(row.get("scenario_id"), min_value=min(SCENARIO_MAP.keys()), max_value=max(SCENARIO_MAP.keys()))
+            rating = DataValidator.validate_rating(row.get("rating"), rating_system=self.current_rating_system)
+
+            opponent_team_name = DataValidator.validate_team_name(row.get("opponent_team_name", ""))
+            opponent_player_name = DataValidator.validate_player_name(row.get("opponent_player_name", ""))
+
+            opponent_team_id = None
+            opponent_player_id = None
+
+            if lineage_match:
+                try:
+                    opponent_team_id = DataValidator.validate_integer(row.get("opponent_team_id"), min_value=1)
+                    opponent_player_id = DataValidator.validate_integer(row.get("opponent_player_id"), min_value=1)
+                except ValueError:
+                    opponent_team_id = None
+                    opponent_player_id = None
+
+            if opponent_team_id is not None and opponent_player_id is not None:
+                identity_rows = self.db_manager.query_sql_params(
+                    """
+                    SELECT p.player_name, p.team_id, t.team_name
+                    FROM players p
+                    JOIN teams t ON t.team_id = p.team_id
+                    WHERE p.player_id = ?
+                    """,
+                    (opponent_player_id,),
+                )
+                if not identity_rows:
+                    raise ValueError(f"Opponent player id {opponent_player_id} from row {idx} was not found.")
+
+                actual_player_name, actual_team_id, actual_team_name = identity_rows[0]
+                if actual_team_id != opponent_team_id:
+                    raise ValueError(f"Row {idx} has conflicting opponent ids (team/player mismatch).")
+                if actual_team_name != opponent_team_name or actual_player_name != opponent_player_name:
+                    raise ValueError(
+                        f"Row {idx} opponent ID/name mismatch. File has {opponent_player_name}@{opponent_team_name}, "
+                        f"database has {actual_player_name}@{actual_team_name}."
+                    )
+            else:
+                opponent_team_id = self.db_manager.query_team_id(opponent_team_name)
+                if opponent_team_id is None:
+                    raise ValueError(f"Row {idx} opponent team '{opponent_team_name}' was not found.")
+                opponent_player_id = self.db_manager.query_player_id(opponent_player_name, opponent_team_id)
+                if opponent_player_id is None:
+                    raise ValueError(
+                        f"Row {idx} opponent player '{opponent_player_name}' was not found on team '{opponent_team_name}'."
+                    )
+
+            comment = row.get("comment") or ""
+            if len(comment) > 2000:
+                raise ValueError(f"Row {idx} comment exceeds 2000 characters.")
+
+            import_rows.append(
+                {
+                    "opponent_team_id": opponent_team_id,
+                    "opponent_player_id": opponent_player_id,
+                    "scenario_id": scenario_id,
+                    "rating": rating,
+                    "comment": comment,
+                }
+            )
+
+        expected_rows_result = self.db_manager.query_sql_params(
+            "SELECT COUNT(*) FROM players WHERE team_id != ?",
+            (target_team_id,),
+        )
+        opponent_player_count = expected_rows_result[0][0] if expected_rows_result else 0
+        expected_rows = opponent_player_count * len(SCENARIO_MAP)
+        if expected_rows and len(import_rows) != expected_rows:
+            warnings.append(
+                f"File contains {len(import_rows)} rows; expected {expected_rows}. Missing rows will remain absent after replacement."
+            )
+
+        return import_rows, warnings
+
+    def _run_individual_player_import(self, file_path, target_team_id, target_team_name, target_player_id, target_player_name, require_confirmation=True):
+        rows = self._load_individual_player_csv_rows(file_path)
+        import_rows, warnings = self._validate_individual_import_rows(
+            rows,
+            target_team_id,
+            target_team_name,
+            target_player_id,
+            target_player_name,
+        )
+
+        if require_confirmation:
+            warning_text = ""
+            if warnings:
+                warning_text = "\n\nWarnings:\n- " + "\n- ".join(warnings)
+            confirmed = messagebox.askyesno(
+                "Confirm Overwrite",
+                f"Import {len(import_rows)} rows for player '{target_player_name}' on team '{target_team_name}'.\n"
+                "This will replace that player's existing ratings/comments for all opponents and scenarios."
+                f"{warning_text}",
+            )
+            if not confirmed:
+                return None
+
+        summary = self.db_manager.replace_individual_player_ratings(target_team_id, target_player_id, import_rows)
+        summary = cast(Dict[str, Any], dict(summary))
+        summary["warnings"] = warnings
+        summary["rows_in_file"] = len(import_rows)
+        return summary
+
+    def import_individual_player_ratings(self):
+        file_path = filedialog.askopenfilename(
+            title="Import Individual Player Ratings",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        if not file_path:
+            return
+        try:
+            with self._busy_ui_operation("Loading - importing individual ratings"):
+                target_team_id, target_team_name = self._get_selected_friendly_team()
+                selected_player = self._select_player_for_team(
+                    target_team_id,
+                    "Import Individual Player Ratings",
+                    "Select target friendly player for imported data:",
+                )
+                if not selected_player:
+                    return
+
+                target_player_id = selected_player[0]
+                target_player_name = selected_player[1]
+                summary = self._run_individual_player_import(
+                    file_path,
+                    target_team_id,
+                    target_team_name,
+                    target_player_id,
+                    target_player_name,
+                    require_confirmation=True,
+                )
+                if summary is None:
+                    return
+
+                self._invalidate_team_cache()
+                self._invalidate_comment_cache()
+                data_cache = getattr(self, "data_cache", None)
+                if data_cache is not None:
+                    data_cache.invalidate_ratings_cache()
+
+                self.load_grid_data_from_db(refresh_ui=True)
+                warning_text = ""
+                if summary.get("warnings"):
+                    warning_text = "\n\nWarnings:\n- " + "\n- ".join(cast(List[str], summary["warnings"]))
+
+                report = self._build_import_report(
+                    operation="import_individual_player_ratings",
+                    status="success",
+                    details={
+                        "file_path": file_path,
+                        "target_player_id": target_player_id,
+                        "target_player_name": target_player_name,
+                        "summary": summary,
+                    },
+                )
+                log_path = self._write_import_diagnostic_report(report)
+                self.logger.info("Individual player import succeeded: player=%s rows=%s file=%s", target_player_name, summary["rows_in_file"], file_path)
+
+                messagebox.showinfo(
+                    "Import Complete",
+                    f"Imported {summary['rows_in_file']} rows for {target_player_name}.\n"
+                    f"Replaced ratings: {summary['deleted_ratings']}\n"
+                    f"Replaced comments: {summary['deleted_comments']}\n"
+                    f"Upserted comments: {summary['upserted_comments']}"
+                    f"{warning_text}\n\nDiagnostics log:\n{log_path}",
+                )
+        except Exception as exc:
+            report = self._build_import_report(
+                operation="import_individual_player_ratings",
+                status="failure",
+                details={"file_path": file_path},
+                exc=exc,
+            )
+            log_path = self._write_import_diagnostic_report(report)
+            self.logger.exception("Individual player import failed: file=%s", file_path)
+            messagebox.showerror(
+                "Import Failed",
+                f"Failed to import individual player ratings:\n{exc}\n\nDiagnostics log:\n{log_path}",
+            )
+
+    def bulk_import_individual_player_ratings(self):
+        folder_path = filedialog.askdirectory(title="Select Folder With Individual Player Rating Exports")
+        if not folder_path:
+            return
+
+        file_names = sorted([name for name in os.listdir(folder_path) if name.lower().endswith(".csv")])
+        if not file_names:
+            messagebox.showwarning("Bulk Import", "No CSV files were found in the selected folder.")
+            return
+
+        proceed = messagebox.askyesno(
+            "Confirm Bulk Import",
+            f"Found {len(file_names)} CSV files.\n\n"
+            "Bulk import will replace each matched player's ratings/comments. Continue?",
+        )
+        if not proceed:
+            return
+
+        try:
+            with self._busy_ui_operation("Loading - bulk importing player ratings"):
+                target_team_id, target_team_name = self._get_selected_friendly_team()
+
+                succeeded = 0
+                failed = 0
+                results = []
+                per_file_reports: List[Dict[str, Any]] = []
+
+                for file_name in file_names:
+                    file_path = os.path.join(folder_path, file_name)
+                    try:
+                        rows = self._load_individual_player_csv_rows(file_path)
+                        first = rows[0]
+                        file_player_name = (first.get("source_player_name") or "").strip()
+                        file_player_id = None
+                        try:
+                            file_player_id = DataValidator.validate_integer(first.get("source_player_id"), min_value=1)
+                        except ValueError:
+                            file_player_id = None
+
+                        target_player_id = None
+                        target_player_name = file_player_name
+
+                        local_db_fingerprint = self.db_manager.get_db_fingerprint()
+                        local_roster_hash = self.db_manager.get_team_roster_hash(target_team_id)
+                        lineage_match = (
+                            (first.get("source_db_fingerprint") or "") == local_db_fingerprint
+                            and (first.get("source_roster_hash") or "") == local_roster_hash
+                        )
+
+                        if lineage_match and file_player_id is not None:
+                            verify_rows = self.db_manager.query_sql_params(
+                                "SELECT player_name FROM players WHERE player_id = ? AND team_id = ?",
+                                (file_player_id, target_team_id),
+                            )
+                            if verify_rows:
+                                if verify_rows[0][0] != file_player_name:
+                                    raise ValueError(
+                                        f"Player id/name mismatch for file identity: id={file_player_id}, name={file_player_name}."
+                                    )
+                                target_player_id = file_player_id
+
+                        if target_player_id is None:
+                            target_player_id = self.db_manager.query_player_id(file_player_name, target_team_id)
+                            if target_player_id is None:
+                                raise ValueError(
+                                    f"Could not map player '{file_player_name}' in selected team '{target_team_name}'."
+                                )
+
+                        summary = self._run_individual_player_import(
+                            file_path,
+                            target_team_id,
+                            target_team_name,
+                            target_player_id,
+                            file_player_name,
+                            require_confirmation=False,
+                        )
+                        if summary is None:
+                            raise ValueError("Import canceled.")
+                        succeeded += 1
+                        results.append(f"OK: {file_name} -> {file_player_name} ({summary['rows_in_file']} rows)")
+                        per_file_reports.append(
+                            {
+                                "file": file_name,
+                                "status": "success",
+                                "target_player_id": target_player_id,
+                                "target_player_name": file_player_name,
+                                "summary": summary,
+                            }
+                        )
+                    except Exception as exc:
+                        failed += 1
+                        results.append(f"FAIL: {file_name} -> {exc}")
+                        per_file_reports.append(
+                            {
+                                "file": file_name,
+                                "status": "failure",
+                                "error_type": type(exc).__name__,
+                                "error_message": str(exc),
+                                "traceback": traceback.format_exc(),
+                            }
+                        )
+                        self.logger.exception("Bulk import file failed: %s", file_path)
+
+                self._invalidate_team_cache()
+                self._invalidate_comment_cache()
+                data_cache = getattr(self, "data_cache", None)
+                if data_cache is not None:
+                    data_cache.invalidate_ratings_cache()
+
+                self.load_grid_data_from_db(refresh_ui=True)
+                details = "\n".join(results[:20])
+                if len(results) > 20:
+                    details += f"\n... and {len(results) - 20} more"
+
+                report = self._build_import_report(
+                    operation="bulk_import_individual_player_ratings",
+                    status="success" if failed == 0 else "partial_failure",
+                    details={
+                        "folder_path": folder_path,
+                        "file_count": len(file_names),
+                        "succeeded": succeeded,
+                        "failed": failed,
+                        "files": per_file_reports,
+                    },
+                )
+                log_path = self._write_import_diagnostic_report(report)
+                self.logger.info("Bulk import finished: succeeded=%s failed=%s folder=%s", succeeded, failed, folder_path)
+
+                messagebox.showinfo(
+                    "Bulk Import Complete",
+                    f"Succeeded: {succeeded}\nFailed: {failed}\n\n{details}\n\nDiagnostics log:\n{log_path}",
+                )
+        except Exception as exc:
+            report = self._build_import_report(
+                operation="bulk_import_individual_player_ratings",
+                status="failure",
+                details={"folder_path": folder_path, "file_count": len(file_names)},
+                exc=exc,
+            )
+            log_path = self._write_import_diagnostic_report(report)
+            self.logger.exception("Bulk import aborted")
+            messagebox.showerror(
+                "Bulk Import Failed",
+                f"Bulk import failed:\n{exc}\n\nDiagnostics log:\n{log_path}",
+            )
     
     def on_generate_combinations(self):
         with self._busy_ui_operation("Loading - generating combinations"):
