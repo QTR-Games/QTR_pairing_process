@@ -328,6 +328,38 @@ class SecureDBInterface:
         # Use parameterized query
         query = "DELETE FROM players WHERE team_id = ?"
         return self.execute_parameterized(query, (validated_team_id,))
+
+    def update_team_name_secure(self, team_id: int, team_name: str) -> int:
+        """Update a team's name in place.
+
+        Args:
+            team_id: ID of the team to update
+            team_name: New team name
+
+        Returns:
+            Number of rows affected
+        """
+        validated_team_id = DataValidator.validate_integer(team_id, min_value=1)
+        validated_name = DataValidator.validate_team_name(team_name)
+        query = "UPDATE teams SET team_name = ? WHERE team_id = ?"
+        return self.execute_parameterized(query, (validated_name, validated_team_id))
+
+    def update_player_name_secure(self, player_id: int, team_id: int, player_name: str) -> int:
+        """Update a player's name in place for a specific team.
+
+        Args:
+            player_id: ID of the player to update
+            team_id: Team ID ownership check
+            player_name: New player name
+
+        Returns:
+            Number of rows affected
+        """
+        validated_player_id = DataValidator.validate_integer(player_id, min_value=1)
+        validated_team_id = DataValidator.validate_integer(team_id, min_value=1)
+        validated_name = DataValidator.validate_player_name(player_name)
+        query = "UPDATE players SET player_name = ? WHERE player_id = ? AND team_id = ?"
+        return self.execute_parameterized(query, (validated_name, validated_player_id, validated_team_id))
     
     def create_rating_secure(self, team_1_id: int, team_2_id: int, 
                            player_1_id: int, player_2_id: int, 

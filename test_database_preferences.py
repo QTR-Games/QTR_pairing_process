@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for database persistence feature."""
 
+import os
 from pathlib import Path
 
 from qtr_pairing_process.database_preferences import DatabasePreferences
@@ -89,6 +90,55 @@ def test_persistent_memo_toggle_persists_roundtrip(tmp_path):
     assert db_prefs.set_strategic_preferences({"strategic3": {"persistent_memo_enabled": True}})
     prefs_after_enable = db_prefs.get_strategic_preferences()
     assert prefs_after_enable["strategic3"]["persistent_memo_enabled"] is True
+
+
+def test_normalize_database_reference_resolves_relative_path_against_config_dir(tmp_path):
+    config_dir = tmp_path / "config_dir"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path = config_dir / "KLIK_KLAK_KONFIG.test.json"
+    db_prefs = DatabasePreferences(print_output=False, config_file=config_path)
+
+    path, name = db_prefs._normalize_database_reference("dbs/my_team.db", None)
+
+    expected_db = Path(config_dir / "dbs" / "my_team.db").resolve()
+    assert Path(path).resolve() == expected_db.parent
+    assert name == expected_db.name
+
+
+def test_normalize_database_reference_handles_mixed_separators_and_parent_segments(tmp_path):
+    config_path = tmp_path / "KLIK_KLAK_KONFIG.test.json"
+    db_prefs = DatabasePreferences(print_output=False, config_file=config_path)
+
+    mixed_path = str(tmp_path / "folderA" / ".." / "folderB") + "\\sub/../team.db"
+    path, name = db_prefs._normalize_database_reference(mixed_path, None)
+
+    expected = Path(tmp_path / "folderB" / "team.db").resolve()
+    assert Path(path).resolve() == expected.parent
+    assert name == expected.name
+
+
+def test_normalize_database_reference_name_only_db_file_path(tmp_path):
+    config_path = tmp_path / "KLIK_KLAK_KONFIG.test.json"
+    db_prefs = DatabasePreferences(print_output=False, config_file=config_path)
+
+    db_file = tmp_path / "nested" / "edgecase.db"
+    path, name = db_prefs._normalize_database_reference(None, str(db_file))
+
+    assert Path(path).resolve() == db_file.parent.resolve()
+    assert name == "edgecase.db"
+
+
+def test_normalize_database_reference_relative_directory_with_name(tmp_path):
+    config_dir = tmp_path / "cfg"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path = config_dir / "KLIK_KLAK_KONFIG.test.json"
+    db_prefs = DatabasePreferences(print_output=False, config_file=config_path)
+
+    path, name = db_prefs._normalize_database_reference("..\\db-store", "team.db")
+
+    expected_dir = (config_dir.parent / "db-store").resolve()
+    assert Path(path).resolve() == expected_dir
+    assert name == "team.db"
 
 
 if __name__ == "__main__":

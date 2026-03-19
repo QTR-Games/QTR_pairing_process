@@ -2579,6 +2579,9 @@ class UiManager:
     
     def on_create_team(self):
         self.create_team()
+
+    def on_modify_team(self):
+        self.modify_team()
         
     def on_delete_team(self):
         self.delete_team()
@@ -3074,6 +3077,7 @@ class UiManager:
                 section_palette["team_mgmt"]["fg"],
             )
             add_menu_button(team_mgmt_body, "Create Team", self.on_create_team, tier="primary", reopen_data_management=True)
+            add_menu_button(team_mgmt_body, "Modify Team", self.on_modify_team, tier="primary", reopen_data_management=True)
             add_menu_button(team_mgmt_body, "Delete Team", self.on_delete_team, tier="secondary", reopen_data_management=True)
             
             # BOTTOM RIGHT: Database section
@@ -3366,6 +3370,46 @@ class UiManager:
         dialog.bind("<Return>", lambda _event: on_ok())
         self.root.wait_window(dialog)
 
+        return selected[0]
+
+    def _select_team_name_for_action(self, team_names, title, prompt):
+        if not team_names:
+            raise ValueError("No teams are available.")
+
+        selected = [None]
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("430x170")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        tk.Label(dialog, text=prompt, font=("Arial", 10)).pack(padx=12, pady=(15, 8), anchor="w")
+
+        var = tk.StringVar()
+        picker = ttk.Combobox(dialog, textvariable=var, values=team_names, state="readonly", width=45)
+        picker.pack(padx=12, pady=(0, 12), fill=tk.X)
+        var.set(team_names[0])
+
+        button_frame = tk.Frame(dialog)
+        button_frame.pack(fill=tk.X, padx=12, pady=(0, 12))
+
+        def on_ok():
+            chosen = (var.get() or "").strip()
+            if not chosen:
+                messagebox.showwarning("Selection Required", "Choose a team to continue.")
+                return
+            selected[0] = chosen
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        tk.Button(button_frame, text="Cancel", width=14, command=on_cancel).pack(side=tk.RIGHT, padx=(8, 0))
+        tk.Button(button_frame, text="OK", width=14, command=on_ok, bg="#dff0d8").pack(side=tk.RIGHT)
+
+        dialog.bind("<Return>", lambda _event: on_ok())
+        self.root.wait_window(dialog)
         return selected[0]
 
     def export_individual_player_ratings(self):
@@ -5074,6 +5118,99 @@ class UiManager:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to create/update team: {str(e)}")
             print(f"create_team error: {e}")
+
+    def modify_team(self):
+        """Modify an existing team name and/or player names while preserving team/player IDs."""
+        team_names = self.select_team_names()
+        if not team_names:
+            messagebox.showerror("Error", "No teams are available to modify.")
+            return
+
+        selected_team = self._select_team_name_for_action(
+            sorted(team_names),
+            "Modify Team",
+            "Select the team you want to modify:",
+        )
+        if selected_team is None:
+            return
+
+        selected_team = selected_team.strip()
+        if selected_team not in team_names:
+            messagebox.showerror("Error", f"Team '{selected_team}' was not found.")
+            return
+
+        team_id = self.db_manager.query_team_id(selected_team)
+        if team_id is None:
+            messagebox.showerror("Error", f"Failed to resolve team ID for '{selected_team}'.")
+            return
+
+        try:
+            players = self.db_manager.query_players(team_id)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load team roster: {str(e)}")
+            return
+        if not players or len(players) != 5:
+            messagebox.showerror("Error", f"Team '{selected_team}' does not have a valid 5-player roster.")
+            return
+
+        existing_other_team_names = [name for name in team_names if name != selected_team]
+        initial_player_names = [row[1] for row in players]
+        dialog = CreateTeamDialog(
+            self.root,
+            existing_other_team_names,
+            dialog_title="Modify Team",
+            confirm_button_text="Save Changes",
+            initial_team_name=selected_team,
+            initial_player_names=initial_player_names,
+            team_exists_behavior="error",
+        )
+        result = dialog.show()
+        if result is None:
+            return
+
+        updated_team_name = result["team_name"]
+        updated_player_names = result["player_names"]
+
+        no_name_change = updated_team_name == selected_team
+        no_player_change = updated_player_names == initial_player_names
+        if no_name_change and no_player_change:
+            messagebox.showinfo("No Changes", f"No updates were made to '{selected_team}'.")
+            return
+
+        try:
+            if updated_team_name != selected_team:
+                self.db_manager.rename_team(team_id, updated_team_name)
+
+            # Use stable player IDs to avoid disturbing ratings/comments relationships.
+            for (player_id, current_player_name), updated_player_name in zip(players, updated_player_names):
+                if current_player_name != updated_player_name:
+                    self.db_manager.rename_player(player_id, team_id, updated_player_name)
+
+            self._invalidate_team_cache()
+            self._invalidate_comment_cache()
+            self.set_team_dropdowns()
+            self.update_ui()
+
+            changed_items = []
+            if updated_team_name != selected_team:
+                changed_items.append(f"Team renamed to '{updated_team_name}'")
+            changed_players = [
+                (old, new)
+                for old, new in zip(initial_player_names, updated_player_names)
+                if old != new
+            ]
+            if changed_players:
+                changed_items.append(
+                    "Player updates:\n" + "\n".join([f"- {old} -> {new}" for old, new in changed_players])
+                )
+
+            messagebox.showinfo(
+                "Success",
+                "Team updated successfully.\n\n" + "\n\n".join(changed_items),
+            )
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to modify team: {str(e)}")
+            print(f"modify_team error: {e}")
 
     def delete_team(self):
         # Fetch existing team names

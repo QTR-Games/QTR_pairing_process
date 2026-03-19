@@ -6,21 +6,35 @@ from .data_validator import DataValidator
 
 
 class CreateTeamDialog(DynamicDialog):
-    def __init__(self, parent, existing_team_names):
+    def __init__(
+        self,
+        parent,
+        existing_team_names,
+        dialog_title="Create Team Wizard",
+        confirm_button_text="Create Team",
+        initial_team_name=None,
+        initial_player_names=None,
+        team_exists_behavior="prompt_update",
+    ):
         self.existing_team_names = existing_team_names
+        self.dialog_title = dialog_title
+        self.confirm_button_text = confirm_button_text
+        self.initial_team_name = initial_team_name or ""
+        self.initial_player_names = list(initial_player_names or [])
+        self.team_exists_behavior = team_exists_behavior
         self.result = None
         self.player_entries = []
         self.team_name_entry = None  # type: tk.Entry | None
         
         # Initialize with dynamic sizing - min 500x450, max 650x650
-        super().__init__(parent, "Create Team Wizard", 
+        super().__init__(parent, self.dialog_title, 
                         min_width=500, min_height=450, 
                         max_width=650, max_height=650)
         
     def create_content(self):
         """Create dialog content using dynamic sizing"""
         # Main title
-        title_label = tk.Label(self.main_frame, text="Create Team Wizard", 
+        title_label = tk.Label(self.main_frame, text=self.dialog_title, 
                               font=("Arial", 16, "bold"), fg="darkblue")
         title_label.pack(pady=(0, 15))
         
@@ -32,6 +46,8 @@ class CreateTeamDialog(DynamicDialog):
         tk.Label(team_frame, text="Team Name:", font=("Arial", 10, "bold")).pack(anchor="w")
         self.team_name_entry = tk.Entry(team_frame, font=("Arial", 10), width=40)
         self.team_name_entry.pack(fill="x", pady=(5, 0))
+        if self.initial_team_name:
+            self.team_name_entry.insert(0, self.initial_team_name)
         
         # Add tooltip for team name
         self.create_tooltip(self.team_name_entry, 
@@ -49,6 +65,8 @@ class CreateTeamDialog(DynamicDialog):
             
             player_entry = tk.Entry(players_frame, font=("Arial", 10), width=40)
             player_entry.pack(fill="x", pady=(3, 0))
+            if i < len(self.initial_player_names):
+                player_entry.insert(0, str(self.initial_player_names[i]))
             self.player_entries.append(player_entry)
             
             # Add tooltips for player entries
@@ -62,7 +80,7 @@ class CreateTeamDialog(DynamicDialog):
         # Create buttons using the dynamic button manager
         buttons = [
             {
-                'text': 'Create Team',
+                'text': self.confirm_button_text,
                 'command': self.create_team,
                 'bg': 'lightgreen',
                 'fg': 'black',
@@ -177,6 +195,13 @@ class CreateTeamDialog(DynamicDialog):
         
         # Check if team already exists
         if team_name in self.existing_team_names:
+            if self.team_exists_behavior == "error":
+                messagebox.showerror(
+                    "Team Exists",
+                    f"Team '{team_name}' already exists. Choose a unique team name.",
+                )
+                return
+
             response = messagebox.askyesno(
                 "Team Exists", 
                 f"Team '{team_name}' already exists.\n\n"

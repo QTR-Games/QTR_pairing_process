@@ -28,11 +28,11 @@ All items from the previous backlog are now implemented.
 
 ## New Backlog
 
-- [ ] Harden `_normalize_database_reference` for Windows path edge cases:
-  - [ ] UNC paths and mixed separators
-  - [ ] Relative paths resolved against config location
-  - [ ] Symlink/realpath normalization policy
-- [ ] Add a compatibility unit test for `TreeGenerator._read_pref` parity:
-  - [ ] Assert raw-path behavior matches `_read_raw_pref`
-  - [ ] Assert bounded numeric-path behavior matches `_read_numeric_pref`
-- [ ] Add a Modify Team button to data management. This button will allow you to pick a team, and modify the name of the team and/or the names of the players similar to the pop up for creating a team.
+- [x] Harden `_normalize_database_reference` for Windows path edge cases:
+  - [x] UNC paths and mixed separators
+  - [x] Relative paths resolved against config location
+  - [x] Symlink/realpath normalization policy
+- [x] Add a compatibility unit test for `TreeGenerator._read_pref` parity:
+  - [x] Assert raw-path behavior matches `_read_raw_pref`
+  - [x] Assert bounded numeric-path behavior matches `_read_numeric_pref`
+- [x] Add a Modify Team button to data management. This button will allow you to pick a team, and modify the name of the team and/or the names of the players similar to the pop up for creating a team.

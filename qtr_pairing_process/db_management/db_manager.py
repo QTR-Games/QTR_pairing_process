@@ -145,6 +145,18 @@ class DbManager:
         except (ValueError, RuntimeError) as e:
             print(f"Error upserting team '{team_name}': {e}")
             raise
+
+    def rename_team(self, team_id, team_name):
+        """Rename an existing team in place using secure parameterized query."""
+        try:
+            secure_db = self.get_secure_interface()
+            rows = secure_db.update_team_name_secure(team_id, team_name)
+            if rows == 0:
+                raise RuntimeError(f"No team row updated for team_id={team_id}")
+            return rows
+        except (ValueError, RuntimeError) as e:
+            print(f"Error renaming team {team_id} to '{team_name}': {e}")
+            raise
             
     #########
     # Players
@@ -187,6 +199,18 @@ class DbManager:
         if results and len(results) > 0:
             return results[0][0]
         return None
+
+    def rename_player(self, player_id, team_id, player_name):
+        """Rename an existing player in place using secure parameterized query."""
+        try:
+            secure_db = self.get_secure_interface()
+            rows = secure_db.update_player_name_secure(player_id, team_id, player_name)
+            if rows == 0:
+                raise RuntimeError(f"No player row updated for player_id={player_id} team_id={team_id}")
+            return rows
+        except (ValueError, RuntimeError) as e:
+            print(f"Error renaming player {player_id} on team {team_id} to '{player_name}': {e}")
+            raise
 
     def upsert_and_validate_players(self, team_id, player_names):
         players = self.query_players(team_id)
