@@ -87,6 +87,8 @@ class UiManager:
 
         self.tree_autogen_enabled = self.db_preferences.get_tree_autogen_enabled()
         self.lazy_sort_on_expand = bool(ui_prefs.get("lazy_sort_on_expand", False))
+        self.data_mgmt_show_guides_logs = bool(ui_prefs.get("data_mgmt_show_guides_logs", False))
+        self.data_mgmt_show_advanced_settings = bool(ui_prefs.get("data_mgmt_show_advanced_settings", False))
         self.lazy_sort_mode = str(
             ui_prefs.get(
                 "lazy_sort_mode",
@@ -2768,7 +2770,7 @@ class UiManager:
         except Exception as exc:
             messagebox.showerror("Tree Cache", f"Failed to clear all tree cache entries: {exc}")
 
-    def _open_markdown_guide(self, title: str, relative_path: str):
+    def _open_markdown_guide(self, title: str, relative_path: str, reopen_data_management_on_close: bool = False):
         """Open a markdown guide in a simple in-app reader window."""
         try:
             guide_path = Path(__file__).parent.parent / relative_path
@@ -2815,25 +2817,35 @@ class UiManager:
             footer = tk.Frame(guide_window)
             footer.pack(fill=tk.X, padx=8, pady=(0, 8))
 
+            def close_guide():
+                try:
+                    guide_window.destroy()
+                finally:
+                    if reopen_data_management_on_close:
+                        self.show_data_management_menu()
+
             tk.Button(
                 footer,
                 text="Close",
                 width=14,
-                command=guide_window.destroy,
+                command=close_guide,
             ).pack(side=tk.RIGHT)
+            guide_window.protocol("WM_DELETE_WINDOW", close_guide)
         except Exception as exc:
-            messagebox.showerror("Guide", f"Failed to open guide: {exc}")
+            messagebox.showerror("Guide", self._operation_failed_error(f"could not open guide: {exc}"))
 
-    def open_tooltip_numbers_guide(self):
+    def open_tooltip_numbers_guide(self, reopen_data_management_on_close: bool = False):
         self._open_markdown_guide(
             title="Tree Tooltip Numbers Guide",
             relative_path="docs/NODE_TOOLTIP_NUMBERS_GUIDE.md",
+            reopen_data_management_on_close=reopen_data_management_on_close,
         )
 
-    def open_full_user_guide(self):
+    def open_full_user_guide(self, reopen_data_management_on_close: bool = False):
         self._open_markdown_guide(
             title="QTR Pairing Process User Guide",
             relative_path="docs/FULL_USER_GUIDE.md",
+            reopen_data_management_on_close=reopen_data_management_on_close,
         )
     
     def show_data_management_menu(self):
@@ -2842,11 +2854,12 @@ class UiManager:
         from tkinter import messagebox
         
         try:
-            # Create popup menu window with wider layout for 2x2 grid
+            # Create popup menu window with resilient one-screen sizing.
             menu_window = tk.Toplevel(self.root)
             menu_window.title("Data Management")
-            menu_window.geometry("650x550")
-            menu_window.resizable(False, False)
+            menu_window.geometry("860x720")
+            menu_window.minsize(760, 640)
+            menu_window.resizable(True, True)
             
             # Center the window
             menu_window.transient(self.root)
@@ -2856,205 +2869,324 @@ class UiManager:
             x = self.root.winfo_x() + 50
             y = self.root.winfo_y() + 50
             menu_window.geometry(f"+{x}+{y}")
+
+            ui_tokens = {
+                "title_font": ("Arial", 16, "bold"),
+                "section_title_font": ("Arial", 12, "bold"),
+                "legend_font": ("Arial", 9),
+                "title_bg": "#dfeef4",
+                "dialog_bg": "#f5f7f9",
+                "rating_system_bg": "#e8c8cf",
+                "section_pad": 10,
+                "section_inner_pad_x": 12,
+                "section_inner_pad_y": 10,
+                "button_pad_y": 3,
+            }
+
+            section_palette = {
+                "import_export": {"bg": "#d8e9f0", "fg": "#184f63"},
+                "app_mgmt": {"bg": "#d9edd9", "fg": "#225b2a"},
+                "team_mgmt": {"bg": "#efe9d3", "fg": "#8a5b00"},
+                "db_settings": {"bg": "#ecd8dc", "fg": "#7a2c34"},
+            }
+
+            section_button_opts = {
+                "height": 1,
+                "relief": tk.RAISED,
+                "borderwidth": 1,
+            }
+
+            button_tier_styles = {
+                "primary": {"bg": "#dff0d8", "activebackground": "#cdeac0"},
+                "secondary": {},
+                "utility": {"bg": "#f3f8ff", "activebackground": "#e5f0ff"},
+            }
+
+            def create_section(parent, row, column, title, bg_color, fg_color):
+                section_frame = tk.Frame(parent, bg=bg_color, relief=tk.RAISED, borderwidth=2)
+                section_frame.grid(
+                    row=row,
+                    column=column,
+                    padx=ui_tokens["section_pad"],
+                    pady=ui_tokens["section_pad"],
+                    sticky="nsew",
+                )
+                title_label = tk.Label(
+                    section_frame,
+                    text=title,
+                    font=ui_tokens["section_title_font"],
+                    fg=fg_color,
+                    bg=bg_color,
+                )
+                title_label.pack(pady=(10, 8))
+                body_frame = tk.Frame(section_frame, bg=bg_color)
+                body_frame.pack(
+                    fill=tk.BOTH,
+                    expand=True,
+                    padx=ui_tokens["section_inner_pad_x"],
+                    pady=(0, ui_tokens["section_inner_pad_y"]),
+                )
+                return body_frame
+
+            def add_menu_button(
+                parent,
+                text,
+                action,
+                tier="secondary",
+                bg=None,
+                reopen_data_management=False,
+            ):
+                button_kwargs = dict(section_button_opts)
+                tier_style = button_tier_styles.get(tier, {})
+                button_kwargs.update(tier_style)
+                if bg is not None:
+                    button_kwargs["bg"] = bg
+                tk.Button(
+                    parent,
+                    text=text,
+                    command=lambda: self._menu_action(
+                        menu_window,
+                        action,
+                        reopen_data_management_on_complete=reopen_data_management,
+                    ),
+                    **button_kwargs,
+                ).pack(fill=tk.X, pady=ui_tokens["button_pad_y"])
+
+            def add_subsection_toggle(
+                parent,
+                bg_color,
+                collapsed_text,
+                expanded_text,
+                preference_key,
+                initially_expanded=False,
+            ):
+                is_expanded = tk.BooleanVar(value=bool(initially_expanded))
+                section_container = tk.Frame(parent, bg=bg_color)
+                section_button = tk.Button(parent, text=collapsed_text, **section_button_opts)
+
+                def apply_state():
+                    if is_expanded.get():
+                        section_container.pack(fill=tk.X, pady=(6, 0))
+                        section_button.config(text=expanded_text)
+                    else:
+                        section_container.pack_forget()
+                        section_button.config(text=collapsed_text)
+
+                def toggle_section():
+                    is_expanded.set(not is_expanded.get())
+                    apply_state()
+                    setattr(self, preference_key, bool(is_expanded.get()))
+                    self.db_preferences.update_ui_preferences({preference_key: bool(is_expanded.get())})
+
+                section_button.configure(command=toggle_section)
+                section_button.pack(fill=tk.X, pady=(6, 0))
+                apply_state()
+                return section_container
             
             # Title label
             title_label = tk.Label(menu_window, text="Data Management", 
-                                 font=("Arial", 16, "bold"), bg="lightcyan", pady=10)
+                                 font=ui_tokens["title_font"], bg=ui_tokens["title_bg"], pady=10)
             title_label.pack(fill=tk.X, padx=10, pady=(10, 15))
+
+            tk.Label(
+                menu_window,
+                text="Primary = green, Secondary = default, Utility = blue",
+                bg=ui_tokens["dialog_bg"],
+                fg="#4a4a4a",
+                font=ui_tokens["legend_font"],
+                anchor="w",
+            ).pack(fill=tk.X, padx=18, pady=(0, 6))
             
             # Create main frame for 2x2 grid layout
-            main_frame = tk.Frame(menu_window, bg="white")
-            main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+            main_frame = tk.Frame(menu_window, bg=ui_tokens["dialog_bg"])
+            main_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=10)
             
-            # Configure grid weights for equal distribution
+            # Weighted grid keeps dense sections readable while preserving one-screen layout.
             main_frame.grid_columnconfigure(0, weight=1)
             main_frame.grid_columnconfigure(1, weight=1)
-            main_frame.grid_rowconfigure(0, weight=1)
-            main_frame.grid_rowconfigure(1, weight=1)
+            main_frame.grid_rowconfigure(0, weight=3)
+            main_frame.grid_rowconfigure(1, weight=2)
             
             # TOP LEFT: Import & Export section
-            import_export_frame = tk.Frame(main_frame, bg="lightblue", relief=tk.RAISED, borderwidth=2)
-            import_export_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-            
-            import_export_label = tk.Label(import_export_frame, text="Import & Export", 
-                                         font=("Arial", 12, "bold"), fg="darkblue", bg="lightblue")
-            import_export_label.pack(pady=(10, 5))
-            
-            tk.Button(import_export_frame, text="Import CSV", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.import_csvs),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(import_export_frame, text="Export CSV", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.export_csvs),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(import_export_frame, text="Import XLSX", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.import_xlsx),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(import_export_frame, text="Export XLSX", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.export_xlsx),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
-            tk.Button(import_export_frame, text="Export Individual Ratings", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.export_individual_player_ratings),
-                     relief=tk.RAISED, borderwidth=1, bg="#e6f2ff").pack(pady=3)
-            tk.Button(import_export_frame, text="Import Individual Ratings", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.import_individual_player_ratings),
-                     relief=tk.RAISED, borderwidth=1, bg="#e6f2ff").pack(pady=3)
-            tk.Button(import_export_frame, text="Bulk Import Player Files", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.bulk_import_individual_player_ratings),
-                     relief=tk.RAISED, borderwidth=1, bg="#e6f2ff").pack(pady=(3, 10))
+            import_export_body = create_section(
+                main_frame,
+                0,
+                0,
+                "Import & Export",
+                section_palette["import_export"]["bg"],
+                section_palette["import_export"]["fg"],
+            )
+            add_menu_button(import_export_body, "Import CSV", self.import_csvs, tier="secondary", reopen_data_management=True)
+            add_menu_button(import_export_body, "Export CSV", self.export_csvs, tier="secondary", reopen_data_management=True)
+            add_menu_button(import_export_body, "Import XLSX", self.import_xlsx, tier="secondary", reopen_data_management=True)
+            add_menu_button(import_export_body, "Export XLSX", self.export_xlsx, tier="secondary", reopen_data_management=True)
+            add_menu_button(import_export_body, "Export Individual Ratings", self.export_individual_player_ratings, tier="primary", bg="#e6f2ff", reopen_data_management=True)
+            add_menu_button(import_export_body, "Import Individual Ratings", self.import_individual_player_ratings, tier="primary", bg="#e6f2ff", reopen_data_management=True)
+            add_menu_button(import_export_body, "Bulk Import Player Files", self.bulk_import_individual_player_ratings, tier="primary", bg="#e6f2ff", reopen_data_management=True)
             
             # TOP RIGHT: Data Management section
-            data_mgmt_frame = tk.Frame(main_frame, bg="lightgreen", relief=tk.RAISED, borderwidth=2)
-            data_mgmt_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
-            
-            data_mgmt_label = tk.Label(data_mgmt_frame, text="Data Management", 
-                                     font=("Arial", 12, "bold"), fg="darkgreen", bg="lightgreen")
-            data_mgmt_label.pack(pady=(10, 5))
-            
-            tk.Button(data_mgmt_frame, text="Load Grid", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.load_grid_data_from_db),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(data_mgmt_frame, text="Get Score", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.on_scenario_calculations),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(data_mgmt_frame, text="Refresh UI", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.update_ui),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
-            tk.Button(data_mgmt_frame, text="Clear Active Tree Cache", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.clear_generated_tree_cache_active_matchup),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(data_mgmt_frame, text="Clear All Tree Cache", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.clear_generated_tree_cache_all_matchups),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
-            tk.Button(data_mgmt_frame, text="Tooltip Numbers Guide", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.open_tooltip_numbers_guide),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(data_mgmt_frame, text="Full User Guide", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.open_full_user_guide),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
-            tk.Button(data_mgmt_frame, text="Open Import Logs Folder", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.open_import_logs_folder),
-                     relief=tk.RAISED, borderwidth=1, bg="#f3f8ff").pack(pady=(3, 10))
+            data_mgmt_body = create_section(
+                main_frame,
+                0,
+                1,
+                "App Mgmt & Guides",
+                section_palette["app_mgmt"]["bg"],
+                section_palette["app_mgmt"]["fg"],
+            )
+            add_menu_button(data_mgmt_body, "Clear Active Tree Cache", self.clear_generated_tree_cache_active_matchup, tier="secondary", reopen_data_management=True)
+            add_menu_button(data_mgmt_body, "Clear All Tree Cache", self.clear_generated_tree_cache_all_matchups, tier="secondary", reopen_data_management=True)
+
+            utility_body = add_subsection_toggle(
+                data_mgmt_body,
+                section_palette["app_mgmt"]["bg"],
+                "Show Guides and Logs",
+                "Hide Guides and Logs",
+                "data_mgmt_show_guides_logs",
+                initially_expanded=getattr(self, "data_mgmt_show_guides_logs", False),
+            )
+            add_menu_button(
+                utility_body,
+                "Tooltip Numbers Guide",
+                lambda: self.open_tooltip_numbers_guide(reopen_data_management_on_close=True),
+                tier="utility",
+            )
+            add_menu_button(
+                utility_body,
+                "Full User Guide",
+                lambda: self.open_full_user_guide(reopen_data_management_on_close=True),
+                tier="utility",
+            )
+            add_menu_button(
+                utility_body,
+                "Open Import Logs Folder",
+                self.open_import_logs_folder,
+                tier="utility",
+                reopen_data_management=True,
+            )
             
             # BOTTOM LEFT: Team Management section
-            team_mgmt_frame = tk.Frame(main_frame, bg="lightyellow", relief=tk.RAISED, borderwidth=2)
-            team_mgmt_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-            
-            team_mgmt_label = tk.Label(team_mgmt_frame, text="Team Management", 
-                                     font=("Arial", 12, "bold"), fg="darkorange", bg="lightyellow")
-            team_mgmt_label.pack(pady=(10, 5))
-            
-            tk.Button(team_mgmt_frame, text="Create Team", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.on_create_team),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(team_mgmt_frame, text="Delete Team", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.on_delete_team),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
+            team_mgmt_body = create_section(
+                main_frame,
+                1,
+                0,
+                "Team Management",
+                section_palette["team_mgmt"]["bg"],
+                section_palette["team_mgmt"]["fg"],
+            )
+            add_menu_button(team_mgmt_body, "Create Team", self.on_create_team, tier="primary", reopen_data_management=True)
+            add_menu_button(team_mgmt_body, "Delete Team", self.on_delete_team, tier="secondary", reopen_data_management=True)
             
             # BOTTOM RIGHT: Database section
-            database_frame = tk.Frame(main_frame, bg="mistyrose", relief=tk.RAISED, borderwidth=2)
-            database_frame.grid(row=1, column=1, padx=10, pady=10, sticky="nsew")
-            
-            print("Adding Database section to menu...")  # Debug output
-            db_label = tk.Label(database_frame, text="Database & Settings", 
-                              font=("Arial", 12, "bold"), fg="darkred", bg="mistyrose")
-            db_label.pack(pady=(10, 5))
-            
-            change_db_button = tk.Button(database_frame, text="Change Database", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.on_change_database),
-                     relief=tk.RAISED, borderwidth=1)
-            change_db_button.pack(pady=3)
-            
-            rating_system_button = tk.Button(database_frame, text="Rating System", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.on_configure_rating_system),
-                     relief=tk.RAISED, borderwidth=1, bg="lightpink")
-            rating_system_button.pack(pady=(3, 10))
+            database_body = create_section(
+                main_frame,
+                1,
+                1,
+                "Database & Settings",
+                section_palette["db_settings"]["bg"],
+                section_palette["db_settings"]["fg"],
+            )
+            add_menu_button(database_body, "Change Database", self.on_change_database, tier="primary", reopen_data_management=True)
+            add_menu_button(database_body, "Rating System", self.on_configure_rating_system, tier="primary", bg=ui_tokens["rating_system_bg"], reopen_data_management=True)
+
+            advanced_settings_body = add_subsection_toggle(
+                database_body,
+                section_palette["db_settings"]["bg"],
+                "Show Advanced Settings",
+                "Hide Advanced Settings",
+                "data_mgmt_show_advanced_settings",
+                initially_expanded=getattr(self, "data_mgmt_show_advanced_settings", False),
+            )
+
+            advanced_toggle_grid = tk.Frame(advanced_settings_body, bg=section_palette["db_settings"]["bg"])
+            advanced_toggle_grid.pack(fill=tk.X, pady=(0, 8))
+            advanced_toggle_grid.grid_columnconfigure(0, weight=1)
+            advanced_toggle_grid.grid_columnconfigure(1, weight=1)
 
             self.perf_logging_var = tk.IntVar(value=1 if self.perf_logging_enabled else 0)
             perf_toggle = tk.Checkbutton(
-                database_frame,
+                advanced_toggle_grid,
                 text="Perf Logging",
                 variable=self.perf_logging_var,
                 command=self._on_perf_logging_toggle,
-                bg="mistyrose"
+                bg=section_palette["db_settings"]["bg"]
             )
-            perf_toggle.pack(pady=(0, 10))
+            perf_toggle.grid(row=0, column=0, sticky="w", padx=(0, 12), pady=(0, 6))
             
             tree_autogen_toggle = tk.Checkbutton(
-                database_frame,
+                advanced_toggle_grid,
                 text="Tree Auto-Generate (restart)",
                 variable=self.tree_autogen_var,
                 command=self._on_tree_autogen_toggle,
-                bg="mistyrose"
+                bg=section_palette["db_settings"]["bg"]
             )
-            tree_autogen_toggle.pack(pady=(0, 10))
+            tree_autogen_toggle.grid(row=0, column=1, sticky="w", padx=(12, 0), pady=(0, 6))
 
             lazy_sort_toggle = tk.Checkbutton(
-                database_frame,
+                advanced_toggle_grid,
                 text="Enable Fast Lazy Sorting",
                 variable=self.lazy_sort_on_expand_var,
                 command=self._on_lazy_sort_toggle,
-                bg="mistyrose"
+                bg=section_palette["db_settings"]["bg"]
             )
-            lazy_sort_toggle.pack(pady=(0, 6))
+            lazy_sort_toggle.grid(row=1, column=1, sticky="w", padx=(12, 0), pady=(0, 6))
 
             self.persistent_memo_var = tk.IntVar(
                 value=1 if self._is_persistent_strategic_memo_enabled() else 0
             )
             persistent_memo_toggle = tk.Checkbutton(
-                database_frame,
+                advanced_toggle_grid,
                 text="Persistent Strategic Memo",
                 variable=self.persistent_memo_var,
                 command=self._on_persistent_memo_toggle,
-                bg="mistyrose"
+                bg=section_palette["db_settings"]["bg"]
             )
-            persistent_memo_toggle.pack(pady=(0, 6))
+            persistent_memo_toggle.grid(row=1, column=0, sticky="w", padx=(0, 12), pady=(0, 6))
 
             tk.Label(
-                database_frame,
+                advanced_settings_body,
                 text="Sorts expanded branches first; deeper branches sort on expand.",
-                bg="mistyrose",
+                bg=section_palette["db_settings"]["bg"],
                 fg="#5b2c2c",
                 font=("Arial", 8),
-                wraplength=220,
+                wraplength=320,
                 justify=tk.LEFT,
-            ).pack(pady=(0, 10))
-            print("Database section added successfully!")  # Debug output
+            ).pack(anchor="w", pady=(0, 10))
             
             # Close button frame at the bottom
             close_frame = tk.Frame(menu_window)
-            close_frame.pack(pady=10)
+            close_frame.pack(pady=(4, 10))
             
-            close_button = tk.Button(close_frame, text="Close", width=30, height=2,
+            close_button = tk.Button(close_frame, text="Close", width=28, height=2,
                                    command=menu_window.destroy,
                                    bg="lightcoral", fg="white", font=("Arial", 10, "bold"),
                                    relief=tk.RAISED, borderwidth=2)
             close_button.pack()
             
-            print("Data Management menu created successfully with all sections!")  # Debug output
-            
         except Exception as e:
             print(f"Error showing data management menu: {e}")
-            messagebox.showerror("Error", f"Failed to show data management menu: {e}")
+            messagebox.showerror("Data Management", self._operation_failed_error(f"could not open Data Management menu: {e}"))
     
-    def _menu_action(self, menu_window, action_func):
+    def _menu_action(self, menu_window, action_func, reopen_data_management_on_complete=False):
         """Execute menu action and close menu window."""
         try:
             menu_window.destroy()  # Close menu first
             action_func()  # Then execute the action
+            if reopen_data_management_on_complete and hasattr(self, "root") and self.root.winfo_exists():
+                self.show_data_management_menu()
         except Exception as e:
             print(f"Error executing menu action: {e}")
             from tkinter import messagebox
-            messagebox.showerror("Error", f"Failed to execute action: {e}")
+            messagebox.showerror("Data Management", self._operation_failed_error(f"menu action could not be executed: {e}"))
     
     def export_xlsx(self):
         """Export data to XLSX format - placeholder implementation."""
         from tkinter import messagebox
         try:
             # TODO: Implement XLSX export functionality
-            messagebox.showinfo("Export XLSX", "XLSX export functionality will be implemented in a future update.")
+            messagebox.showinfo("Export XLSX", self._operation_notice_info("XLSX export functionality will be implemented in a future update."))
         except Exception as e:
             print(f"Error exporting XLSX: {e}")
-            messagebox.showerror("Error", f"Failed to export XLSX: {e}")
+            messagebox.showerror("Export XLSX", self._operation_failed_error(f"could not export XLSX: {e}"))
 
     def _import_diagnostics_dir(self):
         directory = Path(__file__).parent.parent / "import_logs"
@@ -3068,11 +3200,11 @@ class UiManager:
             if hasattr(os, "startfile"):
                 os.startfile(str(folder))
             else:
-                messagebox.showinfo("Import Logs", f"Import logs folder:\n{folder}")
+                messagebox.showinfo("Import Logs", self._operation_notice_info(f"Import logs folder:\n{folder}"))
             self.logger.info("Opened import logs folder: %s", folder)
         except Exception as exc:
             self.logger.exception("Failed to open import logs folder")
-            messagebox.showerror("Import Logs", f"Failed to open import logs folder:\n{exc}")
+            messagebox.showerror("Import Logs", self._operation_failed_error(f"could not open import logs folder: {exc}"))
 
     def _write_import_diagnostic_report(self, report: Dict[str, Any]) -> str:
         timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -3139,6 +3271,41 @@ class UiManager:
             "rating",
             "comment",
         ]
+
+    def _partial_export_warning_text(self, actual_rows, expected_rows):
+        return (
+            f"Partial export detected (by design): file contains {actual_rows} rows; "
+            f"full matrix would be {expected_rows}. "
+            "Import will proceed and replace this player's data with only the provided rows. "
+            "Missing matchups remain absent until a later import provides them."
+        )
+
+    def _lineage_fallback_warning_text(self):
+        return (
+            "Lineage mismatch detected: source fingerprint/roster hash differs from this database. "
+            "Applying guarded name-based fallback checks."
+        )
+
+    def _schema_missing_columns_error(self, missing_columns):
+        return f"Schema validation failed: missing required columns: {', '.join(missing_columns)}"
+
+    def _schema_version_error(self, schema_version):
+        return (
+            f"Schema validation failed: unsupported schema_version '{schema_version}'. "
+            "Expected 'player_ratings_export_v1'."
+        )
+
+    def _identity_mismatch_error(self, details):
+        return f"Identity mismatch: {details}"
+
+    def _identity_resolution_error(self, details):
+        return f"Identity resolution failed: {details}"
+
+    def _operation_failed_error(self, details):
+        return f"Operation failed: {details}"
+
+    def _operation_notice_info(self, details):
+        return f"Operation notice: {details}"
 
     def _get_selected_friendly_team(self):
         team_name = (self.combobox_1.get() or "").strip()
@@ -3297,7 +3464,7 @@ class UiManager:
             fieldnames = reader.fieldnames or []
             missing = [column for column in required_columns if column not in fieldnames]
             if missing:
-                raise ValueError(f"Missing required columns: {', '.join(missing)}")
+                raise ValueError(self._schema_missing_columns_error(missing))
 
             rows = []
             for row in reader:
@@ -3321,20 +3488,20 @@ class UiManager:
 
         first = rows[0]
         if first.get("schema_version") != "player_ratings_export_v1":
-            raise ValueError("Unsupported schema_version. Expected 'player_ratings_export_v1'.")
+            raise ValueError(self._schema_version_error(first.get("schema_version")))
 
         file_team_name = (first.get("source_team_name") or "").strip()
         file_player_name = (first.get("source_player_name") or "").strip()
 
         if file_team_name != target_team_name:
-            raise ValueError(
-                f"Team mismatch. File source team '{file_team_name}' does not match selected friendly team '{target_team_name}'."
-            )
+            raise ValueError(self._identity_mismatch_error(
+                f"file source team '{file_team_name}' does not match selected friendly team '{target_team_name}'."
+            ))
 
         if file_player_name != target_player_name:
-            raise ValueError(
-                f"Player mismatch. File source player '{file_player_name}' does not match target player '{target_player_name}'."
-            )
+            raise ValueError(self._identity_mismatch_error(
+                f"file source player '{file_player_name}' does not match target player '{target_player_name}'."
+            ))
 
         source_db_fingerprint = first.get("source_db_fingerprint", "")
         source_roster_hash = first.get("source_roster_hash", "")
@@ -3345,9 +3512,7 @@ class UiManager:
             and source_roster_hash == local_roster_hash
         )
         if not lineage_match:
-            warnings.append(
-                "Source lineage fingerprint/roster hash did not match this database. Applying guarded fallback checks."
-            )
+            warnings.append(self._lineage_fallback_warning_text())
 
         try:
             file_source_player_id = DataValidator.validate_integer(first.get("source_player_id"), min_value=1)
@@ -3355,9 +3520,9 @@ class UiManager:
             file_source_player_id = None
 
         if lineage_match and file_source_player_id is not None and file_source_player_id != target_player_id:
-            raise ValueError(
-                f"Lineage matched but player ID mismatch: file={file_source_player_id}, target={target_player_id}."
-            )
+            raise ValueError(self._identity_mismatch_error(
+                f"lineage matched but source player_id {file_source_player_id} does not match selected target player_id {target_player_id}."
+            ))
 
         import_rows = []
         for idx, row in enumerate(rows, start=2):
@@ -3400,25 +3565,31 @@ class UiManager:
                     (opponent_player_id,),
                 )
                 if not identity_rows:
-                    raise ValueError(f"Opponent player id {opponent_player_id} from row {idx} was not found.")
+                    raise ValueError(self._identity_resolution_error(
+                        f"row {idx} opponent player_id {opponent_player_id} was not found in this database."
+                    ))
 
                 actual_player_name, actual_team_id, actual_team_name = identity_rows[0]
                 if actual_team_id != opponent_team_id:
-                    raise ValueError(f"Row {idx} has conflicting opponent ids (team/player mismatch).")
+                    raise ValueError(self._identity_mismatch_error(
+                        f"row {idx} has conflicting opponent IDs (team/player mismatch)."
+                    ))
                 if actual_team_name != opponent_team_name or actual_player_name != opponent_player_name:
-                    raise ValueError(
-                        f"Row {idx} opponent ID/name mismatch. File has {opponent_player_name}@{opponent_team_name}, "
+                    raise ValueError(self._identity_mismatch_error(
+                        f"row {idx} opponent ID/name mismatch: file has {opponent_player_name}@{opponent_team_name}, "
                         f"database has {actual_player_name}@{actual_team_name}."
-                    )
+                    ))
             else:
                 opponent_team_id = self.db_manager.query_team_id(opponent_team_name)
                 if opponent_team_id is None:
-                    raise ValueError(f"Row {idx} opponent team '{opponent_team_name}' was not found.")
+                    raise ValueError(self._identity_resolution_error(
+                        f"row {idx} opponent team '{opponent_team_name}' was not found."
+                    ))
                 opponent_player_id = self.db_manager.query_player_id(opponent_player_name, opponent_team_id)
                 if opponent_player_id is None:
-                    raise ValueError(
-                        f"Row {idx} opponent player '{opponent_player_name}' was not found on team '{opponent_team_name}'."
-                    )
+                    raise ValueError(self._identity_resolution_error(
+                        f"row {idx} opponent player '{opponent_player_name}' was not found on team '{opponent_team_name}'."
+                    ))
 
             comment = row.get("comment") or ""
             if len(comment) > 2000:
@@ -3441,9 +3612,7 @@ class UiManager:
         opponent_player_count = expected_rows_result[0][0] if expected_rows_result else 0
         expected_rows = opponent_player_count * len(SCENARIO_MAP)
         if expected_rows and len(import_rows) != expected_rows:
-            warnings.append(
-                f"File contains {len(import_rows)} rows; expected {expected_rows}. Missing rows will remain absent after replacement."
-            )
+            warnings.append(self._partial_export_warning_text(len(import_rows), expected_rows))
 
         return import_rows, warnings
 
@@ -3609,17 +3778,17 @@ class UiManager:
                             )
                             if verify_rows:
                                 if verify_rows[0][0] != file_player_name:
-                                    raise ValueError(
-                                        f"Player id/name mismatch for file identity: id={file_player_id}, name={file_player_name}."
-                                    )
+                                    raise ValueError(self._identity_mismatch_error(
+                                        f"lineage-matched file identity has player_id {file_player_id} with mismatched name '{file_player_name}'."
+                                    ))
                                 target_player_id = file_player_id
 
                         if target_player_id is None:
                             target_player_id = self.db_manager.query_player_id(file_player_name, target_team_id)
                             if target_player_id is None:
-                                raise ValueError(
-                                    f"Could not map player '{file_player_name}' in selected team '{target_team_name}'."
-                                )
+                                raise ValueError(self._identity_resolution_error(
+                                    f"could not map player '{file_player_name}' in selected team '{target_team_name}'."
+                                ))
 
                         summary = self._run_individual_player_import(
                             file_path,
@@ -3632,7 +3801,11 @@ class UiManager:
                         if summary is None:
                             raise ValueError("Import canceled.")
                         succeeded += 1
-                        results.append(f"OK: {file_name} -> {file_player_name} ({summary['rows_in_file']} rows)")
+                        result_line = f"Success: {file_name} -> {file_player_name} ({summary['rows_in_file']} rows)"
+                        summary_warnings = cast(List[str], summary.get("warnings") or [])
+                        if summary_warnings:
+                            result_line += "\n   Warnings:\n   - " + "\n   - ".join(summary_warnings)
+                        results.append(result_line)
                         per_file_reports.append(
                             {
                                 "file": file_name,
@@ -3644,7 +3817,7 @@ class UiManager:
                         )
                     except Exception as exc:
                         failed += 1
-                        results.append(f"FAIL: {file_name} -> {exc}")
+                        results.append(f"Failure: {file_name} -> {exc}")
                         per_file_reports.append(
                             {
                                 "file": file_name,

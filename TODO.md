@@ -35,3 +35,4 @@ All items from the previous backlog are now implemented.
 - [ ] Add a compatibility unit test for `TreeGenerator._read_pref` parity:
   - [ ] Assert raw-path behavior matches `_read_raw_pref`
   - [ ] Assert bounded numeric-path behavior matches `_read_numeric_pref`
+- [ ] Add a Modify Team button to data management. This button will allow you to pick a team, and modify the name of the team and/or the names of the players similar to the pop up for creating a team.

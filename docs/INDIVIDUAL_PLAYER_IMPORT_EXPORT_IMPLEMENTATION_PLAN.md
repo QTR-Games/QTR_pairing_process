@@ -22,8 +22,19 @@ The feature must support:
 - Overwrite behavior: full replacement for target player import scope.
 - Empty comment behavior: empty comment clears existing comment.
 - Missing rows behavior: warn and continue (not hard fail).
+- Messaging policy: align user-facing wording across single import, bulk import, diagnostics, and related documentation for equivalent conditions.
 - Concurrency model: asynchronous file handoff only (no shared live DB writes).
 - Phase 1 UX: file picker first; drag-and-drop deferred.
+
+Canonical wording categories used across UI + diagnostics:
+
+- `Schema validation failed:` malformed CSV contract (missing columns, unsupported schema version).
+- `Identity mismatch:` file identity conflicts with selected targets or database identity bindings.
+- `Identity resolution failed:` referenced team/player identity cannot be resolved in the target database.
+- `Lineage mismatch detected:` source DB/roster fingerprint differs; guarded fallback checks are applied.
+- `Partial export detected (by design):` file is intentionally incomplete; import proceeds with provided rows only.
+- `Operation failed:` generic non-validation operational failures in related Data Management actions.
+- `Operation notice:` non-error informational notices for related Data Management actions.
 
 ## Why This Design
 
@@ -218,6 +229,7 @@ Completed in code:
 - Added structured diagnostics report generation for import/export operations.
 - Reports are persisted as JSON files under `import_logs/` in the repository root.
 - Added a Data Management UI action to open the `import_logs/` folder directly in Explorer for fast log retrieval.
+- Partial export wording is now standardized and reused across single-import warnings and bulk-import per-file summaries.
 - Implemented operation-level report generation for:
 	- single player export
 	- single player import

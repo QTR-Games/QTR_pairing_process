@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-03-19T13:51:55",
+  "operation": "export_individual_player_ratings",
+  "status": "success",
+  "selected_friendly_team": "Dapper Badgers",
+  "selected_scenario": "0 - Neutral",
+  "database_path": "C:/Users/Daniel.Raven",
+  "database_name": "dapper badgers.db",
+  "details": {
+    "source_player_id": 21,
+    "source_player_name": "Dan",
+    "row_count": 30,
+    "file_path": "C:/Users/Daniel.Raven/QTR_pairing_process/Dapper_Badgers_Dan_player_ratings_export_v1.csv"
+  }
+}
