@@ -4604,6 +4604,8 @@ class UiManager:
             if compute_primary_tags and primary_mode:
                 self._set_tree_memo_state_token()
                 recomputed_any = False
+                prior_suppress_display = bool(getattr(self.tree_generator, "_suppress_display_updates", False))
+                setattr(self.tree_generator, "_suppress_display_updates", True)
 
                 def run_metric(metric_key, span_label, compute_func):
                     nonlocal recomputed_any
@@ -4615,37 +4617,40 @@ class UiManager:
                     recomputed_any = True
                     return True
 
-                if primary_mode == "cumulative":
-                    run_metric("cumulative", "sort.compute.cumulative2", self.tree_generator.calculate_all_path_values_enhanced)
-                elif primary_mode == "confidence":
-                    run_metric("confidence", "sort.compute.confidence2", self.tree_generator.calculate_confidence_scores_enhanced)
-                elif primary_mode == "resistance":
-                    run_metric("resistance", "sort.compute.resistance2", self.tree_generator.calculate_counter_resistance_scores_enhanced)
-                elif primary_mode == "strategic3":
-                    recomputed_c2 = run_metric(
-                        "cumulative",
-                        "sort.compute.strategic3.cumulative2",
-                        self.tree_generator.calculate_all_path_values_enhanced,
-                    )
-                    recomputed_q2 = run_metric(
-                        "confidence",
-                        "sort.compute.strategic3.confidence2",
-                        self.tree_generator.calculate_confidence_scores_enhanced,
-                    )
-                    recomputed_r2 = run_metric(
-                        "resistance",
-                        "sort.compute.strategic3.resistance2",
-                        self.tree_generator.calculate_counter_resistance_scores_enhanced,
-                    )
+                try:
+                    if primary_mode == "cumulative":
+                        run_metric("cumulative", "sort.compute.cumulative2", self.tree_generator.calculate_all_path_values_enhanced)
+                    elif primary_mode == "confidence":
+                        run_metric("confidence", "sort.compute.confidence2", self.tree_generator.calculate_confidence_scores_enhanced)
+                    elif primary_mode == "resistance":
+                        run_metric("resistance", "sort.compute.resistance2", self.tree_generator.calculate_counter_resistance_scores_enhanced)
+                    elif primary_mode == "strategic3":
+                        recomputed_c2 = run_metric(
+                            "cumulative",
+                            "sort.compute.strategic3.cumulative2",
+                            self.tree_generator.calculate_all_path_values_enhanced,
+                        )
+                        recomputed_q2 = run_metric(
+                            "confidence",
+                            "sort.compute.strategic3.confidence2",
+                            self.tree_generator.calculate_confidence_scores_enhanced,
+                        )
+                        recomputed_r2 = run_metric(
+                            "resistance",
+                            "sort.compute.strategic3.resistance2",
+                            self.tree_generator.calculate_counter_resistance_scores_enhanced,
+                        )
 
-                    if self._is_metric_stale("strategic3") or recomputed_c2 or recomputed_q2 or recomputed_r2:
-                        with self.perf.span(
-                            "sort.compute.strategic3.final",
-                            strategic_invocation_id=self._strategic_sort_invocation_id,
-                        ):
-                            self.tree_generator.calculate_strategic3_scores("")
-                        self._mark_metric_fresh("strategic3")
-                        recomputed_any = True
+                        if self._is_metric_stale("strategic3") or recomputed_c2 or recomputed_q2 or recomputed_r2:
+                            with self.perf.span(
+                                "sort.compute.strategic3.final",
+                                strategic_invocation_id=self._strategic_sort_invocation_id,
+                            ):
+                                self.tree_generator.calculate_strategic3_scores("")
+                            self._mark_metric_fresh("strategic3")
+                            recomputed_any = True
+                finally:
+                    setattr(self.tree_generator, "_suppress_display_updates", prior_suppress_display)
 
                 self._last_primary_metrics_signature = self._build_primary_metrics_signature(primary_mode)
                 self._primary_metrics_dirty = False

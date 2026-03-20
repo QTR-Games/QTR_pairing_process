@@ -58,6 +58,7 @@ class TreeGenerator:
         self.persistent_memo_max_entries = int(
             self._read_numeric_pref(("strategic3", "persistent_memo_max_entries"), 50000, 1000, 250000)
         )
+        self._suppress_display_updates = False
 
     def _read_raw_pref(self, path, fallback):
         current = self.strategic_preferences
@@ -1383,6 +1384,8 @@ class TreeGenerator:
 
     def update_node_strategic_display(self, node, strategic_value):
         """Update the sort value column display for strategic optimal scores"""
+        if getattr(self, "_suppress_display_updates", False):
+            return
         try:
             current_values = list(self.treeview.tree.item(node, 'values'))
             if len(current_values) >= 2:
@@ -1499,6 +1502,8 @@ class TreeGenerator:
 
     def update_node_cumulative_display(self, node, cumulative_value):
         """Update the cumulative score column display for a node"""
+        if getattr(self, "_suppress_display_updates", False):
+            return
         try:
             current_values = list(self.treeview.tree.item(node, 'values'))
             if len(current_values) >= 2:
@@ -1510,6 +1515,8 @@ class TreeGenerator:
 
     def update_node_confidence_display(self, node, confidence_value):
         """Update the confidence score column display for a node"""
+        if getattr(self, "_suppress_display_updates", False):
+            return
         try:
             current_values = list(self.treeview.tree.item(node, 'values'))
             if len(current_values) >= 3:
@@ -1521,6 +1528,8 @@ class TreeGenerator:
 
     def update_node_resistance_display(self, node, resistance_value):
         """Update the resistance score column display for a node"""
+        if getattr(self, "_suppress_display_updates", False):
+            return
         try:
             current_values = list(self.treeview.tree.item(node, 'values'))
             if len(current_values) >= 4:

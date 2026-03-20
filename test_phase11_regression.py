@@ -803,6 +803,119 @@ def test_is_metric_stale_fast_path_skips_tag_scan_when_signature_matches():
     assert ui._is_metric_stale("cumulative") is False
 
 
+def test_apply_combined_sort_restores_display_suppression_flag():
+    ui = UiManager.__new__(UiManager)
+    setattr(ui, "perf", cast(Any, DummyPerf()))
+
+    class DummyTreeGenForSuppression:
+        cumulative2_alpha = 0.8
+
+        def __init__(self):
+            self._suppress_display_updates = False
+
+        def set_memo_state_token(self, _token):
+            return None
+
+        def calculate_all_path_values_enhanced(self, _node):
+            return None
+
+        def get_cumulative2_from_tags(self, _node):
+            return 1
+
+        def get_confidence2_from_tags(self, _node):
+            return 1
+
+        def get_resistance2_from_tags(self, _node):
+            return 1
+
+        def _is_opponent_choice_level(self, _node):
+            return True
+
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "text": "", "values": (), "open": True, "tags": ()},
+                "root": {"children": ["a"], "text": "Pairings", "values": (0, 0), "open": True, "tags": ()},
+                "a": {"children": [], "text": "A", "values": (1, 0), "open": False, "tags": ("cumulative2_1",)},
+            }
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                return None
+            if option is None:
+                data = self.nodes[node]
+                return {
+                    "text": data["text"],
+                    "values": data["values"],
+                    "open": data["open"],
+                    "tags": data["tags"],
+                }
+            return self.nodes[node].get(option)
+
+        def detach(self, _child):
+            return None
+
+        def move(self, _child, _node, _where):
+            return None
+
+    ui.tree_generator = cast(Any, DummyTreeGenForSuppression())
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": FakeTree()})())
+    ui.active_sort_mode = "cumulative"
+    ui.active_column_sort = None
+    ui.current_sort_mode = "cumulative"
+    ui.lazy_sort_on_expand = False
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._sorted_children_cache = {}
+    ui._primary_metrics_dirty = True
+    ui._last_primary_metrics_signature = None
+    ui._metric_signatures = {}
+    ui._available_explainability_metrics = set()
+    ui._tree_generation_id = 1
+    ui._strategic_sort_invocation_id = 0
+    ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+    ui._build_tree_cache_key = lambda: ("A", "B", 1, "1-5", True, "sig")
+    ui._get_grid_ratings_signature = lambda: "sig"
+    ui.get_scenario_num = lambda: 1
+
+    ui.apply_combined_sort(compute_primary_tags=True)
+
+    assert ui.tree_generator._suppress_display_updates is False
+
+
+def test_tree_generator_display_update_respects_suppress_flag():
+    class DummyTree:
+        def __init__(self):
+            self.nodes = {"n": {"values": (1, 2, 3, 4)}}
+            self.value_writes = 0
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                    self.value_writes += 1
+                return None
+            if option == "values":
+                return self.nodes[node]["values"]
+            return self.nodes[node]
+
+    holder = type("DummyTreeHolder", (), {})()
+    holder.tree = DummyTree()
+    gen = TreeGenerator(treeview=holder)
+    gen._suppress_display_updates = True
+
+    gen.update_node_cumulative_display("n", 9)
+    gen.update_node_confidence_display("n", 9)
+    gen.update_node_resistance_display("n", 9)
+    gen.update_node_strategic_display("n", 9)
+
+    assert holder.tree.value_writes == 0
+
+
 def test_persistent_memo_snapshot_roundtrip_with_strict_signature():
     gen = TreeGenerator(treeview=DummyTreeView(object()), strategic_preferences=_persistent_prefs())
     gen.set_memo_state_token("stable-token")
