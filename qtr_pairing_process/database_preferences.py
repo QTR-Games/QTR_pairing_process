@@ -22,6 +22,20 @@ class DatabasePreferences:
         self.max_config_backups = 3
         self.logger = self._setup_logger()
 
+    def _normalize_path_value(self, path_value: str) -> str:
+        """Normalize and canonicalize a path against the config directory."""
+        # Normalize mixed separators and resolve relative paths against config directory.
+        normalized_value = os.path.normpath(path_value)
+        if not os.path.isabs(normalized_value):
+            base_dir = str(self.config_file.parent)
+            normalized_value = os.path.normpath(os.path.join(base_dir, normalized_value))
+
+        # Policy: persist canonical real path (or deterministic normalized path if unresolved).
+        try:
+            return os.path.realpath(normalized_value)
+        except Exception:
+            return os.path.abspath(normalized_value)
+
     def _normalize_database_reference(self, path: Optional[str], name: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
         """Normalize database reference into directory path + filename.
 
@@ -35,31 +49,18 @@ class DatabasePreferences:
         raw_path = str(path).strip() if path is not None else ""
         raw_name = str(name).strip() if name is not None else ""
 
-        def _normalize_path_value(path_value: str) -> str:
-            # Normalize mixed separators and resolve relative paths against config directory.
-            normalized_value = os.path.normpath(path_value)
-            if not os.path.isabs(normalized_value):
-                base_dir = str(self.config_file.parent)
-                normalized_value = os.path.normpath(os.path.join(base_dir, normalized_value))
-
-            # Policy: persist canonical real path (or deterministic normalized path if unresolved).
-            try:
-                return os.path.realpath(normalized_value)
-            except Exception:
-                return os.path.abspath(normalized_value)
-
         # Support callers that accidentally pass full db path as `name`.
         if not raw_path and raw_name and ("/" in raw_name or "\\" in raw_name):
             name_as_path = Path(raw_name)
             if name_as_path.suffix.lower() == ".db":
-                normalized_file = _normalize_path_value(raw_name)
+                normalized_file = self._normalize_path_value(raw_name)
                 return str(Path(normalized_file).parent), Path(normalized_file).name
             raw_name = name_as_path.name
 
         if not raw_path:
             return None, raw_name or None
 
-        normalized_path = _normalize_path_value(raw_path)
+        normalized_path = self._normalize_path_value(raw_path)
         path_obj = Path(normalized_path)
 
         # If the provided path already looks like a DB file path, split it.

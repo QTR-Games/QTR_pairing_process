@@ -3,6 +3,7 @@
 
 import os
 from pathlib import Path
+import pytest
 
 from qtr_pairing_process.database_preferences import DatabasePreferences
 
@@ -139,6 +140,40 @@ def test_normalize_database_reference_relative_directory_with_name(tmp_path):
     expected_dir = (config_dir.parent / "db-store").resolve()
     assert Path(path).resolve() == expected_dir
     assert name == "team.db"
+
+
+@pytest.mark.parametrize(
+    "path_input,name_input,expected_name",
+    [
+        (None, " nested/path/edge.db ", "edge.db"),
+        ("  ", " nested/path/not_a_db.txt ", "not_a_db.txt"),
+        ("team_dir", " nested/../team_main.db ", "team_main.db"),
+        ("folderA/./folderB/TEAM.DB", "ignored.db", "TEAM.DB"),
+    ],
+)
+def test_normalize_database_reference_parameterized_path_cases(
+    tmp_path,
+    path_input,
+    name_input,
+    expected_name,
+):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path = config_dir / "KLIK_KLAK_KONFIG.test.json"
+    db_prefs = DatabasePreferences(print_output=False, config_file=config_path)
+
+    normalized_path, normalized_name = db_prefs._normalize_database_reference(path_input, name_input)
+
+    assert normalized_name == expected_name
+    if path_input is None or str(path_input).strip() == "":
+        if str(name_input).strip().lower().endswith(".db") and ("/" in str(name_input) or "\\" in str(name_input)):
+            assert Path(normalized_path).resolve() == (config_dir / "nested" / "path").resolve()
+        else:
+            assert normalized_path is None
+    elif str(path_input).lower().endswith(".db"):
+        assert Path(normalized_path).resolve() == (config_dir / "folderA" / "folderB").resolve()
+    else:
+        assert Path(normalized_path).resolve() == (config_dir / "team_dir").resolve()
 
 
 if __name__ == "__main__":

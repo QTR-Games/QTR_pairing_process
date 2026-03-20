@@ -391,11 +391,7 @@ class SecureDBInterface:
         
         # Use parameterized query
         query = """
-<<<<<<< HEAD
-            INSERT INTO ratings (team_1_id, team_2_id, team_1_player_id, team_2_player_id, scenario_id, rating) 
-=======
             INSERT INTO ratings (team_1_id, team_2_id, player_1_id, player_2_id, scenario_id, rating) 
->>>>>>> origin/main
             VALUES (?, ?, ?, ?, ?, ?)
         """
         rows_affected = self.execute_parameterized(
