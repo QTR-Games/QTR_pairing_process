@@ -4687,6 +4687,27 @@ class UiManager:
             secondary_state = self.column_sort_states.get(secondary_column, "none")
         secondary_reverse = secondary_state == "desc"
 
+        # Hot-path snapshot: pull UI item metadata once per sibling set.
+        child_sort_meta = {}
+        for child_id in children:
+            item_data = self.treeview.tree.item(child_id)
+            text_value = (item_data.get("text") or "").lower()
+            values = item_data.get("values") or []
+            try:
+                rating_value = int(values[0])
+            except (ValueError, IndexError, TypeError):
+                rating_value = 0
+            try:
+                sort_column_value = int(values[1])
+            except (ValueError, IndexError, TypeError):
+                sort_column_value = 0
+            child_sort_meta[child_id] = {
+                "text": text_value,
+                "rating": rating_value,
+                "sort_value": sort_column_value,
+                "open": bool(item_data.get("open", False)),
+            }
+
         primary_reverse = False
         if primary_mode:
             # Choice ownership for sibling ordering belongs to the current decision node.
@@ -4701,51 +4722,64 @@ class UiManager:
                     decision_node = children[0]
             primary_reverse = not self.tree_generator._is_opponent_choice_level(decision_node)
 
+        primary_value_cache = {}
+        secondary_value_cache = {}
+        metric_value_cache = {}
+
         def primary_key(child_id):
+            if child_id in primary_value_cache:
+                return primary_value_cache[child_id]
             if primary_mode == "cumulative":
-                return self.tree_generator.get_cumulative2_from_tags(child_id)
-            if primary_mode == "confidence":
-                return self.tree_generator.get_confidence2_from_tags(child_id)
-            if primary_mode == "resistance":
-                return self.tree_generator.get_resistance2_from_tags(child_id)
-            if primary_mode == "strategic3":
-                return self.tree_generator.get_strategic3_from_tags(child_id)
-            return 0
+                value = self.tree_generator.get_cumulative2_from_tags(child_id)
+            elif primary_mode == "confidence":
+                value = self.tree_generator.get_confidence2_from_tags(child_id)
+            elif primary_mode == "resistance":
+                value = self.tree_generator.get_resistance2_from_tags(child_id)
+            elif primary_mode == "strategic3":
+                value = self.tree_generator.get_strategic3_from_tags(child_id)
+            else:
+                value = 0
+            primary_value_cache[child_id] = value
+            return value
 
         def secondary_key(child_id):
+            if child_id in secondary_value_cache:
+                return secondary_value_cache[child_id]
             if not secondary_column:
-                return 0
-            if secondary_column == "#0":
-                return (self.treeview.tree.item(child_id, 'text') or "").lower()
-            values = self.treeview.tree.item(child_id, 'values') or []
-            idx = 0 if secondary_column == "Rating" else 1
-            try:
-                return int(values[idx])
-            except (ValueError, IndexError, TypeError):
-                return 0
+                value = 0
+            elif secondary_column == "#0":
+                value = child_sort_meta.get(child_id, {}).get("text", "")
+            elif secondary_column == "Rating":
+                value = child_sort_meta.get(child_id, {}).get("rating", 0)
+            else:
+                value = child_sort_meta.get(child_id, {}).get("sort_value", 0)
+            secondary_value_cache[child_id] = value
+            return value
 
         def metric_value(child_id, metric):
+            cache_key = (child_id, metric)
+            if cache_key in metric_value_cache:
+                return metric_value_cache[cache_key]
             if metric == "cumulative":
-                return self.tree_generator.get_cumulative2_from_tags(child_id)
-            if metric == "confidence":
-                return self.tree_generator.get_confidence2_from_tags(child_id)
-            if metric == "resistance":
-                return self.tree_generator.get_resistance2_from_tags(child_id)
-            if metric == "regret":
+                value = self.tree_generator.get_cumulative2_from_tags(child_id)
+            elif metric == "confidence":
+                value = self.tree_generator.get_confidence2_from_tags(child_id)
+            elif metric == "resistance":
+                value = self.tree_generator.get_resistance2_from_tags(child_id)
+            elif metric == "regret":
                 # Lower regret is better; invert so higher key value remains better.
-                return -self.tree_generator.get_regret2_from_tags(child_id)
-            if metric == "strategic3":
-                return self.tree_generator.get_strategic3_from_tags(child_id)
-            if metric == "strategic_exploit":
+                value = -self.tree_generator.get_regret2_from_tags(child_id)
+            elif metric == "strategic3":
+                value = self.tree_generator.get_strategic3_from_tags(child_id)
+            elif metric == "strategic_exploit":
                 # Lower exploitability is better; invert so higher key value remains better.
-                return -self.tree_generator.get_strategic3_exploitability_from_tags(child_id)
-            if metric == "rating":
-                values = self.treeview.tree.item(child_id, 'values') or []
-                try:
-                    return int(values[0])
-                except (ValueError, IndexError, TypeError):
-                    return 0
-            return 0
+                value = -self.tree_generator.get_strategic3_exploitability_from_tags(child_id)
+            elif metric == "rating":
+                value = child_sort_meta.get(child_id, {}).get("rating", 0)
+            else:
+                value = 0
+            metric_value_cache[cache_key] = value
+            return value
 
         def resolve_tie_break_chain():
             mode_defaults = {
@@ -4803,7 +4837,7 @@ class UiManager:
 
             # Final deterministic fallback for equal numeric metrics.
             section_start = time.perf_counter()
-            children_sorted.sort(key=lambda child_id: (self.treeview.tree.item(child_id, 'text') or "").lower())
+            children_sorted.sort(key=lambda child_id: child_sort_meta.get(child_id, {}).get("text", ""))
             if _profile is not None:
                 _profile["text_sort_ms"] += (time.perf_counter() - section_start) * 1000.0
 
@@ -4841,10 +4875,7 @@ class UiManager:
         for child in children_sorted:
             should_recurse = recurse_mode == "all"
             if recurse_mode == "expanded":
-                try:
-                    should_recurse = bool(self.treeview.tree.item(child, "open"))
-                except Exception:
-                    should_recurse = False
+                should_recurse = bool(child_sort_meta.get(child, {}).get("open", False))
             if not should_recurse:
                 continue
             self._sort_children_combined(

@@ -174,6 +174,111 @@ def test_deterministic_ordering_across_runs():
     assert order_one == order_two
 
 
+def test_sort_children_combined_prefetches_text_values_without_option_reads():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["a", "b", "c"], "text": "", "values": (), "open": True},
+                "a": {"children": [], "text": "Charlie", "values": (3, 0), "open": False},
+                "b": {"children": [], "text": "Alpha", "values": (1, 0), "open": False},
+                "c": {"children": [], "text": "Bravo", "values": (2, 0), "open": False},
+            }
+            self.option_reads = []
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                return None
+            if option is None:
+                return {
+                    "text": self.nodes[node]["text"],
+                    "values": self.nodes[node]["values"],
+                    "open": self.nodes[node]["open"],
+                }
+            self.option_reads.append(option)
+            return self.nodes[node].get(option)
+
+        def detach(self, _child):
+            return None
+
+        def move(self, _child, _node, _where):
+            return None
+
+    ui = UiManager.__new__(UiManager)
+    fake_tree = FakeTree()
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": fake_tree})())
+    ui.column_sort_states = {"#0": "asc", "Rating": "none", "Sort Value": "none"}
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._sorted_children_cache = {}
+
+    ui._sort_children_combined("", None, "#0", recurse_mode="expanded")
+
+    assert "text" not in fake_tree.option_reads
+    assert "values" not in fake_tree.option_reads
+
+
+def test_sort_children_combined_expanded_recursion_uses_prefetched_open_state():
+    class DummyTreeGen:
+        def _is_opponent_choice_level(self, _node):
+            return True
+
+        def get_cumulative2_from_tags(self, _child):
+            return 1
+
+        def get_confidence2_from_tags(self, _child):
+            return 1
+
+        def get_resistance2_from_tags(self, _child):
+            return 1
+
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "text": "", "values": (), "open": True},
+                "root": {"children": ["open_child", "closed_child"], "text": "Pairings", "values": (0, 0), "open": True},
+                "open_child": {"children": ["leaf_open"], "text": "A", "values": (1, 0), "open": True},
+                "leaf_open": {"children": [], "text": "A1", "values": (1, 0), "open": False},
+                "closed_child": {"children": ["leaf_closed"], "text": "B", "values": (1, 0), "open": False},
+                "leaf_closed": {"children": [], "text": "B1", "values": (1, 0), "open": False},
+            }
+            self.option_reads = []
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                return None
+            if option is None:
+                return {
+                    "text": self.nodes[node]["text"],
+                    "values": self.nodes[node]["values"],
+                    "open": self.nodes[node]["open"],
+                }
+            self.option_reads.append(option)
+            return self.nodes[node].get(option)
+
+        def detach(self, _child):
+            return None
+
+        def move(self, _child, _node, _where):
+            return None
+
+    ui = UiManager.__new__(UiManager)
+    fake_tree = FakeTree()
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": fake_tree})())
+    ui.tree_generator = cast(Any, DummyTreeGen())
+    ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._sorted_children_cache = {}
+
+    ui._sort_children_combined("root", "cumulative", None, recurse_mode="expanded")
+
+    assert "open" not in fake_tree.option_reads
+
+
 def test_turn_integrity_depth_ownership():
     root = tk.Tk()
     root.withdraw()
