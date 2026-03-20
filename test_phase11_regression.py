@@ -699,6 +699,110 @@ def test_sort_by_strategic_recovers_from_all_zero_tags():
     root.destroy()
 
 
+def test_apply_combined_sort_emits_phase_timing_telemetry(tmp_path):
+    ui = UiManager.__new__(UiManager)
+    setattr(ui, "perf", cast(Any, PerfTimer(enabled=True, log_path=tmp_path / "perf_apply_combined.log")))
+
+    class DummyTreeGenForApply:
+        cumulative2_alpha = 0.8
+
+        def calculate_all_path_values_enhanced(self, _node):
+            return None
+
+        def set_memo_state_token(self, _token):
+            return None
+
+        def get_cumulative2_from_tags(self, _node):
+            return 1
+
+        def get_confidence2_from_tags(self, _node):
+            return 1
+
+        def get_resistance2_from_tags(self, _node):
+            return 1
+
+        def _is_opponent_choice_level(self, _node):
+            return True
+
+    class FakeTreeForApply:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "text": "", "values": (), "open": True, "tags": ()},
+                "root": {"children": ["a", "b"], "text": "Pairings", "values": (0, 0), "open": True, "tags": ()},
+                "a": {"children": [], "text": "A", "values": (1, 0), "open": False, "tags": ("cumulative2_1",)},
+                "b": {"children": [], "text": "B", "values": (1, 0), "open": False, "tags": ("cumulative2_1",)},
+            }
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                if "open" in kwargs:
+                    self.nodes[node]["open"] = bool(kwargs["open"])
+                return None
+            if option is None:
+                node_data = self.nodes[node]
+                return {
+                    "text": node_data["text"],
+                    "values": node_data["values"],
+                    "open": node_data["open"],
+                    "tags": node_data["tags"],
+                }
+            return self.nodes[node].get(option)
+
+        def detach(self, _child):
+            return None
+
+        def move(self, _child, _node, _where):
+            return None
+
+    ui.tree_generator = cast(Any, DummyTreeGenForApply())
+    fake_tree = FakeTreeForApply()
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": fake_tree})())
+    ui.active_sort_mode = "cumulative"
+    ui.active_column_sort = None
+    ui.current_sort_mode = "cumulative"
+    ui.lazy_sort_on_expand = False
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._sorted_children_cache = {}
+    ui._primary_metrics_dirty = True
+    ui._last_primary_metrics_signature = None
+    ui._metric_signatures = {}
+    ui._available_explainability_metrics = set()
+    ui._tree_generation_id = 1
+    ui._strategic_sort_invocation_id = 0
+    ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+    ui._build_tree_cache_key = lambda: ("A", "B", 1, "1-5", True, "sig")
+    ui._get_grid_ratings_signature = lambda: "sig"
+    ui.get_scenario_num = lambda: 1
+
+    ui.apply_combined_sort(compute_primary_tags=True)
+    ui.perf.close()
+
+    log_text = (tmp_path / "perf_apply_combined.log").read_text(encoding="utf-8")
+    assert "sort.apply_combined.compute_phase" in log_text
+    assert "sort.apply_combined.tree_phase" in log_text
+    assert "sort.apply_combined.breakdown" in log_text
+
+
+def test_is_metric_stale_fast_path_skips_tag_scan_when_signature_matches():
+    ui = UiManager.__new__(UiManager)
+    ui._primary_metrics_dirty = False
+    expected_signature = ("cumulative", "cache", 0.8)
+    ui._metric_signatures = {"cumulative": expected_signature}
+    ui._build_metric_signature = lambda _metric_key: expected_signature
+
+    def _should_not_scan(_metric_key):
+        raise AssertionError("_has_metric_tags should not be called when signature matches")
+
+    ui._has_metric_tags = _should_not_scan
+
+    assert ui._is_metric_stale("cumulative") is False
+
+
 def test_persistent_memo_snapshot_roundtrip_with_strict_signature():
     gen = TreeGenerator(treeview=DummyTreeView(object()), strategic_preferences=_persistent_prefs())
     gen.set_memo_state_token("stable-token")

@@ -2039,9 +2039,14 @@ class UiManager:
     def _is_metric_stale(self, metric_key):
         if self._primary_metrics_dirty:
             return True
+        current_signature = self._build_metric_signature(metric_key)
+        cached_signature = self._metric_signatures.get(metric_key)
+        # Fast path: when signature is unchanged, avoid recursive tree tag scans.
+        if cached_signature is not None and cached_signature == current_signature:
+            return False
         if not self._has_metric_tags(metric_key):
             return True
-        return self._metric_signatures.get(metric_key) != self._build_metric_signature(metric_key)
+        return cached_signature != current_signature
 
     def _has_metric_tags(self, metric_key):
         if not hasattr(self, 'treeview') or not self.treeview:
@@ -4590,6 +4595,7 @@ class UiManager:
                 self._strategic_sort_invocation_id if primary_mode == "strategic3" else 0
             ),
         ):
+            phase_compute_start = time.perf_counter()
             if not primary_mode and not secondary_column:
                 with self.perf.span("sort.apply_combined.unsort_tree"):
                     self.tree_generator.unsort_tree()
@@ -4645,8 +4651,34 @@ class UiManager:
                 self._primary_metrics_dirty = False
                 self._mark_explainability_metrics_available(primary_mode)
 
+            compute_phase_ms = (time.perf_counter() - phase_compute_start) * 1000.0
+            self._log_perf_entry(
+                "sort.apply_combined.compute_phase",
+                compute_phase_ms,
+                primary=(primary_mode or "none"),
+                secondary=(secondary_column or "none"),
+                compute_primary=int(bool(compute_primary_tags)),
+            )
+
             recurse_mode = "expanded" if getattr(self, "lazy_sort_on_expand", False) else "all"
+            phase_sort_start = time.perf_counter()
             self._sort_children_combined("", primary_mode, secondary_column, recurse_mode=recurse_mode)
+            sort_phase_ms = (time.perf_counter() - phase_sort_start) * 1000.0
+            self._log_perf_entry(
+                "sort.apply_combined.tree_phase",
+                sort_phase_ms,
+                primary=(primary_mode or "none"),
+                secondary=(secondary_column or "none"),
+                recurse_mode=recurse_mode,
+            )
+            self._log_perf_entry(
+                "sort.apply_combined.breakdown",
+                0.0,
+                primary=(primary_mode or "none"),
+                secondary=(secondary_column or "none"),
+                compute_ms=f"{compute_phase_ms:.2f}",
+                tree_ms=f"{sort_phase_ms:.2f}",
+            )
 
     def _sort_children_combined(self, node, primary_mode, secondary_column, _profile=None, _depth=0, recurse_mode="all"):
         profile_owner = _profile is None
