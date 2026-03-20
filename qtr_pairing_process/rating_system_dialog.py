@@ -12,6 +12,27 @@ class RatingSystemDialog(DynamicDialog):
         self.current_system = current_system
         self.db_manager = db_manager
         self.selected_system = None
+        self.ui_theme = {
+            "font_title": ("Arial", 16, "bold"),
+            "font_group_title": ("Arial", 12, "bold"),
+            "font_body": ("Arial", 10),
+            "font_body_bold": ("Arial", 11, "bold"),
+            "font_small": ("Arial", 9),
+            "font_small_bold": ("Arial", 8, "bold"),
+            "pad_sm": 6,
+            "pad_md": 10,
+            "pad_lg": 15,
+            "bg_surface": "#f7fbff",
+            "bg_surface_alt": "#eef4f8",
+            "bg_primary": "#d8efe5",
+            "bg_danger": "#f7d9db",
+            "fg_primary": "#103d2b",
+            "fg_body": "#2f3b4a",
+            "fg_subtle": "#5b6675",
+            "fg_warning": "#8b1a1a",
+            "wrap_main": 450,
+            "wrap_warning": 400,
+        }
         
         # These will be initialized in create_content()
         self.system_var = None  # type: tk.StringVar | None
@@ -21,66 +42,115 @@ class RatingSystemDialog(DynamicDialog):
         super().__init__(parent, "Rating System Configuration", 
                         min_width=500, min_height=400, 
                         max_width=800, max_height=700)
+
+    def _apply_theme_to_dialog(self):
+        """Apply consistent dialog-level theme values."""
+        theme = self.ui_theme
+        self.dialog.configure(bg=theme["bg_surface"])
+        self.main_frame.configure(bg=theme["bg_surface"])
     
     def create_content(self):
         """Create dialog content using dynamic sizing"""
+        self._apply_theme_to_dialog()
+        theme = self.ui_theme
+
         # Title
-        title_label = tk.Label(self.main_frame, text="Select Rating System", 
-                              font=("Arial", 16, "bold"))
-        title_label.pack(pady=(0, 15))
+        title_label = tk.Label(
+            self.main_frame,
+            text="Select Rating System",
+            font=theme["font_title"],
+            bg=theme["bg_surface"],
+            fg=theme["fg_primary"],
+        )
+        title_label.pack(pady=(0, theme["pad_lg"]))
         
         # Description
         desc_text = ("Choose your preferred rating system. This affects how you enter matchup ratings "
                     "and the color coding throughout the application.")
-        desc_label = tk.Label(self.main_frame, text=desc_text, wraplength=450, justify=tk.LEFT)
-        desc_label.pack(pady=(0, 15))
+        desc_label = tk.Label(
+            self.main_frame,
+            text=desc_text,
+            wraplength=theme["wrap_main"],
+            justify=tk.LEFT,
+            bg=theme["bg_surface"],
+            fg=theme["fg_body"],
+            font=theme["font_body"],
+        )
+        desc_label.pack(pady=(0, theme["pad_lg"]))
         
         # Rating system selection frame
-        selection_frame = tk.LabelFrame(self.main_frame, text="Available Rating Systems", 
-                                       font=("Arial", 12, "bold"), padx=15, pady=10)
-        selection_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        selection_frame = tk.LabelFrame(
+            self.main_frame,
+            text="Available Rating Systems",
+            font=theme["font_group_title"],
+            padx=theme["pad_lg"],
+            pady=theme["pad_md"],
+            bg=theme["bg_surface_alt"],
+            fg=theme["fg_primary"],
+        )
+        selection_frame.pack(fill=tk.BOTH, expand=True, pady=(0, theme["pad_lg"]))
         
         self.system_var = tk.StringVar(value=self.current_system)
         
         # Create radio buttons for each system
         for system_key, system_info in RATING_SYSTEMS.items():
-            system_frame = tk.Frame(selection_frame)
-            system_frame.pack(fill=tk.X, pady=8)
+            system_frame = tk.Frame(selection_frame, bg=theme["bg_surface_alt"])
+            system_frame.pack(fill=tk.X, pady=theme["pad_sm"])
             
             # Radio button
             radio = tk.Radiobutton(system_frame, text=system_info['name'], 
                                  variable=self.system_var, value=system_key,
-                                 font=("Arial", 11, "bold"),
-                                 command=self._on_system_change)
+                                 font=theme["font_body_bold"],
+                                 command=self._on_system_change,
+                                 bg=theme["bg_surface_alt"],
+                                 fg=theme["fg_primary"],
+                                 activebackground=theme["bg_surface_alt"],
+                                 activeforeground=theme["fg_primary"],
+                                 selectcolor=theme["bg_surface"],
+                                 anchor=tk.W,
+                                 relief=tk.FLAT)
             radio.pack(anchor=tk.W)
             
             # Description
             desc_label = tk.Label(system_frame, text=system_info['description'], 
-                                font=("Arial", 10), fg="gray")
+                                font=theme["font_body"], fg=theme["fg_subtle"], bg=theme["bg_surface_alt"])
             desc_label.pack(anchor=tk.W, padx=(25, 0))
             
             # Color preview
-            color_frame = tk.Frame(system_frame)
+            color_frame = tk.Frame(system_frame, bg=theme["bg_surface_alt"])
             color_frame.pack(anchor=tk.W, padx=(25, 0), pady=(3, 0))
             
-            tk.Label(color_frame, text="Colors:", font=("Arial", 9)).pack(side=tk.LEFT)
+            tk.Label(
+                color_frame,
+                text="Colors:",
+                font=theme["font_small"],
+                bg=theme["bg_surface_alt"],
+                fg=theme["fg_body"],
+            ).pack(side=tk.LEFT)
             
             for rating, color in system_info['color_map'].items():
                 color_box = tk.Label(color_frame, text=rating, bg=color, width=3, 
-                                   relief=tk.RAISED, borderwidth=1, font=("Arial", 8, "bold"))
+                                   relief=tk.RAISED, borderwidth=1, font=theme["font_small_bold"])
                 color_box.pack(side=tk.LEFT, padx=(2, 0))
         
         # Warning frame (initially hidden)
-        self.warning_frame = tk.Frame(self.main_frame)
+        self.warning_frame = tk.Frame(self.main_frame, bg=theme["bg_danger"], relief=tk.SOLID, borderwidth=1)
         
-        warning_icon = tk.Label(self.warning_frame, text="⚠️", font=("Arial", 14))
-        warning_icon.pack(side=tk.LEFT, padx=(0, 5))
+        warning_icon = tk.Label(
+            self.warning_frame,
+            text="⚠",
+            font=("Arial", 14, "bold"),
+            bg=theme["bg_danger"],
+            fg=theme["fg_warning"],
+        )
+        warning_icon.pack(side=tk.LEFT, padx=(theme["pad_sm"], theme["pad_sm"]), pady=theme["pad_sm"])
         
         warning_text = tk.Label(self.warning_frame, 
                                text="Warning: Existing rating data detected! Changing the rating system "
                                     "may cause data inconsistencies. This should only be done with a blank database.",
-                               wraplength=400, justify=tk.LEFT, fg="red", font=("Arial", 10, "bold"))
-        warning_text.pack(side=tk.LEFT)
+                               wraplength=theme["wrap_warning"], justify=tk.LEFT, fg=theme["fg_warning"],
+                               font=theme["font_body_bold"], bg=theme["bg_danger"])
+        warning_text.pack(side=tk.LEFT, padx=(0, theme["pad_sm"]), pady=theme["pad_sm"])
         
         # Initially hide warning
         self.warning_frame.pack_forget()
@@ -90,9 +160,9 @@ class RatingSystemDialog(DynamicDialog):
             {
                 'text': 'Apply Changes',
                 'command': self._on_apply,
-                'bg': 'lightgreen',
-                'fg': 'white',
-                'font': ('Arial', 11, 'bold'),
+                'bg': theme['bg_primary'],
+                'fg': theme['fg_primary'],
+                'font': theme['font_body_bold'],
                 'width': 15,
                 'height': 2,
                 'relief': tk.RAISED,
@@ -101,9 +171,9 @@ class RatingSystemDialog(DynamicDialog):
             {
                 'text': 'Cancel',
                 'command': self._on_cancel,
-                'bg': 'lightcoral',
-                'fg': 'white',
-                'font': ('Arial', 11, 'bold'),
+                'bg': theme['bg_surface_alt'],
+                'fg': theme['fg_body'],
+                'font': theme['font_body_bold'],
                 'width': 12,
                 'height': 2,
                 'relief': tk.RAISED,
@@ -112,7 +182,8 @@ class RatingSystemDialog(DynamicDialog):
         ]
         
         button_frame = self.create_buttons(buttons)
-        button_frame.pack(fill=tk.X, pady=(15, 5))
+        button_frame.configure(bg=theme["bg_surface_alt"], bd=1, relief=tk.GROOVE)
+        button_frame.pack(fill=tk.X, pady=(theme["pad_lg"], theme["pad_sm"]))
         
         # Check initial state
         self._check_database_state()

@@ -9,9 +9,10 @@ import sqlite3
 import time
 import threading
 import hashlib
+import traceback
 from contextlib import contextmanager
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple, cast
 import tkinter.font as tkfont
 
 # installed libraries
@@ -86,6 +87,8 @@ class UiManager:
 
         self.tree_autogen_enabled = self.db_preferences.get_tree_autogen_enabled()
         self.lazy_sort_on_expand = bool(ui_prefs.get("lazy_sort_on_expand", False))
+        self.data_mgmt_show_guides_logs = bool(ui_prefs.get("data_mgmt_show_guides_logs", False))
+        self.data_mgmt_show_advanced_settings = bool(ui_prefs.get("data_mgmt_show_advanced_settings", False))
         self.lazy_sort_mode = str(
             ui_prefs.get(
                 "lazy_sort_mode",
@@ -133,8 +136,11 @@ class UiManager:
         self._team_change_in_progress = False
         self._scenario_calc_job = None
         self._scenario_calc_delay_ms = 120
+        self._pending_scenario_calc_signature = None
+        self._last_scenario_calc_signature = None
         self._team_cache: Dict[str, Dict[str, Any]] = {}
         self._comment_cache: Dict[tuple, Dict[tuple, str]] = {}
+        self._last_comment_indicator_signature = None
         self._scenario_change_auto = False
         self._event_loop_lag_threshold_ms = 16.0
         self._resize_job = None
@@ -150,6 +156,15 @@ class UiManager:
         self._background_load_enabled = True
         self._grid_load_generation = 0
         self._grid_load_in_flight = False
+        self._last_grid_load_request_key = None
+        self._last_grid_load_request_at = 0.0
+        self._grid_load_duplicate_window_s = 0.2
+        self._last_applied_grid_selection_key = None
+        self._last_post_load_refresh_signature = None
+        self._last_status_bar_signature = None
+        self._last_calc_grid_rows_signature = None
+        self._noop_skip_counters: Dict[str, int] = {}
+        self._noop_skip_last_log_at: Dict[str, float] = {}
         self._tree_cache_enabled = True
         self._tree_cache = {}
         self._tree_cache_key = None
@@ -213,24 +228,61 @@ class UiManager:
                 self.logger.info(f"Saved database preference: {self.db_name} at {self.db_path}")
             
     def initialize_ui_vars(self):
-        # set root
-        self.root = tk.Tk()
-        self.root.geometry('1600x1000')
-        self.root.minsize(1400, 900)
-        try:
-            self.root.state('zoomed')
-        except tk.TclError:
-            self.root.attributes('-zoomed', True)
-        self.root.title(f"QTR'S KLIK KLAKER")
+        with self.perf.span("startup.setup_root_window"):
+            # set root
+            self.root = tk.Tk()
+            self.root.geometry('1600x1000')
+            self.root.minsize(1400, 900)
+            # Defer maximize to idle so root construction is not blocked by WM calls.
+            self._pending_initial_zoom = True
+            self.root.title(f"QTR'S KLIK KLAKER")
 
-        # set key bindings
-        self.root.bind('<Escape>', lambda event: self.root.quit())
-        self.root.bind('<Return>', lambda event: self.on_generate_combinations())
-        self.root.bind('<FocusIn>', lambda event: self._on_root_focus_in())
-        self.root.bind('<FocusOut>', lambda event: self._hide_all_popups(), add='+')
-        self.root.bind('<Button-1>', self._on_root_click_for_popups, add='+')
-        self.root.bind('<Configure>', self._on_root_configure, add='+')
-        self.root.protocol("WM_DELETE_WINDOW", self._on_app_close)
+            # set key bindings
+            self.root.bind('<Escape>', lambda event: self.root.quit())
+            self.root.bind('<Return>', lambda event: self.on_generate_combinations())
+            self.root.bind('<FocusIn>', lambda event: self._on_root_focus_in())
+            self.root.bind('<FocusOut>', lambda event: self._hide_all_popups(), add='+')
+            self.root.bind('<Button-1>', self._on_root_click_for_popups, add='+')
+            self.root.bind('<Configure>', self._on_root_configure, add='+')
+            self.root.protocol("WM_DELETE_WINDOW", self._on_app_close)
+
+        # Shared UI tokens for consistent spacing, typography, and emphasis.
+        self.ui_theme = {
+            "font_body": ("Arial", 9),
+            "font_body_bold": ("Arial", 9, "bold"),
+            "font_small": ("Arial", 8),
+            "font_small_bold": ("Arial", 8, "bold"),
+            "font_title": ("Arial", 12, "bold"),
+            "font_panel_title": ("Arial", 14, "bold"),
+            "font_mono": ("Consolas", 10),
+            "pad_xs": 2,
+            "pad_sm": 5,
+            "pad_md": 8,
+            "pad_lg": 10,
+            "pad_xl": 14,
+            "bg_panel": "#f7fbff",
+            "bg_panel_alt": "#f7f9fb",
+            "bg_primary": "#d8efe5",
+            "bg_secondary": "#e8eef5",
+            "bg_highlight": "#fff8db",
+            "fg_primary": "#103d2b",
+            "fg_muted": "#2f3b4a",
+            "fg_subtle": "#5b6675",
+            "status_busy": "#0d47a1",
+            "tooltip_bg": "#f8f4d8",
+            "tooltip_fg": "#2f3b4a",
+            "tooltip_mono_font": ("Consolas", 8),
+            "tooltip_body_font": ("Arial", 9),
+            "tooltip_pad_x": 7,
+            "tooltip_pad_y": 5,
+        }
+        self.sort_guidance_text = (
+            "Sort guidance:\n"
+            "Cumulative: steady paths\n"
+            "Confidence: low-variance wins\n"
+            "Counter: resilient picks\n"
+            "Strategic: balanced minimax"
+        )
 
         self._last_root_size = (self.root.winfo_width(), self.root.winfo_height())
 
@@ -266,7 +318,8 @@ class UiManager:
 
         self.tree_autogen_var = tk.IntVar(value=1 if self.tree_autogen_enabled else 0)
         self.lazy_sort_on_expand_var = tk.IntVar(value=1 if self.lazy_sort_on_expand else 0)
-        self.create_matchup_output_panel()
+        with self.perf.span("startup.setup_matchup_output_panel"):
+            self.create_matchup_output_panel()
         self.matchup_output_panel_created = True
 
         self.button_row_frame = tk.Frame(self.team_grid_frame)
@@ -284,12 +337,13 @@ class UiManager:
         self.tree_view_frame.pack(side=tk.LEFT, expand=1, fill=tk.BOTH)
 
         # V2: Replace 144 StringVars with single GridDataModel
-        self.grid_data_model = GridDataModel()
-        self.grid_data_model.add_observer(self._on_grid_data_changed)
-        
-        # Widget references (Entry widgets only, no StringVars)
-        self.grid_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(6)] for _ in range(6)]
-        self.grid_display_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(6)] for _ in range(6)]
+        with self.perf.span("startup.setup_grid_data_model"):
+            self.grid_data_model = GridDataModel()
+            self.grid_data_model.add_observer(self._on_grid_data_changed)
+            
+            # Widget references (Entry widgets only, no StringVars)
+            self.grid_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(6)] for _ in range(6)]
+            self.grid_display_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(6)] for _ in range(6)]
         
         # Comment overlay intentionally unused; per-cell bindings handle comments.
         self.comment_overlay = None
@@ -345,11 +399,13 @@ class UiManager:
         pairingLead.pack(side=tk.RIGHT, padx=(8, 0), pady=5)
 
         # create treeview and tree generator
-        self.treeview = LazyTreeView(master=self.tree_view_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
-        self.tree_generator = TreeGenerator(
-            treeview=self.treeview,
-            strategic_preferences=self.strategic_preferences,
-        )
+        with self.perf.span("startup.setup_treeview"):
+            self.treeview = LazyTreeView(master=self.tree_view_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
+        with self.perf.span("startup.setup_tree_generator"):
+            self.tree_generator = TreeGenerator(
+                treeview=self.treeview,
+                strategic_preferences=self.strategic_preferences,
+            )
         self.tree_generator.set_generation_id(self._tree_generation_id)
         
         # Track current sorting mode for column display
@@ -360,7 +416,6 @@ class UiManager:
         self.active_column_sort = None
         
         # Matchup output panel is created as part of right-column setup
-        self.matchup_output_panel_created = True
         
 
     
@@ -373,26 +428,33 @@ class UiManager:
 
     
     def create_ui(self):
+        theme = getattr(self, "ui_theme", {})
+        pad_sm = theme.get("pad_sm", 5)
+        pad_md = theme.get("pad_md", 8)
+        pad_lg = theme.get("pad_lg", 10)
+        control_font = theme.get("font_body", ("Arial", 9))
+        control_font_bold = theme.get("font_body_bold", ("Arial", 9, "bold"))
+
         with self.perf.span("startup.create_ui_grids"):
             self.create_ui_grids()
 
-        tk.Label(self.drop_down_frame, text='Select Team 1:').pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Label(self.drop_down_frame, text='Select Team 1:', font=control_font).pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # Use a StringVar to hold the value of the Combobox
         self.team1_var = tk.StringVar()
         # create combobox
         self.combobox_1 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20, textvariable=self.team1_var)
-        self.combobox_1.pack(side=tk.LEFT, padx=5, pady=5)
+        self.combobox_1.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # Set an instance variable to keep track of the previous value
         self.previous_team1 = self.team1_var.get()
         # Attach a trace to the StringVar
         self.team1_var.trace_add('write', self._on_team_box_change_traced)
 		
-        tk.Label(self.drop_down_frame, text='Select Team 2:').pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Label(self.drop_down_frame, text='Select Team 2:', font=control_font).pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # Use a StringVar to hold the value of the Combobox
         self.team2_var = tk.StringVar()
         # create combobox
         self.combobox_2 = ttk.Combobox(self.drop_down_frame, state='readonly', width=20, textvariable=self.team2_var)
-        self.combobox_2.pack(side=tk.LEFT, padx=5, pady=5)
+        self.combobox_2.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # Set an instance variable to keep track of the previous value
         self.previous_team2 = self.team2_var.get()
         # Attach a trace to the StringVar
@@ -400,13 +462,13 @@ class UiManager:
 
         # create combobox for scenario selection
         # create the label
-        tk.Label(self.drop_down_frame, text='Choose Scenario:').pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Label(self.drop_down_frame, text='Choose Scenario:', font=control_font).pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # create scenarios drop down box
         # Use a StringVar to hold the value of the Combobox
         self.scenario_var = tk.StringVar()
         self.scenario_box = ttk.Combobox(self.drop_down_frame, state='readonly', width=20, textvariable=self.scenario_var)
         # self.scenario_box.bind('<<ComboboxSelected>>', self.on_combobox_select)
-        self.scenario_box.pack(side=tk.LEFT, padx=5, pady=5)
+        self.scenario_box.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # Set an instance variable to keep track of the previous value
         self.previous_value = self.scenario_var.get()
         # Attach a trace to the StringVar
@@ -416,47 +478,65 @@ class UiManager:
         self.root.after(10, self._populate_dropdowns)
 
         # Add essential buttons to a row just above the pairing grid       
-        tk.Button(self.button_row_frame, text="Save Grid", command=lambda: self.save_grid_data_to_db()).pack(side=tk.LEFT, padx=5, pady=5)
-        self.flip_grid_button = tk.Button(self.button_row_frame, text="Flip Grid", command=lambda: self.flip_grid_perspective())
-        self.flip_grid_button.pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(
+            self.button_row_frame,
+            text="Save Grid",
+            command=lambda: self.save_grid_data_to_db(),
+            font=control_font,
+            bg=theme.get("bg_secondary", "lightgray"),
+        ).pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
+        self.flip_grid_button = tk.Button(
+            self.button_row_frame,
+            text="Flip Grid",
+            command=lambda: self.flip_grid_perspective(),
+            font=control_font,
+            bg=theme.get("bg_secondary", "lightgray"),
+        )
+        self.flip_grid_button.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
 
         self._paste_5x5_button = tk.Button(
             self.button_row_frame,
             text="Paste 5x5",
             command=self._on_paste_5x5_button,
-            state=tk.DISABLED
+            state=tk.DISABLED,
+            font=control_font,
+            bg=theme.get("bg_secondary", "lightgray"),
         )
-        self._paste_5x5_button.pack(side=tk.LEFT, padx=5, pady=5)
+        self._paste_5x5_button.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         
         # Data Management menu button
         data_mgmt_button = tk.Button(self.button_row_frame, text="Data Management", 
                                    command=lambda: self.show_data_management_menu(),
-                                   bg="lightcyan", fg="darkgreen", font=("Arial", 9, "bold"),
+                                   bg=theme.get("bg_primary", "lightcyan"),
+                                   fg=theme.get("fg_primary", "darkgreen"),
+                                   font=control_font_bold,
                                    relief=tk.RAISED, borderwidth=2)
-        data_mgmt_button.pack(side=tk.LEFT, padx=10, pady=5)
+        data_mgmt_button.pack(side=tk.LEFT, padx=pad_lg, pady=pad_sm)
 
         self.expand_grid_button = tk.Button(
             self.button_row_frame,
             text="Expand Grid",
             command=self.toggle_grid_checkbox_visibility,
-            bg="lightsteelblue",
-            activebackground="lightsteelblue",
+            bg=theme.get("bg_secondary", "lightsteelblue"),
+            activebackground=theme.get("bg_secondary", "lightsteelblue"),
+            font=control_font,
             relief=tk.RAISED,
             borderwidth=2,
         )
-        self.expand_grid_button.pack(side=tk.LEFT, padx=5, pady=5)
+        self.expand_grid_button.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
 
         # Middle-row sort controls (between top grid and tree).
         self.sort_controls_row_frame = tk.Frame(self.button_row_frame)
-        self.sort_controls_row_frame.pack(side=tk.LEFT, padx=(20, 5), pady=4)
+        self.sort_controls_row_frame.pack(side=tk.LEFT, padx=(pad_xl := theme.get("pad_xl", 14), pad_sm), pady=pad_sm)
 
         self.generate_button = tk.Button(
             self.sort_controls_row_frame,
             text="Generate\nCombinations",
             command=self.on_generate_combinations,
             width=16,
+            font=control_font_bold,
         )
-        self.generate_button.pack(side=tk.LEFT, padx=(0, 6))
+        self.generate_button.pack(side=tk.LEFT, padx=(0, pad_md))
 
         # Initialize sorting state tracking
         self.active_sort_mode = None
@@ -466,42 +546,46 @@ class UiManager:
             text="Cumulative\nSort",
             command=self.toggle_cumulative_sort,
             width=16,
+            font=control_font,
         )
-        self.cumulative_button.pack(side=tk.LEFT, padx=6)
+        self.cumulative_button.pack(side=tk.LEFT, padx=pad_md)
 
         self.confidence_button = tk.Button(
             self.sort_controls_row_frame,
             text="Highest\nConfidence",
             command=self.toggle_confidence_sort,
             width=16,
+            font=control_font,
         )
-        self.confidence_button.pack(side=tk.LEFT, padx=6)
+        self.confidence_button.pack(side=tk.LEFT, padx=pad_md)
 
         self.counter_button = tk.Button(
             self.sort_controls_row_frame,
             text="Counter\nPick",
             command=self.toggle_counter_sort,
             width=16,
+            font=control_font,
         )
-        self.counter_button.pack(side=tk.LEFT, padx=6)
+        self.counter_button.pack(side=tk.LEFT, padx=pad_md)
 
         self.strategic_button = tk.Button(
             self.sort_controls_row_frame,
             text="Strategic\nFusion",
             command=self.toggle_strategic_sort,
             width=16,
+            font=control_font,
         )
-        self.strategic_button.pack(side=tk.LEFT, padx=6)
+        self.strategic_button.pack(side=tk.LEFT, padx=pad_md)
 
         self.sort_guidance_label = tk.Label(
             self.sort_controls_row_frame,
-            text="Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
-            font=("Arial", 8),
-            fg="#333333",
+            text=self.sort_guidance_text,
+            font=theme.get("font_small", ("Arial", 8)),
+            fg=theme.get("fg_muted", "#333333"),
             justify=tk.LEFT,
             anchor=tk.W,
         )
-        self.sort_guidance_label.pack(side=tk.LEFT, padx=(10, 0))
+        self.sort_guidance_label.pack(side=tk.LEFT, padx=(pad_lg, 0))
 
         # Set initial button states (all inactive)
         self.update_sort_button_states()
@@ -543,7 +627,13 @@ class UiManager:
         # Create status bar
         self.create_status_bar()
         self._refresh_paste_button_state()
-        
+
+        # Apply deferred maximize once widgets are built and event loop is ready.
+        self.root.after_idle(self._apply_initial_window_zoom)
+
+        # Re-validate right-column panel wiring after full UI layout is in place.
+        self._ensure_matchup_output_panel()
+
         # Show welcome dialog if this is first time or user hasn't disabled it
         if self.db_preferences.should_show_welcome_message():
             self.root.after(500, self.show_welcome_dialog)  # Delay to ensure UI is ready
@@ -552,7 +642,61 @@ class UiManager:
         if hasattr(self, 'perf') and self.perf:
             self.perf.close()
 
+    def _apply_initial_window_zoom(self):
+        if not getattr(self, "_pending_initial_zoom", False):
+            return
+        self._pending_initial_zoom = False
+        try:
+            self.root.state('zoomed')
+        except tk.TclError:
+            try:
+                self.root.attributes('-zoomed', True)
+            except tk.TclError:
+                # Non-fatal on window managers that do not support zoom flags.
+                pass
+
+    def _ensure_matchup_output_panel(self):
+        required_widgets = (
+            "output_panel_frame",
+            "matchups_text",
+            "summary_matchups_label",
+            "summary_spread_label",
+            "summary_histogram",
+        )
+
+        def _widget_exists(name):
+            widget = getattr(self, name, None)
+            if widget is None:
+                return False
+            try:
+                return bool(widget.winfo_exists())
+            except tk.TclError:
+                return False
+
+        if all(_widget_exists(name) for name in required_widgets):
+            self.matchup_output_panel_created = True
+            return True
+
+        existing_frame = getattr(self, "output_panel_frame", None)
+        if existing_frame is not None:
+            try:
+                if existing_frame.winfo_exists():
+                    existing_frame.destroy()
+            except tk.TclError:
+                pass
+
+        with self.perf.span("startup.setup_matchup_output_panel"):
+            self.create_matchup_output_panel()
+
+        panel_ready = all(_widget_exists(name) for name in required_widgets)
+        self.matchup_output_panel_created = panel_ready
+        if not panel_ready and hasattr(self, "logger"):
+            self.logger.warning("Matchup output panel did not initialize all required widgets.")
+        return panel_ready
+
     def create_ui_grids(self):
+        theme = getattr(self, "ui_theme", {})
+        entry_font = ("Arial", 10)
         self.row_checkboxes = []
         self.column_checkboxes = []
         self.row_checkbox_widgets = []
@@ -560,20 +704,37 @@ class UiManager:
         self.row_checkbox_label_widget = None
         self.column_checkbox_label_widget = None
 
-        # Single unified grid title
-        grid_label = tk.Label(self.grid_frame, text="Team Matchup Analysis Grid", font=("Arial", 14, "bold"), bg="lightcyan")
-        grid_label.grid(row=0, column=0, columnspan=13, pady=(0, 5), sticky="ew")
+        with self.perf.span("grid.create_headers"):
+            # Single unified grid title
+            grid_label = tk.Label(
+                self.grid_frame,
+                text="Team Matchup Analysis Grid",
+                font=theme.get("font_panel_title", ("Arial", 14, "bold")),
+                bg=theme.get("bg_primary", "lightcyan"),
+                fg=theme.get("fg_primary", "black"),
+            )
+            grid_label.grid(row=0, column=0, columnspan=13, pady=(0, 5), sticky="ew")
 
-        # Section headers
-        rating_header = tk.Label(self.grid_frame, text="Rating Matrix", font=("Arial", 11, "bold"), bg="lightblue")
-        rating_header.grid(row=1, column=0, columnspan=6, pady=(0, 2), sticky="ew")
-        
-        # Visual separator
-        separator = tk.Frame(self.grid_frame, width=3, bg="darkgray")
-        separator.grid(row=1, column=6, rowspan=7, sticky="ns", padx=5)
-        
-        calc_header = tk.Label(self.grid_frame, text="Calculations", font=("Arial", 11, "bold"), bg="lightgreen")
-        calc_header.grid(row=1, column=7, columnspan=5, pady=(0, 2), sticky="ew")
+            # Section headers
+            rating_header = tk.Label(
+                self.grid_frame,
+                text="Rating Matrix",
+                font=theme.get("font_body_bold", ("Arial", 9, "bold")),
+                bg=theme.get("bg_secondary", "lightblue"),
+            )
+            rating_header.grid(row=1, column=0, columnspan=6, pady=(0, 2), sticky="ew")
+            
+            # Visual separator
+            separator = tk.Frame(self.grid_frame, width=3, bg="darkgray")
+            separator.grid(row=1, column=6, rowspan=7, sticky="ns", padx=5)
+            
+            calc_header = tk.Label(
+                self.grid_frame,
+                text="Calculations",
+                font=theme.get("font_body_bold", ("Arial", 9, "bold")),
+                bg=theme.get("bg_primary", "lightgreen"),
+            )
+            calc_header.grid(row=1, column=7, columnspan=5, pady=(0, 2), sticky="ew")
 
         # V2: Create the 6x6 rating grid WITHOUT StringVars or bindings
         # All state managed by GridDataModel; comments handled per cell.
@@ -581,8 +742,8 @@ class UiManager:
             for r in range(6):
                 for c in range(6):
                     # Rating grid entries (columns 0-5) - no textvariable, no bindings
-                    entry = tk.Entry(self.grid_frame, width=8, 
-                                   font=("Arial", 10), relief=tk.SOLID, borderwidth=1)
+                    entry = tk.Entry(self.grid_frame, width=8,
+                                   font=entry_font, relief=tk.SOLID, borderwidth=1)
                     entry.grid(row=r + 2, column=c, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
                     self.grid_widgets[r][c] = entry
                 
@@ -613,11 +774,15 @@ class UiManager:
                         )
                         entry.bind("<Button-3>", lambda event, row=r, col=c: self.open_comment_editor(event, row, col), add='+')
                 
-                    # Set initial value from model (Phase 1: handle None ΓåÆ '')
+        with self.perf.span("grid.seed_rating_initial_values"):
+            for r in range(6):
+                for c in range(6):
+                    entry = self.grid_widgets[r][c]
+                    if not entry:
+                        continue
+                    # Set initial value from model (Phase 1: handle None -> '')
                     initial_value = self.grid_data_model.get_rating(r, c)
-                    if initial_value is None:
-                        entry.insert(0, '')
-                    else:
+                    if initial_value is not None:
                         entry.insert(0, str(initial_value))
 
         # Create the display grid (right side of unified grid, columns 7-11)
@@ -626,16 +791,23 @@ class UiManager:
                 for c in range(5):
                     # Display grid entries (columns 7-11) - no textvariable
                     display_entry = tk.Entry(self.grid_frame, width=8, 
-                                           state='readonly', font=("Arial", 10), relief=tk.SOLID, borderwidth=1,
+                                           state='readonly', font=entry_font, relief=tk.SOLID, borderwidth=1,
                                            readonlybackground="lightgray")
                     display_entry.grid(row=r + 2, column=c + 7, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
                     self.grid_display_widgets[r][c] = display_entry
-                    
+
+        with self.perf.span("grid.seed_display_initial_values"):
+            for r in range(6):
+                for c in range(5):
+                    display_entry = self.grid_display_widgets[r][c]
+                    if not display_entry:
+                        continue
                     # Set initial value from model
-                    display_entry.config(state='normal')
-                    display_entry.delete(0, tk.END)
-                    display_entry.insert(0, self.grid_data_model.get_display(r, c))
-                    display_entry.config(state='readonly')
+                    initial_display = self.grid_data_model.get_display(r, c)
+                    if initial_display:
+                        display_entry.config(state='normal')
+                        display_entry.insert(0, initial_display)
+                        display_entry.config(state='readonly')
 
         # Let matrix/calculation cells expand to consume available panel space.
         # Keep checkbox and separator lanes fixed so lock controls remain readable.
@@ -650,39 +822,41 @@ class UiManager:
         for i in range(7, 12):
             self.grid_frame.grid_columnconfigure(i, weight=1, uniform="calc_cols")
 
-        # Add row checkboxes (column 12)
-        checkbox_label = tk.Label(self.grid_frame, text="Row\nSelect", font=("Arial", 9, "bold"))
-        checkbox_label.grid(row=1, column=12, pady=(0, 2))
-        self.row_checkbox_label_widget = checkbox_label
-        
-        for r in range(1, 6):
-            var = tk.IntVar()
-            entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"R{r}")
-            entry.grid(row=r + 2, column=12, padx=2, pady=1, sticky="w")
-            var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
-            self.row_checkboxes.append(var)
-            self.row_checkbox_widgets.append(entry)
+        with self.perf.span("grid.create_selection_checkboxes"):
+            # Add row checkboxes (column 12)
+            checkbox_label = tk.Label(self.grid_frame, text="Row\nSelect", font=("Arial", 9, "bold"))
+            checkbox_label.grid(row=1, column=12, pady=(0, 2))
+            self.row_checkbox_label_widget = checkbox_label
+            
+            for r in range(1, 6):
+                var = tk.IntVar()
+                entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"R{r}")
+                entry.grid(row=r + 2, column=12, padx=2, pady=1, sticky="w")
+                var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
+                self.row_checkboxes.append(var)
+                self.row_checkbox_widgets.append(entry)
 
-        # Add column checkboxes (row 8, columns 1-5)
-        col_label = tk.Label(self.grid_frame, text="Column Select", font=("Arial", 9, "bold"))
-        col_label.grid(row=8, column=1, columnspan=5, pady=(5, 0))
-        self.column_checkbox_label_widget = col_label
-        
-        for c in range(1, 6):
-            var = tk.IntVar()
-            entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"C{c}")
-            entry.grid(row=9, column=c, padx=1, pady=2, sticky="n")
-            var.trace_add('write', lambda name, index, mode, col=c, var=var: self.on_column_checkbox_change(col, var))
-            self.column_checkboxes.append(var)
-            self.column_checkbox_widgets.append(entry)
+            # Add column checkboxes (row 8, columns 1-5)
+            col_label = tk.Label(self.grid_frame, text="Column Select", font=("Arial", 9, "bold"))
+            col_label.grid(row=8, column=1, columnspan=5, pady=(5, 0))
+            self.column_checkbox_label_widget = col_label
+            
+            for c in range(1, 6):
+                var = tk.IntVar()
+                entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"C{c}")
+                entry.grid(row=9, column=c, padx=1, pady=2, sticky="n")
+                var.trace_add('write', lambda name, index, mode, col=c, var=var: self.on_column_checkbox_change(col, var))
+                self.column_checkboxes.append(var)
+                self.column_checkbox_widgets.append(entry)
 
-        # Keep checkbox and separator lanes fixed.
-        self.grid_frame.grid_rowconfigure(0, weight=0)
-        self.grid_frame.grid_rowconfigure(1, weight=0)
-        self.grid_frame.grid_rowconfigure(8, weight=0)
-        self.grid_frame.grid_rowconfigure(9, weight=0)
-        self.grid_frame.grid_columnconfigure(6, weight=0, minsize=10)
-        self.grid_frame.grid_columnconfigure(12, weight=0, minsize=72)
+        with self.perf.span("grid.configure_layout_weights"):
+            # Keep checkbox and separator lanes fixed.
+            self.grid_frame.grid_rowconfigure(0, weight=0)
+            self.grid_frame.grid_rowconfigure(1, weight=0)
+            self.grid_frame.grid_rowconfigure(8, weight=0)
+            self.grid_frame.grid_rowconfigure(9, weight=0)
+            self.grid_frame.grid_columnconfigure(6, weight=0, minsize=10)
+            self.grid_frame.grid_columnconfigure(12, weight=0, minsize=72)
 
         # Re-apply current checkbox visibility state when rebuilding the grid.
         self._set_grid_checkbox_visibility(visible=not self.grid_checkboxes_hidden)
@@ -833,17 +1007,37 @@ class UiManager:
     
     def create_status_bar(self):
         """Create status bar showing current rating system"""
-        self.status_frame = tk.Frame(self.root, relief=tk.SUNKEN, bd=1)
+        theme = getattr(self, "ui_theme", {})
+        self.status_frame = tk.Frame(
+            self.root,
+            relief=tk.SUNKEN,
+            bd=1,
+            bg=theme.get("bg_panel_alt", "#f7f9fb"),
+        )
         self.status_frame.pack(side=tk.BOTTOM, fill=tk.X)
         
         # Database info
         db_name = getattr(self, 'db_name', 'Unknown')
-        self.db_status = tk.Label(self.status_frame, text=f"Database: {db_name}", anchor=tk.W)
-        self.db_status.pack(side=tk.LEFT, padx=5)
+        self.db_status = tk.Label(
+            self.status_frame,
+            text=f"Database: {db_name}",
+            anchor=tk.W,
+            font=theme.get("font_small", ("Arial", 8)),
+            bg=theme.get("bg_panel_alt", "#f7f9fb"),
+            fg=theme.get("fg_muted", "#333333"),
+        )
+        self.db_status.pack(side=tk.LEFT, padx=theme.get("pad_sm", 5))
         
         # Rating system info
         system_info = f"Rating System: {self.rating_config['name']} ({self.rating_range[0]}-{self.rating_range[1]})"
-        self.rating_status = tk.Label(self.status_frame, text=system_info, anchor=tk.CENTER)
+        self.rating_status = tk.Label(
+            self.status_frame,
+            text=system_info,
+            anchor=tk.CENTER,
+            font=theme.get("font_small", ("Arial", 8)),
+            bg=theme.get("bg_panel_alt", "#f7f9fb"),
+            fg=theme.get("fg_muted", "#333333"),
+        )
         self.rating_status.pack(side=tk.LEFT, expand=True, padx=20)
 
         # Dynamic status messages (e.g., unsaved changes)
@@ -856,7 +1050,8 @@ class UiManager:
             text="",
             anchor=tk.W,
             font=self._status_font_normal,
-            fg=self._status_fg_normal
+            fg=self._status_fg_normal,
+            bg=theme.get("bg_panel_alt", "#f7f9fb"),
         )
         self.dynamic_status_label.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=2, pady=1)
 
@@ -869,7 +1064,8 @@ class UiManager:
             text="Loading...",
             anchor=tk.W,
             font=self._status_font_normal,
-            fg="#0d47a1"
+            fg=theme.get("status_busy", "#0d47a1"),
+            bg=theme.get("bg_panel_alt", "#f7f9fb"),
         )
         self.busy_status_label.pack(side=tk.LEFT, padx=(2, 6))
 
@@ -881,17 +1077,39 @@ class UiManager:
         self.busy_progress.pack(side=tk.RIGHT, padx=(0, 2), pady=2)
         
         # Add color preview
-        color_frame = tk.Frame(self.status_frame)
-        color_frame.pack(side=tk.RIGHT, padx=5)
-        
-        tk.Label(color_frame, text="Colors:", font=("Arial", 8)).pack(side=tk.LEFT, padx=(0, 3))
-        
-        for rating in sorted(self.color_map.keys()):
-            color_box = tk.Label(color_frame, text=rating, bg=self.color_map[rating], 
-                               width=2, relief=tk.RAISED, borderwidth=1, font=("Arial", 7, "bold"))
-            color_box.pack(side=tk.LEFT, padx=1)
+        self.color_preview_frame = tk.Frame(self.status_frame, bg=theme.get("bg_panel_alt", "#f7f9fb"))
+        self.color_preview_frame.pack(side=tk.RIGHT, padx=theme.get("pad_sm", 5))
+        self._rebuild_color_preview()
 
         self._refresh_status_messages()
+
+    def _rebuild_color_preview(self):
+        if not hasattr(self, 'color_preview_frame'):
+            return
+
+        theme = getattr(self, "ui_theme", {})
+        for child in self.color_preview_frame.winfo_children():
+            child.destroy()
+
+        tk.Label(
+            self.color_preview_frame,
+            text="Colors:",
+            font=theme.get("font_small", ("Arial", 8)),
+            bg=theme.get("bg_panel_alt", "#f7f9fb"),
+            fg=theme.get("fg_subtle", "#4d4d4d"),
+        ).pack(side=tk.LEFT, padx=(0, 3))
+
+        for rating in sorted(self.color_map.keys()):
+            color_box = tk.Label(
+                self.color_preview_frame,
+                text=rating,
+                bg=self.color_map[rating],
+                width=2,
+                relief=tk.RAISED,
+                borderwidth=1,
+                font=theme.get("font_small_bold", ("Arial", 8, "bold")),
+            )
+            color_box.pack(side=tk.LEFT, padx=1)
 
     def _set_heavy_controls_enabled(self, enabled: bool):
         state = tk.NORMAL if enabled else tk.DISABLED
@@ -1016,6 +1234,16 @@ class UiManager:
     
     def update_status_bar(self):
         """Update status bar information"""
+        current_signature = (
+            getattr(self, 'db_name', 'Unknown'),
+            self.rating_config.get('name') if hasattr(self, 'rating_config') else None,
+            tuple(self.rating_range) if hasattr(self, 'rating_range') else tuple(),
+            tuple(sorted(getattr(self, 'color_map', {}).items())),
+        )
+        if current_signature == self._last_status_bar_signature:
+            self._skip_noop("status.bar.refresh.skipped", "no_change", throttle_ms=500.0)
+            return
+
         if hasattr(self, 'rating_status'):
             system_info = f"Rating System: {self.rating_config['name']} ({self.rating_range[0]}-{self.rating_range[1]})"
             self.rating_status.config(text=system_info)
@@ -1024,29 +1252,10 @@ class UiManager:
             db_name = getattr(self, 'db_name', 'Unknown')
             self.db_status.config(text=f"Database: {db_name}")
         
-        # Recreate color preview with new colors
-        if hasattr(self, 'status_frame'):
-            # Remove old color frame
-            for widget in self.status_frame.winfo_children():
-                if isinstance(widget, tk.Frame) and widget.winfo_children():
-                    # Check if this frame contains color boxes
-                    for child in widget.winfo_children():
-                        if isinstance(child, tk.Label) and child.cget('text') in self.color_map:
-                            widget.destroy()
-                            break
-            
-            # Add new color frame
-            color_frame = tk.Frame(self.status_frame)
-            color_frame.pack(side=tk.RIGHT, padx=5)
-            
-            tk.Label(color_frame, text="Colors:", font=("Arial", 8)).pack(side=tk.LEFT, padx=(0, 3))
-            
-            for rating in sorted(self.color_map.keys()):
-                color_box = tk.Label(color_frame, text=rating, bg=self.color_map[rating], 
-                                   width=2, relief=tk.RAISED, borderwidth=1, font=("Arial", 7, "bold"))
-                color_box.pack(side=tk.LEFT, padx=1)
+        self._rebuild_color_preview()
 
         self._refresh_status_messages()
+        self._last_status_bar_signature = current_signature
 
     def _set_perf_logging(self, enabled: bool):
         self.perf_logging_enabled = enabled
@@ -1122,7 +1331,17 @@ class UiManager:
     def _set_grid_dirty(self, is_dirty: bool):
         if self._grid_dirty != is_dirty:
             self._grid_dirty = is_dirty
+            if is_dirty:
+                self._last_post_load_refresh_signature = None
+                self._last_calc_grid_rows_signature = None
             self._refresh_status_messages()
+
+    def _build_post_load_refresh_signature(self) -> tuple:
+        team_1 = self.combobox_1.get().strip() if hasattr(self, 'combobox_1') else ""
+        team_2 = self.combobox_2.get().strip() if hasattr(self, 'combobox_2') else ""
+        scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
+        row_mask, col_mask = self._current_lock_masks()
+        return (team_1, team_2, scenario_id, row_mask, col_mask, self._get_grid_ratings_signature())
 
     def _refresh_status_messages(self):
         messages = []
@@ -1199,6 +1418,7 @@ class UiManager:
     def _on_app_close(self):
         try:
             if hasattr(self, 'perf') and self.perf:
+                self._emit_noop_skip_summary()
                 self.perf.close()
         finally:
             self.root.destroy()
@@ -1308,12 +1528,25 @@ class UiManager:
         }
 
     def _apply_calc_grid_rows(self, rows):
+        row_signature = (
+            tuple(rows["floor"].get(row, "---") for row in range(1, 6)),
+            tuple(rows["pinned"].get(row, "---") for row in range(1, 6)),
+            tuple(rows["can_pin"].get(row, "---") for row in range(1, 6)),
+            tuple(rows["protect"].get(row, "---") for row in range(1, 6)),
+            tuple(rows["bus"].get(row, "---") for row in range(1, 6)),
+        )
+        if row_signature == self._last_calc_grid_rows_signature:
+            self._skip_noop("calc.grid.apply.skipped", "rows_unchanged", throttle_ms=250.0)
+            return
+
         for row in range(1, 6):
             self.update_display_fields(row, 0, rows["floor"].get(row, "---"))
             self.update_display_fields(row, 1, rows["pinned"].get(row, "---"))
             self.update_display_fields(row, 2, rows["can_pin"].get(row, "---"))
             self.update_display_fields(row, 3, rows["protect"].get(row, "---"))
             self.update_display_fields(row, 4, rows["bus"].get(row, "---"))
+
+        self._last_calc_grid_rows_signature = row_signature
 
     def _invalidate_tree_cache(self, reason: str = ""):
         if self._tree_cache:
@@ -1925,6 +2158,57 @@ class UiManager:
         except Exception:
             pass
 
+    def _record_noop_skip(self, label: str, reason: str, throttle_ms: float = 0.0, **meta: Any):
+        if not hasattr(self, "_noop_skip_counters") or not isinstance(self._noop_skip_counters, dict):
+            self._noop_skip_counters = {}
+        if not hasattr(self, "_noop_skip_last_log_at") or not isinstance(self._noop_skip_last_log_at, dict):
+            self._noop_skip_last_log_at = {}
+        bucket_key = f"{label}|{reason or 'unspecified'}"
+        self._noop_skip_counters[bucket_key] = self._noop_skip_counters.get(bucket_key, 0) + 1
+
+        should_log = True
+        if throttle_ms > 0:
+            now = time.perf_counter()
+            last_logged_at = float(self._noop_skip_last_log_at.get(bucket_key, 0.0) or 0.0)
+            if last_logged_at > 0.0 and (now - last_logged_at) * 1000.0 < throttle_ms:
+                should_log = False
+            else:
+                self._noop_skip_last_log_at[bucket_key] = now
+
+        if not should_log:
+            return
+
+        payload = {"reason": reason}
+        payload.update(meta)
+        self._log_perf_entry(label, 0.0, **payload)
+
+    def _skip_noop(self, label: str, reason: str, throttle_ms: float = 0.0, **meta: Any) -> bool:
+        """Record a no-op skip and return True for guard-style early exits."""
+        self._record_noop_skip(label, reason, throttle_ms=throttle_ms, **meta)
+        return True
+
+    def _emit_noop_skip_summary(self):
+        if not self.perf.enabled or not self._noop_skip_counters:
+            return
+
+        total_skips = sum(self._noop_skip_counters.values())
+        self._log_perf_entry(
+            "noop.skip.summary",
+            0.0,
+            total_skips=total_skips,
+            bucket_count=len(self._noop_skip_counters),
+        )
+
+        for bucket_key in sorted(self._noop_skip_counters.keys()):
+            source_label, reason = bucket_key.split("|", 1)
+            self._log_perf_entry(
+                "noop.skip.bucket",
+                0.0,
+                source=source_label,
+                reason=reason,
+                count=self._noop_skip_counters[bucket_key],
+            )
+
     def _record_event_loop_lag(self, source: str, start_time: float):
         if not hasattr(self, 'root') or not self.perf.enabled:
             return
@@ -2116,6 +2400,8 @@ class UiManager:
         if self._name_tooltip_window:
             return
 
+        theme = getattr(self, "ui_theme", {})
+
         self._name_tooltip_window = tk.Toplevel(self.root)
         self._name_tooltip_window.wm_overrideredirect(True)
         self._name_tooltip_window.wm_attributes("-topmost", True)
@@ -2126,13 +2412,13 @@ class UiManager:
             text="",
             justify=tk.LEFT,
             anchor=tk.W,
-            bg="#1f2430",
-            fg="#f0f3f6",
-            font=("Arial", 10),
+            bg=theme.get("tooltip_bg", "#f8f4d8"),
+            fg=theme.get("tooltip_fg", "#2f3b4a"),
+            font=theme.get("tooltip_body_font", ("Arial", 9)),
             relief=tk.SOLID,
             borderwidth=1,
-            padx=8,
-            pady=6
+            padx=theme.get("tooltip_pad_x", 7),
+            pady=theme.get("tooltip_pad_y", 5),
         )
         self._name_tooltip_label.pack(fill=tk.BOTH, expand=True)
 
@@ -2194,6 +2480,8 @@ class UiManager:
         if self._comment_tooltip_window:
             return
 
+        theme = getattr(self, "ui_theme", {})
+
         self._comment_tooltip_window = tk.Toplevel(self.root)
         self._comment_tooltip_window.wm_overrideredirect(True)
         self._comment_tooltip_window.wm_attributes("-topmost", True)
@@ -2204,13 +2492,13 @@ class UiManager:
             text="",
             justify=tk.LEFT,
             anchor=tk.W,
-            bg="#1f2430",
-            fg="#f0f3f6",
-            font=("Arial", 10),
+            bg=theme.get("tooltip_bg", "#f8f4d8"),
+            fg=theme.get("tooltip_fg", "#2f3b4a"),
+            font=theme.get("tooltip_body_font", ("Arial", 9)),
             relief=tk.SOLID,
             borderwidth=1,
-            padx=8,
-            pady=6
+            padx=theme.get("tooltip_pad_x", 7),
+            pady=theme.get("tooltip_pad_y", 5),
         )
         self._comment_tooltip_label.pack(fill=tk.BOTH, expand=True)
 
@@ -2361,8 +2649,29 @@ class UiManager:
     def on_scenario_calculations(self):
         self._schedule_scenario_calculations()
 
+    def _build_scenario_calc_signature(self) -> tuple:
+        team_1 = self.combobox_1.get().strip() if hasattr(self, 'combobox_1') else ""
+        team_2 = self.combobox_2.get().strip() if hasattr(self, 'combobox_2') else ""
+        scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
+
+        if not team_1 or not team_2:
+            return ("empty", team_1, team_2, scenario_id)
+
+        row_mask, col_mask = self._current_lock_masks()
+        return (team_1, team_2, scenario_id, row_mask, col_mask, self._get_grid_ratings_signature())
+
     def _schedule_scenario_calculations(self, immediate: bool = False):
         if not hasattr(self, 'root'):
+            return
+
+        request_signature = self._build_scenario_calc_signature()
+
+        if immediate and self._scenario_calc_job is None and request_signature == self._last_scenario_calc_signature:
+            self._skip_noop("scenario.calc.skipped", "immediate_no_change", throttle_ms=250.0)
+            return
+
+        if not immediate and self._scenario_calc_job is not None and request_signature == self._pending_scenario_calc_signature:
+            self._skip_noop("scenario.calc.skipped", "pending_same_request", throttle_ms=250.0)
             return
 
         if self._scenario_calc_job is not None:
@@ -2371,11 +2680,14 @@ class UiManager:
             except Exception:
                 pass
             self._scenario_calc_job = None
+            self._pending_scenario_calc_signature = None
 
         if immediate:
+            self._pending_scenario_calc_signature = request_signature
             self._run_scenario_calculations()
             return
 
+        self._pending_scenario_calc_signature = request_signature
         self._scenario_calc_job = self.root.after(
             self._scenario_calc_delay_ms,
             self._run_scenario_calculations
@@ -2383,6 +2695,7 @@ class UiManager:
 
     def _run_scenario_calculations(self):
         self._scenario_calc_job = None
+        self._pending_scenario_calc_signature = None
         self._on_scenario_calculations()
 
     def _on_scenario_calculations(self):
@@ -2391,10 +2704,15 @@ class UiManager:
         team_2 = self.combobox_2.get().strip()
         
         if not team_1 or not team_2:
+            empty_signature = self._build_scenario_calc_signature()
+            if empty_signature == self._last_scenario_calc_signature:
+                self._skip_noop("scenario.calc.skipped", "empty_no_change", throttle_ms=400.0)
+                return
             # Clear display fields when no teams are selected
             for row in range(1, 6):
                 for col in range(0, 6):
                     self.update_display_fields(row, col, "---")
+            self._last_scenario_calc_signature = empty_signature
             return
 
         cache_key = self._build_calc_grid_cache_key()
@@ -2404,6 +2722,7 @@ class UiManager:
             self._calc_grid_cache[cache_key] = cached_rows
 
         self._apply_calc_grid_rows(cached_rows)
+        self._last_scenario_calc_signature = self._build_scenario_calc_signature()
 
     def check_margins(self):
         for row in range(1, 6):
@@ -2576,6 +2895,9 @@ class UiManager:
     
     def on_create_team(self):
         self.create_team()
+
+    def on_modify_team(self):
+        self.modify_team()
         
     def on_delete_team(self):
         self.delete_team()
@@ -2767,7 +3089,7 @@ class UiManager:
         except Exception as exc:
             messagebox.showerror("Tree Cache", f"Failed to clear all tree cache entries: {exc}")
 
-    def _open_markdown_guide(self, title: str, relative_path: str):
+    def _open_markdown_guide(self, title: str, relative_path: str, reopen_data_management_on_close: bool = False):
         """Open a markdown guide in a simple in-app reader window."""
         try:
             guide_path = Path(__file__).parent.parent / relative_path
@@ -2814,25 +3136,35 @@ class UiManager:
             footer = tk.Frame(guide_window)
             footer.pack(fill=tk.X, padx=8, pady=(0, 8))
 
+            def close_guide():
+                try:
+                    guide_window.destroy()
+                finally:
+                    if reopen_data_management_on_close:
+                        self.show_data_management_menu()
+
             tk.Button(
                 footer,
                 text="Close",
                 width=14,
-                command=guide_window.destroy,
+                command=close_guide,
             ).pack(side=tk.RIGHT)
+            guide_window.protocol("WM_DELETE_WINDOW", close_guide)
         except Exception as exc:
-            messagebox.showerror("Guide", f"Failed to open guide: {exc}")
+            messagebox.showerror("Guide", self._operation_failed_error(f"could not open guide: {exc}"))
 
-    def open_tooltip_numbers_guide(self):
+    def open_tooltip_numbers_guide(self, reopen_data_management_on_close: bool = False):
         self._open_markdown_guide(
             title="Tree Tooltip Numbers Guide",
             relative_path="docs/NODE_TOOLTIP_NUMBERS_GUIDE.md",
+            reopen_data_management_on_close=reopen_data_management_on_close,
         )
 
-    def open_full_user_guide(self):
+    def open_full_user_guide(self, reopen_data_management_on_close: bool = False):
         self._open_markdown_guide(
             title="QTR Pairing Process User Guide",
             relative_path="docs/FULL_USER_GUIDE.md",
+            reopen_data_management_on_close=reopen_data_management_on_close,
         )
     
     def show_data_management_menu(self):
@@ -2841,11 +3173,12 @@ class UiManager:
         from tkinter import messagebox
         
         try:
-            # Create popup menu window with wider layout for 2x2 grid
+            # Create popup menu window with resilient one-screen sizing.
             menu_window = tk.Toplevel(self.root)
             menu_window.title("Data Management")
-            menu_window.geometry("650x550")
-            menu_window.resizable(False, False)
+            menu_window.geometry("860x720")
+            menu_window.minsize(760, 640)
+            menu_window.resizable(True, True)
             
             # Center the window
             menu_window.transient(self.root)
@@ -2855,200 +3188,1054 @@ class UiManager:
             x = self.root.winfo_x() + 50
             y = self.root.winfo_y() + 50
             menu_window.geometry(f"+{x}+{y}")
+
+            ui_tokens = {
+                "title_font": ("Arial", 16, "bold"),
+                "section_title_font": ("Arial", 12, "bold"),
+                "legend_font": ("Arial", 9),
+                "title_bg": "#dfeef4",
+                "dialog_bg": "#f5f7f9",
+                "rating_system_bg": "#e8c8cf",
+                "section_pad": 10,
+                "section_inner_pad_x": 12,
+                "section_inner_pad_y": 10,
+                "button_pad_y": 3,
+            }
+
+            section_palette = {
+                "import_export": {"bg": "#d8e9f0", "fg": "#184f63"},
+                "app_mgmt": {"bg": "#d9edd9", "fg": "#225b2a"},
+                "team_mgmt": {"bg": "#efe9d3", "fg": "#8a5b00"},
+                "db_settings": {"bg": "#ecd8dc", "fg": "#7a2c34"},
+            }
+
+            section_button_opts = {
+                "height": 1,
+                "relief": tk.RAISED,
+                "borderwidth": 1,
+            }
+
+            button_tier_styles = {
+                "primary": {"bg": "#dff0d8", "activebackground": "#cdeac0"},
+                "secondary": {},
+                "utility": {"bg": "#f3f8ff", "activebackground": "#e5f0ff"},
+            }
+
+            def create_section(parent, row, column, title, bg_color, fg_color):
+                section_frame = tk.Frame(parent, bg=bg_color, relief=tk.RAISED, borderwidth=2)
+                section_frame.grid(
+                    row=row,
+                    column=column,
+                    padx=ui_tokens["section_pad"],
+                    pady=ui_tokens["section_pad"],
+                    sticky="nsew",
+                )
+                title_label = tk.Label(
+                    section_frame,
+                    text=title,
+                    font=ui_tokens["section_title_font"],
+                    fg=fg_color,
+                    bg=bg_color,
+                )
+                title_label.pack(pady=(10, 8))
+                body_frame = tk.Frame(section_frame, bg=bg_color)
+                body_frame.pack(
+                    fill=tk.BOTH,
+                    expand=True,
+                    padx=ui_tokens["section_inner_pad_x"],
+                    pady=(0, ui_tokens["section_inner_pad_y"]),
+                )
+                return body_frame
+
+            def add_menu_button(
+                parent,
+                text,
+                action,
+                tier="secondary",
+                bg=None,
+                reopen_data_management=False,
+            ):
+                button_kwargs = dict(section_button_opts)
+                tier_style = button_tier_styles.get(tier, {})
+                button_kwargs.update(tier_style)
+                if bg is not None:
+                    button_kwargs["bg"] = bg
+                tk.Button(
+                    parent,
+                    text=text,
+                    command=lambda: self._menu_action(
+                        menu_window,
+                        action,
+                        reopen_data_management_on_complete=reopen_data_management,
+                    ),
+                    **button_kwargs,
+                ).pack(fill=tk.X, pady=ui_tokens["button_pad_y"])
+
+            def add_subsection_toggle(
+                parent,
+                bg_color,
+                collapsed_text,
+                expanded_text,
+                preference_key,
+                initially_expanded=False,
+            ):
+                is_expanded = tk.BooleanVar(value=bool(initially_expanded))
+                section_container = tk.Frame(parent, bg=bg_color)
+                section_button = tk.Button(parent, text=collapsed_text, **section_button_opts)
+
+                def apply_state():
+                    if is_expanded.get():
+                        section_container.pack(fill=tk.X, pady=(6, 0))
+                        section_button.config(text=expanded_text)
+                    else:
+                        section_container.pack_forget()
+                        section_button.config(text=collapsed_text)
+
+                def toggle_section():
+                    is_expanded.set(not is_expanded.get())
+                    apply_state()
+                    setattr(self, preference_key, bool(is_expanded.get()))
+                    self.db_preferences.update_ui_preferences({preference_key: bool(is_expanded.get())})
+
+                section_button.configure(command=toggle_section)
+                section_button.pack(fill=tk.X, pady=(6, 0))
+                apply_state()
+                return section_container
             
             # Title label
             title_label = tk.Label(menu_window, text="Data Management", 
-                                 font=("Arial", 16, "bold"), bg="lightcyan", pady=10)
+                                 font=ui_tokens["title_font"], bg=ui_tokens["title_bg"], pady=10)
             title_label.pack(fill=tk.X, padx=10, pady=(10, 15))
+
+            tk.Label(
+                menu_window,
+                text="Primary = green, Secondary = default, Utility = blue",
+                bg=ui_tokens["dialog_bg"],
+                fg="#4a4a4a",
+                font=ui_tokens["legend_font"],
+                anchor="w",
+            ).pack(fill=tk.X, padx=18, pady=(0, 6))
             
             # Create main frame for 2x2 grid layout
-            main_frame = tk.Frame(menu_window, bg="white")
-            main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+            main_frame = tk.Frame(menu_window, bg=ui_tokens["dialog_bg"])
+            main_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=10)
             
-            # Configure grid weights for equal distribution
+            # Weighted grid keeps dense sections readable while preserving one-screen layout.
             main_frame.grid_columnconfigure(0, weight=1)
             main_frame.grid_columnconfigure(1, weight=1)
-            main_frame.grid_rowconfigure(0, weight=1)
-            main_frame.grid_rowconfigure(1, weight=1)
+            main_frame.grid_rowconfigure(0, weight=3)
+            main_frame.grid_rowconfigure(1, weight=2)
             
             # TOP LEFT: Import & Export section
-            import_export_frame = tk.Frame(main_frame, bg="lightblue", relief=tk.RAISED, borderwidth=2)
-            import_export_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-            
-            import_export_label = tk.Label(import_export_frame, text="Import & Export", 
-                                         font=("Arial", 12, "bold"), fg="darkblue", bg="lightblue")
-            import_export_label.pack(pady=(10, 5))
-            
-            tk.Button(import_export_frame, text="Import CSV", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.import_csvs),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(import_export_frame, text="Export CSV", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.export_csvs),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(import_export_frame, text="Import XLSX", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.import_xlsx),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(import_export_frame, text="Export XLSX", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.export_xlsx),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
+            import_export_body = create_section(
+                main_frame,
+                0,
+                0,
+                "Import & Export",
+                section_palette["import_export"]["bg"],
+                section_palette["import_export"]["fg"],
+            )
+            add_menu_button(import_export_body, "Import CSV", self.import_csvs, tier="secondary", reopen_data_management=True)
+            add_menu_button(import_export_body, "Export CSV", self.export_csvs, tier="secondary", reopen_data_management=True)
+            add_menu_button(import_export_body, "Import XLSX", self.import_xlsx, tier="secondary", reopen_data_management=True)
+            add_menu_button(import_export_body, "Export XLSX", self.export_xlsx, tier="secondary", reopen_data_management=True)
+            add_menu_button(import_export_body, "Export Individual Ratings", self.export_individual_player_ratings, tier="primary", bg="#e6f2ff", reopen_data_management=True)
+            add_menu_button(import_export_body, "Import Individual Ratings", self.import_individual_player_ratings, tier="primary", bg="#e6f2ff", reopen_data_management=True)
+            add_menu_button(import_export_body, "Bulk Import Player Files", self.bulk_import_individual_player_ratings, tier="primary", bg="#e6f2ff", reopen_data_management=True)
             
             # TOP RIGHT: Data Management section
-            data_mgmt_frame = tk.Frame(main_frame, bg="lightgreen", relief=tk.RAISED, borderwidth=2)
-            data_mgmt_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
-            
-            data_mgmt_label = tk.Label(data_mgmt_frame, text="Data Management", 
-                                     font=("Arial", 12, "bold"), fg="darkgreen", bg="lightgreen")
-            data_mgmt_label.pack(pady=(10, 5))
-            
-            tk.Button(data_mgmt_frame, text="Load Grid", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.load_grid_data_from_db),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(data_mgmt_frame, text="Get Score", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.on_scenario_calculations),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(data_mgmt_frame, text="Refresh UI", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.update_ui),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
-            tk.Button(data_mgmt_frame, text="Clear Active Tree Cache", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.clear_generated_tree_cache_active_matchup),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(data_mgmt_frame, text="Clear All Tree Cache", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.clear_generated_tree_cache_all_matchups),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
-            tk.Button(data_mgmt_frame, text="Tooltip Numbers Guide", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.open_tooltip_numbers_guide),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(data_mgmt_frame, text="Full User Guide", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.open_full_user_guide),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
+            data_mgmt_body = create_section(
+                main_frame,
+                0,
+                1,
+                "App Mgmt & Guides",
+                section_palette["app_mgmt"]["bg"],
+                section_palette["app_mgmt"]["fg"],
+            )
+            add_menu_button(data_mgmt_body, "Clear Active Tree Cache", self.clear_generated_tree_cache_active_matchup, tier="secondary", reopen_data_management=True)
+            add_menu_button(data_mgmt_body, "Clear All Tree Cache", self.clear_generated_tree_cache_all_matchups, tier="secondary", reopen_data_management=True)
+
+            utility_body = add_subsection_toggle(
+                data_mgmt_body,
+                section_palette["app_mgmt"]["bg"],
+                "Show Guides and Logs",
+                "Hide Guides and Logs",
+                "data_mgmt_show_guides_logs",
+                initially_expanded=getattr(self, "data_mgmt_show_guides_logs", False),
+            )
+            add_menu_button(
+                utility_body,
+                "Tooltip Numbers Guide",
+                lambda: self.open_tooltip_numbers_guide(reopen_data_management_on_close=True),
+                tier="utility",
+            )
+            add_menu_button(
+                utility_body,
+                "Full User Guide",
+                lambda: self.open_full_user_guide(reopen_data_management_on_close=True),
+                tier="utility",
+            )
+            add_menu_button(
+                utility_body,
+                "Open Import Logs Folder",
+                self.open_import_logs_folder,
+                tier="utility",
+                reopen_data_management=True,
+            )
             
             # BOTTOM LEFT: Team Management section
-            team_mgmt_frame = tk.Frame(main_frame, bg="lightyellow", relief=tk.RAISED, borderwidth=2)
-            team_mgmt_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-            
-            team_mgmt_label = tk.Label(team_mgmt_frame, text="Team Management", 
-                                     font=("Arial", 12, "bold"), fg="darkorange", bg="lightyellow")
-            team_mgmt_label.pack(pady=(10, 5))
-            
-            tk.Button(team_mgmt_frame, text="Create Team", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.on_create_team),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=3)
-            tk.Button(team_mgmt_frame, text="Delete Team", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.on_delete_team),
-                     relief=tk.RAISED, borderwidth=1).pack(pady=(3, 10))
+            team_mgmt_body = create_section(
+                main_frame,
+                1,
+                0,
+                "Team Management",
+                section_palette["team_mgmt"]["bg"],
+                section_palette["team_mgmt"]["fg"],
+            )
+            add_menu_button(team_mgmt_body, "Create Team", self.on_create_team, tier="primary", reopen_data_management=True)
+            add_menu_button(team_mgmt_body, "Modify Team", self.on_modify_team, tier="primary", reopen_data_management=True)
+            add_menu_button(team_mgmt_body, "Delete Team", self.on_delete_team, tier="secondary", reopen_data_management=True)
             
             # BOTTOM RIGHT: Database section
-            database_frame = tk.Frame(main_frame, bg="mistyrose", relief=tk.RAISED, borderwidth=2)
-            database_frame.grid(row=1, column=1, padx=10, pady=10, sticky="nsew")
-            
-            print("Adding Database section to menu...")  # Debug output
-            db_label = tk.Label(database_frame, text="Database & Settings", 
-                              font=("Arial", 12, "bold"), fg="darkred", bg="mistyrose")
-            db_label.pack(pady=(10, 5))
-            
-            change_db_button = tk.Button(database_frame, text="Change Database", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.on_change_database),
-                     relief=tk.RAISED, borderwidth=1)
-            change_db_button.pack(pady=3)
-            
-            rating_system_button = tk.Button(database_frame, text="Rating System", width=20, height=1,
-                     command=lambda: self._menu_action(menu_window, self.on_configure_rating_system),
-                     relief=tk.RAISED, borderwidth=1, bg="lightpink")
-            rating_system_button.pack(pady=(3, 10))
+            database_body = create_section(
+                main_frame,
+                1,
+                1,
+                "Database & Settings",
+                section_palette["db_settings"]["bg"],
+                section_palette["db_settings"]["fg"],
+            )
+            add_menu_button(database_body, "Change Database", self.on_change_database, tier="primary", reopen_data_management=True)
+            add_menu_button(database_body, "Rating System", self.on_configure_rating_system, tier="primary", bg=ui_tokens["rating_system_bg"], reopen_data_management=True)
+
+            advanced_settings_body = add_subsection_toggle(
+                database_body,
+                section_palette["db_settings"]["bg"],
+                "Show Advanced Settings",
+                "Hide Advanced Settings",
+                "data_mgmt_show_advanced_settings",
+                initially_expanded=getattr(self, "data_mgmt_show_advanced_settings", False),
+            )
+
+            advanced_toggle_grid = tk.Frame(advanced_settings_body, bg=section_palette["db_settings"]["bg"])
+            advanced_toggle_grid.pack(fill=tk.X, pady=(0, 8))
+            advanced_toggle_grid.grid_columnconfigure(0, weight=1)
+            advanced_toggle_grid.grid_columnconfigure(1, weight=1)
 
             self.perf_logging_var = tk.IntVar(value=1 if self.perf_logging_enabled else 0)
             perf_toggle = tk.Checkbutton(
-                database_frame,
+                advanced_toggle_grid,
                 text="Perf Logging",
                 variable=self.perf_logging_var,
                 command=self._on_perf_logging_toggle,
-                bg="mistyrose"
+                bg=section_palette["db_settings"]["bg"]
             )
-            perf_toggle.pack(pady=(0, 10))
+            perf_toggle.grid(row=0, column=0, sticky="w", padx=(0, 12), pady=(0, 6))
             
             tree_autogen_toggle = tk.Checkbutton(
-                database_frame,
+                advanced_toggle_grid,
                 text="Tree Auto-Generate (restart)",
                 variable=self.tree_autogen_var,
                 command=self._on_tree_autogen_toggle,
-                bg="mistyrose"
+                bg=section_palette["db_settings"]["bg"]
             )
-            tree_autogen_toggle.pack(pady=(0, 10))
+            tree_autogen_toggle.grid(row=0, column=1, sticky="w", padx=(12, 0), pady=(0, 6))
 
             lazy_sort_toggle = tk.Checkbutton(
-                database_frame,
+                advanced_toggle_grid,
                 text="Enable Fast Lazy Sorting",
                 variable=self.lazy_sort_on_expand_var,
                 command=self._on_lazy_sort_toggle,
-                bg="mistyrose"
+                bg=section_palette["db_settings"]["bg"]
             )
-            lazy_sort_toggle.pack(pady=(0, 6))
+            lazy_sort_toggle.grid(row=1, column=1, sticky="w", padx=(12, 0), pady=(0, 6))
 
             self.persistent_memo_var = tk.IntVar(
                 value=1 if self._is_persistent_strategic_memo_enabled() else 0
             )
             persistent_memo_toggle = tk.Checkbutton(
-                database_frame,
+                advanced_toggle_grid,
                 text="Persistent Strategic Memo",
                 variable=self.persistent_memo_var,
                 command=self._on_persistent_memo_toggle,
-                bg="mistyrose"
+                bg=section_palette["db_settings"]["bg"]
             )
-            persistent_memo_toggle.pack(pady=(0, 6))
+            persistent_memo_toggle.grid(row=1, column=0, sticky="w", padx=(0, 12), pady=(0, 6))
 
             tk.Label(
-                database_frame,
+                advanced_settings_body,
                 text="Sorts expanded branches first; deeper branches sort on expand.",
-                bg="mistyrose",
+                bg=section_palette["db_settings"]["bg"],
                 fg="#5b2c2c",
                 font=("Arial", 8),
-                wraplength=220,
+                wraplength=320,
                 justify=tk.LEFT,
-            ).pack(pady=(0, 10))
-            print("Database section added successfully!")  # Debug output
+            ).pack(anchor="w", pady=(0, 10))
             
             # Close button frame at the bottom
             close_frame = tk.Frame(menu_window)
-            close_frame.pack(pady=10)
+            close_frame.pack(pady=(4, 10))
             
-            close_button = tk.Button(close_frame, text="Close", width=30, height=2,
+            close_button = tk.Button(close_frame, text="Close", width=28, height=2,
                                    command=menu_window.destroy,
                                    bg="lightcoral", fg="white", font=("Arial", 10, "bold"),
                                    relief=tk.RAISED, borderwidth=2)
             close_button.pack()
             
-            print("Data Management menu created successfully with all sections!")  # Debug output
-            
         except Exception as e:
             print(f"Error showing data management menu: {e}")
-            messagebox.showerror("Error", f"Failed to show data management menu: {e}")
+            messagebox.showerror("Data Management", self._operation_failed_error(f"could not open Data Management menu: {e}"))
     
-    def _menu_action(self, menu_window, action_func):
+    def _menu_action(self, menu_window, action_func, reopen_data_management_on_complete=False):
         """Execute menu action and close menu window."""
         try:
             menu_window.destroy()  # Close menu first
             action_func()  # Then execute the action
+            if reopen_data_management_on_complete and hasattr(self, "root") and self.root.winfo_exists():
+                self.show_data_management_menu()
         except Exception as e:
             print(f"Error executing menu action: {e}")
             from tkinter import messagebox
-            messagebox.showerror("Error", f"Failed to execute action: {e}")
+            messagebox.showerror("Data Management", self._operation_failed_error(f"menu action could not be executed: {e}"))
     
     def export_xlsx(self):
         """Export data to XLSX format - placeholder implementation."""
         from tkinter import messagebox
         try:
             # TODO: Implement XLSX export functionality
-            messagebox.showinfo("Export XLSX", "XLSX export functionality will be implemented in a future update.")
+            messagebox.showinfo("Export XLSX", self._operation_notice_info("XLSX export functionality will be implemented in a future update."))
         except Exception as e:
             print(f"Error exporting XLSX: {e}")
-            messagebox.showerror("Error", f"Failed to export XLSX: {e}")
+            messagebox.showerror("Export XLSX", self._operation_failed_error(f"could not export XLSX: {e}"))
+
+    def _import_diagnostics_dir(self):
+        directory = Path(__file__).parent.parent / "import_logs"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
+
+    def open_import_logs_folder(self):
+        """Open the import diagnostics folder in the system file explorer."""
+        try:
+            folder = self._import_diagnostics_dir()
+            if hasattr(os, "startfile"):
+                os.startfile(str(folder))
+            else:
+                messagebox.showinfo("Import Logs", self._operation_notice_info(f"Import logs folder:\n{folder}"))
+            self.logger.info("Opened import logs folder: %s", folder)
+        except Exception as exc:
+            self.logger.exception("Failed to open import logs folder")
+            messagebox.showerror("Import Logs", self._operation_failed_error(f"could not open import logs folder: {exc}"))
+
+    def _write_import_diagnostic_report(self, report: Dict[str, Any]) -> str:
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        millis = int((time.time() % 1) * 1000)
+        file_name = f"import_diagnostic_{timestamp}_{millis:03d}.json"
+        file_path = self._import_diagnostics_dir() / file_name
+        with open(file_path, "w", encoding="utf-8") as handle:
+            json.dump(report, handle, indent=2, ensure_ascii=True)
+        return str(file_path)
+
+    def _build_import_report(
+        self,
+        operation: str,
+        status: str,
+        details: Optional[Dict[str, Any]] = None,
+        exc: Optional[Exception] = None,
+    ):
+        team_name = ""
+        scenario_value = ""
+        try:
+            team_name = (self.combobox_1.get() or "").strip()
+        except Exception:
+            team_name = ""
+        try:
+            scenario_value = (self.scenario_box.get() or "").strip()
+        except Exception:
+            scenario_value = ""
+
+        report: Dict[str, Any] = {
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "operation": operation,
+            "status": status,
+            "selected_friendly_team": team_name,
+            "selected_scenario": scenario_value,
+            "database_path": getattr(self, "db_path", ""),
+            "database_name": getattr(self, "db_name", ""),
+            "details": details or {},
+        }
+
+        if exc is not None:
+            report["error"] = {
+                "type": type(exc).__name__,
+                "message": str(exc),
+                "traceback": traceback.format_exc(),
+            }
+
+        return report
+
+    def _individual_player_export_columns(self):
+        return [
+            "schema_version",
+            "app_export_version",
+            "source_db_fingerprint",
+            "source_roster_hash",
+            "source_team_id",
+            "source_team_name",
+            "source_player_id",
+            "source_player_name",
+            "opponent_team_id",
+            "opponent_team_name",
+            "opponent_player_id",
+            "opponent_player_name",
+            "scenario_id",
+            "rating",
+            "comment",
+        ]
+
+    def _partial_export_warning_text(self, actual_rows, expected_rows):
+        return (
+            f"Partial export detected (by design): file contains {actual_rows} rows; "
+            f"full matrix would be {expected_rows}. "
+            "Import will proceed and replace this player's data with only the provided rows. "
+            "Missing matchups remain absent until a later import provides them."
+        )
+
+    def _lineage_fallback_warning_text(self):
+        return (
+            "Lineage mismatch detected: source fingerprint/roster hash differs from this database. "
+            "Applying guarded name-based fallback checks."
+        )
+
+    def _schema_missing_columns_error(self, missing_columns):
+        return f"Schema validation failed: missing required columns: {', '.join(missing_columns)}"
+
+    def _schema_version_error(self, schema_version):
+        return (
+            f"Schema validation failed: unsupported schema_version '{schema_version}'. "
+            "Expected 'player_ratings_export_v1'."
+        )
+
+    def _identity_mismatch_error(self, details):
+        return f"Identity mismatch: {details}"
+
+    def _identity_resolution_error(self, details):
+        return f"Identity resolution failed: {details}"
+
+    def _operation_failed_error(self, details):
+        return f"Operation failed: {details}"
+
+    def _operation_notice_info(self, details):
+        return f"Operation notice: {details}"
+
+    def _get_selected_friendly_team(self):
+        team_name = (self.combobox_1.get() or "").strip()
+        if not team_name:
+            raise ValueError("Select a friendly team first.")
+        team_id = self.db_manager.query_team_id(team_name)
+        if team_id is None:
+            raise ValueError(f"Friendly team '{team_name}' was not found.")
+        return team_id, team_name
+
+    def _select_player_for_team(self, team_id, title, prompt):
+        players = self.db_manager.query_sql_params(
+            "SELECT player_id, player_name FROM players WHERE team_id = ? ORDER BY player_id",
+            (team_id,),
+        )
+        if not players:
+            raise ValueError("No players are available for the selected friendly team.")
+
+        selected: List[Optional[Tuple[int, str]]] = [None]
+        player_name_by_id = {pid: name for pid, name in players}
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("430x170")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        tk.Label(dialog, text=prompt, font=("Arial", 10)).pack(padx=12, pady=(15, 8), anchor="w")
+
+        var = tk.StringVar()
+        names = [name for _, name in players]
+        picker = ttk.Combobox(dialog, textvariable=var, values=names, state="readonly", width=45)
+        picker.pack(padx=12, pady=(0, 12), fill=tk.X)
+        if names:
+            var.set(names[0])
+
+        button_frame = tk.Frame(dialog)
+        button_frame.pack(fill=tk.X, padx=12, pady=(0, 12))
+
+        def on_ok():
+            chosen_name = (var.get() or "").strip()
+            if not chosen_name:
+                messagebox.showwarning("Selection Required", "Choose a player to continue.")
+                return
+            for player_id, player_name in players:
+                if player_name == chosen_name:
+                    selected[0] = (player_id, player_name)
+                    break
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        tk.Button(button_frame, text="Cancel", width=14, command=on_cancel).pack(side=tk.RIGHT, padx=(8, 0))
+        tk.Button(button_frame, text="OK", width=14, command=on_ok, bg="#dff0d8").pack(side=tk.RIGHT)
+
+        dialog.bind("<Return>", lambda _event: on_ok())
+        self.root.wait_window(dialog)
+
+        return selected[0]
+
+    def _select_team_name_for_action(self, team_names, title, prompt):
+        if not team_names:
+            raise ValueError("No teams are available.")
+
+        selected = [None]
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("430x170")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        tk.Label(dialog, text=prompt, font=("Arial", 10)).pack(padx=12, pady=(15, 8), anchor="w")
+
+        var = tk.StringVar()
+        picker = ttk.Combobox(dialog, textvariable=var, values=team_names, state="readonly", width=45)
+        picker.pack(padx=12, pady=(0, 12), fill=tk.X)
+        var.set(team_names[0])
+
+        button_frame = tk.Frame(dialog)
+        button_frame.pack(fill=tk.X, padx=12, pady=(0, 12))
+
+        def on_ok():
+            chosen = (var.get() or "").strip()
+            if not chosen:
+                messagebox.showwarning("Selection Required", "Choose a team to continue.")
+                return
+            selected[0] = chosen
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        tk.Button(button_frame, text="Cancel", width=14, command=on_cancel).pack(side=tk.RIGHT, padx=(8, 0))
+        tk.Button(button_frame, text="OK", width=14, command=on_ok, bg="#dff0d8").pack(side=tk.RIGHT)
+
+        dialog.bind("<Return>", lambda _event: on_ok())
+        self.root.wait_window(dialog)
+        return selected[0]
+
+    def export_individual_player_ratings(self):
+        try:
+            with self._busy_ui_operation("Loading - exporting individual ratings"):
+                friendly_team_id, friendly_team_name = self._get_selected_friendly_team()
+                selected_player = self._select_player_for_team(
+                    friendly_team_id,
+                    "Export Individual Player Ratings",
+                    "Select the friendly player to export:",
+                )
+                if not selected_player:
+                    return
+
+                source_player_id = selected_player[0]
+                source_player_name = selected_player[1]
+                payload = self.db_manager.export_individual_player_ratings(friendly_team_id, source_player_id)
+                rows = payload.get("rows", [])
+
+                default_name = f"{friendly_team_name}_{source_player_name}_player_ratings_export_v1.csv".replace(" ", "_")
+                file_path = filedialog.asksaveasfilename(
+                    title="Export Individual Player Ratings",
+                    initialfile=default_name,
+                    defaultextension=".csv",
+                    filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+                )
+                if not file_path:
+                    return
+
+                schema_version = "player_ratings_export_v1"
+                export_version = "1.0"
+                source_db_fingerprint = self.db_manager.get_db_fingerprint()
+                source_roster_hash = self.db_manager.get_team_roster_hash(friendly_team_id)
+
+                columns = self._individual_player_export_columns()
+                with open(file_path, mode="w", newline="", encoding="utf-8") as csvfile:
+                    writer = csv.DictWriter(csvfile, fieldnames=columns)
+                    writer.writeheader()
+
+                    for row in rows:
+                        writer.writerow(
+                            {
+                                "schema_version": schema_version,
+                                "app_export_version": export_version,
+                                "source_db_fingerprint": source_db_fingerprint,
+                                "source_roster_hash": source_roster_hash,
+                                "source_team_id": payload["source_team_id"],
+                                "source_team_name": payload["source_team_name"],
+                                "source_player_id": payload["source_player_id"],
+                                "source_player_name": payload["source_player_name"],
+                                "opponent_team_id": row["opponent_team_id"],
+                                "opponent_team_name": row["opponent_team_name"],
+                                "opponent_player_id": row["opponent_player_id"],
+                                "opponent_player_name": row["opponent_player_name"],
+                                "scenario_id": row["scenario_id"],
+                                "rating": row["rating"],
+                                "comment": row.get("comment", ""),
+                            }
+                        )
+
+                report = self._build_import_report(
+                    operation="export_individual_player_ratings",
+                    status="success",
+                    details={
+                        "source_player_id": source_player_id,
+                        "source_player_name": source_player_name,
+                        "row_count": len(rows),
+                        "file_path": file_path,
+                    },
+                )
+                log_path = self._write_import_diagnostic_report(report)
+                self.logger.info("Individual player export succeeded: player=%s rows=%s file=%s", source_player_name, len(rows), file_path)
+
+                messagebox.showinfo(
+                    "Export Complete",
+                    f"Exported {len(rows)} rows for {source_player_name}.\n\nFile:\n{file_path}\n\nDiagnostics log:\n{log_path}",
+                )
+        except Exception as exc:
+            report = self._build_import_report(
+                operation="export_individual_player_ratings",
+                status="failure",
+                details={},
+                exc=exc,
+            )
+            log_path = self._write_import_diagnostic_report(report)
+            self.logger.exception("Individual player export failed")
+            messagebox.showerror(
+                "Export Failed",
+                f"Failed to export individual player ratings:\n{exc}\n\nDiagnostics log:\n{log_path}",
+            )
+
+    def _load_individual_player_csv_rows(self, file_path):
+        with open(file_path, mode="r", newline="", encoding="utf-8-sig") as csvfile:
+            reader = csv.DictReader(csvfile)
+            required_columns = self._individual_player_export_columns()
+            fieldnames = reader.fieldnames or []
+            missing = [column for column in required_columns if column not in fieldnames]
+            if missing:
+                raise ValueError(self._schema_missing_columns_error(missing))
+
+            rows = []
+            for row in reader:
+                if not any((value or "").strip() for value in row.values()):
+                    continue
+                rows.append(row)
+
+        if not rows:
+            raise ValueError("File has no importable data rows.")
+        return rows
+
+    def _validate_individual_import_rows(
+        self,
+        rows,
+        target_team_id,
+        target_team_name,
+        target_player_id,
+        target_player_name,
+    ):
+        warnings: List[str] = []
+
+        first = rows[0]
+        if first.get("schema_version") != "player_ratings_export_v1":
+            raise ValueError(self._schema_version_error(first.get("schema_version")))
+
+        file_team_name = (first.get("source_team_name") or "").strip()
+        file_player_name = (first.get("source_player_name") or "").strip()
+
+        if file_team_name != target_team_name:
+            raise ValueError(self._identity_mismatch_error(
+                f"file source team '{file_team_name}' does not match selected friendly team '{target_team_name}'."
+            ))
+
+        if file_player_name != target_player_name:
+            raise ValueError(self._identity_mismatch_error(
+                f"file source player '{file_player_name}' does not match target player '{target_player_name}'."
+            ))
+
+        source_db_fingerprint = first.get("source_db_fingerprint", "")
+        source_roster_hash = first.get("source_roster_hash", "")
+        local_db_fingerprint = self.db_manager.get_db_fingerprint()
+        local_roster_hash = self.db_manager.get_team_roster_hash(target_team_id)
+        lineage_match = (
+            source_db_fingerprint == local_db_fingerprint
+            and source_roster_hash == local_roster_hash
+        )
+        if not lineage_match:
+            warnings.append(self._lineage_fallback_warning_text())
+
+        try:
+            file_source_player_id = DataValidator.validate_integer(first.get("source_player_id"), min_value=1)
+        except ValueError:
+            file_source_player_id = None
+
+        if lineage_match and file_source_player_id is not None and file_source_player_id != target_player_id:
+            raise ValueError(self._identity_mismatch_error(
+                f"lineage matched but source player_id {file_source_player_id} does not match selected target player_id {target_player_id}."
+            ))
+
+        import_rows = []
+        for idx, row in enumerate(rows, start=2):
+            for metadata_key in (
+                "schema_version",
+                "app_export_version",
+                "source_db_fingerprint",
+                "source_roster_hash",
+                "source_team_name",
+                "source_player_name",
+            ):
+                if (row.get(metadata_key) or "").strip() != (first.get(metadata_key) or "").strip():
+                    raise ValueError(f"Inconsistent file metadata in row {idx} for '{metadata_key}'.")
+
+            scenario_id = DataValidator.validate_integer(row.get("scenario_id"), min_value=min(SCENARIO_MAP.keys()), max_value=max(SCENARIO_MAP.keys()))
+            rating = DataValidator.validate_rating(row.get("rating"), rating_system=self.current_rating_system)
+
+            opponent_team_name = DataValidator.validate_team_name(row.get("opponent_team_name", ""))
+            opponent_player_name = DataValidator.validate_player_name(row.get("opponent_player_name", ""))
+
+            opponent_team_id = None
+            opponent_player_id = None
+
+            if lineage_match:
+                try:
+                    opponent_team_id = DataValidator.validate_integer(row.get("opponent_team_id"), min_value=1)
+                    opponent_player_id = DataValidator.validate_integer(row.get("opponent_player_id"), min_value=1)
+                except ValueError:
+                    opponent_team_id = None
+                    opponent_player_id = None
+
+            if opponent_team_id is not None and opponent_player_id is not None:
+                identity_rows = self.db_manager.query_sql_params(
+                    """
+                    SELECT p.player_name, p.team_id, t.team_name
+                    FROM players p
+                    JOIN teams t ON t.team_id = p.team_id
+                    WHERE p.player_id = ?
+                    """,
+                    (opponent_player_id,),
+                )
+                if not identity_rows:
+                    raise ValueError(self._identity_resolution_error(
+                        f"row {idx} opponent player_id {opponent_player_id} was not found in this database."
+                    ))
+
+                actual_player_name, actual_team_id, actual_team_name = identity_rows[0]
+                if actual_team_id != opponent_team_id:
+                    raise ValueError(self._identity_mismatch_error(
+                        f"row {idx} has conflicting opponent IDs (team/player mismatch)."
+                    ))
+                if actual_team_name != opponent_team_name or actual_player_name != opponent_player_name:
+                    raise ValueError(self._identity_mismatch_error(
+                        f"row {idx} opponent ID/name mismatch: file has {opponent_player_name}@{opponent_team_name}, "
+                        f"database has {actual_player_name}@{actual_team_name}."
+                    ))
+            else:
+                opponent_team_id = self.db_manager.query_team_id(opponent_team_name)
+                if opponent_team_id is None:
+                    raise ValueError(self._identity_resolution_error(
+                        f"row {idx} opponent team '{opponent_team_name}' was not found."
+                    ))
+                opponent_player_id = self.db_manager.query_player_id(opponent_player_name, opponent_team_id)
+                if opponent_player_id is None:
+                    raise ValueError(self._identity_resolution_error(
+                        f"row {idx} opponent player '{opponent_player_name}' was not found on team '{opponent_team_name}'."
+                    ))
+
+            comment = row.get("comment") or ""
+            if len(comment) > 2000:
+                raise ValueError(f"Row {idx} comment exceeds 2000 characters.")
+
+            import_rows.append(
+                {
+                    "opponent_team_id": opponent_team_id,
+                    "opponent_player_id": opponent_player_id,
+                    "scenario_id": scenario_id,
+                    "rating": rating,
+                    "comment": comment,
+                }
+            )
+
+        expected_rows_result = self.db_manager.query_sql_params(
+            "SELECT COUNT(*) FROM players WHERE team_id != ?",
+            (target_team_id,),
+        )
+        opponent_player_count = expected_rows_result[0][0] if expected_rows_result else 0
+        expected_rows = opponent_player_count * len(SCENARIO_MAP)
+        if expected_rows and len(import_rows) != expected_rows:
+            warnings.append(self._partial_export_warning_text(len(import_rows), expected_rows))
+
+        return import_rows, warnings
+
+    def _run_individual_player_import(self, file_path, target_team_id, target_team_name, target_player_id, target_player_name, require_confirmation=True):
+        rows = self._load_individual_player_csv_rows(file_path)
+        import_rows, warnings = self._validate_individual_import_rows(
+            rows,
+            target_team_id,
+            target_team_name,
+            target_player_id,
+            target_player_name,
+        )
+
+        if require_confirmation:
+            warning_text = ""
+            if warnings:
+                warning_text = "\n\nWarnings:\n- " + "\n- ".join(warnings)
+            confirmed = messagebox.askyesno(
+                "Confirm Overwrite",
+                f"Import {len(import_rows)} rows for player '{target_player_name}' on team '{target_team_name}'.\n"
+                "This will replace that player's existing ratings/comments for all opponents and scenarios."
+                f"{warning_text}",
+            )
+            if not confirmed:
+                return None
+
+        summary = self.db_manager.replace_individual_player_ratings(target_team_id, target_player_id, import_rows)
+        summary = cast(Dict[str, Any], dict(summary))
+        summary["warnings"] = warnings
+        summary["rows_in_file"] = len(import_rows)
+        return summary
+
+    def import_individual_player_ratings(self):
+        file_path = filedialog.askopenfilename(
+            title="Import Individual Player Ratings",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        if not file_path:
+            return
+        try:
+            with self._busy_ui_operation("Loading - importing individual ratings"):
+                target_team_id, target_team_name = self._get_selected_friendly_team()
+                selected_player = self._select_player_for_team(
+                    target_team_id,
+                    "Import Individual Player Ratings",
+                    "Select target friendly player for imported data:",
+                )
+                if not selected_player:
+                    return
+
+                target_player_id = selected_player[0]
+                target_player_name = selected_player[1]
+                summary = self._run_individual_player_import(
+                    file_path,
+                    target_team_id,
+                    target_team_name,
+                    target_player_id,
+                    target_player_name,
+                    require_confirmation=True,
+                )
+                if summary is None:
+                    return
+
+                self._invalidate_team_cache()
+                self._invalidate_comment_cache()
+                data_cache = getattr(self, "data_cache", None)
+                if data_cache is not None:
+                    data_cache.invalidate_ratings_cache()
+
+                self.load_grid_data_from_db(refresh_ui=True)
+                warning_text = ""
+                if summary.get("warnings"):
+                    warning_text = "\n\nWarnings:\n- " + "\n- ".join(cast(List[str], summary["warnings"]))
+
+                report = self._build_import_report(
+                    operation="import_individual_player_ratings",
+                    status="success",
+                    details={
+                        "file_path": file_path,
+                        "target_player_id": target_player_id,
+                        "target_player_name": target_player_name,
+                        "summary": summary,
+                    },
+                )
+                log_path = self._write_import_diagnostic_report(report)
+                self.logger.info("Individual player import succeeded: player=%s rows=%s file=%s", target_player_name, summary["rows_in_file"], file_path)
+
+                messagebox.showinfo(
+                    "Import Complete",
+                    f"Imported {summary['rows_in_file']} rows for {target_player_name}.\n"
+                    f"Replaced ratings: {summary['deleted_ratings']}\n"
+                    f"Replaced comments: {summary['deleted_comments']}\n"
+                    f"Upserted comments: {summary['upserted_comments']}"
+                    f"{warning_text}\n\nDiagnostics log:\n{log_path}",
+                )
+        except Exception as exc:
+            report = self._build_import_report(
+                operation="import_individual_player_ratings",
+                status="failure",
+                details={"file_path": file_path},
+                exc=exc,
+            )
+            log_path = self._write_import_diagnostic_report(report)
+            self.logger.exception("Individual player import failed: file=%s", file_path)
+            messagebox.showerror(
+                "Import Failed",
+                f"Failed to import individual player ratings:\n{exc}\n\nDiagnostics log:\n{log_path}",
+            )
+
+    def bulk_import_individual_player_ratings(self):
+        folder_path = filedialog.askdirectory(title="Select Folder With Individual Player Rating Exports")
+        if not folder_path:
+            return
+
+        file_names = sorted([name for name in os.listdir(folder_path) if name.lower().endswith(".csv")])
+        if not file_names:
+            messagebox.showwarning("Bulk Import", "No CSV files were found in the selected folder.")
+            return
+
+        proceed = messagebox.askyesno(
+            "Confirm Bulk Import",
+            f"Found {len(file_names)} CSV files.\n\n"
+            "Bulk import will replace each matched player's ratings/comments. Continue?",
+        )
+        if not proceed:
+            return
+
+        try:
+            with self._busy_ui_operation("Loading - bulk importing player ratings"):
+                target_team_id, target_team_name = self._get_selected_friendly_team()
+
+                succeeded = 0
+                failed = 0
+                results = []
+                per_file_reports: List[Dict[str, Any]] = []
+
+                for file_name in file_names:
+                    file_path = os.path.join(folder_path, file_name)
+                    try:
+                        rows = self._load_individual_player_csv_rows(file_path)
+                        first = rows[0]
+                        file_player_name = (first.get("source_player_name") or "").strip()
+                        file_player_id = None
+                        try:
+                            file_player_id = DataValidator.validate_integer(first.get("source_player_id"), min_value=1)
+                        except ValueError:
+                            file_player_id = None
+
+                        target_player_id = None
+                        target_player_name = file_player_name
+
+                        local_db_fingerprint = self.db_manager.get_db_fingerprint()
+                        local_roster_hash = self.db_manager.get_team_roster_hash(target_team_id)
+                        lineage_match = (
+                            (first.get("source_db_fingerprint") or "") == local_db_fingerprint
+                            and (first.get("source_roster_hash") or "") == local_roster_hash
+                        )
+
+                        if lineage_match and file_player_id is not None:
+                            verify_rows = self.db_manager.query_sql_params(
+                                "SELECT player_name FROM players WHERE player_id = ? AND team_id = ?",
+                                (file_player_id, target_team_id),
+                            )
+                            if verify_rows:
+                                if verify_rows[0][0] != file_player_name:
+                                    raise ValueError(self._identity_mismatch_error(
+                                        f"lineage-matched file identity has player_id {file_player_id} with mismatched name '{file_player_name}'."
+                                    ))
+                                target_player_id = file_player_id
+
+                        if target_player_id is None:
+                            target_player_id = self.db_manager.query_player_id(file_player_name, target_team_id)
+                            if target_player_id is None:
+                                raise ValueError(self._identity_resolution_error(
+                                    f"could not map player '{file_player_name}' in selected team '{target_team_name}'."
+                                ))
+
+                        summary = self._run_individual_player_import(
+                            file_path,
+                            target_team_id,
+                            target_team_name,
+                            target_player_id,
+                            file_player_name,
+                            require_confirmation=False,
+                        )
+                        if summary is None:
+                            raise ValueError("Import canceled.")
+                        succeeded += 1
+                        result_line = f"Success: {file_name} -> {file_player_name} ({summary['rows_in_file']} rows)"
+                        summary_warnings = cast(List[str], summary.get("warnings") or [])
+                        if summary_warnings:
+                            result_line += "\n   Warnings:\n   - " + "\n   - ".join(summary_warnings)
+                        results.append(result_line)
+                        per_file_reports.append(
+                            {
+                                "file": file_name,
+                                "status": "success",
+                                "target_player_id": target_player_id,
+                                "target_player_name": file_player_name,
+                                "summary": summary,
+                            }
+                        )
+                    except Exception as exc:
+                        failed += 1
+                        results.append(f"Failure: {file_name} -> {exc}")
+                        per_file_reports.append(
+                            {
+                                "file": file_name,
+                                "status": "failure",
+                                "error_type": type(exc).__name__,
+                                "error_message": str(exc),
+                                "traceback": traceback.format_exc(),
+                            }
+                        )
+                        self.logger.exception("Bulk import file failed: %s", file_path)
+
+                self._invalidate_team_cache()
+                self._invalidate_comment_cache()
+                data_cache = getattr(self, "data_cache", None)
+                if data_cache is not None:
+                    data_cache.invalidate_ratings_cache()
+
+                self.load_grid_data_from_db(refresh_ui=True)
+                details = "\n".join(results[:20])
+                if len(results) > 20:
+                    details += f"\n... and {len(results) - 20} more"
+
+                report = self._build_import_report(
+                    operation="bulk_import_individual_player_ratings",
+                    status="success" if failed == 0 else "partial_failure",
+                    details={
+                        "folder_path": folder_path,
+                        "file_count": len(file_names),
+                        "succeeded": succeeded,
+                        "failed": failed,
+                        "files": per_file_reports,
+                    },
+                )
+                log_path = self._write_import_diagnostic_report(report)
+                self.logger.info("Bulk import finished: succeeded=%s failed=%s folder=%s", succeeded, failed, folder_path)
+
+                messagebox.showinfo(
+                    "Bulk Import Complete",
+                    f"Succeeded: {succeeded}\nFailed: {failed}\n\n{details}\n\nDiagnostics log:\n{log_path}",
+                )
+        except Exception as exc:
+            report = self._build_import_report(
+                operation="bulk_import_individual_player_ratings",
+                status="failure",
+                details={"folder_path": folder_path, "file_count": len(file_names)},
+                exc=exc,
+            )
+            log_path = self._write_import_diagnostic_report(report)
+            self.logger.exception("Bulk import aborted")
+            messagebox.showerror(
+                "Bulk Import Failed",
+                f"Bulk import failed:\n{exc}\n\nDiagnostics log:\n{log_path}",
+            )
     
     def on_generate_combinations(self):
         with self._busy_ui_operation("Loading - generating combinations"):
-            # Create matchup output panel on first use
-            if not self.matchup_output_panel_created:
-                self.create_matchup_output_panel()
-                self.matchup_output_panel_created = True
+            # Ensure matchup output panel is available before generate/extract flows.
+            self._ensure_matchup_output_panel()
 
             cache_key = self._build_tree_cache_key()
             our_team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
@@ -3700,9 +4887,12 @@ class UiManager:
             for scenario in self.scenario_map.values():
                 # if self.print_output:print(scenario)
                 scenarios.append(scenario)
-            self.scenario_box['values'] = scenarios
+            self._set_combobox_values_if_changed(self.scenario_box, scenarios)
         else:
-            self.scenario_box['values'] = ("1 - Recon","2 - Battle Lines","3 - Wolves At Our Heels","4 - Payload","5 - Two Fronts","6 - Invasion")
+            self._set_combobox_values_if_changed(
+                self.scenario_box,
+                ["1 - Recon", "2 - Battle Lines", "3 - Wolves At Our Heels", "4 - Payload", "5 - Two Fronts", "6 - Invasion"],
+            )
 
     def _on_team_box_change_traced(self, *args):
         start_time = time.perf_counter()
@@ -3770,7 +4960,7 @@ class UiManager:
         with self.perf.span("ui.update_ui.set_team_dropdowns"):
             self.set_team_dropdowns()
         with self.perf.span("ui.update_ui.load_grid"):
-            self.load_grid_data_from_db()
+            self.load_grid_data_from_db(force_reload=True)
         # print(self.extract_ratings())
 
     def _apply_team_change_updates(self):
@@ -3781,22 +4971,25 @@ class UiManager:
         try:
             self._invalidate_tree_cache("team_change")
             with self.perf.span("teams.change.load_grid"):
-                self.load_grid_data_from_db(refresh_ui=True)
+                self.load_grid_data_from_db(refresh_ui=True, force_reload=True)
         finally:
             self._team_change_in_progress = False
 
     def _apply_scenario_change_updates(self):
         self._invalidate_tree_cache("scenario_change")
         with self.perf.span("scenario.change.load_grid"):
-            self.load_grid_data_from_db(refresh_ui=True)
+            self.load_grid_data_from_db(refresh_ui=True, force_reload=True)
 
     def _post_grid_load_refresh(self):
-        self._invalidate_comment_cache()
+        refresh_signature = self._build_post_load_refresh_signature()
+        if refresh_signature == self._last_post_load_refresh_signature and not self._grid_dirty:
+            self._skip_noop("post.load.refresh.skipped", "no_change", throttle_ms=300.0)
+            return
+
         self.update_comment_indicators()
         self._schedule_scenario_calculations(immediate=True)
         self._set_grid_dirty(False)
-        if self.tree_autogen_enabled:
-            self._schedule_tree_autogenerate()
+        self._last_post_load_refresh_signature = refresh_signature
 
     def _invalidate_team_cache(self, team_name: Optional[str] = None):
         if team_name:
@@ -3806,6 +4999,7 @@ class UiManager:
 
     def _invalidate_comment_cache(self):
         self._comment_cache.clear()
+        self._last_comment_indicator_signature = None
 
     def _get_team_data(self, team_name: str) -> Optional[Dict[str, Any]]:
         if not team_name:
@@ -3880,68 +5074,67 @@ class UiManager:
 
     def set_team_dropdowns(self):
         team_names = self.select_team_names()
-        self.combobox_1['values'] = team_names
-        self.combobox_2['values'] = team_names
+        self._set_combobox_values_if_changed(self.combobox_1, team_names)
+        self._set_combobox_values_if_changed(self.combobox_2, team_names)
 
         if not self._team_dropdowns_initialized:
             self._team_dropdowns_initialized = True
-        
-        # DEBUG MODE AUTO-POPULATION:
-        # When running under a debugger, automatically load the first two teams to reduce
-        # manual clicking during development testing.
-        # 
-        # Detection Method: sys.gettrace() returns a trace function when Python's trace/debug
-        # mechanism is active. This works with most Python debuggers including:
-        # - VS Code's debugpy (current development environment)
-        # - PyCharm debugger
-        # - pdb (Python's built-in debugger)
-        # - Most IDE debuggers that use Python's trace mechanism
-        #
-        # Known Limitations:
-        # - May also trigger when code coverage tools or profilers are running
-        # - Some custom debuggers might not use Python's trace mechanism
-        # - Not 100% universal across all debugging environments
-        #
-        # Alternative Implementation (if needed):
-        # If more explicit control is needed, could use environment variable:
-        #   if os.getenv('DEBUG_MODE') == 'true':
-        # Then set in launch.json: "env": {"DEBUG_MODE": "true"}
-        #
-        # Decision: Current approach sufficient for single-developer workflow.
-        import sys
-        
-        # Check if debugpy (VS Code debugger) is loaded
-        # This is more reliable than sys.gettrace() for VS Code debugging
-        # since gettrace() may not be active during early initialization
-        is_debugging = 'debugpy' in sys.modules or sys.gettrace() is not None
-        
-        # Update debug mode flag (already set in __init__ but recheck here for auto-population)
-        self.is_debugging = is_debugging
-        
-        print(f"DEBUG: debugpy in sys.modules = {'debugpy' in sys.modules}")
-        print(f"DEBUG: sys.gettrace() = {sys.gettrace()}")
-        print(f"DEBUG: is_debugging = {is_debugging}")
-        print(f"DEBUG: Number of teams available: {len(team_names)}")
-        print(f"DEBUG: Teams: {team_names[:5] if len(team_names) > 5 else team_names}")
-        
-        if is_debugging and not self._auto_populated_teams:
-            print("DEBUG: Debugger detected - auto-populating teams")
-            if len(team_names) >= 2 and not self.combobox_1.get() and not self.combobox_2.get():
-                self.combobox_1.set(team_names[0])
-                self.combobox_2.set(team_names[1])
-                print(f"DEBUG: Set Team 1: {team_names[0]}, Team 2: {team_names[1]}")
-                # Trigger data load after setting teams (100ms delay ensures UI is ready)
-                self.root.after(100, self.load_grid_data_from_db)
-                self._auto_populated_teams = True
-            else:
-                print("DEBUG: Not enough teams in database to auto-populate")
-        else:
-            print("DEBUG: No debugger detected - skipping auto-population")
 
-    def load_grid_data_from_db(self, refresh_ui: bool = True):
-        self._start_grid_load(refresh_ui=refresh_ui)
+        # Auto-populate once during debug sessions to reduce manual setup.
+        if self._auto_populated_teams:
+            return
+        if not self.is_debugging:
+            return
 
-    def _start_grid_load(self, refresh_ui: bool = True):
+        if len(team_names) >= 2 and not self.combobox_1.get() and not self.combobox_2.get():
+            self.combobox_1.set(team_names[0])
+            self.combobox_2.set(team_names[1])
+            # Trigger data load after setting teams (100ms delay ensures UI is ready)
+            self.root.after(100, self.load_grid_data_from_db)
+            self._auto_populated_teams = True
+            if self.print_output:
+                print(f"DEBUG: Auto-populated teams: {team_names[0]} vs {team_names[1]}")
+
+    def _set_combobox_values_if_changed(self, combobox: ttk.Combobox, values: List[str]) -> bool:
+        """Apply combobox value options only when the option list has changed."""
+        normalized_values = tuple(values)
+        current_values = tuple(combobox.cget('values'))
+        if current_values == normalized_values:
+            return False
+        combobox['values'] = normalized_values
+        return True
+
+    def load_grid_data_from_db(self, refresh_ui: bool = True, force_reload: bool = False):
+        self._start_grid_load(refresh_ui=refresh_ui, force_reload=force_reload)
+
+    def _should_process_grid_load_request(self, request_key: tuple, force_reload: bool = False) -> bool:
+        now = time.perf_counter()
+        last_key = self._last_grid_load_request_key
+        elapsed_s = now - self._last_grid_load_request_at
+
+        if force_reload:
+            self._last_grid_load_request_key = request_key
+            self._last_grid_load_request_at = now
+            return True
+
+        if self._grid_load_in_flight and request_key == last_key:
+            self._skip_noop("grid.load.skipped_duplicate", "in_flight", throttle_ms=200.0)
+            return False
+
+        if request_key == last_key and elapsed_s <= self._grid_load_duplicate_window_s and not self._grid_dirty:
+            self._skip_noop(
+                "grid.load.skipped_duplicate",
+                "burst_window",
+                throttle_ms=250.0,
+                window_elapsed_ms=f"{elapsed_s * 1000.0:.2f}",
+            )
+            return False
+
+        self._last_grid_load_request_key = request_key
+        self._last_grid_load_request_at = now
+        return True
+
+    def _start_grid_load(self, refresh_ui: bool = True, force_reload: bool = False):
         team_1 = self.combobox_1.get().strip()
         team_2 = self.combobox_2.get().strip()
 
@@ -3955,6 +5148,21 @@ class UiManager:
             self.scenario_box.set("0 - Neutral")
             scenario = self.scenario_box.get()[:1]
         scenario_id = int(scenario)
+
+        selection_key = (team_1, team_2, scenario_id)
+        if (
+            not force_reload
+            and self._last_applied_grid_selection_key == selection_key
+            and not self._grid_dirty
+        ):
+            self._skip_noop("grid.load.skipped_duplicate", "selection_clean", throttle_ms=300.0)
+            if refresh_ui:
+                self._post_grid_load_refresh()
+            return
+
+        request_key = (team_1, team_2, scenario_id, bool(refresh_ui))
+        if not self._should_process_grid_load_request(request_key, force_reload=force_reload):
+            return
 
         if self._background_load_enabled and hasattr(self, 'root'):
             self._grid_load_generation += 1
@@ -4023,6 +5231,9 @@ class UiManager:
 
         ratings_rows = self.db_manager.query_sql(ratings_sql)
         return {
+            'team_1_name': team_1,
+            'team_2_name': team_2,
+            'scenario_id': scenario_id,
             'team_1_dict': team_1_dict,
             'team_2_dict': team_2_dict,
             'ratings_rows': ratings_rows
@@ -4048,6 +5259,9 @@ class UiManager:
         return {'team_id': team_id, 'players': players}
 
     def _apply_grid_snapshot(self, snapshot: Dict[str, Any], refresh_ui: bool = True):
+        team_1_name = snapshot.get('team_1_name', '').strip()
+        team_2_name = snapshot.get('team_2_name', '').strip()
+        scenario_id = snapshot.get('scenario_id')
         team_1_dict = snapshot['team_1_dict']
         team_2_dict = snapshot['team_2_dict']
         ratings_rows = snapshot['ratings_rows']
@@ -4076,6 +5290,9 @@ class UiManager:
 
         # End batch mode - this triggers single batch notification
         self.grid_data_model.end_batch()
+
+        if team_1_name and team_2_name and isinstance(scenario_id, int):
+            self._last_applied_grid_selection_key = (team_1_name, team_2_name, scenario_id)
 
         # Refresh UI from model after batch load
         self.grid_data_model._notify_observers('grid_loaded')
@@ -4245,6 +5462,99 @@ class UiManager:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to create/update team: {str(e)}")
             print(f"create_team error: {e}")
+
+    def modify_team(self):
+        """Modify an existing team name and/or player names while preserving team/player IDs."""
+        team_names = self.select_team_names()
+        if not team_names:
+            messagebox.showerror("Error", "No teams are available to modify.")
+            return
+
+        selected_team = self._select_team_name_for_action(
+            sorted(team_names),
+            "Modify Team",
+            "Select the team you want to modify:",
+        )
+        if selected_team is None:
+            return
+
+        selected_team = selected_team.strip()
+        if selected_team not in team_names:
+            messagebox.showerror("Error", f"Team '{selected_team}' was not found.")
+            return
+
+        team_id = self.db_manager.query_team_id(selected_team)
+        if team_id is None:
+            messagebox.showerror("Error", f"Failed to resolve team ID for '{selected_team}'.")
+            return
+
+        try:
+            players = self.db_manager.query_players(team_id)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load team roster: {str(e)}")
+            return
+        if not players or len(players) != 5:
+            messagebox.showerror("Error", f"Team '{selected_team}' does not have a valid 5-player roster.")
+            return
+
+        existing_other_team_names = [name for name in team_names if name != selected_team]
+        initial_player_names = [row[1] for row in players]
+        dialog = CreateTeamDialog(
+            self.root,
+            existing_other_team_names,
+            dialog_title="Modify Team",
+            confirm_button_text="Save Changes",
+            initial_team_name=selected_team,
+            initial_player_names=initial_player_names,
+            team_exists_behavior="error",
+        )
+        result = dialog.show()
+        if result is None:
+            return
+
+        updated_team_name = result["team_name"]
+        updated_player_names = result["player_names"]
+
+        no_name_change = updated_team_name == selected_team
+        no_player_change = updated_player_names == initial_player_names
+        if no_name_change and no_player_change:
+            messagebox.showinfo("No Changes", f"No updates were made to '{selected_team}'.")
+            return
+
+        try:
+            if updated_team_name != selected_team:
+                self.db_manager.rename_team(team_id, updated_team_name)
+
+            # Use stable player IDs to avoid disturbing ratings/comments relationships.
+            for (player_id, current_player_name), updated_player_name in zip(players, updated_player_names):
+                if current_player_name != updated_player_name:
+                    self.db_manager.rename_player(player_id, team_id, updated_player_name)
+
+            self._invalidate_team_cache()
+            self._invalidate_comment_cache()
+            self.set_team_dropdowns()
+            self.update_ui()
+
+            changed_items = []
+            if updated_team_name != selected_team:
+                changed_items.append(f"Team renamed to '{updated_team_name}'")
+            changed_players = [
+                (old, new)
+                for old, new in zip(initial_player_names, updated_player_names)
+                if old != new
+            ]
+            if changed_players:
+                changed_items.append(
+                    "Player updates:\n" + "\n".join([f"- {old} -> {new}" for old, new in changed_players])
+                )
+
+            messagebox.showinfo(
+                "Success",
+                "Team updated successfully.\n\n" + "\n\n".join(changed_items),
+            )
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to modify team: {str(e)}")
+            print(f"modify_team error: {e}")
 
     def delete_team(self):
         # Fetch existing team names
@@ -4570,10 +5880,23 @@ class UiManager:
         return True
 
     def create_tooltip(self, widget, text):
+        theme = getattr(self, "ui_theme", {})
         tooltip = tk.Toplevel(widget)
         tooltip.wm_overrideredirect(True)
         tooltip.wm_geometry(f"+{widget.winfo_rootx() + 20}+{widget.winfo_rooty() + 20}")
-        label = tk.Label(tooltip, text=text, background="yellow", relief="solid", borderwidth=1, padx=2, pady=2)
+        label = tk.Label(
+            tooltip,
+            text=text,
+            background=theme.get("tooltip_bg", "#f8f4d8"),
+            foreground=theme.get("tooltip_fg", "#2f3b4a"),
+            relief="solid",
+            borderwidth=1,
+            padx=theme.get("tooltip_pad_x", 7),
+            pady=theme.get("tooltip_pad_y", 5),
+            font=theme.get("tooltip_body_font", ("Arial", 9)),
+            justify=tk.LEFT,
+            anchor=tk.W,
+        )
         label.pack()
         tooltip.withdraw()
 
@@ -4629,6 +5952,7 @@ class UiManager:
 
     def clear_comment_indicators(self):
         """Clear all existing comment indicators"""
+        self._last_comment_indicator_signature = None
         # Cancel all pending callbacks first
         if hasattr(self, 'comment_indicator_callbacks'):
             for callback_id in self.comment_indicator_callbacks.values():
@@ -4654,13 +5978,13 @@ class UiManager:
 
     def update_comment_indicators(self):
         """Update corner indicators for cells that have comments"""
-        # Clear existing indicators first
-        self.clear_comment_indicators()
-
         comment_map = self._get_comment_map_for_current_selection()
         if not comment_map:
+            if self.comment_indicators:
+                self.clear_comment_indicators()
             return
 
+        desired_cells = set()
         for row in range(1, 6):
             friendly_player = self.grid_data_model.get_rating(row, 0)
             if not friendly_player:
@@ -4670,7 +5994,24 @@ class UiManager:
                 if not opponent_player:
                     continue
                 if (friendly_player, opponent_player) in comment_map:
-                    self.add_comment_indicator(row, col)
+                    desired_cells.add((row, col))
+
+        team1_name = self.team1_var.get().strip() if hasattr(self, 'team1_var') else ''
+        team2_name = self.team2_var.get().strip() if hasattr(self, 'team2_var') else ''
+        scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
+        desired_signature = (team1_name, team2_name, scenario_id, tuple(sorted(desired_cells)))
+        current_cells = set(self.comment_indicators.keys())
+        if desired_signature == self._last_comment_indicator_signature and current_cells == desired_cells:
+            self._skip_noop("comments.indicators.skipped", "no_change", throttle_ms=300.0)
+            return
+
+        # Clear existing indicators first
+        self.clear_comment_indicators()
+
+        for row, col in sorted(desired_cells):
+            self.add_comment_indicator(row, col)
+
+        self._last_comment_indicator_signature = desired_signature
 
     def add_comment_indicator(self, row, col):
         """Add a small corner indicator for comments"""
@@ -5075,14 +6416,14 @@ class UiManager:
         if not hasattr(self, 'sort_guidance_label'):
             return
         hint_map = {
-            None: "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
-            "none": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
-            "cumulative": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
-            "confidence": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
-            "resistance": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax",
-            "strategic3": "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax"
+            None: self.sort_guidance_text,
+            "none": self.sort_guidance_text,
+            "cumulative": self.sort_guidance_text,
+            "confidence": self.sort_guidance_text,
+            "resistance": self.sort_guidance_text,
+            "strategic3": self.sort_guidance_text,
         }
-        hint = hint_map.get(self.active_sort_mode, "Sort guidance:\nCumulative: steady paths\nConfidence: low-variance wins\nCounter: resilient picks\nStrategic: balanced minimax")
+        hint = hint_map.get(self.active_sort_mode, self.sort_guidance_text)
         self.sort_guidance_label.config(text=hint)
 
     def _load_pairing_notes(self):
@@ -5114,25 +6455,49 @@ class UiManager:
     def create_matchup_output_panel(self, parent: Optional[tk.Frame] = None):
         """Create a panel to display the final 5 matchups in a simple format."""
         try:
+            theme = getattr(self, "ui_theme", {})
             target_parent = parent if parent is not None else self.matchup_output_container
+            existing_frame = getattr(self, "output_panel_frame", None)
+            if existing_frame is not None:
+                try:
+                    if existing_frame.winfo_exists():
+                        existing_frame.destroy()
+                except tk.TclError:
+                    pass
             # Create output panel frame below the tree section
-            self.output_panel_frame = tk.Frame(target_parent, relief=tk.RIDGE, borderwidth=2, bg="lightyellow")
-            self.output_panel_frame.pack(side=tk.TOP, fill=tk.BOTH, padx=5, pady=5, expand=True)
+            self.output_panel_frame = tk.Frame(
+                target_parent,
+                relief=tk.RIDGE,
+                borderwidth=2,
+                bg=theme.get("bg_highlight", "lightyellow"),
+            )
+            self.output_panel_frame.pack(
+                side=tk.TOP,
+                fill=tk.BOTH,
+                padx=theme.get("pad_sm", 5),
+                pady=theme.get("pad_sm", 5),
+                expand=True,
+            )
             
             # Panel title
-            title_label = tk.Label(self.output_panel_frame, text="Final Matchups Output", 
-                                 font=("Arial", 12, "bold"), bg="lightyellow")
+            title_label = tk.Label(
+                self.output_panel_frame,
+                text="Final Matchups Output",
+                font=theme.get("font_title", ("Arial", 12, "bold")),
+                bg=theme.get("bg_highlight", "lightyellow"),
+                fg=theme.get("fg_primary", "black"),
+            )
             title_label.pack(pady=(5, 0))
 
-            summary_frame = tk.Frame(self.output_panel_frame, bg="lightyellow")
+            summary_frame = tk.Frame(self.output_panel_frame, bg=theme.get("bg_highlight", "lightyellow"))
             summary_frame.pack(fill=tk.X, padx=10, pady=(2, 6))
 
             self.summary_matchups_label = tk.Label(
                 summary_frame,
                 text="Final matchups: Not extracted yet",
-                font=("Arial", 9),
-                bg="lightyellow",
-                fg="#333333",
+                font=theme.get("font_body", ("Arial", 9)),
+                bg=theme.get("bg_highlight", "lightyellow"),
+                fg=theme.get("fg_muted", "#333333"),
                 justify=tk.LEFT,
                 anchor=tk.W,
                 wraplength=360
@@ -5142,9 +6507,9 @@ class UiManager:
             self.summary_spread_label = tk.Label(
                 summary_frame,
                 text="Best/Worst spread: --",
-                font=("Arial", 9),
-                bg="lightyellow",
-                fg="#333333",
+                font=theme.get("font_body", ("Arial", 9)),
+                bg=theme.get("bg_highlight", "lightyellow"),
+                fg=theme.get("fg_muted", "#333333"),
                 justify=tk.LEFT,
                 anchor=tk.W
             )
@@ -5162,17 +6527,25 @@ class UiManager:
             # Instructions
             instructions = tk.Label(self.output_panel_frame, 
                                   text="Select a pairing from the tree above, then click 'Extract Matchups' to display the 5 final matchups:",
-                                  font=("Arial", 9), bg="lightyellow", fg="darkblue")
+                                  font=theme.get("font_body", ("Arial", 9)),
+                                  bg=theme.get("bg_highlight", "lightyellow"),
+                                  fg=theme.get("fg_muted", "darkblue"))
             instructions.pack(pady=(0, 5))
             
             # Button and checkbox frame
-            button_frame = tk.Frame(self.output_panel_frame, bg="lightyellow")
+            button_frame = tk.Frame(self.output_panel_frame, bg=theme.get("bg_highlight", "lightyellow"))
             button_frame.pack(pady=5)
             
             # Extract button
-            extract_button = tk.Button(button_frame, text="Extract Matchups", 
-                                     command=self.extract_final_matchups, font=("Arial", 10, "bold"),
-                                     bg="lightgreen", relief=tk.RAISED)
+            extract_button = tk.Button(
+                button_frame,
+                text="Extract Matchups",
+                command=self.extract_final_matchups,
+                font=theme.get("font_body_bold", ("Arial", 9, "bold")),
+                bg=theme.get("bg_primary", "lightgreen"),
+                fg=theme.get("fg_primary", "black"),
+                relief=tk.RAISED,
+            )
             extract_button.pack(side=tk.LEFT, padx=(0, 10))
             
             # Verbose mode checkbox
@@ -5184,12 +6557,13 @@ class UiManager:
             verbose_checkbox = tk.Checkbutton(button_frame, text="Verbose Output",
                                             variable=self.verbose_matchup_var,
                                             command=self.on_verbose_mode_changed,
-                                            font=("Arial", 9), bg="lightyellow")
+                                            font=theme.get("font_body", ("Arial", 9)),
+                                            bg=theme.get("bg_highlight", "lightyellow"))
             verbose_checkbox.pack(side=tk.LEFT)
             
             # Text area for matchups display
             self.matchups_text = tk.Text(self.output_panel_frame, height=8, width=80, 
-                                       font=("Consolas", 10), bg="white", relief=tk.SUNKEN,
+                                       font=theme.get("font_mono", ("Consolas", 10)), bg="white", relief=tk.SUNKEN,
                                        borderwidth=2, wrap=tk.WORD)
             self.matchups_text.pack(padx=10, pady=(0, 10), fill=tk.BOTH, expand=True)
             
@@ -5201,11 +6575,14 @@ class UiManager:
             
             # Copy button
             copy_button = tk.Button(self.output_panel_frame, text="Copy to Clipboard", 
-                                  command=self.copy_matchups_to_clipboard, font=("Arial", 9),
-                                  bg="lightblue", relief=tk.RAISED)
+                                  command=self.copy_matchups_to_clipboard,
+                                  font=theme.get("font_body", ("Arial", 9)),
+                                  bg=theme.get("bg_secondary", "lightblue"), relief=tk.RAISED)
             copy_button.pack(pady=(0, 5))
             
         except Exception as e:
+            if hasattr(self, "logger"):
+                self.logger.exception("Failed to create matchup output panel")
             print(f"Error creating matchup output panel: {e}")
             messagebox.showerror("Error", f"Failed to create matchup output panel: {e}")
 
@@ -5342,6 +6719,7 @@ class UiManager:
     def _ensure_tree_explain_tooltip(self):
         if self._tree_explain_tooltip:
             return
+        theme = getattr(self, "ui_theme", {})
         self._tree_explain_tooltip = tk.Toplevel(self.root)
         self._tree_explain_tooltip.wm_overrideredirect(True)
         self._tree_explain_tooltip.wm_attributes("-topmost", True)
@@ -5350,12 +6728,13 @@ class UiManager:
             self._tree_explain_tooltip,
             text="",
             justify=tk.LEFT,
-            background="#fff9d8",
+            background=theme.get("tooltip_bg", "#f8f4d8"),
+            foreground=theme.get("tooltip_fg", "#2f3b4a"),
             relief=tk.SOLID,
             borderwidth=1,
-            padx=6,
-            pady=4,
-            font=("Consolas", 8)
+            padx=theme.get("tooltip_pad_x", 7),
+            pady=theme.get("tooltip_pad_y", 5),
+            font=theme.get("tooltip_mono_font", ("Consolas", 8)),
         )
         self._tree_explain_tooltip_label.pack(fill=tk.BOTH, expand=True)
 
@@ -5482,6 +6861,13 @@ class UiManager:
     def extract_final_matchups(self):
         """Extract the final 5 matchups from the currently selected tree item."""
         try:
+            if not self._ensure_matchup_output_panel():
+                messagebox.showerror(
+                    "Matchup Output Unavailable",
+                    "Could not initialize the matchup output panel. Please restart the app.",
+                )
+                return
+
             # Get selected item from tree
             selected_item = self.treeview.tree.selection()
             
@@ -5815,6 +7201,7 @@ class UiManager:
     
     def _update_comment_indicator(self, row: int, col: int, has_comment: bool):
         """Update visual comment indicator for cell without altering rating-based color."""
+        self._last_comment_indicator_signature = None
         widget = self.grid_widgets[row][col]
         if not (widget and row > 0 and col > 0):
             return

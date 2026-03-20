@@ -12,33 +12,49 @@ class LazyTreeView(ttk.Frame):
         
         self.tree = ttk.Treeview(self, **kwargs)
         self.tree.grid(row=0, column=0, sticky='nsew')
-        
-        self.vsb = ttk.Scrollbar(self, orient='vertical', command=self.tree.yview)
-        self.hsb = ttk.Scrollbar(self, orient='horizontal', command=self.tree.xview)
+
+        # Create scrollbars lazily only when content overflows.
+        self.vsb = None
+        self.hsb = None
         
         self.tree.configure(yscrollcommand=self._on_yscroll, xscrollcommand=self._on_xscroll)
         
         self.vsb_visible = False
         self.hsb_visible = False
+        self._scrollbar_refresh_job = None
         
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
         
-        self.tree.bind('<Configure>', self._update_scrollbars)
+        self.tree.bind('<Configure>', self._schedule_scrollbar_update)
 
-        self.tree.bind('<<TreeviewOpen>>', self.on_open)
-        self.tree.bind('<<TreeviewSelect>>', self.on_select)
-        self.tree.bind('<<TreeviewClose>>', self.on_close)
+        if self.enable_demo_population or self.print_output:
+            self.tree.bind('<<TreeviewOpen>>', self.on_open)
+            self.tree.bind('<<TreeviewSelect>>', self.on_select)
+            self.tree.bind('<<TreeviewClose>>', self.on_close)
+
+    def _ensure_scrollbar(self, orient):
+        if orient == 'y':
+            if self.vsb is None:
+                self.vsb = ttk.Scrollbar(self, orient='vertical', command=self.tree.yview)
+            return self.vsb
+
+        if self.hsb is None:
+            self.hsb = ttk.Scrollbar(self, orient='horizontal', command=self.tree.xview)
+        return self.hsb
 
     def _on_yscroll(self, *args):
-        self.vsb.set(*args)
-        self._toggle_scrollbar(self.vsb, 'y', *args)
+        if self.vsb is not None:
+            self.vsb.set(*args)
+        self._toggle_scrollbar('y', *args)
 
     def _on_xscroll(self, *args):
-        self.hsb.set(*args)
-        self._toggle_scrollbar(self.hsb, 'x', *args)
+        if self.hsb is not None:
+            self.hsb.set(*args)
+        self._toggle_scrollbar('x', *args)
 
-    def _toggle_scrollbar(self, scrollbar, orient, *args):
+    def _toggle_scrollbar(self, orient, *args):
+        scrollbar = self._ensure_scrollbar(orient)
         if float(args[1]) - float(args[0]) < 1.0:
             if orient == 'y' and not self.vsb_visible:
                 self.vsb.grid(row=0, column=1, sticky='ns')
@@ -54,10 +70,15 @@ class LazyTreeView(ttk.Frame):
                 self.hsb.grid_remove()
                 self.hsb_visible = False
 
-    def _update_scrollbars(self, event):
-        self.tree.update_idletasks()
-        self._toggle_scrollbar(self.vsb, 'y', *self.tree.yview())
-        self._toggle_scrollbar(self.hsb, 'x', *self.tree.xview())
+    def _schedule_scrollbar_update(self, _event=None):
+        if self._scrollbar_refresh_job is not None:
+            return
+        self._scrollbar_refresh_job = self.after_idle(self._run_scrollbar_update)
+
+    def _run_scrollbar_update(self):
+        self._scrollbar_refresh_job = None
+        self._toggle_scrollbar('y', *self.tree.yview())
+        self._toggle_scrollbar('x', *self.tree.xview())
 
     def on_open(self, event):
         item = self.tree.focus()

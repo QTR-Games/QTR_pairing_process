@@ -2,6 +2,8 @@
 import sqlite3
 from os.path import expanduser
 import os
+import json
+import hashlib
 
 from qtr_pairing_process.constants import SCENARIO_MAP
 from qtr_pairing_process.secure_db_interface import SecureDBInterface
@@ -45,6 +47,13 @@ class DbManager:
         with self.connect_db(self.path, self.name) as db_conn:
             db_cur = db_conn.cursor()
             db_cur.execute(sql)
+            rows = db_cur.fetchall()
+        return rows
+
+    def query_sql_params(self, sql, parameters=None):
+        with self.connect_db(self.path, self.name) as db_conn:
+            db_cur = db_conn.cursor()
+            db_cur.execute(sql, parameters or ())
             rows = db_cur.fetchall()
         return rows
     
@@ -136,6 +145,18 @@ class DbManager:
         except (ValueError, RuntimeError) as e:
             print(f"Error upserting team '{team_name}': {e}")
             raise
+
+    def rename_team(self, team_id, team_name):
+        """Rename an existing team in place using secure parameterized query."""
+        try:
+            secure_db = self.get_secure_interface()
+            rows = secure_db.update_team_name_secure(team_id, team_name)
+            if rows == 0:
+                raise RuntimeError(f"No team row updated for team_id={team_id}")
+            return rows
+        except (ValueError, RuntimeError) as e:
+            print(f"Error renaming team {team_id} to '{team_name}': {e}")
+            raise
             
     #########
     # Players
@@ -179,6 +200,18 @@ class DbManager:
             return results[0][0]
         return None
 
+    def rename_player(self, player_id, team_id, player_name):
+        """Rename an existing player in place using secure parameterized query."""
+        try:
+            secure_db = self.get_secure_interface()
+            rows = secure_db.update_player_name_secure(player_id, team_id, player_name)
+            if rows == 0:
+                raise RuntimeError(f"No player row updated for player_id={player_id} team_id={team_id}")
+            return rows
+        except (ValueError, RuntimeError) as e:
+            print(f"Error renaming player {player_id} on team {team_id} to '{player_name}': {e}")
+            raise
+
     def upsert_and_validate_players(self, team_id, player_names):
         players = self.query_players(team_id)
         # print(f"team_id={team_id};\nplayer_names={player_names};\nplayers={players}")
@@ -217,6 +250,171 @@ class DbManager:
         sql = "SELECT COUNT(*) FROM ratings"
         result = self.query_sql(sql)
         return result[0][0] if result else 0
+
+    def get_db_fingerprint(self):
+        """Build a stable lineage fingerprint from teams, players, and scenarios."""
+        teams = self.query_sql("SELECT team_id, team_name FROM teams ORDER BY team_id")
+        players = self.query_sql("SELECT player_id, team_id, player_name FROM players ORDER BY player_id")
+        scenarios = self.query_sql("SELECT scenario_id, scenario_name FROM scenarios ORDER BY scenario_id")
+        payload = {
+            "teams": teams,
+            "players": players,
+            "scenarios": scenarios,
+        }
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def get_team_roster_hash(self, team_id):
+        """Build a stable hash for a team's player roster including IDs and names."""
+        rows = self.query_sql_params(
+            "SELECT player_id, player_name FROM players WHERE team_id = ? ORDER BY player_id",
+            (team_id,),
+        )
+        raw = json.dumps(rows, separators=(",", ":"))
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def export_individual_player_ratings(self, team_id, player_id):
+        """Export all ratings/comments for a friendly player across all opponents and scenarios."""
+        source_row = self.query_sql_params(
+            """
+            SELECT p.player_id, p.player_name, p.team_id, t.team_name
+            FROM players p
+            JOIN teams t ON t.team_id = p.team_id
+            WHERE p.player_id = ? AND p.team_id = ?
+            """,
+            (player_id, team_id),
+        )
+        if not source_row:
+            raise ValueError(f"Friendly player {player_id} not found for team {team_id}")
+
+        source_player_id, source_player_name, source_team_id, source_team_name = source_row[0]
+
+        rows = self.query_sql_params(
+            """
+            SELECT
+                r.team_2_id,
+                t2.team_name,
+                r.team_2_player_id,
+                p2.player_name,
+                r.scenario_id,
+                r.rating,
+                COALESCE(mc.comment, '')
+            FROM ratings r
+            JOIN teams t2 ON t2.team_id = r.team_2_id
+            JOIN players p2 ON p2.player_id = r.team_2_player_id
+            LEFT JOIN matchup_comments mc
+                ON mc.team_1_player_id = r.team_1_player_id
+               AND mc.team_2_player_id = r.team_2_player_id
+               AND mc.scenario_id = r.scenario_id
+            WHERE r.team_1_id = ?
+              AND r.team_1_player_id = ?
+            ORDER BY r.team_2_id, r.team_2_player_id, r.scenario_id
+            """,
+            (team_id, player_id),
+        )
+
+        export_rows = []
+        for team_2_id, team_2_name, player_2_id, player_2_name, scenario_id, rating, comment in rows:
+            export_rows.append(
+                {
+                    "opponent_team_id": team_2_id,
+                    "opponent_team_name": team_2_name,
+                    "opponent_player_id": player_2_id,
+                    "opponent_player_name": player_2_name,
+                    "scenario_id": scenario_id,
+                    "rating": rating,
+                    "comment": comment or "",
+                }
+            )
+
+        return {
+            "source_team_id": source_team_id,
+            "source_team_name": source_team_name,
+            "source_player_id": source_player_id,
+            "source_player_name": source_player_name,
+            "rows": export_rows,
+        }
+
+    def replace_individual_player_ratings(self, team_id, player_id, rows):
+        """Replace all ratings/comments for a friendly player and import provided rows transactionally."""
+        deleted_ratings = 0
+        deleted_comments = 0
+        upserted_ratings = 0
+        upserted_comments = 0
+        cleared_comments = 0
+
+        with self.connect_db(self.path, self.name) as db_conn:
+            db_cur = db_conn.cursor()
+            try:
+                db_cur.execute("BEGIN")
+
+                db_cur.execute(
+                    "DELETE FROM ratings WHERE team_1_id = ? AND team_1_player_id = ?",
+                    (team_id, player_id),
+                )
+                deleted_ratings = db_cur.rowcount
+
+                db_cur.execute(
+                    "DELETE FROM matchup_comments WHERE team_1_player_id = ?",
+                    (player_id,),
+                )
+                deleted_comments = db_cur.rowcount
+
+                for row in rows:
+                    db_cur.execute(
+                        """
+                        INSERT INTO ratings
+                            (team_1_player_id, team_1_id, team_2_player_id, team_2_id, scenario_id, rating)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(team_1_player_id, team_2_player_id, scenario_id)
+                        DO UPDATE SET rating = excluded.rating
+                        """,
+                        (
+                            player_id,
+                            team_id,
+                            row["opponent_player_id"],
+                            row["opponent_team_id"],
+                            row["scenario_id"],
+                            row["rating"],
+                        ),
+                    )
+                    upserted_ratings += 1
+
+                    comment = (row.get("comment") or "").strip()
+                    if comment:
+                        db_cur.execute(
+                            """
+                            INSERT INTO matchup_comments
+                                (team_1_player_id, team_2_player_id, scenario_id, comment, updated_date)
+                            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                            ON CONFLICT(team_1_player_id, team_2_player_id, scenario_id)
+                            DO UPDATE SET
+                                comment = excluded.comment,
+                                updated_date = excluded.updated_date
+                            """,
+                            (
+                                player_id,
+                                row["opponent_player_id"],
+                                row["scenario_id"],
+                                comment,
+                            ),
+                        )
+                        upserted_comments += 1
+                    else:
+                        cleared_comments += 1
+
+                db_conn.commit()
+            except Exception:
+                db_conn.rollback()
+                raise
+
+        return {
+            "deleted_ratings": deleted_ratings,
+            "deleted_comments": deleted_comments,
+            "upserted_ratings": upserted_ratings,
+            "upserted_comments": upserted_comments,
+            "cleared_comments": cleared_comments,
+        }
 
     #########
     # Comments
@@ -421,7 +619,7 @@ class DbManager:
         files = os.listdir(path)
 
         for file in files:
-            with open(f'{path}/{file}', 'r') as file_read:
+            with open(f'{path}/{file}', 'r', encoding='utf-8-sig') as file_read:
                 sql_content = file_read.read()
                 
                 # Split multiple SQL statements and execute them separately

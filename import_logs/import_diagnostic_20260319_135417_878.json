@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-03-19T13:54:17",
+  "operation": "import_individual_player_ratings",
+  "status": "success",
+  "selected_friendly_team": "Dapper Badgers",
+  "selected_scenario": "0 - Neutral",
+  "database_path": "C:/Users/Daniel.Raven",
+  "database_name": "dapper badgers.db",
+  "details": {
+    "file_path": "C:/Users/Daniel.Raven/QTR_pairing_process/Dapper_Badgers_Dan_player_ratings_export_v1.csv",
+    "target_player_id": 21,
+    "target_player_name": "Dan",
+    "summary": {
+      "deleted_ratings": 30,
+      "deleted_comments": 1,
+      "upserted_ratings": 30,
+      "upserted_comments": 1,
+      "cleared_comments": 29,
+      "warnings": [
+        "File contains 30 rows; expected 315. Missing rows will remain absent after replacement."
+      ],
+      "rows_in_file": 30
+    }
+  }
+}
