@@ -228,24 +228,25 @@ class UiManager:
                 self.logger.info(f"Saved database preference: {self.db_name} at {self.db_path}")
             
     def initialize_ui_vars(self):
-        # set root
-        self.root = tk.Tk()
-        self.root.geometry('1600x1000')
-        self.root.minsize(1400, 900)
-        try:
-            self.root.state('zoomed')
-        except tk.TclError:
-            self.root.attributes('-zoomed', True)
-        self.root.title(f"QTR'S KLIK KLAKER")
+        with self.perf.span("startup.setup_root_window"):
+            # set root
+            self.root = tk.Tk()
+            self.root.geometry('1600x1000')
+            self.root.minsize(1400, 900)
+            try:
+                self.root.state('zoomed')
+            except tk.TclError:
+                self.root.attributes('-zoomed', True)
+            self.root.title(f"QTR'S KLIK KLAKER")
 
-        # set key bindings
-        self.root.bind('<Escape>', lambda event: self.root.quit())
-        self.root.bind('<Return>', lambda event: self.on_generate_combinations())
-        self.root.bind('<FocusIn>', lambda event: self._on_root_focus_in())
-        self.root.bind('<FocusOut>', lambda event: self._hide_all_popups(), add='+')
-        self.root.bind('<Button-1>', self._on_root_click_for_popups, add='+')
-        self.root.bind('<Configure>', self._on_root_configure, add='+')
-        self.root.protocol("WM_DELETE_WINDOW", self._on_app_close)
+            # set key bindings
+            self.root.bind('<Escape>', lambda event: self.root.quit())
+            self.root.bind('<Return>', lambda event: self.on_generate_combinations())
+            self.root.bind('<FocusIn>', lambda event: self._on_root_focus_in())
+            self.root.bind('<FocusOut>', lambda event: self._hide_all_popups(), add='+')
+            self.root.bind('<Button-1>', self._on_root_click_for_popups, add='+')
+            self.root.bind('<Configure>', self._on_root_configure, add='+')
+            self.root.protocol("WM_DELETE_WINDOW", self._on_app_close)
 
         # Shared UI tokens for consistent spacing, typography, and emphasis.
         self.ui_theme = {
@@ -319,7 +320,8 @@ class UiManager:
 
         self.tree_autogen_var = tk.IntVar(value=1 if self.tree_autogen_enabled else 0)
         self.lazy_sort_on_expand_var = tk.IntVar(value=1 if self.lazy_sort_on_expand else 0)
-        self.create_matchup_output_panel()
+        with self.perf.span("startup.setup_matchup_output_panel"):
+            self.create_matchup_output_panel()
         self.matchup_output_panel_created = True
 
         self.button_row_frame = tk.Frame(self.team_grid_frame)
@@ -337,12 +339,13 @@ class UiManager:
         self.tree_view_frame.pack(side=tk.LEFT, expand=1, fill=tk.BOTH)
 
         # V2: Replace 144 StringVars with single GridDataModel
-        self.grid_data_model = GridDataModel()
-        self.grid_data_model.add_observer(self._on_grid_data_changed)
-        
-        # Widget references (Entry widgets only, no StringVars)
-        self.grid_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(6)] for _ in range(6)]
-        self.grid_display_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(6)] for _ in range(6)]
+        with self.perf.span("startup.setup_grid_data_model"):
+            self.grid_data_model = GridDataModel()
+            self.grid_data_model.add_observer(self._on_grid_data_changed)
+            
+            # Widget references (Entry widgets only, no StringVars)
+            self.grid_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(6)] for _ in range(6)]
+            self.grid_display_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(6)] for _ in range(6)]
         
         # Comment overlay intentionally unused; per-cell bindings handle comments.
         self.comment_overlay = None
@@ -398,11 +401,13 @@ class UiManager:
         pairingLead.pack(side=tk.RIGHT, padx=(8, 0), pady=5)
 
         # create treeview and tree generator
-        self.treeview = LazyTreeView(master=self.tree_view_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
-        self.tree_generator = TreeGenerator(
-            treeview=self.treeview,
-            strategic_preferences=self.strategic_preferences,
-        )
+        with self.perf.span("startup.setup_treeview"):
+            self.treeview = LazyTreeView(master=self.tree_view_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
+        with self.perf.span("startup.setup_tree_generator"):
+            self.tree_generator = TreeGenerator(
+                treeview=self.treeview,
+                strategic_preferences=self.strategic_preferences,
+            )
         self.tree_generator.set_generation_id(self._tree_generation_id)
         
         # Track current sorting mode for column display
@@ -413,7 +418,6 @@ class UiManager:
         self.active_column_sort = None
         
         # Matchup output panel is created as part of right-column setup
-        self.matchup_output_panel_created = True
         
 
     
@@ -625,7 +629,10 @@ class UiManager:
         # Create status bar
         self.create_status_bar()
         self._refresh_paste_button_state()
-        
+
+        # Re-validate right-column panel wiring after full UI layout is in place.
+        self._ensure_matchup_output_panel()
+
         # Show welcome dialog if this is first time or user hasn't disabled it
         if self.db_preferences.should_show_welcome_message():
             self.root.after(500, self.show_welcome_dialog)  # Delay to ensure UI is ready
@@ -634,8 +641,48 @@ class UiManager:
         if hasattr(self, 'perf') and self.perf:
             self.perf.close()
 
+    def _ensure_matchup_output_panel(self):
+        required_widgets = (
+            "output_panel_frame",
+            "matchups_text",
+            "summary_matchups_label",
+            "summary_spread_label",
+            "summary_histogram",
+        )
+
+        def _widget_exists(name):
+            widget = getattr(self, name, None)
+            if widget is None:
+                return False
+            try:
+                return bool(widget.winfo_exists())
+            except tk.TclError:
+                return False
+
+        if all(_widget_exists(name) for name in required_widgets):
+            self.matchup_output_panel_created = True
+            return True
+
+        existing_frame = getattr(self, "output_panel_frame", None)
+        if existing_frame is not None:
+            try:
+                if existing_frame.winfo_exists():
+                    existing_frame.destroy()
+            except tk.TclError:
+                pass
+
+        with self.perf.span("startup.setup_matchup_output_panel"):
+            self.create_matchup_output_panel()
+
+        panel_ready = all(_widget_exists(name) for name in required_widgets)
+        self.matchup_output_panel_created = panel_ready
+        if not panel_ready and hasattr(self, "logger"):
+            self.logger.warning("Matchup output panel did not initialize all required widgets.")
+        return panel_ready
+
     def create_ui_grids(self):
         theme = getattr(self, "ui_theme", {})
+        entry_font = ("Arial", 10)
         self.row_checkboxes = []
         self.column_checkboxes = []
         self.row_checkbox_widgets = []
@@ -643,36 +690,37 @@ class UiManager:
         self.row_checkbox_label_widget = None
         self.column_checkbox_label_widget = None
 
-        # Single unified grid title
-        grid_label = tk.Label(
-            self.grid_frame,
-            text="Team Matchup Analysis Grid",
-            font=theme.get("font_panel_title", ("Arial", 14, "bold")),
-            bg=theme.get("bg_primary", "lightcyan"),
-            fg=theme.get("fg_primary", "black"),
-        )
-        grid_label.grid(row=0, column=0, columnspan=13, pady=(0, 5), sticky="ew")
+        with self.perf.span("grid.create_headers"):
+            # Single unified grid title
+            grid_label = tk.Label(
+                self.grid_frame,
+                text="Team Matchup Analysis Grid",
+                font=theme.get("font_panel_title", ("Arial", 14, "bold")),
+                bg=theme.get("bg_primary", "lightcyan"),
+                fg=theme.get("fg_primary", "black"),
+            )
+            grid_label.grid(row=0, column=0, columnspan=13, pady=(0, 5), sticky="ew")
 
-        # Section headers
-        rating_header = tk.Label(
-            self.grid_frame,
-            text="Rating Matrix",
-            font=theme.get("font_body_bold", ("Arial", 9, "bold")),
-            bg=theme.get("bg_secondary", "lightblue"),
-        )
-        rating_header.grid(row=1, column=0, columnspan=6, pady=(0, 2), sticky="ew")
-        
-        # Visual separator
-        separator = tk.Frame(self.grid_frame, width=3, bg="darkgray")
-        separator.grid(row=1, column=6, rowspan=7, sticky="ns", padx=5)
-        
-        calc_header = tk.Label(
-            self.grid_frame,
-            text="Calculations",
-            font=theme.get("font_body_bold", ("Arial", 9, "bold")),
-            bg=theme.get("bg_primary", "lightgreen"),
-        )
-        calc_header.grid(row=1, column=7, columnspan=5, pady=(0, 2), sticky="ew")
+            # Section headers
+            rating_header = tk.Label(
+                self.grid_frame,
+                text="Rating Matrix",
+                font=theme.get("font_body_bold", ("Arial", 9, "bold")),
+                bg=theme.get("bg_secondary", "lightblue"),
+            )
+            rating_header.grid(row=1, column=0, columnspan=6, pady=(0, 2), sticky="ew")
+            
+            # Visual separator
+            separator = tk.Frame(self.grid_frame, width=3, bg="darkgray")
+            separator.grid(row=1, column=6, rowspan=7, sticky="ns", padx=5)
+            
+            calc_header = tk.Label(
+                self.grid_frame,
+                text="Calculations",
+                font=theme.get("font_body_bold", ("Arial", 9, "bold")),
+                bg=theme.get("bg_primary", "lightgreen"),
+            )
+            calc_header.grid(row=1, column=7, columnspan=5, pady=(0, 2), sticky="ew")
 
         # V2: Create the 6x6 rating grid WITHOUT StringVars or bindings
         # All state managed by GridDataModel; comments handled per cell.
@@ -680,8 +728,8 @@ class UiManager:
             for r in range(6):
                 for c in range(6):
                     # Rating grid entries (columns 0-5) - no textvariable, no bindings
-                    entry = tk.Entry(self.grid_frame, width=8, 
-                                   font=("Arial", 10), relief=tk.SOLID, borderwidth=1)
+                    entry = tk.Entry(self.grid_frame, width=8,
+                                   font=entry_font, relief=tk.SOLID, borderwidth=1)
                     entry.grid(row=r + 2, column=c, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
                     self.grid_widgets[r][c] = entry
                 
@@ -712,11 +760,15 @@ class UiManager:
                         )
                         entry.bind("<Button-3>", lambda event, row=r, col=c: self.open_comment_editor(event, row, col), add='+')
                 
-                    # Set initial value from model (Phase 1: handle None ΓåÆ '')
+        with self.perf.span("grid.seed_rating_initial_values"):
+            for r in range(6):
+                for c in range(6):
+                    entry = self.grid_widgets[r][c]
+                    if not entry:
+                        continue
+                    # Set initial value from model (Phase 1: handle None -> '')
                     initial_value = self.grid_data_model.get_rating(r, c)
-                    if initial_value is None:
-                        entry.insert(0, '')
-                    else:
+                    if initial_value is not None:
                         entry.insert(0, str(initial_value))
 
         # Create the display grid (right side of unified grid, columns 7-11)
@@ -725,15 +777,21 @@ class UiManager:
                 for c in range(5):
                     # Display grid entries (columns 7-11) - no textvariable
                     display_entry = tk.Entry(self.grid_frame, width=8, 
-                                           state='readonly', font=("Arial", 10), relief=tk.SOLID, borderwidth=1,
+                                           font=entry_font, relief=tk.SOLID, borderwidth=1,
                                            readonlybackground="lightgray")
                     display_entry.grid(row=r + 2, column=c + 7, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
                     self.grid_display_widgets[r][c] = display_entry
-                    
+
+        with self.perf.span("grid.seed_display_initial_values"):
+            for r in range(6):
+                for c in range(5):
+                    display_entry = self.grid_display_widgets[r][c]
+                    if not display_entry:
+                        continue
                     # Set initial value from model
-                    display_entry.config(state='normal')
-                    display_entry.delete(0, tk.END)
-                    display_entry.insert(0, self.grid_data_model.get_display(r, c))
+                    initial_display = self.grid_data_model.get_display(r, c)
+                    if initial_display:
+                        display_entry.insert(0, initial_display)
                     display_entry.config(state='readonly')
 
         # Let matrix/calculation cells expand to consume available panel space.
@@ -749,39 +807,41 @@ class UiManager:
         for i in range(7, 12):
             self.grid_frame.grid_columnconfigure(i, weight=1, uniform="calc_cols")
 
-        # Add row checkboxes (column 12)
-        checkbox_label = tk.Label(self.grid_frame, text="Row\nSelect", font=("Arial", 9, "bold"))
-        checkbox_label.grid(row=1, column=12, pady=(0, 2))
-        self.row_checkbox_label_widget = checkbox_label
-        
-        for r in range(1, 6):
-            var = tk.IntVar()
-            entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"R{r}")
-            entry.grid(row=r + 2, column=12, padx=2, pady=1, sticky="w")
-            var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
-            self.row_checkboxes.append(var)
-            self.row_checkbox_widgets.append(entry)
+        with self.perf.span("grid.create_selection_checkboxes"):
+            # Add row checkboxes (column 12)
+            checkbox_label = tk.Label(self.grid_frame, text="Row\nSelect", font=("Arial", 9, "bold"))
+            checkbox_label.grid(row=1, column=12, pady=(0, 2))
+            self.row_checkbox_label_widget = checkbox_label
+            
+            for r in range(1, 6):
+                var = tk.IntVar()
+                entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"R{r}")
+                entry.grid(row=r + 2, column=12, padx=2, pady=1, sticky="w")
+                var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
+                self.row_checkboxes.append(var)
+                self.row_checkbox_widgets.append(entry)
 
-        # Add column checkboxes (row 8, columns 1-5)
-        col_label = tk.Label(self.grid_frame, text="Column Select", font=("Arial", 9, "bold"))
-        col_label.grid(row=8, column=1, columnspan=5, pady=(5, 0))
-        self.column_checkbox_label_widget = col_label
-        
-        for c in range(1, 6):
-            var = tk.IntVar()
-            entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"C{c}")
-            entry.grid(row=9, column=c, padx=1, pady=2, sticky="n")
-            var.trace_add('write', lambda name, index, mode, col=c, var=var: self.on_column_checkbox_change(col, var))
-            self.column_checkboxes.append(var)
-            self.column_checkbox_widgets.append(entry)
+            # Add column checkboxes (row 8, columns 1-5)
+            col_label = tk.Label(self.grid_frame, text="Column Select", font=("Arial", 9, "bold"))
+            col_label.grid(row=8, column=1, columnspan=5, pady=(5, 0))
+            self.column_checkbox_label_widget = col_label
+            
+            for c in range(1, 6):
+                var = tk.IntVar()
+                entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"C{c}")
+                entry.grid(row=9, column=c, padx=1, pady=2, sticky="n")
+                var.trace_add('write', lambda name, index, mode, col=c, var=var: self.on_column_checkbox_change(col, var))
+                self.column_checkboxes.append(var)
+                self.column_checkbox_widgets.append(entry)
 
-        # Keep checkbox and separator lanes fixed.
-        self.grid_frame.grid_rowconfigure(0, weight=0)
-        self.grid_frame.grid_rowconfigure(1, weight=0)
-        self.grid_frame.grid_rowconfigure(8, weight=0)
-        self.grid_frame.grid_rowconfigure(9, weight=0)
-        self.grid_frame.grid_columnconfigure(6, weight=0, minsize=10)
-        self.grid_frame.grid_columnconfigure(12, weight=0, minsize=72)
+        with self.perf.span("grid.configure_layout_weights"):
+            # Keep checkbox and separator lanes fixed.
+            self.grid_frame.grid_rowconfigure(0, weight=0)
+            self.grid_frame.grid_rowconfigure(1, weight=0)
+            self.grid_frame.grid_rowconfigure(8, weight=0)
+            self.grid_frame.grid_rowconfigure(9, weight=0)
+            self.grid_frame.grid_columnconfigure(6, weight=0, minsize=10)
+            self.grid_frame.grid_columnconfigure(12, weight=0, minsize=72)
 
         # Re-apply current checkbox visibility state when rebuilding the grid.
         self._set_grid_checkbox_visibility(visible=not self.grid_checkboxes_hidden)
@@ -4159,10 +4219,8 @@ class UiManager:
     
     def on_generate_combinations(self):
         with self._busy_ui_operation("Loading - generating combinations"):
-            # Create matchup output panel on first use
-            if not self.matchup_output_panel_created:
-                self.create_matchup_output_panel()
-                self.matchup_output_panel_created = True
+            # Ensure matchup output panel is available before generate/extract flows.
+            self._ensure_matchup_output_panel()
 
             cache_key = self._build_tree_cache_key()
             our_team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
@@ -6384,6 +6442,13 @@ class UiManager:
         try:
             theme = getattr(self, "ui_theme", {})
             target_parent = parent if parent is not None else self.matchup_output_container
+            existing_frame = getattr(self, "output_panel_frame", None)
+            if existing_frame is not None:
+                try:
+                    if existing_frame.winfo_exists():
+                        existing_frame.destroy()
+                except tk.TclError:
+                    pass
             # Create output panel frame below the tree section
             self.output_panel_frame = tk.Frame(
                 target_parent,
@@ -6501,6 +6566,8 @@ class UiManager:
             copy_button.pack(pady=(0, 5))
             
         except Exception as e:
+            if hasattr(self, "logger"):
+                self.logger.exception("Failed to create matchup output panel")
             print(f"Error creating matchup output panel: {e}")
             messagebox.showerror("Error", f"Failed to create matchup output panel: {e}")
 
@@ -6779,6 +6846,13 @@ class UiManager:
     def extract_final_matchups(self):
         """Extract the final 5 matchups from the currently selected tree item."""
         try:
+            if not self._ensure_matchup_output_panel():
+                messagebox.showerror(
+                    "Matchup Output Unavailable",
+                    "Could not initialize the matchup output panel. Please restart the app.",
+                )
+                return
+
             # Get selected item from tree
             selected_item = self.treeview.tree.selection()
             

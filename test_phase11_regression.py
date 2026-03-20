@@ -55,6 +55,19 @@ class DummyTokenTreeGenerator:
         self.tokens.append(token)
 
 
+class DummyWidget:
+    def __init__(self, exists=True):
+        self._exists = exists
+        self.destroy_called = False
+
+    def winfo_exists(self):
+        return self._exists
+
+    def destroy(self):
+        self.destroy_called = True
+        self._exists = False
+
+
 class DummyMemoStatsTreeGenerator:
     persistent_memo_enabled = False
 
@@ -296,6 +309,47 @@ def test_matchup_output_panel_does_not_render_explainability_summary_label():
 
     root.destroy()
     assert not any("Explainability:" in text for text in label_texts)
+
+
+def test_ensure_matchup_output_panel_rebuilds_missing_widgets():
+    ui = UiManager.__new__(UiManager)
+    setattr(ui, "perf", cast(Any, DummyPerf()))
+    ui.matchup_output_panel_created = False
+
+    stale_frame = DummyWidget(exists=True)
+    ui.output_panel_frame = stale_frame
+
+    def _create_panel():
+        ui.output_panel_frame = DummyWidget(exists=True)
+        ui.matchups_text = DummyWidget(exists=True)
+        ui.summary_matchups_label = DummyWidget(exists=True)
+        ui.summary_spread_label = DummyWidget(exists=True)
+        ui.summary_histogram = DummyWidget(exists=True)
+
+    ui.create_matchup_output_panel = _create_panel  # type: ignore[method-assign]
+
+    assert ui._ensure_matchup_output_panel() is True
+    assert ui.matchup_output_panel_created is True
+    assert stale_frame.destroy_called is True
+
+
+def test_ensure_matchup_output_panel_keeps_valid_widgets():
+    ui = UiManager.__new__(UiManager)
+    setattr(ui, "perf", cast(Any, DummyPerf()))
+    ui.matchup_output_panel_created = False
+    ui.output_panel_frame = DummyWidget(exists=True)
+    ui.matchups_text = DummyWidget(exists=True)
+    ui.summary_matchups_label = DummyWidget(exists=True)
+    ui.summary_spread_label = DummyWidget(exists=True)
+    ui.summary_histogram = DummyWidget(exists=True)
+
+    def _should_not_recreate():
+        raise AssertionError("panel should not be recreated when required widgets are present")
+
+    ui.create_matchup_output_panel = _should_not_recreate  # type: ignore[method-assign]
+
+    assert ui._ensure_matchup_output_panel() is True
+    assert ui.matchup_output_panel_created is True
 
 
 def test_should_invalidate_strategic_memo_reason_policy():
