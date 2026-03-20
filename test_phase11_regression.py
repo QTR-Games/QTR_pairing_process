@@ -279,6 +279,51 @@ def test_sort_children_combined_expanded_recursion_uses_prefetched_open_state():
     assert "open" not in fake_tree.option_reads
 
 
+def test_sort_children_combined_skips_reorder_when_order_unchanged():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["a", "b", "c"], "text": "", "values": (), "open": True},
+                "a": {"children": [], "text": "alpha", "values": (1, 0), "open": False},
+                "b": {"children": [], "text": "bravo", "values": (2, 0), "open": False},
+                "c": {"children": [], "text": "charlie", "values": (3, 0), "open": False},
+            }
+            self.detach_calls = 0
+            self.move_calls = 0
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                return None
+            if option is None:
+                return {
+                    "text": self.nodes[node]["text"],
+                    "values": self.nodes[node]["values"],
+                    "open": self.nodes[node]["open"],
+                }
+            return self.nodes[node].get(option)
+
+        def detach(self, _child):
+            self.detach_calls += 1
+
+        def move(self, _child, _node, _where):
+            self.move_calls += 1
+
+    ui = UiManager.__new__(UiManager)
+    fake_tree = FakeTree()
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": fake_tree})())
+    ui.column_sort_states = {"#0": "asc", "Rating": "none", "Sort Value": "none"}
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._sorted_children_cache = {}
+
+    ui._sort_children_combined("", None, "#0", recurse_mode="expanded")
+
+    assert fake_tree.detach_calls == 0
+    assert fake_tree.move_calls == 0
+
+
 def test_turn_integrity_depth_ownership():
     root = tk.Tk()
     root.withdraw()

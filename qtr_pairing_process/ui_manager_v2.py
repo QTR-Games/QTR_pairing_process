@@ -4701,6 +4701,7 @@ class UiManager:
                 "secondary_ms": 0.0,
                 "primary_ms": 0.0,
                 "reorder_ms": 0.0,
+                "reorder_skip_nodes": 0,
                 "recurse_ms": 0.0,
                 "cache_hit_nodes": 0,
                 "cache_miss_nodes": 0,
@@ -4900,13 +4901,17 @@ class UiManager:
 
             sort_cache[cache_key] = tuple(children_sorted)
 
-        section_start = time.perf_counter()
-        for child in children_sorted:
-            self.treeview.tree.detach(child)
-        for child in children_sorted:
-            self.treeview.tree.move(child, node, 'end')
-        if _profile is not None:
-            _profile["reorder_ms"] += (time.perf_counter() - section_start) * 1000.0
+        current_order = list(children)
+        if current_order != children_sorted:
+            section_start = time.perf_counter()
+            for child in children_sorted:
+                self.treeview.tree.detach(child)
+            for child in children_sorted:
+                self.treeview.tree.move(child, node, 'end')
+            if _profile is not None:
+                _profile["reorder_ms"] += (time.perf_counter() - section_start) * 1000.0
+        elif _profile is not None:
+            _profile["reorder_skip_nodes"] += 1
 
         section_start = time.perf_counter()
         for child in children_sorted:
@@ -4954,6 +4959,7 @@ class UiManager:
                 secondary_ms=f"{_profile['secondary_ms']:.2f}",
                 primary_ms=f"{_profile['primary_ms']:.2f}",
                 reorder_ms=f"{_profile['reorder_ms']:.2f}",
+                reorder_skip_nodes=int(_profile["reorder_skip_nodes"]),
                 recurse_ms=f"{_profile['recurse_ms']:.2f}",
             )
 
