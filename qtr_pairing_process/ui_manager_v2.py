@@ -136,8 +136,11 @@ class UiManager:
         self._team_change_in_progress = False
         self._scenario_calc_job = None
         self._scenario_calc_delay_ms = 120
+        self._pending_scenario_calc_signature = None
+        self._last_scenario_calc_signature = None
         self._team_cache: Dict[str, Dict[str, Any]] = {}
         self._comment_cache: Dict[tuple, Dict[tuple, str]] = {}
+        self._last_comment_indicator_signature = None
         self._scenario_change_auto = False
         self._event_loop_lag_threshold_ms = 16.0
         self._resize_job = None
@@ -153,6 +156,15 @@ class UiManager:
         self._background_load_enabled = True
         self._grid_load_generation = 0
         self._grid_load_in_flight = False
+        self._last_grid_load_request_key = None
+        self._last_grid_load_request_at = 0.0
+        self._grid_load_duplicate_window_s = 0.2
+        self._last_applied_grid_selection_key = None
+        self._last_post_load_refresh_signature = None
+        self._last_status_bar_signature = None
+        self._last_calc_grid_rows_signature = None
+        self._noop_skip_counters: Dict[str, int] = {}
+        self._noop_skip_last_log_at: Dict[str, float] = {}
         self._tree_cache_enabled = True
         self._tree_cache = {}
         self._tree_cache_key = None
@@ -1147,6 +1159,16 @@ class UiManager:
     
     def update_status_bar(self):
         """Update status bar information"""
+        current_signature = (
+            getattr(self, 'db_name', 'Unknown'),
+            self.rating_config.get('name') if hasattr(self, 'rating_config') else None,
+            tuple(self.rating_range) if hasattr(self, 'rating_range') else tuple(),
+            tuple(sorted(getattr(self, 'color_map', {}).items())),
+        )
+        if current_signature == self._last_status_bar_signature:
+            self._skip_noop("status.bar.refresh.skipped", "no_change", throttle_ms=500.0)
+            return
+
         if hasattr(self, 'rating_status'):
             system_info = f"Rating System: {self.rating_config['name']} ({self.rating_range[0]}-{self.rating_range[1]})"
             self.rating_status.config(text=system_info)
@@ -1158,6 +1180,7 @@ class UiManager:
         self._rebuild_color_preview()
 
         self._refresh_status_messages()
+        self._last_status_bar_signature = current_signature
 
     def _set_perf_logging(self, enabled: bool):
         self.perf_logging_enabled = enabled
@@ -1233,7 +1256,17 @@ class UiManager:
     def _set_grid_dirty(self, is_dirty: bool):
         if self._grid_dirty != is_dirty:
             self._grid_dirty = is_dirty
+            if is_dirty:
+                self._last_post_load_refresh_signature = None
+                self._last_calc_grid_rows_signature = None
             self._refresh_status_messages()
+
+    def _build_post_load_refresh_signature(self) -> tuple:
+        team_1 = self.combobox_1.get().strip() if hasattr(self, 'combobox_1') else ""
+        team_2 = self.combobox_2.get().strip() if hasattr(self, 'combobox_2') else ""
+        scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
+        row_mask, col_mask = self._current_lock_masks()
+        return (team_1, team_2, scenario_id, row_mask, col_mask, self._get_grid_ratings_signature())
 
     def _refresh_status_messages(self):
         messages = []
@@ -1310,6 +1343,7 @@ class UiManager:
     def _on_app_close(self):
         try:
             if hasattr(self, 'perf') and self.perf:
+                self._emit_noop_skip_summary()
                 self.perf.close()
         finally:
             self.root.destroy()
@@ -1419,12 +1453,25 @@ class UiManager:
         }
 
     def _apply_calc_grid_rows(self, rows):
+        row_signature = (
+            tuple(rows["floor"].get(row, "---") for row in range(1, 6)),
+            tuple(rows["pinned"].get(row, "---") for row in range(1, 6)),
+            tuple(rows["can_pin"].get(row, "---") for row in range(1, 6)),
+            tuple(rows["protect"].get(row, "---") for row in range(1, 6)),
+            tuple(rows["bus"].get(row, "---") for row in range(1, 6)),
+        )
+        if row_signature == self._last_calc_grid_rows_signature:
+            self._skip_noop("calc.grid.apply.skipped", "rows_unchanged", throttle_ms=250.0)
+            return
+
         for row in range(1, 6):
             self.update_display_fields(row, 0, rows["floor"].get(row, "---"))
             self.update_display_fields(row, 1, rows["pinned"].get(row, "---"))
             self.update_display_fields(row, 2, rows["can_pin"].get(row, "---"))
             self.update_display_fields(row, 3, rows["protect"].get(row, "---"))
             self.update_display_fields(row, 4, rows["bus"].get(row, "---"))
+
+        self._last_calc_grid_rows_signature = row_signature
 
     def _invalidate_tree_cache(self, reason: str = ""):
         if self._tree_cache:
@@ -2036,6 +2083,57 @@ class UiManager:
         except Exception:
             pass
 
+    def _record_noop_skip(self, label: str, reason: str, throttle_ms: float = 0.0, **meta: Any):
+        if not hasattr(self, "_noop_skip_counters") or not isinstance(self._noop_skip_counters, dict):
+            self._noop_skip_counters = {}
+        if not hasattr(self, "_noop_skip_last_log_at") or not isinstance(self._noop_skip_last_log_at, dict):
+            self._noop_skip_last_log_at = {}
+        bucket_key = f"{label}|{reason or 'unspecified'}"
+        self._noop_skip_counters[bucket_key] = self._noop_skip_counters.get(bucket_key, 0) + 1
+
+        should_log = True
+        if throttle_ms > 0:
+            now = time.perf_counter()
+            last_logged_at = float(self._noop_skip_last_log_at.get(bucket_key, 0.0) or 0.0)
+            if last_logged_at > 0.0 and (now - last_logged_at) * 1000.0 < throttle_ms:
+                should_log = False
+            else:
+                self._noop_skip_last_log_at[bucket_key] = now
+
+        if not should_log:
+            return
+
+        payload = {"reason": reason}
+        payload.update(meta)
+        self._log_perf_entry(label, 0.0, **payload)
+
+    def _skip_noop(self, label: str, reason: str, throttle_ms: float = 0.0, **meta: Any) -> bool:
+        """Record a no-op skip and return True for guard-style early exits."""
+        self._record_noop_skip(label, reason, throttle_ms=throttle_ms, **meta)
+        return True
+
+    def _emit_noop_skip_summary(self):
+        if not self.perf.enabled or not self._noop_skip_counters:
+            return
+
+        total_skips = sum(self._noop_skip_counters.values())
+        self._log_perf_entry(
+            "noop.skip.summary",
+            0.0,
+            total_skips=total_skips,
+            bucket_count=len(self._noop_skip_counters),
+        )
+
+        for bucket_key in sorted(self._noop_skip_counters.keys()):
+            source_label, reason = bucket_key.split("|", 1)
+            self._log_perf_entry(
+                "noop.skip.bucket",
+                0.0,
+                source=source_label,
+                reason=reason,
+                count=self._noop_skip_counters[bucket_key],
+            )
+
     def _record_event_loop_lag(self, source: str, start_time: float):
         if not hasattr(self, 'root') or not self.perf.enabled:
             return
@@ -2476,8 +2574,29 @@ class UiManager:
     def on_scenario_calculations(self):
         self._schedule_scenario_calculations()
 
+    def _build_scenario_calc_signature(self) -> tuple:
+        team_1 = self.combobox_1.get().strip() if hasattr(self, 'combobox_1') else ""
+        team_2 = self.combobox_2.get().strip() if hasattr(self, 'combobox_2') else ""
+        scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
+
+        if not team_1 or not team_2:
+            return ("empty", team_1, team_2, scenario_id)
+
+        row_mask, col_mask = self._current_lock_masks()
+        return (team_1, team_2, scenario_id, row_mask, col_mask, self._get_grid_ratings_signature())
+
     def _schedule_scenario_calculations(self, immediate: bool = False):
         if not hasattr(self, 'root'):
+            return
+
+        request_signature = self._build_scenario_calc_signature()
+
+        if immediate and self._scenario_calc_job is None and request_signature == self._last_scenario_calc_signature:
+            self._skip_noop("scenario.calc.skipped", "immediate_no_change", throttle_ms=250.0)
+            return
+
+        if not immediate and self._scenario_calc_job is not None and request_signature == self._pending_scenario_calc_signature:
+            self._skip_noop("scenario.calc.skipped", "pending_same_request", throttle_ms=250.0)
             return
 
         if self._scenario_calc_job is not None:
@@ -2486,11 +2605,14 @@ class UiManager:
             except Exception:
                 pass
             self._scenario_calc_job = None
+            self._pending_scenario_calc_signature = None
 
         if immediate:
+            self._pending_scenario_calc_signature = request_signature
             self._run_scenario_calculations()
             return
 
+        self._pending_scenario_calc_signature = request_signature
         self._scenario_calc_job = self.root.after(
             self._scenario_calc_delay_ms,
             self._run_scenario_calculations
@@ -2498,6 +2620,7 @@ class UiManager:
 
     def _run_scenario_calculations(self):
         self._scenario_calc_job = None
+        self._pending_scenario_calc_signature = None
         self._on_scenario_calculations()
 
     def _on_scenario_calculations(self):
@@ -2506,10 +2629,15 @@ class UiManager:
         team_2 = self.combobox_2.get().strip()
         
         if not team_1 or not team_2:
+            empty_signature = self._build_scenario_calc_signature()
+            if empty_signature == self._last_scenario_calc_signature:
+                self._skip_noop("scenario.calc.skipped", "empty_no_change", throttle_ms=400.0)
+                return
             # Clear display fields when no teams are selected
             for row in range(1, 6):
                 for col in range(0, 6):
                     self.update_display_fields(row, col, "---")
+            self._last_scenario_calc_signature = empty_signature
             return
 
         cache_key = self._build_calc_grid_cache_key()
@@ -2519,6 +2647,7 @@ class UiManager:
             self._calc_grid_cache[cache_key] = cached_rows
 
         self._apply_calc_grid_rows(cached_rows)
+        self._last_scenario_calc_signature = self._build_scenario_calc_signature()
 
     def check_margins(self):
         for row in range(1, 6):
@@ -4685,9 +4814,12 @@ class UiManager:
             for scenario in self.scenario_map.values():
                 # if self.print_output:print(scenario)
                 scenarios.append(scenario)
-            self.scenario_box['values'] = scenarios
+            self._set_combobox_values_if_changed(self.scenario_box, scenarios)
         else:
-            self.scenario_box['values'] = ("1 - Recon","2 - Battle Lines","3 - Wolves At Our Heels","4 - Payload","5 - Two Fronts","6 - Invasion")
+            self._set_combobox_values_if_changed(
+                self.scenario_box,
+                ["1 - Recon", "2 - Battle Lines", "3 - Wolves At Our Heels", "4 - Payload", "5 - Two Fronts", "6 - Invasion"],
+            )
 
     def _on_team_box_change_traced(self, *args):
         start_time = time.perf_counter()
@@ -4755,7 +4887,7 @@ class UiManager:
         with self.perf.span("ui.update_ui.set_team_dropdowns"):
             self.set_team_dropdowns()
         with self.perf.span("ui.update_ui.load_grid"):
-            self.load_grid_data_from_db()
+            self.load_grid_data_from_db(force_reload=True)
         # print(self.extract_ratings())
 
     def _apply_team_change_updates(self):
@@ -4766,22 +4898,25 @@ class UiManager:
         try:
             self._invalidate_tree_cache("team_change")
             with self.perf.span("teams.change.load_grid"):
-                self.load_grid_data_from_db(refresh_ui=True)
+                self.load_grid_data_from_db(refresh_ui=True, force_reload=True)
         finally:
             self._team_change_in_progress = False
 
     def _apply_scenario_change_updates(self):
         self._invalidate_tree_cache("scenario_change")
         with self.perf.span("scenario.change.load_grid"):
-            self.load_grid_data_from_db(refresh_ui=True)
+            self.load_grid_data_from_db(refresh_ui=True, force_reload=True)
 
     def _post_grid_load_refresh(self):
-        self._invalidate_comment_cache()
+        refresh_signature = self._build_post_load_refresh_signature()
+        if refresh_signature == self._last_post_load_refresh_signature and not self._grid_dirty:
+            self._skip_noop("post.load.refresh.skipped", "no_change", throttle_ms=300.0)
+            return
+
         self.update_comment_indicators()
         self._schedule_scenario_calculations(immediate=True)
         self._set_grid_dirty(False)
-        if self.tree_autogen_enabled:
-            self._schedule_tree_autogenerate()
+        self._last_post_load_refresh_signature = refresh_signature
 
     def _invalidate_team_cache(self, team_name: Optional[str] = None):
         if team_name:
@@ -4791,6 +4926,7 @@ class UiManager:
 
     def _invalidate_comment_cache(self):
         self._comment_cache.clear()
+        self._last_comment_indicator_signature = None
 
     def _get_team_data(self, team_name: str) -> Optional[Dict[str, Any]]:
         if not team_name:
@@ -4865,68 +5001,67 @@ class UiManager:
 
     def set_team_dropdowns(self):
         team_names = self.select_team_names()
-        self.combobox_1['values'] = team_names
-        self.combobox_2['values'] = team_names
+        self._set_combobox_values_if_changed(self.combobox_1, team_names)
+        self._set_combobox_values_if_changed(self.combobox_2, team_names)
 
         if not self._team_dropdowns_initialized:
             self._team_dropdowns_initialized = True
-        
-        # DEBUG MODE AUTO-POPULATION:
-        # When running under a debugger, automatically load the first two teams to reduce
-        # manual clicking during development testing.
-        # 
-        # Detection Method: sys.gettrace() returns a trace function when Python's trace/debug
-        # mechanism is active. This works with most Python debuggers including:
-        # - VS Code's debugpy (current development environment)
-        # - PyCharm debugger
-        # - pdb (Python's built-in debugger)
-        # - Most IDE debuggers that use Python's trace mechanism
-        #
-        # Known Limitations:
-        # - May also trigger when code coverage tools or profilers are running
-        # - Some custom debuggers might not use Python's trace mechanism
-        # - Not 100% universal across all debugging environments
-        #
-        # Alternative Implementation (if needed):
-        # If more explicit control is needed, could use environment variable:
-        #   if os.getenv('DEBUG_MODE') == 'true':
-        # Then set in launch.json: "env": {"DEBUG_MODE": "true"}
-        #
-        # Decision: Current approach sufficient for single-developer workflow.
-        import sys
-        
-        # Check if debugpy (VS Code debugger) is loaded
-        # This is more reliable than sys.gettrace() for VS Code debugging
-        # since gettrace() may not be active during early initialization
-        is_debugging = 'debugpy' in sys.modules or sys.gettrace() is not None
-        
-        # Update debug mode flag (already set in __init__ but recheck here for auto-population)
-        self.is_debugging = is_debugging
-        
-        print(f"DEBUG: debugpy in sys.modules = {'debugpy' in sys.modules}")
-        print(f"DEBUG: sys.gettrace() = {sys.gettrace()}")
-        print(f"DEBUG: is_debugging = {is_debugging}")
-        print(f"DEBUG: Number of teams available: {len(team_names)}")
-        print(f"DEBUG: Teams: {team_names[:5] if len(team_names) > 5 else team_names}")
-        
-        if is_debugging and not self._auto_populated_teams:
-            print("DEBUG: Debugger detected - auto-populating teams")
-            if len(team_names) >= 2 and not self.combobox_1.get() and not self.combobox_2.get():
-                self.combobox_1.set(team_names[0])
-                self.combobox_2.set(team_names[1])
-                print(f"DEBUG: Set Team 1: {team_names[0]}, Team 2: {team_names[1]}")
-                # Trigger data load after setting teams (100ms delay ensures UI is ready)
-                self.root.after(100, self.load_grid_data_from_db)
-                self._auto_populated_teams = True
-            else:
-                print("DEBUG: Not enough teams in database to auto-populate")
-        else:
-            print("DEBUG: No debugger detected - skipping auto-population")
 
-    def load_grid_data_from_db(self, refresh_ui: bool = True):
-        self._start_grid_load(refresh_ui=refresh_ui)
+        # Auto-populate once during debug sessions to reduce manual setup.
+        if self._auto_populated_teams:
+            return
+        if not self.is_debugging:
+            return
 
-    def _start_grid_load(self, refresh_ui: bool = True):
+        if len(team_names) >= 2 and not self.combobox_1.get() and not self.combobox_2.get():
+            self.combobox_1.set(team_names[0])
+            self.combobox_2.set(team_names[1])
+            # Trigger data load after setting teams (100ms delay ensures UI is ready)
+            self.root.after(100, self.load_grid_data_from_db)
+            self._auto_populated_teams = True
+            if self.print_output:
+                print(f"DEBUG: Auto-populated teams: {team_names[0]} vs {team_names[1]}")
+
+    def _set_combobox_values_if_changed(self, combobox: ttk.Combobox, values: List[str]) -> bool:
+        """Apply combobox value options only when the option list has changed."""
+        normalized_values = tuple(values)
+        current_values = tuple(combobox.cget('values'))
+        if current_values == normalized_values:
+            return False
+        combobox['values'] = normalized_values
+        return True
+
+    def load_grid_data_from_db(self, refresh_ui: bool = True, force_reload: bool = False):
+        self._start_grid_load(refresh_ui=refresh_ui, force_reload=force_reload)
+
+    def _should_process_grid_load_request(self, request_key: tuple, force_reload: bool = False) -> bool:
+        now = time.perf_counter()
+        last_key = self._last_grid_load_request_key
+        elapsed_s = now - self._last_grid_load_request_at
+
+        if force_reload:
+            self._last_grid_load_request_key = request_key
+            self._last_grid_load_request_at = now
+            return True
+
+        if self._grid_load_in_flight and request_key == last_key:
+            self._skip_noop("grid.load.skipped_duplicate", "in_flight", throttle_ms=200.0)
+            return False
+
+        if request_key == last_key and elapsed_s <= self._grid_load_duplicate_window_s and not self._grid_dirty:
+            self._skip_noop(
+                "grid.load.skipped_duplicate",
+                "burst_window",
+                throttle_ms=250.0,
+                window_elapsed_ms=f"{elapsed_s * 1000.0:.2f}",
+            )
+            return False
+
+        self._last_grid_load_request_key = request_key
+        self._last_grid_load_request_at = now
+        return True
+
+    def _start_grid_load(self, refresh_ui: bool = True, force_reload: bool = False):
         team_1 = self.combobox_1.get().strip()
         team_2 = self.combobox_2.get().strip()
 
@@ -4940,6 +5075,21 @@ class UiManager:
             self.scenario_box.set("0 - Neutral")
             scenario = self.scenario_box.get()[:1]
         scenario_id = int(scenario)
+
+        selection_key = (team_1, team_2, scenario_id)
+        if (
+            not force_reload
+            and self._last_applied_grid_selection_key == selection_key
+            and not self._grid_dirty
+        ):
+            self._skip_noop("grid.load.skipped_duplicate", "selection_clean", throttle_ms=300.0)
+            if refresh_ui:
+                self._post_grid_load_refresh()
+            return
+
+        request_key = (team_1, team_2, scenario_id, bool(refresh_ui))
+        if not self._should_process_grid_load_request(request_key, force_reload=force_reload):
+            return
 
         if self._background_load_enabled and hasattr(self, 'root'):
             self._grid_load_generation += 1
@@ -5008,6 +5158,9 @@ class UiManager:
 
         ratings_rows = self.db_manager.query_sql(ratings_sql)
         return {
+            'team_1_name': team_1,
+            'team_2_name': team_2,
+            'scenario_id': scenario_id,
             'team_1_dict': team_1_dict,
             'team_2_dict': team_2_dict,
             'ratings_rows': ratings_rows
@@ -5033,6 +5186,9 @@ class UiManager:
         return {'team_id': team_id, 'players': players}
 
     def _apply_grid_snapshot(self, snapshot: Dict[str, Any], refresh_ui: bool = True):
+        team_1_name = snapshot.get('team_1_name', '').strip()
+        team_2_name = snapshot.get('team_2_name', '').strip()
+        scenario_id = snapshot.get('scenario_id')
         team_1_dict = snapshot['team_1_dict']
         team_2_dict = snapshot['team_2_dict']
         ratings_rows = snapshot['ratings_rows']
@@ -5061,6 +5217,9 @@ class UiManager:
 
         # End batch mode - this triggers single batch notification
         self.grid_data_model.end_batch()
+
+        if team_1_name and team_2_name and isinstance(scenario_id, int):
+            self._last_applied_grid_selection_key = (team_1_name, team_2_name, scenario_id)
 
         # Refresh UI from model after batch load
         self.grid_data_model._notify_observers('grid_loaded')
@@ -5720,6 +5879,7 @@ class UiManager:
 
     def clear_comment_indicators(self):
         """Clear all existing comment indicators"""
+        self._last_comment_indicator_signature = None
         # Cancel all pending callbacks first
         if hasattr(self, 'comment_indicator_callbacks'):
             for callback_id in self.comment_indicator_callbacks.values():
@@ -5745,13 +5905,13 @@ class UiManager:
 
     def update_comment_indicators(self):
         """Update corner indicators for cells that have comments"""
-        # Clear existing indicators first
-        self.clear_comment_indicators()
-
         comment_map = self._get_comment_map_for_current_selection()
         if not comment_map:
+            if self.comment_indicators:
+                self.clear_comment_indicators()
             return
 
+        desired_cells = set()
         for row in range(1, 6):
             friendly_player = self.grid_data_model.get_rating(row, 0)
             if not friendly_player:
@@ -5761,7 +5921,24 @@ class UiManager:
                 if not opponent_player:
                     continue
                 if (friendly_player, opponent_player) in comment_map:
-                    self.add_comment_indicator(row, col)
+                    desired_cells.add((row, col))
+
+        team1_name = self.team1_var.get().strip() if hasattr(self, 'team1_var') else ''
+        team2_name = self.team2_var.get().strip() if hasattr(self, 'team2_var') else ''
+        scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
+        desired_signature = (team1_name, team2_name, scenario_id, tuple(sorted(desired_cells)))
+        current_cells = set(self.comment_indicators.keys())
+        if desired_signature == self._last_comment_indicator_signature and current_cells == desired_cells:
+            self._skip_noop("comments.indicators.skipped", "no_change", throttle_ms=300.0)
+            return
+
+        # Clear existing indicators first
+        self.clear_comment_indicators()
+
+        for row, col in sorted(desired_cells):
+            self.add_comment_indicator(row, col)
+
+        self._last_comment_indicator_signature = desired_signature
 
     def add_comment_indicator(self, row, col):
         """Add a small corner indicator for comments"""
@@ -6935,6 +7112,7 @@ class UiManager:
     
     def _update_comment_indicator(self, row: int, col: int, has_comment: bool):
         """Update visual comment indicator for cell without altering rating-based color."""
+        self._last_comment_indicator_signature = None
         widget = self.grid_widgets[row][col]
         if not (widget and row > 0 and col > 0):
             return

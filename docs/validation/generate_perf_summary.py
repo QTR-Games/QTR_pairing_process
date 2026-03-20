@@ -90,12 +90,73 @@ def status_for_metric(delta: Optional[float], metric: Metric) -> str:
     return "FAIL"
 
 
+def status_with_sample_gate(
+    delta: Optional[float],
+    metric: Metric,
+    baseline_samples: int,
+    new_samples: int,
+    min_samples_startup: int,
+    min_samples_sort: int,
+) -> str:
+    min_required = min_samples_startup if metric.key.startswith("startup.") else min_samples_sort
+    if baseline_samples < min_required or new_samples < min_required:
+        return "INSUFFICIENT_SAMPLES"
+    return status_for_metric(delta, metric)
+
+
 def fmt_ms(value: Optional[float]) -> str:
     return "-" if value is None else f"{value:.2f}"
 
 
 def fmt_pct(value: Optional[float]) -> str:
     return "-" if value is None else f"{value:+.2f}%"
+
+
+def build_interpretation(
+    rows: list[dict[str, str]],
+    min_samples_startup: int,
+    min_samples_sort: int,
+) -> list[str]:
+    fail_rows = [row for row in rows if row["status"] == "FAIL"]
+    warn_rows = [row for row in rows if row["status"] == "WARN"]
+    insufficient_rows = [row for row in rows if row["status"] == "INSUFFICIENT_SAMPLES"]
+    pending_rows = [row for row in rows if row["status"] == "PENDING"]
+    pass_rows = [row for row in rows if row["status"] == "PASS"]
+
+    lines = [
+        "## Interpretation",
+        "",
+    ]
+
+    if fail_rows:
+        lines.append(f"- Gate outcome: FAIL ({len(fail_rows)} span(s) exceeded thresholds).")
+    elif warn_rows:
+        lines.append(f"- Gate outcome: WARN ({len(warn_rows)} span(s) in warning band).")
+    elif insufficient_rows:
+        lines.append("- Gate outcome: INCONCLUSIVE (sample minimum not met).")
+    elif pending_rows:
+        lines.append("- Gate outcome: INCONCLUSIVE (pending spans without comparable medians).")
+    else:
+        lines.append("- Gate outcome: PASS (all comparable spans met thresholds).")
+
+    if insufficient_rows:
+        lines.append(
+            f"- Sample gate: {len(insufficient_rows)} span(s) below minimum sample requirements (startup={min_samples_startup}, sort={min_samples_sort})."
+        )
+
+    if pending_rows:
+        lines.append(f"- Data completeness: {len(pending_rows)} span(s) are pending due to missing baseline/new medians.")
+
+    if pass_rows:
+        lines.append(f"- Stable spans: {len(pass_rows)} span(s) currently pass regression gates.")
+
+    if not fail_rows and not warn_rows and not insufficient_rows and not pending_rows:
+        lines.append("- Confidence: High (all tracked spans have sufficient comparable data).")
+    else:
+        lines.append("- Confidence: Moderate until a controlled 5x5 baseline/new capture is completed.")
+
+    lines.append("")
+    return lines
 
 
 def build_metrics() -> list[Metric]:
@@ -183,6 +244,8 @@ def generate(
     out_csv: Path,
     baseline_count: int,
     new_count: int,
+    min_samples_startup: int,
+    min_samples_sort: int,
     baseline_glob: Optional[str] = None,
     new_glob: Optional[str] = None,
 ) -> None:
@@ -206,7 +269,14 @@ def generate(
         b_med = median_or_none(b_vals)
         n_med = median_or_none(n_vals)
         delta = pct_delta(b_med, n_med) if b_med is not None and n_med is not None else None
-        status = status_for_metric(delta, metric)
+        status = status_with_sample_gate(
+            delta=delta,
+            metric=metric,
+            baseline_samples=len(b_vals),
+            new_samples=len(n_vals),
+            min_samples_startup=min_samples_startup,
+            min_samples_sort=min_samples_sort,
+        )
 
         rows.append(
             {
@@ -242,12 +312,14 @@ def generate(
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     pending_rows = [row for row in rows if row["status"] == "PENDING"]
     fail_rows = [row for row in rows if row["status"] == "FAIL"]
+    insufficient_rows = [row for row in rows if row["status"] == "INSUFFICIENT_SAMPLES"]
 
     status_lines = [
         "Generated from existing PerfTimer logs using:",
         f"- Selection mode: {selection_mode}",
         f"- Baseline logs: {len(baseline_logs)} files",
         f"- New logs: {len(new_logs)} files",
+        f"- Minimum samples required: startup={min_samples_startup}, sort={min_samples_sort}",
     ]
 
     if not (baseline_glob and new_glob):
@@ -256,6 +328,8 @@ def generate(
 
     if pending_rows:
         status_lines.append(f"- Provisional: {len(pending_rows)} span(s) have no sample in one or both windows")
+    if insufficient_rows:
+        status_lines.append(f"- Sample gate shortfall: {len(insufficient_rows)} span(s) below minimum sample requirements")
     if fail_rows:
         status_lines.append(f"- Observed failures against current thresholds: {len(fail_rows)} span(s)")
 
@@ -276,6 +350,8 @@ def generate(
         md_lines.append(
             f"| {row['span']} | {row['baseline_median_ms']} | {row['new_median_ms']} | {row['delta_pct']} | {row['threshold_pct']} | {row['status']} | {row['baseline_samples']} | {row['new_samples']} |"
         )
+
+    md_lines.extend(build_interpretation(rows, min_samples_startup=min_samples_startup, min_samples_sort=min_samples_sort))
 
     md_lines.extend(
         [
@@ -306,6 +382,8 @@ def main() -> None:
     parser.add_argument("--out-csv", default="docs/validation/perf_summary.csv", help="Output CSV path")
     parser.add_argument("--baseline-count", type=int, default=5, help="Number of baseline log files")
     parser.add_argument("--new-count", type=int, default=5, help="Number of new log files")
+    parser.add_argument("--min-samples-startup", type=int, default=5, help="Minimum baseline/new samples required for startup spans")
+    parser.add_argument("--min-samples-sort", type=int, default=5, help="Minimum baseline/new samples required for sort spans")
     parser.add_argument("--baseline-glob", default=None, help="Optional glob for explicit baseline selection (relative to log-dir)")
     parser.add_argument("--new-glob", default=None, help="Optional glob for explicit new selection (relative to log-dir)")
     args = parser.parse_args()
@@ -316,6 +394,8 @@ def main() -> None:
         out_csv=Path(args.out_csv),
         baseline_count=max(1, args.baseline_count),
         new_count=max(1, args.new_count),
+        min_samples_startup=max(1, args.min_samples_startup),
+        min_samples_sort=max(1, args.min_samples_sort),
         baseline_glob=args.baseline_glob,
         new_glob=args.new_glob,
     )

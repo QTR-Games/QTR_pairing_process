@@ -9,6 +9,9 @@ Detect regressions introduced by UI modernization while allowing small expected 
 1. Startup median regression <= 5%
 2. Generate/sort median regression <= 10%
 3. No critical span regression > 15% unless justified
+4. Minimum samples per span window:
+- Startup spans: >= 5 baseline and >= 5 new
+- Sort spans: >= 5 baseline and >= 5 new
 
 ## Tracked Paths
 
@@ -44,7 +47,19 @@ python docs/validation/generate_perf_summary.py --log-dir perf_logs --out-md doc
 Explicit windows (recommended for controlled comparisons):
 
 ```bash
-python docs/validation/generate_perf_summary.py --log-dir perf_logs --baseline-glob "perf_20260318_*.log" --new-glob "perf_20260319_*.log" --out-md docs/validation/perf_summary.md --out-csv docs/validation/perf_summary.csv
+python docs/validation/generate_perf_summary.py --log-dir perf_logs --baseline-glob "perf_20260318_*.log" --new-glob "perf_20260319_*.log" --min-samples-startup 5 --min-samples-sort 5 --out-md docs/validation/perf_summary.md --out-csv docs/validation/perf_summary.csv
+```
+
+Controlled 5x5 gate run (strict):
+
+```bash
+python docs/validation/generate_perf_summary.py --log-dir perf_logs --baseline-glob "perf_<baseline_date>_*.log" --new-glob "perf_<new_date>_*.log" --min-samples-startup 5 --min-samples-sort 5 --out-md docs/validation/perf_summary.md --out-csv docs/validation/perf_summary.csv
+```
+
+PowerShell helper (validates file counts before generation):
+
+```powershell
+./docs/validation/run_controlled_perf_compare.ps1 -BaselineGlob "perf_<baseline_date>_*.log" -NewGlob "perf_<new_date>_*.log"
 ```
 
 ## Summary Template
@@ -58,3 +73,4 @@ python docs/validation/generate_perf_summary.py --log-dir perf_logs --baseline-g
 - PASS: within thresholds
 - WARN: within +15% for non-critical span
 - FAIL: exceeds threshold or critical span > +15%
+- INSUFFICIENT_SAMPLES: baseline/new counts are below required sample gate
