@@ -233,10 +233,8 @@ class UiManager:
             self.root = tk.Tk()
             self.root.geometry('1600x1000')
             self.root.minsize(1400, 900)
-            try:
-                self.root.state('zoomed')
-            except tk.TclError:
-                self.root.attributes('-zoomed', True)
+            # Defer maximize to idle so root construction is not blocked by WM calls.
+            self._pending_initial_zoom = True
             self.root.title(f"QTR'S KLIK KLAKER")
 
             # set key bindings
@@ -630,6 +628,9 @@ class UiManager:
         self.create_status_bar()
         self._refresh_paste_button_state()
 
+        # Apply deferred maximize once widgets are built and event loop is ready.
+        self.root.after_idle(self._apply_initial_window_zoom)
+
         # Re-validate right-column panel wiring after full UI layout is in place.
         self._ensure_matchup_output_panel()
 
@@ -640,6 +641,19 @@ class UiManager:
         self.root.mainloop()
         if hasattr(self, 'perf') and self.perf:
             self.perf.close()
+
+    def _apply_initial_window_zoom(self):
+        if not getattr(self, "_pending_initial_zoom", False):
+            return
+        self._pending_initial_zoom = False
+        try:
+            self.root.state('zoomed')
+        except tk.TclError:
+            try:
+                self.root.attributes('-zoomed', True)
+            except tk.TclError:
+                # Non-fatal on window managers that do not support zoom flags.
+                pass
 
     def _ensure_matchup_output_panel(self):
         required_widgets = (
@@ -777,7 +791,7 @@ class UiManager:
                 for c in range(5):
                     # Display grid entries (columns 7-11) - no textvariable
                     display_entry = tk.Entry(self.grid_frame, width=8, 
-                                           font=entry_font, relief=tk.SOLID, borderwidth=1,
+                                           state='readonly', font=entry_font, relief=tk.SOLID, borderwidth=1,
                                            readonlybackground="lightgray")
                     display_entry.grid(row=r + 2, column=c + 7, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
                     self.grid_display_widgets[r][c] = display_entry
@@ -791,8 +805,9 @@ class UiManager:
                     # Set initial value from model
                     initial_display = self.grid_data_model.get_display(r, c)
                     if initial_display:
+                        display_entry.config(state='normal')
                         display_entry.insert(0, initial_display)
-                    display_entry.config(state='readonly')
+                        display_entry.config(state='readonly')
 
         # Let matrix/calculation cells expand to consume available panel space.
         # Keep checkbox and separator lanes fixed so lock controls remain readable.
