@@ -112,6 +112,7 @@ class DatabasePreferences:
                 "tree_autogen_enabled": True,
                 "lazy_sort_on_expand": False,
                 "lazy_sort_mode": "strict",
+                "sort_value_refresh_mode": "full",
                 "right_column_panel": "notes",
                 "pairing_plan_notes": "",
                 "matchup_output_format": "standard",

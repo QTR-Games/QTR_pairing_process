@@ -352,6 +352,91 @@ def test_ensure_matchup_output_panel_keeps_valid_widgets():
     assert ui.matchup_output_panel_created is True
 
 
+def test_update_sort_value_column_visible_only_skips_closed_branches():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "values": (), "open": True},
+                "root": {"children": ["open_child", "closed_child"], "values": (0, ""), "open": True},
+                "open_child": {"children": ["open_leaf"], "values": (0, ""), "open": True},
+                "open_leaf": {"children": [], "values": (0, ""), "open": False},
+                "closed_child": {"children": ["closed_leaf"], "values": (0, ""), "open": False},
+                "closed_leaf": {"children": [], "values": (0, ""), "open": False},
+            }
+            self.value_updates = []
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                    self.value_updates.append(node)
+                return None
+            if option == "values":
+                return self.nodes[node]["values"]
+            if option == "open":
+                return self.nodes[node]["open"]
+            return {
+                "values": self.nodes[node]["values"],
+                "open": self.nodes[node]["open"],
+            }
+
+    ui = UiManager.__new__(UiManager)
+    fake_tree = FakeTree()
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": fake_tree})())
+    ui.sort_value_refresh_mode = "visible_only"
+    ui.current_sort_mode = "cumulative"
+    ui.get_sort_value_for_node = lambda node: 9 if node == "closed_leaf" else 3
+
+    ui.update_sort_value_column()
+
+    assert "open_child" in fake_tree.value_updates
+    assert "open_leaf" in fake_tree.value_updates
+    assert "closed_child" in fake_tree.value_updates
+    assert "closed_leaf" not in fake_tree.value_updates
+
+
+def test_update_sort_value_recursive_skips_noop_value_writes():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "values": (), "open": True},
+                "root": {"children": ["child"], "values": (0, "7"), "open": True},
+                "child": {"children": [], "values": (0, "7"), "open": True},
+            }
+            self.value_updates = []
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                    self.value_updates.append(node)
+                return None
+            if option == "values":
+                return self.nodes[node]["values"]
+            if option == "open":
+                return self.nodes[node]["open"]
+            return {
+                "values": self.nodes[node]["values"],
+                "open": self.nodes[node]["open"],
+            }
+
+    ui = UiManager.__new__(UiManager)
+    fake_tree = FakeTree()
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": fake_tree})())
+    ui.current_sort_mode = "cumulative"
+    ui.get_sort_value_for_node = lambda _node: 7
+
+    ui.update_sort_value_recursive("", recurse_mode="all")
+
+    assert fake_tree.value_updates == []
+
+
 def test_should_invalidate_strategic_memo_reason_policy():
     ui = UiManager.__new__(UiManager)
 

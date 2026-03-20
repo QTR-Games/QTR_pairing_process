@@ -97,6 +97,10 @@ class UiManager:
         )
         if self.lazy_sort_mode == "fast_expand_first":
             self.lazy_sort_on_expand = True
+        default_refresh_mode = "visible_only" if self.lazy_sort_mode == "fast_expand_first" else "full"
+        self.sort_value_refresh_mode = str(ui_prefs.get("sort_value_refresh_mode", default_refresh_mode)).strip().lower()
+        if self.sort_value_refresh_mode not in {"full", "visible_only"}:
+            self.sort_value_refresh_mode = default_refresh_mode
         
         self.current_rating_system = config_rating_system or self.settings_manager.get_rating_system()
         self.rating_config = RATING_SYSTEMS[self.current_rating_system]
@@ -1283,10 +1287,12 @@ class UiManager:
         enabled = bool(self.lazy_sort_on_expand_var.get())
         self.lazy_sort_on_expand = enabled
         self.lazy_sort_mode = "fast_expand_first" if enabled else "strict"
+        self.sort_value_refresh_mode = "visible_only" if enabled else "full"
         self.db_preferences.update_ui_preferences(
             {
                 "lazy_sort_on_expand": enabled,
                 "lazy_sort_mode": self.lazy_sort_mode,
+                "sort_value_refresh_mode": self.sort_value_refresh_mode,
             }
         )
 
@@ -1327,6 +1333,8 @@ class UiManager:
             self.active_column_sort,
             recurse_mode="expanded",
         )
+        if getattr(self, "sort_value_refresh_mode", "full") == "visible_only":
+            self.update_sort_value_recursive(node, recurse_mode="expanded")
 
     def _set_grid_dirty(self, is_dirty: bool):
         if self._grid_dirty != is_dirty:
@@ -6325,9 +6333,12 @@ class UiManager:
 
     def update_sort_value_column(self):
         """Update the Sort Value column based on current sorting mode"""
-        self.update_sort_value_recursive("")
+        recurse_mode = "all"
+        if getattr(self, "sort_value_refresh_mode", "full") == "visible_only":
+            recurse_mode = "expanded"
+        self.update_sort_value_recursive("", recurse_mode=recurse_mode)
 
-    def update_sort_value_recursive(self, node):
+    def update_sort_value_recursive(self, node, recurse_mode="all"):
         """Recursively update sort values for all nodes in tree"""
         children = self.treeview.tree.get_children(node)
         
@@ -6337,6 +6348,17 @@ class UiManager:
             
             # Update the Sort Value column (second column, index 1)
             current_values = list(self.treeview.tree.item(child, 'values'))
+            current_sort_value = str(current_values[1]) if len(current_values) >= 2 else None
+            if current_sort_value == sort_value:
+                should_recurse = recurse_mode == "all"
+                if recurse_mode == "expanded":
+                    try:
+                        should_recurse = bool(self.treeview.tree.item(child, "open"))
+                    except Exception:
+                        should_recurse = False
+                if should_recurse:
+                    self.update_sort_value_recursive(child, recurse_mode=recurse_mode)
+                continue
             if len(current_values) < 2:
                 current_values.append(sort_value)
             else:
@@ -6345,7 +6367,14 @@ class UiManager:
             self.treeview.tree.item(child, values=current_values)
             
             # Recursively update children
-            self.update_sort_value_recursive(child)
+            should_recurse = recurse_mode == "all"
+            if recurse_mode == "expanded":
+                try:
+                    should_recurse = bool(self.treeview.tree.item(child, "open"))
+                except Exception:
+                    should_recurse = False
+            if should_recurse:
+                self.update_sort_value_recursive(child, recurse_mode=recurse_mode)
 
     def get_sort_value_for_node(self, node):
         """Extract the appropriate sort value from node tags based on current sort mode"""
