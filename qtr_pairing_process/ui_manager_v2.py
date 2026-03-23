@@ -322,9 +322,7 @@ class UiManager:
 
         self.tree_autogen_var = tk.IntVar(value=1 if self.tree_autogen_enabled else 0)
         self.lazy_sort_on_expand_var = tk.IntVar(value=1 if self.lazy_sort_on_expand else 0)
-        with self.perf.span("startup.setup_matchup_output_panel"):
-            self.create_matchup_output_panel()
-        self.matchup_output_panel_created = True
+        self.matchup_output_panel_created = False
 
         self.button_row_frame = tk.Frame(self.team_grid_frame)
         self.button_row_frame.pack(side=tk.TOP, fill=tk.X)
@@ -396,21 +394,16 @@ class UiManager:
         self._tree_explain_tooltip: Optional[tk.Toplevel] = None
         self._tree_explain_tooltip_label: Optional[tk.Label] = None
         self._tree_explain_last_node: Optional[str] = None
+        self._grid_interactions_bound = False
 
 
         self.team_b = tk.IntVar()
         pairingLead = tk.Checkbutton(self.tree_options_bar, text="Our team first", variable=self.team_b)
         pairingLead.pack(side=tk.RIGHT, padx=(8, 0), pady=5)
 
-        # create treeview and tree generator
-        with self.perf.span("startup.setup_treeview"):
-            self.treeview = LazyTreeView(master=self.tree_view_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
-        with self.perf.span("startup.setup_tree_generator"):
-            self.tree_generator = TreeGenerator(
-                treeview=self.treeview,
-                strategic_preferences=self.strategic_preferences,
-            )
-        self.tree_generator.set_generation_id(self._tree_generation_id)
+        # Defer treeview/generator construction to create_ui to trim initialize span.
+        self.treeview = None
+        self.tree_generator = None
         
         # Track current sorting mode for column display
         self.current_sort_mode = "none"
@@ -441,6 +434,8 @@ class UiManager:
 
         with self.perf.span("startup.create_ui_grids"):
             self.create_ui_grids()
+
+        self._ensure_tree_components_initialized()
 
         tk.Label(self.drop_down_frame, text='Select Team 1:', font=control_font).pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # Use a StringVar to hold the value of the Combobox
@@ -635,8 +630,8 @@ class UiManager:
         # Apply deferred maximize once widgets are built and event loop is ready.
         self.root.after_idle(self._apply_initial_window_zoom)
 
-        # Re-validate right-column panel wiring after full UI layout is in place.
-        self._ensure_matchup_output_panel()
+        # Defer right-column panel creation until UI is live to keep startup path lean.
+        self.root.after_idle(self._ensure_matchup_output_panel)
 
         # Show welcome dialog if this is first time or user hasn't disabled it
         if self.db_preferences.should_show_welcome_message():
@@ -658,6 +653,17 @@ class UiManager:
             except tk.TclError:
                 # Non-fatal on window managers that do not support zoom flags.
                 pass
+
+    def _ensure_tree_components_initialized(self):
+        if self.treeview is not None and self.tree_generator is not None:
+            return
+
+        self.treeview = LazyTreeView(master=self.tree_view_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
+        self.tree_generator = TreeGenerator(
+            treeview=self.treeview,
+            strategic_preferences=self.strategic_preferences,
+        )
+        self.tree_generator.set_generation_id(self._tree_generation_id)
 
     def _ensure_matchup_output_panel(self):
         required_widgets = (
@@ -750,33 +756,17 @@ class UiManager:
                                    font=entry_font, relief=tk.SOLID, borderwidth=1)
                     entry.grid(row=r + 2, column=c, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
                     self.grid_widgets[r][c] = entry
-                
+
                     # V2: Manual synchronization with GridDataModel (no trace callbacks)
                     # We'll use FocusOut event for manual synchronization
                     entry.bind("<FocusOut>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
                     entry.bind("<Return>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
-
-                    if (r == 0 and c > 0) or (c == 0 and r > 0):
-                        entry.bind(
-                            "<Button-1>",
-                            lambda event, row=r, col=c: self._toggle_name_tooltip(event, row, col),
-                            add='+'
-                        )
 
                     if r == 1 and c == 1:
                         self._top_left_rating_entry = entry
                         entry.bind("<Control-v>", self._on_top_left_paste_event, add='+')
                         entry.bind("<<Paste>>", self._on_top_left_paste_event, add='+')
                         entry.bind("<FocusIn>", lambda event: self._refresh_paste_button_state(), add='+')
-
-                    # Right-click per-cell comment editor for matchup cells
-                    if r > 0 and c > 0:
-                        entry.bind(
-                            "<Button-1>",
-                            lambda event, row=r, col=c: self._toggle_comment_tooltip(event, row, col),
-                            add='+'
-                        )
-                        entry.bind("<Button-3>", lambda event, row=r, col=c: self.open_comment_editor(event, row, col), add='+')
                 
         with self.perf.span("grid.seed_rating_initial_values"):
             for r in range(6):
@@ -864,8 +854,31 @@ class UiManager:
 
         # Re-apply current checkbox visibility state when rebuilding the grid.
         self._set_grid_checkbox_visibility(visible=not self.grid_checkboxes_hidden)
-        
-        # Per-cell bindings handle comment editing and click-to-show popups.
+
+        # Defer extra per-cell interaction bindings until idle to keep startup lean.
+        self.root.after_idle(self._bind_grid_interactions_once)
+
+    def _bind_grid_interactions_once(self):
+        if self._grid_interactions_bound:
+            return
+        self._grid_interactions_bound = True
+
+        for r in range(6):
+            for c in range(6):
+                entry = self.grid_widgets[r][c]
+                if entry is None:
+                    continue
+
+                if (r == 0 and c > 0) or (c == 0 and r > 0):
+                    entry.bind(
+                        "<Button-1>",
+                        lambda event, row=r, col=c: self._toggle_name_tooltip(event, row, col),
+                        add='+'
+                    )
+
+                # Right-click per-cell comment editor for matchup cells.
+                if r > 0 and c > 0:
+                    entry.bind("<Button-3>", lambda event, row=r, col=c: self.open_comment_editor(event, row, col), add='+')
 
     def toggle_grid_checkbox_visibility(self):
         """Toggle visibility of row/column lock checkboxes to maximize grid viewing area."""
@@ -4873,21 +4886,27 @@ class UiManager:
                 _profile["cache_miss_nodes"] += 1
             children_sorted = list(children)
 
-            # Final deterministic fallback for equal numeric metrics.
-            section_start = time.perf_counter()
-            children_sorted.sort(key=lambda child_id: child_sort_meta.get(child_id, {}).get("text", ""))
-            if _profile is not None:
-                _profile["text_sort_ms"] += (time.perf_counter() - section_start) * 1000.0
+            primary_has_ties = False
+            if primary_mode:
+                primary_values = [primary_key(child_id) for child_id in children_sorted]
+                primary_has_ties = len(set(primary_values)) != len(primary_values)
+
+            if not primary_mode or primary_has_ties:
+                # Final deterministic fallback for equal numeric metrics.
+                section_start = time.perf_counter()
+                children_sorted.sort(key=lambda child_id: child_sort_meta.get(child_id, {}).get("text", ""))
+                if _profile is not None:
+                    _profile["text_sort_ms"] += (time.perf_counter() - section_start) * 1000.0
 
             # Deterministic tie-break chain obeys same decision-owner direction as primary mode.
-            if primary_mode:
+            if primary_mode and primary_has_ties:
                 section_start = time.perf_counter()
                 for tie_metric in reversed(resolve_tie_break_chain()):
                     children_sorted.sort(key=lambda child_id, m=tie_metric: metric_value(child_id, m), reverse=primary_reverse)
                 if _profile is not None:
                     _profile["tie_break_ms"] += (time.perf_counter() - section_start) * 1000.0
 
-            if secondary_column and secondary_state != "none":
+            if secondary_column and secondary_state != "none" and (not primary_mode or primary_has_ties):
                 section_start = time.perf_counter()
                 children_sorted.sort(key=secondary_key, reverse=secondary_reverse)
                 if _profile is not None:
@@ -4904,8 +4923,6 @@ class UiManager:
         current_order = list(children)
         if current_order != children_sorted:
             section_start = time.perf_counter()
-            for child in children_sorted:
-                self.treeview.tree.detach(child)
             for child in children_sorted:
                 self.treeview.tree.move(child, node, 'end')
             if _profile is not None:

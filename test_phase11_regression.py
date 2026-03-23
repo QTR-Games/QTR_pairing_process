@@ -174,6 +174,51 @@ def test_deterministic_ordering_across_runs():
     assert order_one == order_two
 
 
+def test_resistance_enhanced_does_not_require_parent_traversal():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "values": (0, 0), "tags": []},
+                "root": {"children": ["a", "b"], "values": (0, 0), "tags": []},
+                "a": {"children": ["a1", "a2"], "values": (4, 0), "tags": []},
+                "b": {"children": ["b1", "b2"], "values": (3, 0), "tags": []},
+                "a1": {"children": [], "values": (5, 0), "tags": []},
+                "a2": {"children": [], "values": (2, 0), "tags": []},
+                "b1": {"children": [], "values": (4, 0), "tags": []},
+                "b2": {"children": [], "values": (1, 0), "tags": []},
+            }
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "tags" in kwargs:
+                    self.nodes[node]["tags"] = list(kwargs["tags"])
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                return None
+            if option == "values":
+                return self.nodes[node]["values"]
+            if option == "tags":
+                return tuple(self.nodes[node]["tags"])
+            return {
+                "values": self.nodes[node]["values"],
+                "tags": tuple(self.nodes[node]["tags"]),
+            }
+
+        def parent(self, _node):
+            raise AssertionError("parent() should not be called by enhanced resistance scoring")
+
+    gen = TreeGenerator(treeview=DummyTreeView(FakeTree()), strategic_preferences=_base_prefs())
+    gen._suppress_display_updates = True
+
+    score = gen.calculate_counter_resistance_scores_enhanced("")
+
+    assert score >= 0
+    assert gen.get_resistance2_from_tags("root") >= 0
+
+
 def test_sort_children_combined_prefetches_text_values_without_option_reads():
     class FakeTree:
         def __init__(self):
@@ -322,6 +367,139 @@ def test_sort_children_combined_skips_reorder_when_order_unchanged():
 
     assert fake_tree.detach_calls == 0
     assert fake_tree.move_calls == 0
+
+
+def test_sort_children_combined_reorder_uses_move_without_detach():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["c", "a", "b"], "text": "", "values": (), "open": True},
+                "a": {"children": [], "text": "alpha", "values": (1, 0), "open": False},
+                "b": {"children": [], "text": "bravo", "values": (2, 0), "open": False},
+                "c": {"children": [], "text": "charlie", "values": (3, 0), "open": False},
+            }
+            self.detach_calls = 0
+            self.move_calls = 0
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                return None
+            if option is None:
+                return {
+                    "text": self.nodes[node]["text"],
+                    "values": self.nodes[node]["values"],
+                    "open": self.nodes[node]["open"],
+                }
+            return self.nodes[node].get(option)
+
+        def detach(self, _child):
+            self.detach_calls += 1
+
+        def move(self, _child, _node, _where):
+            self.move_calls += 1
+
+    ui = UiManager.__new__(UiManager)
+    fake_tree = FakeTree()
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": fake_tree})())
+    ui.column_sort_states = {"#0": "asc", "Rating": "none", "Sort Value": "none"}
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._sorted_children_cache = {}
+
+    ui._sort_children_combined("", None, "#0", recurse_mode="expanded")
+
+    assert fake_tree.detach_calls == 0
+    assert fake_tree.move_calls > 0
+
+
+def test_bind_grid_interactions_once_binds_once():
+    class FakeEntry:
+        def __init__(self):
+            self.bind_calls = []
+
+        def bind(self, sequence, callback, add=None):
+            self.bind_calls.append((sequence, add))
+
+    ui = UiManager.__new__(UiManager)
+    ui._grid_interactions_bound = False
+    ui.grid_widgets = [[None for _ in range(6)] for _ in range(6)]
+    entry = FakeEntry()
+    ui.grid_widgets[1][1] = entry
+    ui._toggle_name_tooltip = lambda *_args, **_kwargs: None
+    ui.open_comment_editor = lambda *_args, **_kwargs: None
+
+    ui._bind_grid_interactions_once()
+    first_bind_count = len(entry.bind_calls)
+    ui._bind_grid_interactions_once()
+
+    assert first_bind_count > 0
+    assert len(entry.bind_calls) == first_bind_count
+
+
+def test_sort_children_combined_skips_tie_break_when_primary_unique():
+    class DummyTreeGen:
+        def __init__(self):
+            self.confidence_calls = 0
+            self.resistance_calls = 0
+
+        def _is_opponent_choice_level(self, _node):
+            return True
+
+        def get_cumulative2_from_tags(self, child):
+            scores = {"a": 10, "b": 8, "c": 6}
+            return scores[child]
+
+        def get_confidence2_from_tags(self, _child):
+            self.confidence_calls += 1
+            return 0
+
+        def get_resistance2_from_tags(self, _child):
+            self.resistance_calls += 1
+            return 0
+
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "root": {"children": ["a", "b", "c"], "text": "Pairings", "values": (0, 0), "open": True},
+                "a": {"children": [], "text": "alpha", "values": (1, 0), "open": False},
+                "b": {"children": [], "text": "bravo", "values": (1, 0), "open": False},
+                "c": {"children": [], "text": "charlie", "values": (1, 0), "open": False},
+            }
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                return None
+            if option is None:
+                return {
+                    "text": self.nodes[node]["text"],
+                    "values": self.nodes[node]["values"],
+                    "open": self.nodes[node]["open"],
+                }
+            return self.nodes[node].get(option)
+
+        def detach(self, _child):
+            return None
+
+        def move(self, _child, _node, _where):
+            return None
+
+    ui = UiManager.__new__(UiManager)
+    tree_gen = DummyTreeGen()
+    ui.tree_generator = cast(Any, tree_gen)
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": FakeTree()})())
+    ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._sorted_children_cache = {}
+
+    ui._sort_children_combined("root", "cumulative", None, recurse_mode="expanded")
+
+    assert tree_gen.confidence_calls == 0
+    assert tree_gen.resistance_calls == 0
 
 
 def test_turn_integrity_depth_ownership():

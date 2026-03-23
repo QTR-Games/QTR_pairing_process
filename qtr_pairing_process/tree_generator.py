@@ -943,7 +943,7 @@ class TreeGenerator:
         """Extract confidence regret spread from node tags (lower is better)."""
         return self._extract_prefixed_tag_value(node, 'regret2_', default=0)
 
-    def calculate_counter_resistance_scores_enhanced(self, node, beta=None, gamma=None):
+    def calculate_counter_resistance_scores_enhanced(self, node, beta=None, gamma=None, _depth=0):
         """Enhanced resistance with opponent-regret penalty."""
         beta = self.resistance2_beta if beta is None else beta
         gamma = self.resistance2_gamma if gamma is None else gamma
@@ -962,7 +962,10 @@ class TreeGenerator:
                 return score
             return 0
 
-        child_scores = [self.calculate_counter_resistance_scores_enhanced(child, beta=beta, gamma=gamma) for child in children]
+        child_scores = [
+            self.calculate_counter_resistance_scores_enhanced(child, beta=beta, gamma=gamma, _depth=_depth + 1)
+            for child in children
+        ]
 
         if node:
             try:
@@ -974,8 +977,8 @@ class TreeGenerator:
             best_our = max(child_scores) if child_scores else 0
             worst_opp = min(child_scores) if child_scores else 0
             regret = max(0.0, best_our - worst_opp)
-            depth = self._calculate_node_depth(node)
-            depth_buffer = max(0.0, 6.0 - float(depth))
+            # Use recursive depth tracking to avoid repeated parent-chain traversal.
+            depth_buffer = max(0.0, 6.0 - float(_depth))
 
             score = base_stability - (beta * regret) + (gamma * depth_buffer)
             score = int(round(self._clamp(score, 0, 100)))
