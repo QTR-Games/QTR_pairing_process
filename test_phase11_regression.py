@@ -414,28 +414,82 @@ def test_sort_children_combined_reorder_uses_move_without_detach():
     assert fake_tree.move_calls > 0
 
 
-def test_bind_grid_interactions_once_binds_once():
-    class FakeEntry:
-        def __init__(self):
-            self.bind_calls = []
-
-        def bind(self, sequence, callback, add=None):
-            self.bind_calls.append((sequence, add))
+def test_apply_combined_sort_uses_expand_first_for_cumulative_and_confidence():
+    class DummyTreeGen:
+        def unsort_tree(self):
+            return None
 
     ui = UiManager.__new__(UiManager)
-    ui._grid_interactions_bound = False
-    ui.grid_widgets = [[None for _ in range(6)] for _ in range(6)]
-    entry = FakeEntry()
-    ui.grid_widgets[1][1] = entry
-    ui._toggle_name_tooltip = lambda *_args, **_kwargs: None
-    ui.open_comment_editor = lambda *_args, **_kwargs: None
+    ui.perf = DummyPerf()
+    ui.tree_generator = cast(Any, DummyTreeGen())
+    ui.lazy_sort_on_expand = False
+    ui.active_column_sort = None
+    ui._log_perf_entry = lambda *_args, **_kwargs: None
 
-    ui._bind_grid_interactions_once()
-    first_bind_count = len(entry.bind_calls)
-    ui._bind_grid_interactions_once()
+    captured_modes = []
 
-    assert first_bind_count > 0
-    assert len(entry.bind_calls) == first_bind_count
+    def fake_sort(_node, _primary_mode, _secondary_column, _profile=None, _depth=0, recurse_mode="all"):
+        captured_modes.append(recurse_mode)
+
+    ui._sort_children_combined = fake_sort
+
+    ui.active_sort_mode = "cumulative"
+    ui.apply_combined_sort(compute_primary_tags=False)
+
+    ui.active_sort_mode = "confidence"
+    ui.apply_combined_sort(compute_primary_tags=False)
+
+    assert captured_modes == ["expanded", "expanded"]
+
+
+def test_apply_combined_sort_keeps_full_recurse_for_non_target_modes():
+    class DummyTreeGen:
+        def unsort_tree(self):
+            return None
+
+    ui = UiManager.__new__(UiManager)
+    ui.perf = DummyPerf()
+    ui.tree_generator = cast(Any, DummyTreeGen())
+    ui.lazy_sort_on_expand = False
+    ui.active_column_sort = None
+    ui._log_perf_entry = lambda *_args, **_kwargs: None
+
+    captured_modes = []
+
+    def fake_sort(_node, _primary_mode, _secondary_column, _profile=None, _depth=0, recurse_mode="all"):
+        captured_modes.append(recurse_mode)
+
+    ui._sort_children_combined = fake_sort
+    ui.active_sort_mode = "resistance"
+
+    ui.apply_combined_sort(compute_primary_tags=False)
+
+    assert captured_modes == ["all"]
+
+
+def test_on_tree_node_opened_sorts_for_cumulative_without_lazy_toggle():
+    class DummyTree:
+        def focus(self):
+            return "node_1"
+
+    ui = UiManager.__new__(UiManager)
+    ui.lazy_sort_on_expand = False
+    ui.active_sort_mode = "cumulative"
+    ui.active_column_sort = None
+    ui.sort_value_refresh_mode = "full"
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": DummyTree()})())
+
+    calls = []
+
+    def fake_sort(node, primary_mode, secondary_column, _profile=None, _depth=0, recurse_mode="all"):
+        calls.append((node, primary_mode, secondary_column, recurse_mode))
+
+    ui._sort_children_combined = fake_sort
+    ui.update_sort_value_recursive = lambda *_args, **_kwargs: None
+
+    ui._on_tree_node_opened()
+
+    assert calls == [("node_1", "cumulative", None, "expanded")]
 
 
 def test_sort_children_combined_skips_tie_break_when_primary_unique():

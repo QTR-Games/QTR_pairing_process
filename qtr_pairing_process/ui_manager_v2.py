@@ -183,6 +183,7 @@ class UiManager:
         self._last_tree_memo_token_hash = ""
         self._tree_memo_token_set_count = 0
         self._tree_memo_token_change_count = 0
+        self._pending_generated_tree_cache_ensure = False
         
         
         # Initialize logger
@@ -201,16 +202,22 @@ class UiManager:
     def select_database(self):
         """Select database - automatically loads last used database if available"""
         # Try to load the last used database from config
-        last_path, last_name = self.db_preferences.get_last_database()
+        with self.perf.span("startup.select_database.read_last_preference"):
+            last_path, last_name = self.db_preferences.get_last_database()
         
         if last_path and last_name:
             # Validate that the saved database still exists
-            if self.db_preferences.validate_database_exists(last_path, last_name):
+            with self.perf.span("startup.select_database.validate_last_preference"):
+                full_path = Path(last_path) / last_name
+                db_exists = full_path.exists() and full_path.is_file()
+            if db_exists:
                 # Use the saved database
                 self.db_path = last_path
                 self.db_name = last_name
-                self.db_manager = DbManager(path=self.db_path, name=self.db_name)
-                self._ensure_generated_tree_cache_table()
+                with self.perf.span("startup.select_database.create_db_manager"):
+                    self.db_manager = DbManager(path=self.db_path, name=self.db_name)
+                # Defer cache table setup out of select_database startup span.
+                self._pending_generated_tree_cache_ensure = True
                 self.logger.info(f"Auto-loaded last database: {self.db_name} from {self.db_path}")
                 return
             else:
@@ -218,17 +225,22 @@ class UiManager:
                 self.logger.info("Showing database selector...")
         
         # No saved database or it doesn't exist - show the selector
-        db_load_ui = DbLoadUi()
-        self.db_path, self.db_name = db_load_ui.create_or_load_database()
+        with self.perf.span("startup.select_database.prompt_selector"):
+            db_load_ui = DbLoadUi()
+            self.db_path, self.db_name = db_load_ui.create_or_load_database()
 
         if self.db_path is None:
-            self.db_manager = DbManager()
+            with self.perf.span("startup.select_database.create_db_manager"):
+                self.db_manager = DbManager()
         else:
-            self.db_manager = DbManager(path=self.db_path, name=self.db_name)
-            self._ensure_generated_tree_cache_table()
+            with self.perf.span("startup.select_database.create_db_manager"):
+                self.db_manager = DbManager(path=self.db_path, name=self.db_name)
+            # Defer cache table setup out of select_database startup span.
+            self._pending_generated_tree_cache_ensure = True
             # Save this database as the preferred one
             if self.db_path and self.db_name:
-                self.db_preferences.save_database_preference(self.db_path, self.db_name)
+                with self.perf.span("startup.select_database.save_preference"):
+                    self.db_preferences.save_database_preference(self.db_path, self.db_name)
                 self.logger.info(f"Saved database preference: {self.db_name} at {self.db_path}")
             
     def initialize_ui_vars(self):
@@ -322,7 +334,9 @@ class UiManager:
 
         self.tree_autogen_var = tk.IntVar(value=1 if self.tree_autogen_enabled else 0)
         self.lazy_sort_on_expand_var = tk.IntVar(value=1 if self.lazy_sort_on_expand else 0)
-        self.matchup_output_panel_created = False
+        with self.perf.span("startup.setup_matchup_output_panel"):
+            self.create_matchup_output_panel()
+        self.matchup_output_panel_created = True
 
         self.button_row_frame = tk.Frame(self.team_grid_frame)
         self.button_row_frame.pack(side=tk.TOP, fill=tk.X)
@@ -394,16 +408,21 @@ class UiManager:
         self._tree_explain_tooltip: Optional[tk.Toplevel] = None
         self._tree_explain_tooltip_label: Optional[tk.Label] = None
         self._tree_explain_last_node: Optional[str] = None
-        self._grid_interactions_bound = False
 
 
         self.team_b = tk.IntVar()
         pairingLead = tk.Checkbutton(self.tree_options_bar, text="Our team first", variable=self.team_b)
         pairingLead.pack(side=tk.RIGHT, padx=(8, 0), pady=5)
 
-        # Defer treeview/generator construction to create_ui to trim initialize span.
-        self.treeview = None
-        self.tree_generator = None
+        # create treeview and tree generator
+        with self.perf.span("startup.setup_treeview"):
+            self.treeview = LazyTreeView(master=self.tree_view_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
+        with self.perf.span("startup.setup_tree_generator"):
+            self.tree_generator = TreeGenerator(
+                treeview=self.treeview,
+                strategic_preferences=self.strategic_preferences,
+            )
+        self.tree_generator.set_generation_id(self._tree_generation_id)
         
         # Track current sorting mode for column display
         self.current_sort_mode = "none"
@@ -419,8 +438,12 @@ class UiManager:
     def _populate_dropdowns(self):
         """Populate dropdowns after UI is visible (deferred for performance)"""
         with self.perf.span("startup.populate_dropdowns"):
-            self.set_team_dropdowns()
-            self.update_scenario_box()
+            with self.perf.span("startup.populate_dropdowns.team_dropdowns"):
+                self.set_team_dropdowns()
+            with self.perf.span("startup.populate_dropdowns.scenario_dropdown"):
+                self.update_scenario_box()
+        # Keep table setup out of dropdown startup timing path.
+        self.root.after_idle(self._ensure_pending_generated_tree_cache_table)
     
 
     
@@ -434,8 +457,6 @@ class UiManager:
 
         with self.perf.span("startup.create_ui_grids"):
             self.create_ui_grids()
-
-        self._ensure_tree_components_initialized()
 
         tk.Label(self.drop_down_frame, text='Select Team 1:', font=control_font).pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # Use a StringVar to hold the value of the Combobox
@@ -630,8 +651,8 @@ class UiManager:
         # Apply deferred maximize once widgets are built and event loop is ready.
         self.root.after_idle(self._apply_initial_window_zoom)
 
-        # Defer right-column panel creation until UI is live to keep startup path lean.
-        self.root.after_idle(self._ensure_matchup_output_panel)
+        # Re-validate right-column panel wiring after full UI layout is in place.
+        self._ensure_matchup_output_panel()
 
         # Show welcome dialog if this is first time or user hasn't disabled it
         if self.db_preferences.should_show_welcome_message():
@@ -654,16 +675,11 @@ class UiManager:
                 # Non-fatal on window managers that do not support zoom flags.
                 pass
 
-    def _ensure_tree_components_initialized(self):
-        if self.treeview is not None and self.tree_generator is not None:
+    def _ensure_pending_generated_tree_cache_table(self):
+        if not getattr(self, "_pending_generated_tree_cache_ensure", False):
             return
-
-        self.treeview = LazyTreeView(master=self.tree_view_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
-        self.tree_generator = TreeGenerator(
-            treeview=self.treeview,
-            strategic_preferences=self.strategic_preferences,
-        )
-        self.tree_generator.set_generation_id(self._tree_generation_id)
+        self._pending_generated_tree_cache_ensure = False
+        self._ensure_generated_tree_cache_table()
 
     def _ensure_matchup_output_panel(self):
         required_widgets = (
@@ -762,11 +778,27 @@ class UiManager:
                     entry.bind("<FocusOut>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
                     entry.bind("<Return>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
 
+                    if (r == 0 and c > 0) or (c == 0 and r > 0):
+                        entry.bind(
+                            "<Button-1>",
+                            lambda event, row=r, col=c: self._toggle_name_tooltip(event, row, col),
+                            add='+'
+                        )
+
                     if r == 1 and c == 1:
                         self._top_left_rating_entry = entry
                         entry.bind("<Control-v>", self._on_top_left_paste_event, add='+')
                         entry.bind("<<Paste>>", self._on_top_left_paste_event, add='+')
                         entry.bind("<FocusIn>", lambda event: self._refresh_paste_button_state(), add='+')
+
+                    # Right-click per-cell comment editor for matchup cells
+                    if r > 0 and c > 0:
+                        entry.bind(
+                            "<Button-1>",
+                            lambda event, row=r, col=c: self._toggle_comment_tooltip(event, row, col),
+                            add='+'
+                        )
+                        entry.bind("<Button-3>", lambda event, row=r, col=c: self.open_comment_editor(event, row, col), add='+')
                 
         with self.perf.span("grid.seed_rating_initial_values"):
             for r in range(6):
@@ -854,31 +886,6 @@ class UiManager:
 
         # Re-apply current checkbox visibility state when rebuilding the grid.
         self._set_grid_checkbox_visibility(visible=not self.grid_checkboxes_hidden)
-
-        # Defer extra per-cell interaction bindings until idle to keep startup lean.
-        self.root.after_idle(self._bind_grid_interactions_once)
-
-    def _bind_grid_interactions_once(self):
-        if self._grid_interactions_bound:
-            return
-        self._grid_interactions_bound = True
-
-        for r in range(6):
-            for c in range(6):
-                entry = self.grid_widgets[r][c]
-                if entry is None:
-                    continue
-
-                if (r == 0 and c > 0) or (c == 0 and r > 0):
-                    entry.bind(
-                        "<Button-1>",
-                        lambda event, row=r, col=c: self._toggle_name_tooltip(event, row, col),
-                        add='+'
-                    )
-
-                # Right-click per-cell comment editor for matchup cells.
-                if r > 0 and c > 0:
-                    entry.bind("<Button-3>", lambda event, row=r, col=c: self.open_comment_editor(event, row, col), add='+')
 
     def toggle_grid_checkbox_visibility(self):
         """Toggle visibility of row/column lock checkboxes to maximize grid viewing area."""
@@ -1327,7 +1334,9 @@ class UiManager:
             self.tree_generator.persistent_memo_enabled = enabled
 
     def _on_tree_node_opened(self, _event=None):
-        if not getattr(self, "lazy_sort_on_expand", False):
+        active_mode = getattr(self, "active_sort_mode", None)
+        fast_expand_mode = active_mode in {"cumulative", "confidence"}
+        if not getattr(self, "lazy_sort_on_expand", False) and not fast_expand_mode:
             return
         if not self.active_sort_mode and not self.active_column_sort:
             return
@@ -4679,6 +4688,9 @@ class UiManager:
             )
 
             recurse_mode = "expanded" if getattr(self, "lazy_sort_on_expand", False) else "all"
+            # Cumulative/confidence sorting benefits from expand-first traversal on deep trees.
+            if recurse_mode == "all" and primary_mode in {"cumulative", "confidence"}:
+                recurse_mode = "expanded"
             phase_sort_start = time.perf_counter()
             self._sort_children_combined("", primary_mode, secondary_column, recurse_mode=recurse_mode)
             sort_phase_ms = (time.perf_counter() - phase_sort_start) * 1000.0
@@ -5172,9 +5184,11 @@ class UiManager:
         return team_names
 
     def set_team_dropdowns(self):
-        team_names = self.select_team_names()
-        self._set_combobox_values_if_changed(self.combobox_1, team_names)
-        self._set_combobox_values_if_changed(self.combobox_2, team_names)
+        with self.perf.span("startup.populate_dropdowns.query_team_names"):
+            team_names = self.select_team_names()
+        with self.perf.span("startup.populate_dropdowns.assign_team_comboboxes"):
+            self._set_combobox_values_if_changed(self.combobox_1, team_names)
+            self._set_combobox_values_if_changed(self.combobox_2, team_names)
 
         if not self._team_dropdowns_initialized:
             self._team_dropdowns_initialized = True
