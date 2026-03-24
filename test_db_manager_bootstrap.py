@@ -51,3 +51,16 @@ def test_rating_system_metadata_persists_per_database(tmp_path):
 
     reopened = DbManager(path=str(tmp_path), name=db_name)
     assert reopened.get_rating_system(default="1-5") == "1-3"
+
+
+def test_normalize_ratings_to_1_3_clamps_existing_values(tmp_path):
+    db_name = "normalize_to_1_3.db"
+    manager = DbManager(path=str(tmp_path), name=db_name)
+
+    # Force out-of-range values to simulate legacy/bad data.
+    manager.execute_sql("UPDATE ratings SET rating = 5")
+    updated_rows = manager.normalize_ratings_to_system("1-3")
+
+    assert updated_rows > 0
+    min_max = manager.query_sql("SELECT MIN(rating), MAX(rating) FROM ratings")[0]
+    assert min_max == (3, 3)

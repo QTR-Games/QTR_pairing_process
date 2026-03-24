@@ -290,6 +290,7 @@ class UiManager:
         if not hasattr(self, 'db_manager') or self.db_manager is None:
             return
 
+        previous_rating_system = getattr(self, 'current_rating_system', DEFAULT_RATING_SYSTEM)
         db_rating_system = self.db_manager.get_rating_system(default=self.current_rating_system)
         if db_rating_system not in RATING_SYSTEMS:
             db_rating_system = DEFAULT_RATING_SYSTEM
@@ -299,6 +300,21 @@ class UiManager:
         self.rating_config = RATING_SYSTEMS[db_rating_system]
         self.color_map = self.rating_config['color_map']
         self.rating_range = self.rating_config['range']
+        normalized_rows = self.db_manager.normalize_ratings_to_system(db_rating_system)
+
+        self.logger.info(
+            "Rating system sync from DB db=%s/%s previous=%s current=%s range=%s-%s normalized_rows=%s",
+            getattr(self, 'db_path', ''),
+            getattr(self, 'db_name', ''),
+            previous_rating_system,
+            self.current_rating_system,
+            self.rating_range[0],
+            self.rating_range[1],
+            normalized_rows,
+        )
+
+        if hasattr(self, 'tree_generator') and self.tree_generator:
+            self.tree_generator.set_rating_system(self.current_rating_system)
 
     def _reset_after_database_change(self):
         """Clear data and cache state after switching to a different database."""
@@ -505,6 +521,7 @@ class UiManager:
             self.tree_generator = TreeGenerator(
                 treeview=self.treeview,
                 strategic_preferences=self.strategic_preferences,
+                rating_system=self.current_rating_system,
             )
         self.tree_generator.set_generation_id(self._tree_generation_id)
         
@@ -3117,6 +3134,18 @@ class UiManager:
 
                 # Persist selected scale with this database for future auto-loads.
                 self.db_manager.set_rating_system(new_system)
+                normalized_rows = self.db_manager.normalize_ratings_to_system(new_system)
+                self.logger.info(
+                    "Rating system change db=%s/%s old=%s new=%s normalized_rows=%s",
+                    getattr(self, 'db_path', ''),
+                    getattr(self, 'db_name', ''),
+                    previous_rating_system,
+                    new_system,
+                    normalized_rows,
+                )
+
+                if hasattr(self, 'tree_generator') and self.tree_generator:
+                    self.tree_generator.set_rating_system(new_system)
                 
                 # Update grid colors immediately
                 self.update_grid_colors()
@@ -5615,6 +5644,15 @@ class UiManager:
                 "Cannot save data while grid is flipped to opponent's perspective.\n"
                 "Please click 'Flip Grid' again to restore friendly perspective before saving.")
             return
+
+        if not self.validate_grid_data():
+            self.logger.warning(
+                "Save blocked due to validation failure db=%s/%s system=%s",
+                getattr(self, 'db_path', ''),
+                getattr(self, 'db_name', ''),
+                self.current_rating_system,
+            )
+            return
         
         team_1 = self.combobox_1.get().strip()
         team_2 = self.combobox_2.get().strip()
@@ -7446,7 +7484,26 @@ class UiManager:
         if row > 0 and col > 0:
             # Rating cell - convert to int if valid, None if empty
             if current_value and current_value.isdigit():
-                new_value = int(current_value)
+                parsed_value = int(current_value)
+                min_rating, max_rating = self.rating_range
+                if parsed_value < min_rating or parsed_value > max_rating:
+                    messagebox.showwarning(
+                        "Invalid Rating",
+                        f"Rating {parsed_value} is outside the active range {min_rating}-{max_rating} "
+                        f"for {self.rating_config['name']}."
+                    )
+                    self.logger.warning(
+                        "Rejected out-of-range cell input row=%s col=%s value=%s range=%s-%s system=%s",
+                        row,
+                        col,
+                        parsed_value,
+                        min_rating,
+                        max_rating,
+                        self.current_rating_system,
+                    )
+                    self._update_entry_from_model(row, col)
+                    return
+                new_value = parsed_value
             elif not current_value:
                 new_value = None  # Empty string ΓåÆ None
             else:
