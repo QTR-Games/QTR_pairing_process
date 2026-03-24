@@ -20,7 +20,11 @@ class DatabasePreferences:
             else Path(__file__).parent.parent / "KLIK_KLAK_KONFIG.json"
         )
         self.max_config_backups = 3
+        self._config_cache: Optional[Dict[str, Any]] = None
         self.logger = self._setup_logger()
+
+    def _invalidate_config_cache(self):
+        self._config_cache = None
 
     def _normalize_path_value(self, path_value: str) -> str:
         """Normalize and canonicalize a path against the config directory."""
@@ -29,6 +33,13 @@ class DatabasePreferences:
         if not os.path.isabs(normalized_value):
             base_dir = str(self.config_file.parent)
             normalized_value = os.path.normpath(os.path.join(base_dir, normalized_value))
+
+        # Fast path for already-clean absolute paths to avoid repeated realpath syscalls.
+        if os.path.isabs(normalized_value):
+            path_obj = Path(normalized_value)
+            has_parent_refs = ".." in path_obj.parts
+            if not has_parent_refs:
+                return normalized_value
 
         # Policy: persist canonical real path (or deterministic normalized path if unresolved).
         try:
@@ -112,6 +123,7 @@ class DatabasePreferences:
                 "tree_autogen_enabled": True,
                 "lazy_sort_on_expand": False,
                 "lazy_sort_mode": "strict",
+                "sort_value_refresh_mode": "full",
                 "right_column_panel": "notes",
                 "pairing_plan_notes": "",
                 "matchup_output_format": "standard",
@@ -255,17 +267,26 @@ class DatabasePreferences:
             self.logger.info("Strategic preferences updated")
         return success
     
-    def load_config(self) -> Dict[str, Any]:
-        """Load configuration from JSON file"""
+    def load_config(self, force_reload: bool = False) -> Dict[str, Any]:
+        """Load configuration from JSON file.
+
+        Uses an in-memory cache by default to avoid repeated startup disk reads.
+        """
+        if not force_reload and self._config_cache is not None:
+            return dict(self._config_cache)
+
         try:
             if not self.config_file.exists():
                 self.logger.info(f"Config file does not exist: {self.config_file}")
-                return self._create_default_config()
+                config = self._create_default_config()
+                self._config_cache = dict(config)
+                return config
             
             with open(self.config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 
             self.logger.debug(f"Config loaded successfully from: {self.config_file}")
+            self._config_cache = dict(config)
             return config
             
         except json.JSONDecodeError as e:
@@ -274,11 +295,15 @@ class DatabasePreferences:
                 f"Configuration file is corrupted.\n"
                 f"Using default settings.\n\n"
                 f"Error: {str(e)}")
-            return self._create_default_config()
+            config = self._create_default_config()
+            self._config_cache = dict(config)
+            return config
             
         except Exception as e:
             self.logger.error(f"Unexpected error loading config: {e}")
-            return self._create_default_config()
+            config = self._create_default_config()
+            self._config_cache = dict(config)
+            return config
     
     def save_config(self, config: Dict[str, Any]) -> bool:
         """Save configuration to JSON file"""
@@ -293,10 +318,12 @@ class DatabasePreferences:
                 json.dump(config, f, indent=2, ensure_ascii=False)
             
             self.logger.debug(f"Config saved successfully to: {self.config_file}")
+            self._config_cache = dict(config)
             return True
             
         except Exception as e:
             self.logger.error(f"Error saving config: {e}")
+            self._invalidate_config_cache()
             messagebox.showerror("Configuration Error", 
                 f"Could not save configuration.\n\n"
                 f"Error: {str(e)}")

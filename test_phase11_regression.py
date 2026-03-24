@@ -174,6 +174,472 @@ def test_deterministic_ordering_across_runs():
     assert order_one == order_two
 
 
+def test_resistance_enhanced_does_not_require_parent_traversal():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "values": (0, 0), "tags": []},
+                "root": {"children": ["a", "b"], "values": (0, 0), "tags": []},
+                "a": {"children": ["a1", "a2"], "values": (4, 0), "tags": []},
+                "b": {"children": ["b1", "b2"], "values": (3, 0), "tags": []},
+                "a1": {"children": [], "values": (5, 0), "tags": []},
+                "a2": {"children": [], "values": (2, 0), "tags": []},
+                "b1": {"children": [], "values": (4, 0), "tags": []},
+                "b2": {"children": [], "values": (1, 0), "tags": []},
+            }
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "tags" in kwargs:
+                    self.nodes[node]["tags"] = list(kwargs["tags"])
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                return None
+            if option == "values":
+                return self.nodes[node]["values"]
+            if option == "tags":
+                return tuple(self.nodes[node]["tags"])
+            return {
+                "values": self.nodes[node]["values"],
+                "tags": tuple(self.nodes[node]["tags"]),
+            }
+
+        def parent(self, _node):
+            raise AssertionError("parent() should not be called by enhanced resistance scoring")
+
+    gen = TreeGenerator(treeview=DummyTreeView(FakeTree()), strategic_preferences=_base_prefs())
+    gen._suppress_display_updates = True
+
+    score = gen.calculate_counter_resistance_scores_enhanced("")
+
+    assert score >= 0
+    assert gen.get_resistance2_from_tags("root") >= 0
+
+
+def test_confidence_enhanced_batches_prefixed_tag_updates():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "values": (0, 0), "tags": []},
+                "root": {"children": ["leaf_a", "leaf_b"], "values": (3, 0), "tags": []},
+                "leaf_a": {"children": [], "values": (5, 0), "tags": []},
+                "leaf_b": {"children": [], "values": (2, 0), "tags": []},
+            }
+            self.tag_write_calls = 0
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "tags" in kwargs:
+                    self.tag_write_calls += 1
+                    self.nodes[node]["tags"] = list(kwargs["tags"])
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                return None
+            if option == "values":
+                return self.nodes[node]["values"]
+            if option == "tags":
+                return tuple(self.nodes[node]["tags"])
+            return {
+                "values": self.nodes[node]["values"],
+                "tags": tuple(self.nodes[node]["tags"]),
+            }
+
+    fake_tree = FakeTree()
+    gen = TreeGenerator(treeview=DummyTreeView(fake_tree), strategic_preferences=_base_prefs())
+    gen._suppress_display_updates = True
+
+    gen.calculate_confidence_scores_enhanced("root")
+
+    # root + two leaves should each get one batched tag write.
+    assert fake_tree.tag_write_calls == 3
+    assert gen.get_confidence2_from_tags("root") >= 0
+
+
+def test_resistance_enhanced_batches_prefixed_tag_updates():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "values": (0, 0), "tags": []},
+                "root": {"children": ["leaf_a", "leaf_b"], "values": (3, 0), "tags": []},
+                "leaf_a": {"children": [], "values": (5, 0), "tags": []},
+                "leaf_b": {"children": [], "values": (2, 0), "tags": []},
+            }
+            self.tag_write_calls = 0
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "tags" in kwargs:
+                    self.tag_write_calls += 1
+                    self.nodes[node]["tags"] = list(kwargs["tags"])
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                return None
+            if option == "values":
+                return self.nodes[node]["values"]
+            if option == "tags":
+                return tuple(self.nodes[node]["tags"])
+            return {
+                "values": self.nodes[node]["values"],
+                "tags": tuple(self.nodes[node]["tags"]),
+            }
+
+    fake_tree = FakeTree()
+    gen = TreeGenerator(treeview=DummyTreeView(fake_tree), strategic_preferences=_base_prefs())
+    gen._suppress_display_updates = True
+
+    gen.calculate_counter_resistance_scores_enhanced("root")
+
+    # root + two leaves should each get one batched tag write.
+    assert fake_tree.tag_write_calls == 3
+    assert gen.get_resistance2_from_tags("root") >= 0
+
+
+def test_sort_children_combined_prefetches_text_values_without_option_reads():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["a", "b", "c"], "text": "", "values": (), "open": True},
+                "a": {"children": [], "text": "Charlie", "values": (3, 0), "open": False},
+                "b": {"children": [], "text": "Alpha", "values": (1, 0), "open": False},
+                "c": {"children": [], "text": "Bravo", "values": (2, 0), "open": False},
+            }
+            self.option_reads = []
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                return None
+            if option is None:
+                return {
+                    "text": self.nodes[node]["text"],
+                    "values": self.nodes[node]["values"],
+                    "open": self.nodes[node]["open"],
+                }
+            self.option_reads.append(option)
+            return self.nodes[node].get(option)
+
+        def detach(self, _child):
+            return None
+
+        def move(self, _child, _node, _where):
+            return None
+
+    ui = UiManager.__new__(UiManager)
+    fake_tree = FakeTree()
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": fake_tree})())
+    ui.column_sort_states = {"#0": "asc", "Rating": "none", "Sort Value": "none"}
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._sorted_children_cache = {}
+
+    ui._sort_children_combined("", None, "#0", recurse_mode="expanded")
+
+    assert "text" not in fake_tree.option_reads
+    assert "values" not in fake_tree.option_reads
+
+
+def test_sort_children_combined_expanded_recursion_uses_prefetched_open_state():
+    class DummyTreeGen:
+        def _is_opponent_choice_level(self, _node):
+            return True
+
+        def get_cumulative2_from_tags(self, _child):
+            return 1
+
+        def get_confidence2_from_tags(self, _child):
+            return 1
+
+        def get_resistance2_from_tags(self, _child):
+            return 1
+
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "text": "", "values": (), "open": True},
+                "root": {"children": ["open_child", "closed_child"], "text": "Pairings", "values": (0, 0), "open": True},
+                "open_child": {"children": ["leaf_open"], "text": "A", "values": (1, 0), "open": True},
+                "leaf_open": {"children": [], "text": "A1", "values": (1, 0), "open": False},
+                "closed_child": {"children": ["leaf_closed"], "text": "B", "values": (1, 0), "open": False},
+                "leaf_closed": {"children": [], "text": "B1", "values": (1, 0), "open": False},
+            }
+            self.option_reads = []
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                return None
+            if option is None:
+                return {
+                    "text": self.nodes[node]["text"],
+                    "values": self.nodes[node]["values"],
+                    "open": self.nodes[node]["open"],
+                }
+            self.option_reads.append(option)
+            return self.nodes[node].get(option)
+
+        def detach(self, _child):
+            return None
+
+        def move(self, _child, _node, _where):
+            return None
+
+    ui = UiManager.__new__(UiManager)
+    fake_tree = FakeTree()
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": fake_tree})())
+    ui.tree_generator = cast(Any, DummyTreeGen())
+    ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._sorted_children_cache = {}
+
+    ui._sort_children_combined("root", "cumulative", None, recurse_mode="expanded")
+
+    assert "open" not in fake_tree.option_reads
+
+
+def test_sort_children_combined_skips_reorder_when_order_unchanged():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["a", "b", "c"], "text": "", "values": (), "open": True},
+                "a": {"children": [], "text": "alpha", "values": (1, 0), "open": False},
+                "b": {"children": [], "text": "bravo", "values": (2, 0), "open": False},
+                "c": {"children": [], "text": "charlie", "values": (3, 0), "open": False},
+            }
+            self.detach_calls = 0
+            self.move_calls = 0
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                return None
+            if option is None:
+                return {
+                    "text": self.nodes[node]["text"],
+                    "values": self.nodes[node]["values"],
+                    "open": self.nodes[node]["open"],
+                }
+            return self.nodes[node].get(option)
+
+        def detach(self, _child):
+            self.detach_calls += 1
+
+        def move(self, _child, _node, _where):
+            self.move_calls += 1
+
+    ui = UiManager.__new__(UiManager)
+    fake_tree = FakeTree()
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": fake_tree})())
+    ui.column_sort_states = {"#0": "asc", "Rating": "none", "Sort Value": "none"}
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._sorted_children_cache = {}
+
+    ui._sort_children_combined("", None, "#0", recurse_mode="expanded")
+
+    assert fake_tree.detach_calls == 0
+    assert fake_tree.move_calls == 0
+
+
+def test_sort_children_combined_reorder_uses_move_without_detach():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["c", "a", "b"], "text": "", "values": (), "open": True},
+                "a": {"children": [], "text": "alpha", "values": (1, 0), "open": False},
+                "b": {"children": [], "text": "bravo", "values": (2, 0), "open": False},
+                "c": {"children": [], "text": "charlie", "values": (3, 0), "open": False},
+            }
+            self.detach_calls = 0
+            self.move_calls = 0
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                return None
+            if option is None:
+                return {
+                    "text": self.nodes[node]["text"],
+                    "values": self.nodes[node]["values"],
+                    "open": self.nodes[node]["open"],
+                }
+            return self.nodes[node].get(option)
+
+        def detach(self, _child):
+            self.detach_calls += 1
+
+        def move(self, _child, _node, _where):
+            self.move_calls += 1
+
+    ui = UiManager.__new__(UiManager)
+    fake_tree = FakeTree()
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": fake_tree})())
+    ui.column_sort_states = {"#0": "asc", "Rating": "none", "Sort Value": "none"}
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._sorted_children_cache = {}
+
+    ui._sort_children_combined("", None, "#0", recurse_mode="expanded")
+
+    assert fake_tree.detach_calls == 0
+    assert fake_tree.move_calls > 0
+
+
+def test_apply_combined_sort_uses_expand_first_for_cumulative_and_confidence():
+    class DummyTreeGen:
+        def unsort_tree(self):
+            return None
+
+    ui = UiManager.__new__(UiManager)
+    ui.perf = DummyPerf()
+    ui.tree_generator = cast(Any, DummyTreeGen())
+    ui.lazy_sort_on_expand = False
+    ui.active_column_sort = None
+    ui._log_perf_entry = lambda *_args, **_kwargs: None
+
+    captured_modes = []
+
+    def fake_sort(_node, _primary_mode, _secondary_column, _profile=None, _depth=0, recurse_mode="all"):
+        captured_modes.append(recurse_mode)
+
+    ui._sort_children_combined = fake_sort
+
+    ui.active_sort_mode = "cumulative"
+    ui.apply_combined_sort(compute_primary_tags=False)
+
+    ui.active_sort_mode = "confidence"
+    ui.apply_combined_sort(compute_primary_tags=False)
+
+    assert captured_modes == ["expanded", "expanded"]
+
+
+def test_apply_combined_sort_keeps_full_recurse_for_non_target_modes():
+    class DummyTreeGen:
+        def unsort_tree(self):
+            return None
+
+    ui = UiManager.__new__(UiManager)
+    ui.perf = DummyPerf()
+    ui.tree_generator = cast(Any, DummyTreeGen())
+    ui.lazy_sort_on_expand = False
+    ui.active_column_sort = None
+    ui._log_perf_entry = lambda *_args, **_kwargs: None
+
+    captured_modes = []
+
+    def fake_sort(_node, _primary_mode, _secondary_column, _profile=None, _depth=0, recurse_mode="all"):
+        captured_modes.append(recurse_mode)
+
+    ui._sort_children_combined = fake_sort
+    ui.active_sort_mode = "resistance"
+
+    ui.apply_combined_sort(compute_primary_tags=False)
+
+    assert captured_modes == ["all"]
+
+
+def test_on_tree_node_opened_sorts_for_cumulative_without_lazy_toggle():
+    class DummyTree:
+        def focus(self):
+            return "node_1"
+
+    ui = UiManager.__new__(UiManager)
+    ui.lazy_sort_on_expand = False
+    ui.active_sort_mode = "cumulative"
+    ui.active_column_sort = None
+    ui.sort_value_refresh_mode = "full"
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": DummyTree()})())
+
+    calls = []
+
+    def fake_sort(node, primary_mode, secondary_column, _profile=None, _depth=0, recurse_mode="all"):
+        calls.append((node, primary_mode, secondary_column, recurse_mode))
+
+    ui._sort_children_combined = fake_sort
+    ui.update_sort_value_recursive = lambda *_args, **_kwargs: None
+
+    ui._on_tree_node_opened()
+
+    assert calls == [("node_1", "cumulative", None, "expanded")]
+
+
+def test_sort_children_combined_skips_tie_break_when_primary_unique():
+    class DummyTreeGen:
+        def __init__(self):
+            self.confidence_calls = 0
+            self.resistance_calls = 0
+
+        def _is_opponent_choice_level(self, _node):
+            return True
+
+        def get_cumulative2_from_tags(self, child):
+            scores = {"a": 10, "b": 8, "c": 6}
+            return scores[child]
+
+        def get_confidence2_from_tags(self, _child):
+            self.confidence_calls += 1
+            return 0
+
+        def get_resistance2_from_tags(self, _child):
+            self.resistance_calls += 1
+            return 0
+
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "root": {"children": ["a", "b", "c"], "text": "Pairings", "values": (0, 0), "open": True},
+                "a": {"children": [], "text": "alpha", "values": (1, 0), "open": False},
+                "b": {"children": [], "text": "bravo", "values": (1, 0), "open": False},
+                "c": {"children": [], "text": "charlie", "values": (1, 0), "open": False},
+            }
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                return None
+            if option is None:
+                return {
+                    "text": self.nodes[node]["text"],
+                    "values": self.nodes[node]["values"],
+                    "open": self.nodes[node]["open"],
+                }
+            return self.nodes[node].get(option)
+
+        def detach(self, _child):
+            return None
+
+        def move(self, _child, _node, _where):
+            return None
+
+    ui = UiManager.__new__(UiManager)
+    tree_gen = DummyTreeGen()
+    ui.tree_generator = cast(Any, tree_gen)
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": FakeTree()})())
+    ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._sorted_children_cache = {}
+
+    ui._sort_children_combined("root", "cumulative", None, recurse_mode="expanded")
+
+    assert tree_gen.confidence_calls == 0
+    assert tree_gen.resistance_calls == 0
+
+
 def test_turn_integrity_depth_ownership():
     root = tk.Tk()
     root.withdraw()
@@ -352,6 +818,91 @@ def test_ensure_matchup_output_panel_keeps_valid_widgets():
     assert ui.matchup_output_panel_created is True
 
 
+def test_update_sort_value_column_visible_only_skips_closed_branches():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "values": (), "open": True},
+                "root": {"children": ["open_child", "closed_child"], "values": (0, ""), "open": True},
+                "open_child": {"children": ["open_leaf"], "values": (0, ""), "open": True},
+                "open_leaf": {"children": [], "values": (0, ""), "open": False},
+                "closed_child": {"children": ["closed_leaf"], "values": (0, ""), "open": False},
+                "closed_leaf": {"children": [], "values": (0, ""), "open": False},
+            }
+            self.value_updates = []
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                    self.value_updates.append(node)
+                return None
+            if option == "values":
+                return self.nodes[node]["values"]
+            if option == "open":
+                return self.nodes[node]["open"]
+            return {
+                "values": self.nodes[node]["values"],
+                "open": self.nodes[node]["open"],
+            }
+
+    ui = UiManager.__new__(UiManager)
+    fake_tree = FakeTree()
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": fake_tree})())
+    ui.sort_value_refresh_mode = "visible_only"
+    ui.current_sort_mode = "cumulative"
+    ui.get_sort_value_for_node = lambda node: 9 if node == "closed_leaf" else 3
+
+    ui.update_sort_value_column()
+
+    assert "open_child" in fake_tree.value_updates
+    assert "open_leaf" in fake_tree.value_updates
+    assert "closed_child" in fake_tree.value_updates
+    assert "closed_leaf" not in fake_tree.value_updates
+
+
+def test_update_sort_value_recursive_skips_noop_value_writes():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "values": (), "open": True},
+                "root": {"children": ["child"], "values": (0, "7"), "open": True},
+                "child": {"children": [], "values": (0, "7"), "open": True},
+            }
+            self.value_updates = []
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                    self.value_updates.append(node)
+                return None
+            if option == "values":
+                return self.nodes[node]["values"]
+            if option == "open":
+                return self.nodes[node]["open"]
+            return {
+                "values": self.nodes[node]["values"],
+                "open": self.nodes[node]["open"],
+            }
+
+    ui = UiManager.__new__(UiManager)
+    fake_tree = FakeTree()
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": fake_tree})())
+    ui.current_sort_mode = "cumulative"
+    ui.get_sort_value_for_node = lambda _node: 7
+
+    ui.update_sort_value_recursive("", recurse_mode="all")
+
+    assert fake_tree.value_updates == []
+
+
 def test_should_invalidate_strategic_memo_reason_policy():
     ui = UiManager.__new__(UiManager)
 
@@ -509,6 +1060,223 @@ def test_sort_by_strategic_recovers_from_all_zero_tags():
     root.destroy()
 
 
+def test_apply_combined_sort_emits_phase_timing_telemetry(tmp_path):
+    ui = UiManager.__new__(UiManager)
+    setattr(ui, "perf", cast(Any, PerfTimer(enabled=True, log_path=tmp_path / "perf_apply_combined.log")))
+
+    class DummyTreeGenForApply:
+        cumulative2_alpha = 0.8
+
+        def calculate_all_path_values_enhanced(self, _node):
+            return None
+
+        def set_memo_state_token(self, _token):
+            return None
+
+        def get_cumulative2_from_tags(self, _node):
+            return 1
+
+        def get_confidence2_from_tags(self, _node):
+            return 1
+
+        def get_resistance2_from_tags(self, _node):
+            return 1
+
+        def _is_opponent_choice_level(self, _node):
+            return True
+
+    class FakeTreeForApply:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "text": "", "values": (), "open": True, "tags": ()},
+                "root": {"children": ["a", "b"], "text": "Pairings", "values": (0, 0), "open": True, "tags": ()},
+                "a": {"children": [], "text": "A", "values": (1, 0), "open": False, "tags": ("cumulative2_1",)},
+                "b": {"children": [], "text": "B", "values": (1, 0), "open": False, "tags": ("cumulative2_1",)},
+            }
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                if "open" in kwargs:
+                    self.nodes[node]["open"] = bool(kwargs["open"])
+                return None
+            if option is None:
+                node_data = self.nodes[node]
+                return {
+                    "text": node_data["text"],
+                    "values": node_data["values"],
+                    "open": node_data["open"],
+                    "tags": node_data["tags"],
+                }
+            return self.nodes[node].get(option)
+
+        def detach(self, _child):
+            return None
+
+        def move(self, _child, _node, _where):
+            return None
+
+    ui.tree_generator = cast(Any, DummyTreeGenForApply())
+    fake_tree = FakeTreeForApply()
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": fake_tree})())
+    ui.active_sort_mode = "cumulative"
+    ui.active_column_sort = None
+    ui.current_sort_mode = "cumulative"
+    ui.lazy_sort_on_expand = False
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._sorted_children_cache = {}
+    ui._primary_metrics_dirty = True
+    ui._last_primary_metrics_signature = None
+    ui._metric_signatures = {}
+    ui._available_explainability_metrics = set()
+    ui._tree_generation_id = 1
+    ui._strategic_sort_invocation_id = 0
+    ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+    ui._build_tree_cache_key = lambda: ("A", "B", 1, "1-5", True, "sig")
+    ui._get_grid_ratings_signature = lambda: "sig"
+    ui.get_scenario_num = lambda: 1
+
+    ui.apply_combined_sort(compute_primary_tags=True)
+    ui.perf.close()
+
+    log_text = (tmp_path / "perf_apply_combined.log").read_text(encoding="utf-8")
+    assert "sort.apply_combined.compute_phase" in log_text
+    assert "sort.apply_combined.tree_phase" in log_text
+    assert "sort.apply_combined.breakdown" in log_text
+
+
+def test_is_metric_stale_fast_path_skips_tag_scan_when_signature_matches():
+    ui = UiManager.__new__(UiManager)
+    ui._primary_metrics_dirty = False
+    expected_signature = ("cumulative", "cache", 0.8)
+    ui._metric_signatures = {"cumulative": expected_signature}
+    ui._build_metric_signature = lambda _metric_key: expected_signature
+
+    def _should_not_scan(_metric_key):
+        raise AssertionError("_has_metric_tags should not be called when signature matches")
+
+    ui._has_metric_tags = _should_not_scan
+
+    assert ui._is_metric_stale("cumulative") is False
+
+
+def test_apply_combined_sort_restores_display_suppression_flag():
+    ui = UiManager.__new__(UiManager)
+    setattr(ui, "perf", cast(Any, DummyPerf()))
+
+    class DummyTreeGenForSuppression:
+        cumulative2_alpha = 0.8
+
+        def __init__(self):
+            self._suppress_display_updates = False
+
+        def set_memo_state_token(self, _token):
+            return None
+
+        def calculate_all_path_values_enhanced(self, _node):
+            return None
+
+        def get_cumulative2_from_tags(self, _node):
+            return 1
+
+        def get_confidence2_from_tags(self, _node):
+            return 1
+
+        def get_resistance2_from_tags(self, _node):
+            return 1
+
+        def _is_opponent_choice_level(self, _node):
+            return True
+
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "text": "", "values": (), "open": True, "tags": ()},
+                "root": {"children": ["a"], "text": "Pairings", "values": (0, 0), "open": True, "tags": ()},
+                "a": {"children": [], "text": "A", "values": (1, 0), "open": False, "tags": ("cumulative2_1",)},
+            }
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                return None
+            if option is None:
+                data = self.nodes[node]
+                return {
+                    "text": data["text"],
+                    "values": data["values"],
+                    "open": data["open"],
+                    "tags": data["tags"],
+                }
+            return self.nodes[node].get(option)
+
+        def detach(self, _child):
+            return None
+
+        def move(self, _child, _node, _where):
+            return None
+
+    ui.tree_generator = cast(Any, DummyTreeGenForSuppression())
+    ui.treeview = cast(Any, type("TreeViewHolder", (), {"tree": FakeTree()})())
+    ui.active_sort_mode = "cumulative"
+    ui.active_column_sort = None
+    ui.current_sort_mode = "cumulative"
+    ui.lazy_sort_on_expand = False
+    ui.tie_break_order = "confidence_then_cumulative"
+    ui._sorted_children_cache = {}
+    ui._primary_metrics_dirty = True
+    ui._last_primary_metrics_signature = None
+    ui._metric_signatures = {}
+    ui._available_explainability_metrics = set()
+    ui._tree_generation_id = 1
+    ui._strategic_sort_invocation_id = 0
+    ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+    ui._build_tree_cache_key = lambda: ("A", "B", 1, "1-5", True, "sig")
+    ui._get_grid_ratings_signature = lambda: "sig"
+    ui.get_scenario_num = lambda: 1
+
+    ui.apply_combined_sort(compute_primary_tags=True)
+
+    assert ui.tree_generator._suppress_display_updates is False
+
+
+def test_tree_generator_display_update_respects_suppress_flag():
+    class DummyTree:
+        def __init__(self):
+            self.nodes = {"n": {"values": (1, 2, 3, 4)}}
+            self.value_writes = 0
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                    self.value_writes += 1
+                return None
+            if option == "values":
+                return self.nodes[node]["values"]
+            return self.nodes[node]
+
+    holder = type("DummyTreeHolder", (), {})()
+    holder.tree = DummyTree()
+    gen = TreeGenerator(treeview=holder)
+    gen._suppress_display_updates = True
+
+    gen.update_node_cumulative_display("n", 9)
+    gen.update_node_confidence_display("n", 9)
+    gen.update_node_resistance_display("n", 9)
+    gen.update_node_strategic_display("n", 9)
+
+    assert holder.tree.value_writes == 0
+
+
 def test_persistent_memo_snapshot_roundtrip_with_strict_signature():
     gen = TreeGenerator(treeview=DummyTreeView(object()), strategic_preferences=_persistent_prefs())
     gen.set_memo_state_token("stable-token")
@@ -570,7 +1338,7 @@ def test_strategic_memo_hit_materializes_strategic_tags():
     memo_key = gen._build_structural_memo_key(child)
     gen._strategic_memo[memo_key] = 42
 
-    assert gen.get_strategic3_from_tags(child) == 0
+    assert gen.get_strategic3_from_tags(child) == 42
     stats_before = gen.get_memoization_stats().copy()
 
     score = gen.calculate_strategic3_scores(child)
@@ -599,13 +1367,82 @@ def test_parent_memo_hit_materializes_descendant_strategic_tags():
     gen._strategic_memo[parent_key] = 55
     gen._strategic_memo[child_key] = 31
 
-    assert gen.get_strategic3_from_tags(parent) == 0
-    assert gen.get_strategic3_from_tags(child) == 0
+    assert gen.get_strategic3_from_tags(parent) == 55
+    assert gen.get_strategic3_from_tags(child) == 31
 
     gen.calculate_strategic3_scores(parent)
 
     assert gen.get_strategic3_from_tags(parent) == 55
     assert gen.get_strategic3_from_tags(child) == 31
+    root.destroy()
+
+
+def test_parent_memo_hit_skips_descendant_recompute_when_tags_exist():
+    root = tk.Tk()
+    root.withdraw()
+
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_persistent_prefs())
+
+    root_node = tree.insert("", "end", text="Pairings", values=(0, 0), tags=("0",))
+    parent = tree.insert(root_node, "end", text="A vs X", values=(4, 0), tags=("4", "strategic3_55"))
+    child = tree.insert(parent, "end", text="X rating 4", values=(4, 0), tags=("4", "strategic3_31"))
+
+    parent_key = gen._build_structural_memo_key(parent)
+    child_key = gen._build_structural_memo_key(child)
+    gen._strategic_memo[parent_key] = 55
+    gen._strategic_memo[child_key] = 31
+
+    stats_before = gen.get_memoization_stats().copy()
+    gen.calculate_strategic3_scores(parent)
+    stats_after = gen.get_memoization_stats().copy()
+
+    # Only the parent should consume a memo hit when descendant tags already exist.
+    assert (stats_after["hits"] - stats_before["hits"]) == 1
+    root.destroy()
+
+
+def test_get_strategic3_from_tags_reads_memo_when_tag_missing():
+    root = tk.Tk()
+    root.withdraw()
+
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_persistent_prefs())
+
+    root_node = tree.insert("", "end", text="Pairings", values=(0, 0), tags=("0",))
+    child = tree.insert(root_node, "end", text="A vs X", values=(4, 0), tags=("4",))
+
+    memo_key = gen._build_structural_memo_key(child)
+    gen._strategic_memo[memo_key] = 47
+
+    # No strategic3_ tag exists, so read should use memo fast-path.
+    assert gen.get_strategic3_from_tags(child) == 47
+    assert not any(str(tag).startswith("strategic3_") for tag in tree.item(child, "tags"))
+    root.destroy()
+
+
+def test_parent_memo_hit_can_skip_materialization_and_use_fastpath_reads():
+    root = tk.Tk()
+    root.withdraw()
+
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_persistent_prefs())
+
+    root_node = tree.insert("", "end", text="Pairings", values=(0, 0), tags=("0",))
+    parent = tree.insert(root_node, "end", text="A vs X", values=(4, 0), tags=("4",))
+    child = tree.insert(parent, "end", text="X rating 4", values=(4, 0), tags=("4",))
+
+    parent_key = gen._build_structural_memo_key(parent)
+    child_key = gen._build_structural_memo_key(child)
+    gen._strategic_memo[parent_key] = 55
+    gen._strategic_memo[child_key] = 31
+    gen._materialize_strategic_tags_on_memo_hit = False
+
+    gen.calculate_strategic3_scores(parent)
+
+    assert gen.get_strategic3_from_tags(parent) == 55
+    assert gen.get_strategic3_from_tags(child) == 31
+    assert not any(str(tag).startswith("strategic3_") for tag in tree.item(child, "tags"))
     root.destroy()
 
 

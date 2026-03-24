@@ -2,6 +2,7 @@
 """Tests for database persistence feature."""
 
 import os
+import json
 from pathlib import Path
 import pytest
 
@@ -140,6 +141,24 @@ def test_normalize_database_reference_relative_directory_with_name(tmp_path):
     expected_dir = (config_dir.parent / "db-store").resolve()
     assert Path(path).resolve() == expected_dir
     assert name == "team.db"
+
+
+def test_load_config_uses_cache_until_force_reload(tmp_path):
+    config_path = tmp_path / "KLIK_KLAK_KONFIG.test.json"
+    db_prefs = DatabasePreferences(print_output=False, config_file=config_path)
+
+    initial = db_prefs.load_config()
+    assert initial["version"] == "1.0"
+
+    modified = dict(initial)
+    modified["version"] = "2.0"
+    config_path.write_text(json.dumps(modified), encoding="utf-8")
+
+    cached = db_prefs.load_config()
+    assert cached["version"] == "1.0"
+
+    refreshed = db_prefs.load_config(force_reload=True)
+    assert refreshed["version"] == "2.0"
 
 
 @pytest.mark.parametrize(
