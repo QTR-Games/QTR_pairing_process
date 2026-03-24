@@ -191,6 +191,15 @@ class RatingSystemDialog(DynamicDialog):
     def _on_system_change(self):
         """Handle rating system selection change"""
         self._check_database_state()
+
+    def _refresh_dialog_size(self):
+        """Recalculate dialog size after dynamic content changes."""
+        self.dialog.update_idletasks()
+        req_width = self.dialog.winfo_reqwidth() + 20
+        req_height = self.dialog.winfo_reqheight() + 20
+        final_width = max(self.min_width, min(req_width, self.max_width))
+        final_height = max(self.min_height, min(req_height, self.max_height))
+        self.dialog.geometry(f"{final_width}x{final_height}")
     
     def _check_database_state(self):
         """Check if database has existing data and show warning if needed"""
@@ -209,6 +218,8 @@ class RatingSystemDialog(DynamicDialog):
                 self.warning_frame.pack_forget()
         else:
             self.warning_frame.pack_forget()
+
+        self._refresh_dialog_size()
     
     def _on_apply(self):
         """Apply the selected rating system"""
@@ -240,9 +251,11 @@ class RatingSystemDialog(DynamicDialog):
             print(f"Error checking database: {e}")
         
         self.selected_system = new_system
+        self.result = new_system
         self.dialog.destroy()
     
     def _on_cancel(self):
         """Cancel dialog without changes"""
         self.selected_system = None
+        self.result = None
         self.dialog.destroy()

@@ -199,13 +199,17 @@ class UiManager:
             print(f"TKINTER VERSION: {tk.TkVersion}")
             
 
-    def select_database(self):
-        """Select database - automatically loads last used database if available"""
+    def select_database(self, force_prompt: bool = False) -> bool:
+        """Select database, optionally forcing the database selector UI.
+
+        Returns True when a database selection/create path is applied.
+        Returns False only when a forced prompt is explicitly canceled.
+        """
         # Try to load the last used database from config
         with self.perf.span("startup.select_database.read_last_preference"):
             last_path, last_name = self.db_preferences.get_last_database()
         
-        if last_path and last_name:
+        if not force_prompt and last_path and last_name:
             # Validate that the saved database still exists
             with self.perf.span("startup.select_database.validate_last_preference"):
                 full_path = Path(last_path) / last_name
@@ -219,7 +223,7 @@ class UiManager:
                 # Defer cache table setup out of select_database startup span.
                 self._pending_generated_tree_cache_ensure = True
                 self.logger.info(f"Auto-loaded last database: {self.db_name} from {self.db_path}")
-                return
+                return True
             else:
                 self.logger.warning(f"Last used database not found: {last_name} at {last_path}")
                 self.logger.info("Showing database selector...")
@@ -227,7 +231,25 @@ class UiManager:
         # No saved database or it doesn't exist - show the selector
         with self.perf.span("startup.select_database.prompt_selector"):
             db_load_ui = DbLoadUi()
-            self.db_path, self.db_name = db_load_ui.create_or_load_database()
+            selected_path, selected_name = db_load_ui.create_or_load_database()
+
+        selection_action = getattr(db_load_ui, "selection_action", "create_new")
+        if force_prompt and selection_action == "cancel":
+            self.logger.info("Database change canceled by user; keeping current database.")
+            return False
+
+        if selection_action == "create_new" and (not selected_path or not selected_name):
+            self.logger.info("Create-new database canceled before file selection.")
+            if force_prompt:
+                return False
+
+        self.db_path = selected_path
+        self.db_name = selected_name
+
+        if self.db_path is not None:
+            self.db_path = os.path.abspath(self.db_path)
+        if self.db_name is not None:
+            self.db_name = str(self.db_name).strip()
 
         if self.db_path is None:
             with self.perf.span("startup.select_database.create_db_manager"):
@@ -242,6 +264,68 @@ class UiManager:
                 with self.perf.span("startup.select_database.save_preference"):
                     self.db_preferences.save_database_preference(self.db_path, self.db_name)
                 self.logger.info(f"Saved database preference: {self.db_name} at {self.db_path}")
+
+        self._sync_rating_system_from_db()
+        return True
+
+    @staticmethod
+    def _db_reference(path: Optional[str], name: Optional[str]) -> Tuple[str, str]:
+        """Build a normalized, comparable database reference."""
+        normalized_path = os.path.normcase(os.path.abspath(path or ""))
+        normalized_name = os.path.normcase((name or "").strip())
+        return normalized_path, normalized_name
+
+    def _root_is_alive(self) -> bool:
+        """Safely determine whether the Tk root is still valid."""
+        root = getattr(self, "root", None)
+        if root is None:
+            return False
+        try:
+            return bool(root.winfo_exists())
+        except tk.TclError:
+            return False
+
+    def _sync_rating_system_from_db(self):
+        """Align in-memory/UI rating system to metadata stored in the selected DB."""
+        if not hasattr(self, 'db_manager') or self.db_manager is None:
+            return
+
+        db_rating_system = self.db_manager.get_rating_system(default=self.current_rating_system)
+        if db_rating_system not in RATING_SYSTEMS:
+            db_rating_system = DEFAULT_RATING_SYSTEM
+            self.db_manager.set_rating_system(db_rating_system)
+
+        self.current_rating_system = db_rating_system
+        self.rating_config = RATING_SYSTEMS[db_rating_system]
+        self.color_map = self.rating_config['color_map']
+        self.rating_range = self.rating_config['range']
+
+    def _reset_after_database_change(self):
+        """Clear data and cache state after switching to a different database."""
+        tree_widget = getattr(getattr(self, 'treeview', None), 'tree', None)
+        if tree_widget is not None:
+            try:
+                children = tree_widget.get_children()
+                if children:
+                    tree_widget.delete(*children)
+            except tk.TclError:
+                pass
+
+        self._invalidate_tree_cache("database_change")
+        self.active_sort_mode = None
+        self.is_sorted = False
+        self.current_sort_mode = "none"
+        if hasattr(self, 'update_sort_button_states'):
+            self.update_sort_button_states()
+
+        self.grid_data_model.clear_grid(notify=True)
+        # Allow debug auto-populate to run for the newly selected database.
+        self._auto_populated_teams = False
+
+        self._invalidate_team_cache()
+        self._invalidate_comment_cache()
+        self.update_ui()
+        self.update_status_bar()
             
     def initialize_ui_vars(self):
         with self.perf.span("startup.setup_root_window"):
@@ -2954,28 +3038,20 @@ class UiManager:
                                        "Do you want to continue?")
             
             if result:
-                # Clear current tree data
-                if hasattr(self, 'treeview') and self.treeview:
-                    self.treeview.tree.delete(*self.treeview.tree.get_children())
-                self._invalidate_tree_cache("database_change")
-                
-                # Reset sorting states
-                self.active_sort_mode = None
-                self.is_sorted = False
-                self.current_sort_mode = "none"
-                if hasattr(self, 'update_sort_button_states'):
-                    self.update_sort_button_states()
-                
-                # Clear grid data
-                self.grid_data_model.clear_grid(notify=True)
-                
-                # Trigger database selection
-                self.select_database()
-                self._invalidate_team_cache()
-                self._invalidate_comment_cache()
-                
-                # Update UI with new database
-                self.update_ui()
+                previous_db = self._db_reference(getattr(self, 'db_path', None), getattr(self, 'db_name', None))
+
+                # Trigger database selection/create UI first.
+                # If canceled, leave current DB and current UI state untouched.
+                selected = self.select_database(force_prompt=True)
+                if not selected:
+                    return
+
+                current_db = self._db_reference(getattr(self, 'db_path', None), getattr(self, 'db_name', None))
+                if current_db == previous_db:
+                    messagebox.showinfo("Database Unchanged", "Current database remained selected. No changes were applied.")
+                    return
+
+                self._reset_after_database_change()
                 
                 # Show success message
                 db_name = self.db_name if hasattr(self, 'db_name') and self.db_name else "Selected Database"
@@ -2983,7 +3059,8 @@ class UiManager:
                 
         except Exception as e:
             print(f"Error changing database: {e}")
-            messagebox.showerror("Error", f"Failed to change database: {e}")
+            if self._root_is_alive():
+                messagebox.showerror("Error", f"Failed to change database: {e}")
     
     def on_configure_rating_system(self):
         """Show dialog to configure rating system preference."""
@@ -2992,6 +3069,40 @@ class UiManager:
             new_system = dialog.show()
             
             if new_system and new_system != self.current_rating_system:
+                previous_db = self._db_reference(getattr(self, 'db_path', None), getattr(self, 'db_name', None))
+                previous_rating_system = self.current_rating_system
+
+                proceed = messagebox.askyesno(
+                    "Select Database For New Rating System",
+                    "Changing rating systems requires using a different database file.\n\n"
+                    "Select an existing database that matches this scale, or create a new database now.\n\n"
+                    "The current database will remain unchanged.",
+                    icon="warning",
+                )
+                if not proceed:
+                    return
+
+                while True:
+                    selected = self.select_database(force_prompt=True)
+                    if not selected:
+                        messagebox.showinfo("Rating System Unchanged", "Rating system change canceled.")
+                        return
+
+                    current_db = self._db_reference(getattr(self, 'db_path', None), getattr(self, 'db_name', None))
+                    if current_db != previous_db:
+                        break
+
+                    retry = messagebox.askretrycancel(
+                        "Different Database Required",
+                        "You selected the current database.\n\n"
+                        "To change rating systems, select a different existing database file or create a new one.",
+                    )
+                    if not retry:
+                        messagebox.showinfo("Rating System Unchanged", "Rating system change canceled.")
+                        return
+
+                self._reset_after_database_change()
+
                 # Update current system
                 self.current_rating_system = new_system
                 self.rating_config = RATING_SYSTEMS[new_system]
@@ -3003,6 +3114,9 @@ class UiManager:
                 
                 # Also save to old settings for backward compatibility
                 self.settings_manager.set_rating_system(new_system)
+
+                # Persist selected scale with this database for future auto-loads.
+                self.db_manager.set_rating_system(new_system)
                 
                 # Update grid colors immediately
                 self.update_grid_colors()
@@ -3013,13 +3127,16 @@ class UiManager:
                 
                 # Show success message
                 messagebox.showinfo("Rating System Updated", 
-                                  f"Rating system changed to: {self.rating_config['name']}\n\n"
+                                  f"Rating system changed from: {RATING_SYSTEMS[previous_rating_system]['name']}\n"
+                                  f"to: {self.rating_config['name']}\n\n"
+                                  f"Database: {self.db_name}\n"
                                   f"Range: {self.rating_range[0]}-{self.rating_range[1]}\n"
                                   f"Colors updated throughout the application.")
                 
         except Exception as e:
             print(f"Error configuring rating system: {e}")
-            messagebox.showerror("Error", f"Failed to configure rating system: {e}")
+            if self._root_is_alive():
+                messagebox.showerror("Error", f"Failed to configure rating system: {e}")
 
     def clear_generated_tree_cache_active_matchup(self):
         """Clear persisted tree snapshots for the active matchup selection only."""
@@ -3530,12 +3647,13 @@ class UiManager:
         try:
             menu_window.destroy()  # Close menu first
             action_func()  # Then execute the action
-            if reopen_data_management_on_complete and hasattr(self, "root") and self.root.winfo_exists():
+            if reopen_data_management_on_complete and self._root_is_alive():
                 self.show_data_management_menu()
         except Exception as e:
             print(f"Error executing menu action: {e}")
             from tkinter import messagebox
-            messagebox.showerror("Data Management", self._operation_failed_error(f"menu action could not be executed: {e}"))
+            if self._root_is_alive():
+                messagebox.showerror("Data Management", self._operation_failed_error(f"menu action could not be executed: {e}"))
     
     def export_xlsx(self):
         """Export data to XLSX format - placeholder implementation."""
@@ -5229,6 +5347,14 @@ class UiManager:
         with self.perf.span("startup.populate_dropdowns.assign_team_comboboxes"):
             self._set_combobox_values_if_changed(self.combobox_1, team_names)
             self._set_combobox_values_if_changed(self.combobox_2, team_names)
+
+        # Prevent stale selections from a previous database after switching DBs.
+        current_team_1 = self.combobox_1.get().strip()
+        current_team_2 = self.combobox_2.get().strip()
+        if current_team_1 and current_team_1 not in team_names:
+            self.combobox_1.set("")
+        if current_team_2 and current_team_2 not in team_names:
+            self.combobox_2.set("")
 
         if not self._team_dropdowns_initialized:
             self._team_dropdowns_initialized = True

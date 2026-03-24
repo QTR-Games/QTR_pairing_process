@@ -1,6 +1,7 @@
 """ © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 import tkinter as tk
-from os.path import expanduser
+import os
+from os.path import expanduser, dirname, basename
 # import filedialog module
 from tkinter import filedialog
 
@@ -8,6 +9,7 @@ class DbLoadUi:
     def __init__(self) -> None:
         self.path = None
         self.name = None
+        self.selection_action = "cancel"
         self.window = tk.Tk()
         self.ui_theme = {
             "font_title": ("Arial", 14, "bold"),
@@ -34,7 +36,8 @@ class DbLoadUi:
         window.resizable(True, True)
         window.config(background=theme["bg_surface"])
 
-        window.bind('<Escape>', lambda event: window.destroy())
+        window.bind('<Escape>', lambda event: self._cancel_selection())
+        window.protocol("WM_DELETE_WINDOW", self._cancel_selection)
 
         container = tk.Frame(window, bg=theme["bg_surface"])
         container.pack(fill=tk.BOTH, expand=True, padx=theme["pad_lg"], pady=theme["pad_lg"])
@@ -78,7 +81,7 @@ class DbLoadUi:
         tk.Button(
             buttons,
             text="Create New Database",
-            command=window.destroy,
+            command=self._create_new_database,
             font=theme["font_body"],
             bg=theme["bg_secondary"],
             fg=theme["fg_body"],
@@ -96,8 +99,34 @@ class DbLoadUi:
         ).pack(pady=(0, theme["pad_md"]))
 
         window.mainloop()
-        print(self.path, self.name)
         return self.path, self.name
+
+    def _cancel_selection(self):
+        self.selection_action = "cancel"
+        self.window.destroy()
+
+    def _create_new_database(self):
+        home = expanduser("~")
+        filename = filedialog.asksaveasfilename(
+            initialdir=home,
+            title="Create New Database",
+            defaultextension=".db",
+            filetypes=(("DB files", "*.db"), ("all files", "*.*")),
+        )
+
+        if not filename:
+            return
+
+        normalized = os.path.abspath(filename)
+        path = dirname(normalized)
+        name = basename(normalized)
+        if not name:
+            return
+
+        self.selection_action = "create_new"
+        self.path = path
+        self.name = name
+        self.window.destroy()
 
     def browseFiles(self):
         home = expanduser("~")
@@ -108,8 +137,18 @@ class DbLoadUi:
                                                             "*.db"),
                                                         ("all files",
                                                             "*.*")))
-        
-        self.path = '/'.join(filename.split('/')[:-1])
-        self.name = filename.split('/')[-1]
+
+        if not filename:
+            return
+
+        normalized = os.path.abspath(filename)
+        path = dirname(normalized)
+        name = basename(normalized)
+        if not name:
+            return
+
+        self.selection_action = "existing"
+        self.path = path
+        self.name = name
         self.window.destroy()
         
