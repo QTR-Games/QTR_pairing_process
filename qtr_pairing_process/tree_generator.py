@@ -59,6 +59,7 @@ class TreeGenerator:
             self._read_numeric_pref(("strategic3", "persistent_memo_max_entries"), 50000, 1000, 250000)
         )
         self._suppress_display_updates = False
+        self._confidence_aux_tags_enabled = True
 
     def _read_raw_pref(self, path, fallback):
         current = self.strategic_preferences
@@ -621,6 +622,24 @@ class TreeGenerator:
         current_tags.append(f"{prefix}{int(value)}")
         self.treeview.tree.item(node, tags=current_tags)
 
+    def _replace_prefixed_tags(self, node, prefix_values):
+        """Replace multiple prefixed tags with a single tree item write."""
+        if not prefix_values:
+            return
+
+        item_data = self.treeview.tree.item(node)
+        current_tags = list(item_data.get('tags', []))
+        prefixes = tuple(prefix_values.keys())
+        current_tags = [
+            tag for tag in current_tags
+            if not any(str(tag).startswith(prefix) for prefix in prefixes)
+        ]
+
+        for prefix, value in prefix_values.items():
+            current_tags.append(f"{prefix}{int(value)}")
+
+        self.treeview.tree.item(node, tags=current_tags)
+
     def _extract_prefixed_tag_value(self, node, prefix, default=0):
         """Read an integer tag value by prefix from a tree node."""
         try:
@@ -883,6 +902,7 @@ class TreeGenerator:
         """Enhanced confidence with volatility and sample-size penalties."""
         k = self.confidence2_k if k is None else k
         u = self.confidence2_u if u is None else u
+        write_aux_tags = bool(getattr(self, "_confidence_aux_tags_enabled", True))
         children = self.treeview.tree.get_children(node)
 
         if not children:
@@ -893,10 +913,11 @@ class TreeGenerator:
                     rating = 0
                 base_conf = self.calculate_rating_confidence(rating)
                 score = int(self._clamp(base_conf, 0, 100))
-                self._replace_prefixed_tag(node, 'confidence2_', score)
-                self._replace_prefixed_tag(node, 'floor2_', score)
-                self._replace_prefixed_tag(node, 'ceiling2_', score)
-                self._replace_prefixed_tag(node, 'regret2_', 0)
+                prefix_values = {'confidence2_': score, 'regret2_': 0}
+                if write_aux_tags:
+                    prefix_values['floor2_'] = score
+                    prefix_values['ceiling2_'] = score
+                self._replace_prefixed_tags(node, prefix_values)
                 self.update_node_confidence_display(node, score)
                 return score, score, score
             return 0, 0, 0
@@ -926,10 +947,11 @@ class TreeGenerator:
             ceiling2 = int(round(self._clamp(max(child_scores), 0, 100)))
             regret2 = max(0, ceiling2 - floor2)
 
-            self._replace_prefixed_tag(node, 'confidence2_', score)
-            self._replace_prefixed_tag(node, 'floor2_', floor2)
-            self._replace_prefixed_tag(node, 'ceiling2_', ceiling2)
-            self._replace_prefixed_tag(node, 'regret2_', regret2)
+            prefix_values = {'confidence2_': score, 'regret2_': regret2}
+            if write_aux_tags:
+                prefix_values['floor2_'] = floor2
+                prefix_values['ceiling2_'] = ceiling2
+            self._replace_prefixed_tags(node, prefix_values)
             self.update_node_confidence_display(node, score)
             return floor2, ceiling2, score
 

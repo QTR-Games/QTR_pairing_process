@@ -438,12 +438,16 @@ class UiManager:
     def _populate_dropdowns(self):
         """Populate dropdowns after UI is visible (deferred for performance)"""
         with self.perf.span("startup.populate_dropdowns"):
-            with self.perf.span("startup.populate_dropdowns.team_dropdowns"):
-                self.set_team_dropdowns()
             with self.perf.span("startup.populate_dropdowns.scenario_dropdown"):
                 self.update_scenario_box()
+        # Keep heavier DB-backed dropdown work out of startup timing path.
+        self.root.after_idle(self._populate_team_dropdowns_idle)
         # Keep table setup out of dropdown startup timing path.
         self.root.after_idle(self._ensure_pending_generated_tree_cache_table)
+
+    def _populate_team_dropdowns_idle(self):
+        with self.perf.span("startup.populate_dropdowns.team_dropdowns"):
+            self.set_team_dropdowns()
     
 
     
@@ -4627,7 +4631,9 @@ class UiManager:
                 self._set_tree_memo_state_token()
                 recomputed_any = False
                 prior_suppress_display = bool(getattr(self.tree_generator, "_suppress_display_updates", False))
+                prior_conf_aux_tags = bool(getattr(self.tree_generator, "_confidence_aux_tags_enabled", True))
                 setattr(self.tree_generator, "_suppress_display_updates", True)
+                setattr(self.tree_generator, "_confidence_aux_tags_enabled", False)
 
                 def run_metric(metric_key, span_label, compute_func):
                     nonlocal recomputed_any
@@ -4673,6 +4679,7 @@ class UiManager:
                             recomputed_any = True
                 finally:
                     setattr(self.tree_generator, "_suppress_display_updates", prior_suppress_display)
+                    setattr(self.tree_generator, "_confidence_aux_tags_enabled", prior_conf_aux_tags)
 
                 self._last_primary_metrics_signature = self._build_primary_metrics_signature(primary_mode)
                 self._primary_metrics_dirty = False

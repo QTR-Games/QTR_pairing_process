@@ -219,6 +219,48 @@ def test_resistance_enhanced_does_not_require_parent_traversal():
     assert gen.get_resistance2_from_tags("root") >= 0
 
 
+def test_confidence_enhanced_batches_prefixed_tag_updates():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "values": (0, 0), "tags": []},
+                "root": {"children": ["leaf_a", "leaf_b"], "values": (3, 0), "tags": []},
+                "leaf_a": {"children": [], "values": (5, 0), "tags": []},
+                "leaf_b": {"children": [], "values": (2, 0), "tags": []},
+            }
+            self.tag_write_calls = 0
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "tags" in kwargs:
+                    self.tag_write_calls += 1
+                    self.nodes[node]["tags"] = list(kwargs["tags"])
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                return None
+            if option == "values":
+                return self.nodes[node]["values"]
+            if option == "tags":
+                return tuple(self.nodes[node]["tags"])
+            return {
+                "values": self.nodes[node]["values"],
+                "tags": tuple(self.nodes[node]["tags"]),
+            }
+
+    fake_tree = FakeTree()
+    gen = TreeGenerator(treeview=DummyTreeView(fake_tree), strategic_preferences=_base_prefs())
+    gen._suppress_display_updates = True
+
+    gen.calculate_confidence_scores_enhanced("root")
+
+    # root + two leaves should each get one batched tag write.
+    assert fake_tree.tag_write_calls == 3
+    assert gen.get_confidence2_from_tags("root") >= 0
+
+
 def test_sort_children_combined_prefetches_text_values_without_option_reads():
     class FakeTree:
         def __init__(self):
