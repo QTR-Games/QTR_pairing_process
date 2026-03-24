@@ -6965,37 +6965,38 @@ class UiManager:
             canvas.create_text(4, 30, anchor=tk.W, text="No confidence data", fill="#777777", font=("Arial", 8))
             return
 
-        min_rating = self.rating_range[0] if hasattr(self, 'rating_range') else 1
-        max_rating = self.rating_range[1] if hasattr(self, 'rating_range') else 5
-        bin_count = 5
-        bin_width = (max_rating - min_rating) / bin_count
-        bins = [0] * bin_count
+        min_rating = int(self.rating_range[0]) if hasattr(self, 'rating_range') else 1
+        max_rating = int(self.rating_range[1]) if hasattr(self, 'rating_range') else 5
+        bucket_values = list(range(min_rating, max_rating + 1))
+        bins = [0] * len(bucket_values)
 
         for rating in ratings:
-            if rating < min_rating:
+            rounded_rating = int(round(rating))
+            if rounded_rating < min_rating:
                 idx = 0
-            elif rating >= max_rating:
-                idx = bin_count - 1
+            elif rounded_rating > max_rating:
+                idx = len(bucket_values) - 1
             else:
-                idx = int((rating - min_rating) / bin_width)
-                idx = min(idx, bin_count - 1)
+                idx = rounded_rating - min_rating
             bins[idx] += 1
 
         width = int(canvas.winfo_width() or 240)
         height = int(canvas.winfo_height() or 60)
         padding = 4
         available_width = max(width - padding * 2, 1)
-        bar_width = available_width / bin_count
+        bar_width = available_width / len(bucket_values)
         max_count = max(bins) if bins else 1
 
         for i, count in enumerate(bins):
+            bucket_value = bucket_values[i]
+            bar_color = self.color_map.get(str(bucket_value), "#7fbf7f")
             bar_height = int((count / max_count) * (height - padding * 2)) if max_count else 0
             x0 = padding + i * bar_width + 1
             x1 = padding + (i + 1) * bar_width - 1
             y0 = height - padding - bar_height
             y1 = height - padding
-            canvas.create_rectangle(x0, y0, x1, y1, fill="#7fbf7f", outline="#4f7f4f")
-            label = f"{min_rating + i * bin_width:.0f}"
+            canvas.create_rectangle(x0, y0, x1, y1, fill=bar_color, outline="#4f4f4f")
+            label = f"{bucket_value}"
             canvas.create_text(x0 + 2, height - 2, anchor=tk.SW, text=label, fill="#555555", font=("Arial", 7))
     
     def format_matchups_verbose(self, matchups, item_text):
