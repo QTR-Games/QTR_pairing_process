@@ -60,6 +60,8 @@ class TreeGenerator:
         )
         self._suppress_display_updates = False
         self._confidence_aux_tags_enabled = True
+        self._materialize_strategic_tags_on_memo_hit = True
+        self.reset_strategic_profile_stats()
 
     def _read_raw_pref(self, path, fallback):
         current = self.strategic_preferences
@@ -541,16 +543,7 @@ class TreeGenerator:
     def store_counter_resistance_data(self, node, resistance):
         """Store counter-resistance data in node tags"""
         try:
-            item_data = self.treeview.tree.item(node)
-            current_tags = list(item_data.get('tags', []))
-            
-            # Remove existing resistance tags
-            current_tags = [tag for tag in current_tags if not str(tag).startswith('resistance_')]
-            
-            # Add new resistance data
-            current_tags.append(f'resistance_{int(resistance)}')
-            
-            self.treeview.tree.item(node, tags=current_tags)
+            self._replace_prefixed_tags(node, {'resistance_': resistance})
 
             # Update the resistance score column (index 3)
             self.update_node_resistance_display(node, resistance)
@@ -658,6 +651,52 @@ class TreeGenerator:
         except TypeError:
             pass
         return default
+
+    def _has_prefixed_tag(self, node, prefix):
+        """Return True when node has at least one tag with the given prefix."""
+        try:
+            item_data = self.treeview.tree.item(node)
+            tags = item_data.get('tags', [])
+            return any(str(tag).startswith(prefix) for tag in tags)
+        except TypeError:
+            return False
+
+    def reset_strategic_profile_stats(self):
+        self._strategic_profile_stats = {
+            "nodes_visited": 0,
+            "range_nodes": 0,
+            "memo_hits": 0,
+            "memo_misses": 0,
+            "memo_materialized": 0,
+            "memo_fastpath_reads": 0,
+            "materialize_recursions": 0,
+            "tag_writes": 0,
+        }
+
+    def get_strategic_profile_stats(self):
+        return dict(getattr(self, "_strategic_profile_stats", {}))
+
+    def _materialize_strategic_descendants_from_memo(self, node, weights, rho, lam):
+        """Populate missing descendant strategic tags from memo before falling back to recompute."""
+        for child in self.treeview.tree.get_children(node):
+            if self._has_prefixed_tag(child, 'strategic3_'):
+                continue
+
+            self._strategic_profile_stats["nodes_visited"] += 1
+            child_key = self._build_structural_memo_key(child)
+            memo_value = self._strategic_memo.get(child_key)
+            if memo_value is None:
+                self._strategic_profile_stats["materialize_recursions"] += 1
+                self.calculate_strategic3_scores(child, weights=weights, rho=rho, lam=lam)
+                continue
+
+            self._strategic_memo_hits += 1
+            self._strategic_profile_stats["memo_hits"] += 1
+            self._replace_prefixed_tags(child, {'strategic3_': int(memo_value)})
+            self._strategic_profile_stats["tag_writes"] += 1
+            self._strategic_profile_stats["memo_materialized"] += 1
+            self.update_node_strategic_display(child, int(memo_value))
+            self._materialize_strategic_descendants_from_memo(child, weights=weights, rho=rho, lam=lam)
 
     def _clamp(self, value, min_value, max_value):
         return max(min_value, min(max_value, value))
@@ -979,7 +1018,7 @@ class TreeGenerator:
                     rating = 0
                 base = self.calculate_counter_resistance(rating)
                 score = int(round(self._clamp(base, 0, 100)))
-                self._replace_prefixed_tag(node, 'resistance2_', score)
+                self._replace_prefixed_tags(node, {'resistance2_': score})
                 self.update_node_resistance_display(node, score)
                 return score
             return 0
@@ -1005,7 +1044,7 @@ class TreeGenerator:
             score = base_stability - (beta * regret) + (gamma * depth_buffer)
             score = int(round(self._clamp(score, 0, 100)))
 
-            self._replace_prefixed_tag(node, 'resistance2_', score)
+            self._replace_prefixed_tags(node, {'resistance2_': score})
             self.update_node_resistance_display(node, score)
             return score
 
@@ -1023,6 +1062,7 @@ class TreeGenerator:
         guardrail_coeff = self._get_guardrail_coefficient()
 
         if node == "":
+            self.reset_strategic_profile_stats()
             memo_context = self._build_strategic_memo_context()
             if memo_context != self._strategic_memo_context:
                 self.clear_memoization(reason="memo_context_change")
@@ -1036,6 +1076,7 @@ class TreeGenerator:
                     collect_nodes(child)
 
             collect_nodes("")
+            self._strategic_profile_stats["range_nodes"] = len(all_nodes)
 
             c_values = [self.get_cumulative2_from_tags(n) for n in all_nodes]
             q_values = [self.get_confidence2_from_tags(n) for n in all_nodes]
@@ -1061,21 +1102,27 @@ class TreeGenerator:
             }
 
         if node:
+            self._strategic_profile_stats["nodes_visited"] += 1
             memo_key = self._build_structural_memo_key(node)
             if memo_key in self._strategic_memo:
                 self._strategic_memo_hits += 1
+                self._strategic_profile_stats["memo_hits"] += 1
                 strategic_value = int(self._strategic_memo[memo_key])
-                self._replace_prefixed_tag(node, 'strategic3_', strategic_value)
+                materialize_on_hit = bool(getattr(self, "_materialize_strategic_tags_on_memo_hit", True))
+                if materialize_on_hit and not self._has_prefixed_tag(node, 'strategic3_'):
+                    self._replace_prefixed_tags(node, {'strategic3_': strategic_value})
+                    self._strategic_profile_stats["tag_writes"] += 1
                 self.update_node_strategic_display(node, strategic_value)
 
                 # Materialize descendant strategic tags/displays as well.
                 # Without this, a memo hit on a parent (e.g. synthetic Pairings node)
                 # can short-circuit recursion and leave children at stale zeros.
-                for child in self.treeview.tree.get_children(node):
-                    self.calculate_strategic3_scores(child, weights=weights, rho=rho, lam=lam)
+                if materialize_on_hit:
+                    self._materialize_strategic_descendants_from_memo(node, weights=weights, rho=rho, lam=lam)
 
                 return strategic_value
             self._strategic_memo_misses += 1
+            self._strategic_profile_stats["memo_misses"] += 1
 
         children = self.treeview.tree.get_children(node)
 
@@ -1118,8 +1165,14 @@ class TreeGenerator:
                 exploitability = 0.0
 
             strategic_value = int(round(node_gain + child_component))
-            self._replace_prefixed_tag(node, 'strategic3_', strategic_value)
-            self._replace_prefixed_tag(node, 'strategic3_exploit_', int(round(exploitability)))
+            self._replace_prefixed_tags(
+                node,
+                {
+                    'strategic3_': strategic_value,
+                    'strategic3_exploit_': int(round(exploitability)),
+                },
+            )
+            self._strategic_profile_stats["tag_writes"] += 1
             self.update_node_strategic_display(node, strategic_value)
             self._strategic_memo[memo_key] = strategic_value
             return strategic_value
@@ -1128,7 +1181,17 @@ class TreeGenerator:
 
     def get_strategic3_from_tags(self, node):
         """Extract strategic fusion value from node tags."""
-        return self._extract_prefixed_tag_value(node, 'strategic3_', default=0)
+        if self._has_prefixed_tag(node, 'strategic3_'):
+            return self._extract_prefixed_tag_value(node, 'strategic3_', default=0)
+        try:
+            memo_key = self._build_structural_memo_key(node)
+            memo_value = self._strategic_memo.get(memo_key)
+            if memo_value is not None:
+                self._strategic_profile_stats["memo_fastpath_reads"] += 1
+                return int(memo_value)
+        except Exception:
+            pass
+        return 0
 
     def get_strategic3_exploitability_from_tags(self, node):
         """Extract strategic exploitability spread (lower is better)."""

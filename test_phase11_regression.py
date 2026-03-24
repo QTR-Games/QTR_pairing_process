@@ -261,6 +261,48 @@ def test_confidence_enhanced_batches_prefixed_tag_updates():
     assert gen.get_confidence2_from_tags("root") >= 0
 
 
+def test_resistance_enhanced_batches_prefixed_tag_updates():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "": {"children": ["root"], "values": (0, 0), "tags": []},
+                "root": {"children": ["leaf_a", "leaf_b"], "values": (3, 0), "tags": []},
+                "leaf_a": {"children": [], "values": (5, 0), "tags": []},
+                "leaf_b": {"children": [], "values": (2, 0), "tags": []},
+            }
+            self.tag_write_calls = 0
+
+        def get_children(self, node=""):
+            return tuple(self.nodes[node]["children"])
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "tags" in kwargs:
+                    self.tag_write_calls += 1
+                    self.nodes[node]["tags"] = list(kwargs["tags"])
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                return None
+            if option == "values":
+                return self.nodes[node]["values"]
+            if option == "tags":
+                return tuple(self.nodes[node]["tags"])
+            return {
+                "values": self.nodes[node]["values"],
+                "tags": tuple(self.nodes[node]["tags"]),
+            }
+
+    fake_tree = FakeTree()
+    gen = TreeGenerator(treeview=DummyTreeView(fake_tree), strategic_preferences=_base_prefs())
+    gen._suppress_display_updates = True
+
+    gen.calculate_counter_resistance_scores_enhanced("root")
+
+    # root + two leaves should each get one batched tag write.
+    assert fake_tree.tag_write_calls == 3
+    assert gen.get_resistance2_from_tags("root") >= 0
+
+
 def test_sort_children_combined_prefetches_text_values_without_option_reads():
     class FakeTree:
         def __init__(self):
@@ -1296,7 +1338,7 @@ def test_strategic_memo_hit_materializes_strategic_tags():
     memo_key = gen._build_structural_memo_key(child)
     gen._strategic_memo[memo_key] = 42
 
-    assert gen.get_strategic3_from_tags(child) == 0
+    assert gen.get_strategic3_from_tags(child) == 42
     stats_before = gen.get_memoization_stats().copy()
 
     score = gen.calculate_strategic3_scores(child)
@@ -1325,13 +1367,82 @@ def test_parent_memo_hit_materializes_descendant_strategic_tags():
     gen._strategic_memo[parent_key] = 55
     gen._strategic_memo[child_key] = 31
 
-    assert gen.get_strategic3_from_tags(parent) == 0
-    assert gen.get_strategic3_from_tags(child) == 0
+    assert gen.get_strategic3_from_tags(parent) == 55
+    assert gen.get_strategic3_from_tags(child) == 31
 
     gen.calculate_strategic3_scores(parent)
 
     assert gen.get_strategic3_from_tags(parent) == 55
     assert gen.get_strategic3_from_tags(child) == 31
+    root.destroy()
+
+
+def test_parent_memo_hit_skips_descendant_recompute_when_tags_exist():
+    root = tk.Tk()
+    root.withdraw()
+
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_persistent_prefs())
+
+    root_node = tree.insert("", "end", text="Pairings", values=(0, 0), tags=("0",))
+    parent = tree.insert(root_node, "end", text="A vs X", values=(4, 0), tags=("4", "strategic3_55"))
+    child = tree.insert(parent, "end", text="X rating 4", values=(4, 0), tags=("4", "strategic3_31"))
+
+    parent_key = gen._build_structural_memo_key(parent)
+    child_key = gen._build_structural_memo_key(child)
+    gen._strategic_memo[parent_key] = 55
+    gen._strategic_memo[child_key] = 31
+
+    stats_before = gen.get_memoization_stats().copy()
+    gen.calculate_strategic3_scores(parent)
+    stats_after = gen.get_memoization_stats().copy()
+
+    # Only the parent should consume a memo hit when descendant tags already exist.
+    assert (stats_after["hits"] - stats_before["hits"]) == 1
+    root.destroy()
+
+
+def test_get_strategic3_from_tags_reads_memo_when_tag_missing():
+    root = tk.Tk()
+    root.withdraw()
+
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_persistent_prefs())
+
+    root_node = tree.insert("", "end", text="Pairings", values=(0, 0), tags=("0",))
+    child = tree.insert(root_node, "end", text="A vs X", values=(4, 0), tags=("4",))
+
+    memo_key = gen._build_structural_memo_key(child)
+    gen._strategic_memo[memo_key] = 47
+
+    # No strategic3_ tag exists, so read should use memo fast-path.
+    assert gen.get_strategic3_from_tags(child) == 47
+    assert not any(str(tag).startswith("strategic3_") for tag in tree.item(child, "tags"))
+    root.destroy()
+
+
+def test_parent_memo_hit_can_skip_materialization_and_use_fastpath_reads():
+    root = tk.Tk()
+    root.withdraw()
+
+    tree = ttk.Treeview(root, columns=("Rating", "Sort Value"))
+    gen = TreeGenerator(treeview=DummyTreeView(tree), strategic_preferences=_persistent_prefs())
+
+    root_node = tree.insert("", "end", text="Pairings", values=(0, 0), tags=("0",))
+    parent = tree.insert(root_node, "end", text="A vs X", values=(4, 0), tags=("4",))
+    child = tree.insert(parent, "end", text="X rating 4", values=(4, 0), tags=("4",))
+
+    parent_key = gen._build_structural_memo_key(parent)
+    child_key = gen._build_structural_memo_key(child)
+    gen._strategic_memo[parent_key] = 55
+    gen._strategic_memo[child_key] = 31
+    gen._materialize_strategic_tags_on_memo_hit = False
+
+    gen.calculate_strategic3_scores(parent)
+
+    assert gen.get_strategic3_from_tags(parent) == 55
+    assert gen.get_strategic3_from_tags(child) == 31
+    assert not any(str(tag).startswith("strategic3_") for tag in tree.item(child, "tags"))
     root.destroy()
 
 

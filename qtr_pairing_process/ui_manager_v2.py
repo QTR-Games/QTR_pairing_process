@@ -4632,8 +4632,12 @@ class UiManager:
                 recomputed_any = False
                 prior_suppress_display = bool(getattr(self.tree_generator, "_suppress_display_updates", False))
                 prior_conf_aux_tags = bool(getattr(self.tree_generator, "_confidence_aux_tags_enabled", True))
+                prior_materialize_strategic_tags = bool(
+                    getattr(self.tree_generator, "_materialize_strategic_tags_on_memo_hit", True)
+                )
                 setattr(self.tree_generator, "_suppress_display_updates", True)
                 setattr(self.tree_generator, "_confidence_aux_tags_enabled", False)
+                setattr(self.tree_generator, "_materialize_strategic_tags_on_memo_hit", False)
 
                 def run_metric(metric_key, span_label, compute_func):
                     nonlocal recomputed_any
@@ -4670,16 +4674,37 @@ class UiManager:
                         )
 
                         if self._is_metric_stale("strategic3") or recomputed_c2 or recomputed_q2 or recomputed_r2:
+                            if hasattr(self.tree_generator, "reset_strategic_profile_stats"):
+                                self.tree_generator.reset_strategic_profile_stats()
                             with self.perf.span(
                                 "sort.compute.strategic3.final",
                                 strategic_invocation_id=self._strategic_sort_invocation_id,
                             ):
                                 self.tree_generator.calculate_strategic3_scores("")
+                            if hasattr(self.tree_generator, "get_strategic_profile_stats"):
+                                strategic_profile = self.tree_generator.get_strategic_profile_stats()
+                                self._log_perf_entry(
+                                    "sort.compute.strategic3.profile",
+                                    0.0,
+                                    strategic_invocation_id=self._strategic_sort_invocation_id,
+                                    nodes_visited=int(strategic_profile.get("nodes_visited", 0)),
+                                    range_nodes=int(strategic_profile.get("range_nodes", 0)),
+                                    memo_hits=int(strategic_profile.get("memo_hits", 0)),
+                                    memo_misses=int(strategic_profile.get("memo_misses", 0)),
+                                    memo_materialized=int(strategic_profile.get("memo_materialized", 0)),
+                                    materialize_recursions=int(strategic_profile.get("materialize_recursions", 0)),
+                                    tag_writes=int(strategic_profile.get("tag_writes", 0)),
+                                )
                             self._mark_metric_fresh("strategic3")
                             recomputed_any = True
                 finally:
                     setattr(self.tree_generator, "_suppress_display_updates", prior_suppress_display)
                     setattr(self.tree_generator, "_confidence_aux_tags_enabled", prior_conf_aux_tags)
+                    setattr(
+                        self.tree_generator,
+                        "_materialize_strategic_tags_on_memo_hit",
+                        prior_materialize_strategic_tags,
+                    )
 
                 self._last_primary_metrics_signature = self._build_primary_metrics_signature(primary_mode)
                 self._primary_metrics_dirty = False
@@ -4695,11 +4720,19 @@ class UiManager:
             )
 
             recurse_mode = "expanded" if getattr(self, "lazy_sort_on_expand", False) else "all"
-            # Cumulative/confidence sorting benefits from expand-first traversal on deep trees.
-            if recurse_mode == "all" and primary_mode in {"cumulative", "confidence"}:
+            # Cumulative/confidence/strategic sorting benefit from expand-first traversal on deep trees.
+            if recurse_mode == "all" and primary_mode in {"cumulative", "confidence", "strategic3"}:
                 recurse_mode = "expanded"
             phase_sort_start = time.perf_counter()
-            self._sort_children_combined("", primary_mode, secondary_column, recurse_mode=recurse_mode)
+            if primary_mode == "strategic3":
+                with self.perf.span(
+                    "sort.apply_combined.tree_phase.strategic_subtree",
+                    recurse_mode=recurse_mode,
+                    strategic_invocation_id=self._strategic_sort_invocation_id,
+                ):
+                    self._sort_children_combined("", primary_mode, secondary_column, recurse_mode=recurse_mode)
+            else:
+                self._sort_children_combined("", primary_mode, secondary_column, recurse_mode=recurse_mode)
             sort_phase_ms = (time.perf_counter() - phase_sort_start) * 1000.0
             self._log_perf_entry(
                 "sort.apply_combined.tree_phase",
