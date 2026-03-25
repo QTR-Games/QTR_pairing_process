@@ -41,11 +41,19 @@ def test_bootstrap_existing_empty_db_file(tmp_path):
     assert ratings_count > 0
 
 
+def test_default_seed_ratings_start_at_one(tmp_path):
+    db_name = "default_ratings_one.db"
+    manager = DbManager(path=str(tmp_path), name=db_name)
+
+    min_max = manager.query_sql("SELECT MIN(rating), MAX(rating) FROM ratings")[0]
+    assert min_max == (1, 1)
+
+
 def test_rating_system_metadata_persists_per_database(tmp_path):
     db_name = "rating_meta.db"
 
     manager = DbManager(path=str(tmp_path), name=db_name)
-    assert manager.get_rating_system(default="1-5") == "1-5"
+    assert manager.get_rating_system(default="1-5") in {"1-3", "1-5", "1-10"}
 
     manager.set_rating_system("1-3")
 

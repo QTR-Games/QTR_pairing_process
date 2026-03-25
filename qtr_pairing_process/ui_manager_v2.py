@@ -10,6 +10,7 @@ import time
 import threading
 import hashlib
 import traceback
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple, cast
@@ -301,6 +302,7 @@ class UiManager:
         self.color_map = self.rating_config['color_map']
         self.rating_range = self.rating_config['range']
         normalized_rows = self.db_manager.normalize_ratings_to_system(db_rating_system)
+        self._configure_tree_rating_tags()
 
         self.logger.info(
             "Rating system sync from DB db=%s/%s previous=%s current=%s range=%s-%s normalized_rows=%s",
@@ -727,11 +729,7 @@ class UiManager:
         # Configure column widths
         self.treeview.tree.column("Rating", width=80, minwidth=50)
         self.treeview.tree.column("Sort Value", width=100, minwidth=80)
-        self.treeview.tree.tag_configure('1', background="orangered")
-        self.treeview.tree.tag_configure('2', background="orange")
-        self.treeview.tree.tag_configure('3', background="yellow")
-        self.treeview.tree.tag_configure('4', background="greenyellow")
-        self.treeview.tree.tag_configure('5', background="lime")
+        self._configure_tree_rating_tags()
         self.treeview.tree.bind("<<TreeviewSelect>>", self._on_tree_selection_changed, add='+')
         self.treeview.tree.bind("<<TreeviewOpen>>", self._on_tree_node_opened, add='+')
         self.treeview.tree.bind("<Motion>", self._on_tree_hover_explain, add='+')
@@ -1133,6 +1131,15 @@ class UiManager:
 
                 if widget.cget('bg') != new_color:
                     widget.config(bg=new_color)
+
+    def _configure_tree_rating_tags(self):
+        """Configure tree row highlight tags using the active rating color map."""
+        tree_widget = getattr(getattr(self, 'treeview', None), 'tree', None)
+        if tree_widget is None:
+            return
+
+        for rating, color in self.color_map.items():
+            tree_widget.tag_configure(str(rating), background=color)
     
     def create_status_bar(self):
         """Create status bar showing current rating system"""
@@ -1228,7 +1235,13 @@ class UiManager:
             fg=theme.get("fg_subtle", "#4d4d4d"),
         ).pack(side=tk.LEFT, padx=(0, 3))
 
-        for rating in sorted(self.color_map.keys()):
+        # Keep legend order numeric so 1-10 renders ... 8, 9, 10.
+        ordered_ratings = sorted(
+            self.color_map.keys(),
+            key=lambda value: (0, int(value)) if str(value).isdigit() else (1, str(value)),
+        )
+
+        for rating in ordered_ratings:
             color_box = tk.Label(
                 self.color_preview_frame,
                 text=rating,
@@ -1549,6 +1562,53 @@ class UiManager:
 
     def _on_root_focus_in(self):
         self._refresh_paste_button_state()
+
+    def _restart_application(self):
+        """Relaunch the app process to guarantee fresh DB/rating bindings."""
+        app_root = Path(__file__).resolve().parent.parent
+        main_script = app_root / "main.py"
+
+        # Use main.py directly instead of inheriting debug launcher argv.
+        restart_cmd = [sys.executable, str(main_script)]
+        restart_args = [arg for arg in list(sys.argv[1:]) if arg.startswith("--")]
+        restart_cmd.extend(restart_args)
+
+        self.logger.info(
+            "Restarting application command=%s is_debugging=%s",
+            restart_cmd,
+            self.is_debugging,
+        )
+
+        # Primary strategy: replace current process in-place for deterministic restart.
+        try:
+            if self._root_is_alive():
+                self.root.destroy()
+            os.chdir(str(app_root))
+            os.execv(sys.executable, restart_cmd)
+        except Exception as exec_err:
+            self.logger.warning("In-place restart failed, trying subprocess fallback: %s", exec_err, exc_info=True)
+
+        # Fallback strategy: detached process launch.
+        try:
+            popen_kwargs: Dict[str, Any] = {"cwd": str(app_root)}
+            if os.name == "nt":
+                popen_kwargs["creationflags"] = (
+                    subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+                )
+                popen_kwargs["stdin"] = subprocess.DEVNULL
+                popen_kwargs["stdout"] = subprocess.DEVNULL
+                popen_kwargs["stderr"] = subprocess.DEVNULL
+
+            subprocess.Popen(restart_cmd, **popen_kwargs)
+            self._on_app_close()
+        except Exception as spawn_err:
+            self.logger.error("Failed to restart application: %s", spawn_err, exc_info=True)
+            if self._root_is_alive():
+                messagebox.showerror(
+                    "Restart Failed",
+                    f"Database was switched, but automatic restart failed:\n{spawn_err}\n\n"
+                    "Please close and reopen the application manually.",
+                )
 
     def _on_app_close(self):
         try:
@@ -3072,7 +3132,11 @@ class UiManager:
                 
                 # Show success message
                 db_name = self.db_name if hasattr(self, 'db_name') and self.db_name else "Selected Database"
-                messagebox.showinfo("Database Changed", f"Successfully switched to: {db_name}\n\nThis database will be loaded automatically on next startup.")
+                messagebox.showinfo(
+                    "Database Changed",
+                    f"Successfully switched to: {db_name}\n\n"
+                    "All views were reloaded for the new database.",
+                )
                 
         except Exception as e:
             print(f"Error changing database: {e}")
@@ -3086,45 +3150,24 @@ class UiManager:
             new_system = dialog.show()
             
             if new_system and new_system != self.current_rating_system:
-                previous_db = self._db_reference(getattr(self, 'db_path', None), getattr(self, 'db_name', None))
                 previous_rating_system = self.current_rating_system
 
                 proceed = messagebox.askyesno(
-                    "Select Database For New Rating System",
-                    "Changing rating systems requires using a different database file.\n\n"
-                    "Select an existing database that matches this scale, or create a new database now.\n\n"
-                    "The current database will remain unchanged.",
+                    "Apply Rating System To Active Database",
+                    "This will apply the selected rating system to the currently active database.\n\n"
+                    "Existing ratings that exceed the new range will be clamped into range.\n"
+                    "No restart is required.",
                     icon="warning",
                 )
                 if not proceed:
                     return
-
-                while True:
-                    selected = self.select_database(force_prompt=True)
-                    if not selected:
-                        messagebox.showinfo("Rating System Unchanged", "Rating system change canceled.")
-                        return
-
-                    current_db = self._db_reference(getattr(self, 'db_path', None), getattr(self, 'db_name', None))
-                    if current_db != previous_db:
-                        break
-
-                    retry = messagebox.askretrycancel(
-                        "Different Database Required",
-                        "You selected the current database.\n\n"
-                        "To change rating systems, select a different existing database file or create a new one.",
-                    )
-                    if not retry:
-                        messagebox.showinfo("Rating System Unchanged", "Rating system change canceled.")
-                        return
-
-                self._reset_after_database_change()
 
                 # Update current system
                 self.current_rating_system = new_system
                 self.rating_config = RATING_SYSTEMS[new_system]
                 self.color_map = self.rating_config['color_map']
                 self.rating_range = self.rating_config['range']
+                self._configure_tree_rating_tags()
                 
                 # Save to unified config (KLIK_KLAK_KONFIG.json)
                 self.db_preferences.update_ui_preferences({'rating_system': new_system})
@@ -3146,10 +3189,24 @@ class UiManager:
 
                 if hasattr(self, 'tree_generator') and self.tree_generator:
                     self.tree_generator.set_rating_system(new_system)
+
+                # Clear tree snapshots and reload UI from the active DB using the new scale.
+                tree_widget = getattr(getattr(self, 'treeview', None), 'tree', None)
+                if tree_widget is not None:
+                    try:
+                        children = tree_widget.get_children()
+                        if children:
+                            tree_widget.delete(*children)
+                    except tk.TclError:
+                        pass
+
+                self._invalidate_tree_cache("rating_system_change")
+                self._invalidate_team_cache()
+                self._invalidate_comment_cache()
+                self.update_ui()
                 
                 # Update grid colors immediately
                 self.update_grid_colors()
-                self._invalidate_tree_cache("rating_system_change")
                 
                 # Update status bar
                 self.update_status_bar()
@@ -3160,7 +3217,8 @@ class UiManager:
                                   f"to: {self.rating_config['name']}\n\n"
                                   f"Database: {self.db_name}\n"
                                   f"Range: {self.rating_range[0]}-{self.rating_range[1]}\n"
-                                  f"Colors updated throughout the application.")
+                                  f"Normalized ratings: {normalized_rows}\n"
+                                  f"All views updated without restart.")
                 
         except Exception as e:
             print(f"Error configuring rating system: {e}")

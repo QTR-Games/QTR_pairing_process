@@ -172,7 +172,7 @@ class TreeGenerator:
                 'end',
                 text=f"{first_fName} vs {comb[0]} ({rating_0}/{self.rating_display_max}) OR {comb[1]} ({rating_1}/{self.rating_display_max})",
                 values=(base_rating, cumulative_score, confidence_score, resistance_score),
-                tags=base_rating,
+                tags=(str(base_rating),),
             )
             
             if fNames:
@@ -193,7 +193,7 @@ class TreeGenerator:
                         'end',
                         text=f"{opponent} rating {child_rating}",
                         values=(child_rating, child_cumulative, child_confidence, child_resistance),
-                        tags=child_rating,
+                        tags=(str(child_rating),),
                     )
                     self.generate_nested_combinations(next_fName,nested_oNames, fNames, oRatings, fRatings, child_id)
 

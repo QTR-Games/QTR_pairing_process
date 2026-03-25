@@ -757,20 +757,18 @@ class DbManager:
         if rating_system not in RATING_SYSTEMS:
             rating_system = DEFAULT_RATING_SYSTEM
         min_rating, max_rating = RATING_SYSTEMS[rating_system]['range']
-        span = (max_rating - min_rating) + 1
+        baseline_rating = 1 if min_rating <= 1 <= max_rating else min_rating
 
         for scenario_id in SCENARIO_MAP.keys():
             for player_1_row in team_1:
                 for player_2_row in team_2:
-                    # Deterministic seed pattern confined to selected rating range.
-                    seeded_rating = min_rating + ((player_1_row[0] + player_2_row[0] + int(scenario_id)) % span)
                     self.upsert_rating(
                         player_id_1=player_1_row[0],
                         team_id_1=player_1_row[1],
                         player_id_2=player_2_row[0],
                         team_id_2=player_2_row[1],
                         scenario_id=scenario_id,
-                        rating=seeded_rating
+                        rating=baseline_rating
                     )
 
     def normalize_ratings_to_system(self, rating_system):
