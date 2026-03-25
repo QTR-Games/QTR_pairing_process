@@ -7,19 +7,26 @@ import hashlib
 import json
 
 import qtr_pairing_process.utility_funcs as uf
+from qtr_pairing_process.constants import RATING_SYSTEMS, DEFAULT_RATING_SYSTEM
 
 class TreeGenerator:
     def __init__(
         self,
         treeview,
         sort_alpha=False,
-        strategic_preferences=None
+        strategic_preferences=None,
+        rating_system=DEFAULT_RATING_SYSTEM,
     ):
         self.treeview = treeview
         self.sort_alpha = bool(sort_alpha)
         self.original_order = {}
         self.fRatings = None
         self.our_team_first = True  # Will be set during generation
+        self.rating_system = DEFAULT_RATING_SYSTEM
+        self.rating_min = 1
+        self.rating_max = 5
+        self.rating_display_max = 5
+        self.set_rating_system(rating_system)
 
         # Runtime-tunable strategic/v2 parameters.
         self.strategic_preferences = strategic_preferences or {}
@@ -62,6 +69,29 @@ class TreeGenerator:
         self._confidence_aux_tags_enabled = True
         self._materialize_strategic_tags_on_memo_hit = True
         self.reset_strategic_profile_stats()
+
+    def set_rating_system(self, rating_system):
+        if rating_system not in RATING_SYSTEMS:
+            rating_system = DEFAULT_RATING_SYSTEM
+        self.rating_system = rating_system
+        self.rating_min, self.rating_max = RATING_SYSTEMS[rating_system]['range']
+        self.rating_display_max = int(self.rating_max)
+
+    def _to_reference_rating(self, rating):
+        """Normalize active system ratings onto a 1-5 reference scale."""
+        try:
+            r = int(rating)
+        except (TypeError, ValueError):
+            return 0
+
+        low = int(self.rating_min)
+        high = int(self.rating_max)
+        r = max(low, min(high, r))
+        if high <= low:
+            return 3
+
+        normalized = 1.0 + ((r - low) / float(high - low)) * 4.0
+        return int(round(normalized))
 
     def _read_raw_pref(self, path, fallback):
         current = self.strategic_preferences
@@ -140,9 +170,9 @@ class TreeGenerator:
             item_id = self.treeview.tree.insert(
                 parent,
                 'end',
-                text=f"{first_fName} vs {comb[0]} ({rating_0}/5) OR {comb[1]} ({rating_1}/5)",
+                text=f"{first_fName} vs {comb[0]} ({rating_0}/{self.rating_display_max}) OR {comb[1]} ({rating_1}/{self.rating_display_max})",
                 values=(base_rating, cumulative_score, confidence_score, resistance_score),
-                tags=base_rating,
+                tags=(str(base_rating),),
             )
             
             if fNames:
@@ -163,7 +193,7 @@ class TreeGenerator:
                         'end',
                         text=f"{opponent} rating {child_rating}",
                         values=(child_rating, child_cumulative, child_confidence, child_resistance),
-                        tags=child_rating,
+                        tags=(str(child_rating),),
                     )
                     self.generate_nested_combinations(next_fName,nested_oNames, fNames, oRatings, fRatings, child_id)
 
@@ -360,6 +390,7 @@ class TreeGenerator:
 
     def calculate_rating_confidence(self, rating):
         """Convert rating value to confidence score (0-100)"""
+        ref_rating = self._to_reference_rating(rating)
         confidence_map = {
             5: 95,  # Very high confidence - almost certain win
             4: 80,  # High confidence - strong advantage
@@ -367,7 +398,7 @@ class TreeGenerator:
             2: 35,  # Low confidence - disadvantage
             1: 15   # Very low confidence - likely loss
         }
-        return confidence_map.get(rating, 50)
+        return confidence_map.get(ref_rating, 50)
 
     def calculate_variance_penalty(self, values):
         """Calculate penalty for high variance in path values"""
@@ -516,6 +547,7 @@ class TreeGenerator:
 
     def calculate_counter_resistance(self, rating):
         """Calculate how resistant a rating is to opponent counters"""
+        ref_rating = self._to_reference_rating(rating)
         # Higher ratings are more vulnerable to counters (opponent focuses best players)
         # Middle ratings (3) are most counter-resistant (opponent wastes effort)
         resistance_map = {
@@ -525,15 +557,16 @@ class TreeGenerator:
             2: 70,  # Low value but opponent may ignore
             1: 50   # Very low value, opponent will exploit
         }
-        return resistance_map.get(rating, 60)
+        return resistance_map.get(ref_rating, 60)
 
     def simulate_opponent_counter(self, our_rating):
         """Simulate how effectively opponent can counter our strategy"""
+        ref_rating = self._to_reference_rating(our_rating)
         # Opponent counter-effectiveness based on our rating pattern
-        if our_rating >= 4:
+        if ref_rating >= 4:
             # High ratings draw opponent's best counters
             return 0.3  # 30% effectiveness reduction
-        elif our_rating == 3:
+        elif ref_rating == 3:
             # Medium ratings are hardest to counter
             return 0.1  # 10% effectiveness reduction
         else:
@@ -1384,7 +1417,7 @@ class TreeGenerator:
     def calculate_base_expected_value(self, rating):
         """Calculate base expected value from rating with win probability conversion"""
         try:
-            r = int(rating) if rating != 'N/A' else 0
+            r = self._to_reference_rating(rating) if rating != 'N/A' else 0
             # Convert 1-5 rating to win probability and then to expected value
             # Rating 5 = ~90% win = 0.9 EV, Rating 1 = ~10% win = 0.1 EV
             win_prob_map = {5: 0.90, 4: 0.75, 3: 0.50, 2: 0.25, 1: 0.10, 0: 0.05}
@@ -1397,7 +1430,7 @@ class TreeGenerator:
     def calculate_win_probability(self, rating):
         """Calculate probability of winning this specific matchup for 3/5 optimization"""
         try:
-            r = int(rating) if rating != 'N/A' else 0
+            r = self._to_reference_rating(rating) if rating != 'N/A' else 0
             # Optimized for 3/5 win context - emphasizes ratings 3+ more heavily
             win_weights = {5: 100, 4: 85, 3: 65, 2: 30, 1: 10, 0: 5}
             return win_weights.get(r, 50)
@@ -1407,7 +1440,7 @@ class TreeGenerator:
     def calculate_floor_protection(self, rating):
         """Calculate protection against catastrophic matchup failures"""
         try:
-            r = int(rating) if rating != 'N/A' else 0
+            r = self._to_reference_rating(rating) if rating != 'N/A' else 0
             # Heavily penalize ratings 1-2, neutral on 3+
             # This prevents catastrophic trap scenarios
             floor_scores = {5: 100, 4: 95, 3: 80, 2: 40, 1: 10, 0: 0}
@@ -1418,7 +1451,7 @@ class TreeGenerator:
     def calculate_counter_resistance_value(self, rating):
         """Calculate resistance to opponent counter-picks (front-loaded weighting)"""
         try:
-            r = int(rating) if rating != 'N/A' else 0
+            r = self._to_reference_rating(rating) if rating != 'N/A' else 0
             # High ratings are harder to counter, but diminishing returns after initial protection
             resistance_scores = {5: 90, 4: 80, 3: 60, 2: 35, 1: 15, 0: 5}
             return resistance_scores.get(r, 50)

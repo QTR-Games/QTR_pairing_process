@@ -10,6 +10,7 @@ import time
 import threading
 import hashlib
 import traceback
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple, cast
@@ -199,13 +200,17 @@ class UiManager:
             print(f"TKINTER VERSION: {tk.TkVersion}")
             
 
-    def select_database(self):
-        """Select database - automatically loads last used database if available"""
+    def select_database(self, force_prompt: bool = False) -> bool:
+        """Select database, optionally forcing the database selector UI.
+
+        Returns True when a database selection/create path is applied.
+        Returns False only when a forced prompt is explicitly canceled.
+        """
         # Try to load the last used database from config
         with self.perf.span("startup.select_database.read_last_preference"):
             last_path, last_name = self.db_preferences.get_last_database()
         
-        if last_path and last_name:
+        if not force_prompt and last_path and last_name:
             # Validate that the saved database still exists
             with self.perf.span("startup.select_database.validate_last_preference"):
                 full_path = Path(last_path) / last_name
@@ -219,7 +224,7 @@ class UiManager:
                 # Defer cache table setup out of select_database startup span.
                 self._pending_generated_tree_cache_ensure = True
                 self.logger.info(f"Auto-loaded last database: {self.db_name} from {self.db_path}")
-                return
+                return True
             else:
                 self.logger.warning(f"Last used database not found: {last_name} at {last_path}")
                 self.logger.info("Showing database selector...")
@@ -227,7 +232,25 @@ class UiManager:
         # No saved database or it doesn't exist - show the selector
         with self.perf.span("startup.select_database.prompt_selector"):
             db_load_ui = DbLoadUi()
-            self.db_path, self.db_name = db_load_ui.create_or_load_database()
+            selected_path, selected_name = db_load_ui.create_or_load_database()
+
+        selection_action = getattr(db_load_ui, "selection_action", "create_new")
+        if force_prompt and selection_action == "cancel":
+            self.logger.info("Database change canceled by user; keeping current database.")
+            return False
+
+        if selection_action == "create_new" and (not selected_path or not selected_name):
+            self.logger.info("Create-new database canceled before file selection.")
+            if force_prompt:
+                return False
+
+        self.db_path = selected_path
+        self.db_name = selected_name
+
+        if self.db_path is not None:
+            self.db_path = os.path.abspath(self.db_path)
+        if self.db_name is not None:
+            self.db_name = str(self.db_name).strip()
 
         if self.db_path is None:
             with self.perf.span("startup.select_database.create_db_manager"):
@@ -242,6 +265,85 @@ class UiManager:
                 with self.perf.span("startup.select_database.save_preference"):
                     self.db_preferences.save_database_preference(self.db_path, self.db_name)
                 self.logger.info(f"Saved database preference: {self.db_name} at {self.db_path}")
+
+        self._sync_rating_system_from_db()
+        return True
+
+    @staticmethod
+    def _db_reference(path: Optional[str], name: Optional[str]) -> Tuple[str, str]:
+        """Build a normalized, comparable database reference."""
+        normalized_path = os.path.normcase(os.path.abspath(path or ""))
+        normalized_name = os.path.normcase((name or "").strip())
+        return normalized_path, normalized_name
+
+    def _root_is_alive(self) -> bool:
+        """Safely determine whether the Tk root is still valid."""
+        root = getattr(self, "root", None)
+        if root is None:
+            return False
+        try:
+            return bool(root.winfo_exists())
+        except tk.TclError:
+            return False
+
+    def _sync_rating_system_from_db(self):
+        """Align in-memory/UI rating system to metadata stored in the selected DB."""
+        if not hasattr(self, 'db_manager') or self.db_manager is None:
+            return
+
+        previous_rating_system = getattr(self, 'current_rating_system', DEFAULT_RATING_SYSTEM)
+        db_rating_system = self.db_manager.get_rating_system(default=self.current_rating_system)
+        if db_rating_system not in RATING_SYSTEMS:
+            db_rating_system = DEFAULT_RATING_SYSTEM
+            self.db_manager.set_rating_system(db_rating_system)
+
+        self.current_rating_system = db_rating_system
+        self.rating_config = RATING_SYSTEMS[db_rating_system]
+        self.color_map = self.rating_config['color_map']
+        self.rating_range = self.rating_config['range']
+        normalized_rows = self.db_manager.normalize_ratings_to_system(db_rating_system)
+        self._configure_tree_rating_tags()
+
+        self.logger.info(
+            "Rating system sync from DB db=%s/%s previous=%s current=%s range=%s-%s normalized_rows=%s",
+            getattr(self, 'db_path', ''),
+            getattr(self, 'db_name', ''),
+            previous_rating_system,
+            self.current_rating_system,
+            self.rating_range[0],
+            self.rating_range[1],
+            normalized_rows,
+        )
+
+        if hasattr(self, 'tree_generator') and self.tree_generator:
+            self.tree_generator.set_rating_system(self.current_rating_system)
+
+    def _reset_after_database_change(self):
+        """Clear data and cache state after switching to a different database."""
+        tree_widget = getattr(getattr(self, 'treeview', None), 'tree', None)
+        if tree_widget is not None:
+            try:
+                children = tree_widget.get_children()
+                if children:
+                    tree_widget.delete(*children)
+            except tk.TclError:
+                pass
+
+        self._invalidate_tree_cache("database_change")
+        self.active_sort_mode = None
+        self.is_sorted = False
+        self.current_sort_mode = "none"
+        if hasattr(self, 'update_sort_button_states'):
+            self.update_sort_button_states()
+
+        self.grid_data_model.clear_grid(notify=True)
+        # Allow debug auto-populate to run for the newly selected database.
+        self._auto_populated_teams = False
+
+        self._invalidate_team_cache()
+        self._invalidate_comment_cache()
+        self.update_ui()
+        self.update_status_bar()
             
     def initialize_ui_vars(self):
         with self.perf.span("startup.setup_root_window"):
@@ -421,6 +523,7 @@ class UiManager:
             self.tree_generator = TreeGenerator(
                 treeview=self.treeview,
                 strategic_preferences=self.strategic_preferences,
+                rating_system=self.current_rating_system,
             )
         self.tree_generator.set_generation_id(self._tree_generation_id)
         
@@ -626,11 +729,7 @@ class UiManager:
         # Configure column widths
         self.treeview.tree.column("Rating", width=80, minwidth=50)
         self.treeview.tree.column("Sort Value", width=100, minwidth=80)
-        self.treeview.tree.tag_configure('1', background="orangered")
-        self.treeview.tree.tag_configure('2', background="orange")
-        self.treeview.tree.tag_configure('3', background="yellow")
-        self.treeview.tree.tag_configure('4', background="greenyellow")
-        self.treeview.tree.tag_configure('5', background="lime")
+        self._configure_tree_rating_tags()
         self.treeview.tree.bind("<<TreeviewSelect>>", self._on_tree_selection_changed, add='+')
         self.treeview.tree.bind("<<TreeviewOpen>>", self._on_tree_node_opened, add='+')
         self.treeview.tree.bind("<Motion>", self._on_tree_hover_explain, add='+')
@@ -1032,6 +1131,15 @@ class UiManager:
 
                 if widget.cget('bg') != new_color:
                     widget.config(bg=new_color)
+
+    def _configure_tree_rating_tags(self):
+        """Configure tree row highlight tags using the active rating color map."""
+        tree_widget = getattr(getattr(self, 'treeview', None), 'tree', None)
+        if tree_widget is None:
+            return
+
+        for rating, color in self.color_map.items():
+            tree_widget.tag_configure(str(rating), background=color)
     
     def create_status_bar(self):
         """Create status bar showing current rating system"""
@@ -1127,7 +1235,13 @@ class UiManager:
             fg=theme.get("fg_subtle", "#4d4d4d"),
         ).pack(side=tk.LEFT, padx=(0, 3))
 
-        for rating in sorted(self.color_map.keys()):
+        # Keep legend order numeric so 1-10 renders ... 8, 9, 10.
+        ordered_ratings = sorted(
+            self.color_map.keys(),
+            key=lambda value: (0, int(value)) if str(value).isdigit() else (1, str(value)),
+        )
+
+        for rating in ordered_ratings:
             color_box = tk.Label(
                 self.color_preview_frame,
                 text=rating,
@@ -1448,6 +1562,53 @@ class UiManager:
 
     def _on_root_focus_in(self):
         self._refresh_paste_button_state()
+
+    def _restart_application(self):
+        """Relaunch the app process to guarantee fresh DB/rating bindings."""
+        app_root = Path(__file__).resolve().parent.parent
+        main_script = app_root / "main.py"
+
+        # Use main.py directly instead of inheriting debug launcher argv.
+        restart_cmd = [sys.executable, str(main_script)]
+        restart_args = [arg for arg in list(sys.argv[1:]) if arg.startswith("--")]
+        restart_cmd.extend(restart_args)
+
+        self.logger.info(
+            "Restarting application command=%s is_debugging=%s",
+            restart_cmd,
+            self.is_debugging,
+        )
+
+        # Primary strategy: replace current process in-place for deterministic restart.
+        try:
+            if self._root_is_alive():
+                self.root.destroy()
+            os.chdir(str(app_root))
+            os.execv(sys.executable, restart_cmd)
+        except Exception as exec_err:
+            self.logger.warning("In-place restart failed, trying subprocess fallback: %s", exec_err, exc_info=True)
+
+        # Fallback strategy: detached process launch.
+        try:
+            popen_kwargs: Dict[str, Any] = {"cwd": str(app_root)}
+            if os.name == "nt":
+                popen_kwargs["creationflags"] = (
+                    subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+                )
+                popen_kwargs["stdin"] = subprocess.DEVNULL
+                popen_kwargs["stdout"] = subprocess.DEVNULL
+                popen_kwargs["stderr"] = subprocess.DEVNULL
+
+            subprocess.Popen(restart_cmd, **popen_kwargs)
+            self._on_app_close()
+        except Exception as spawn_err:
+            self.logger.error("Failed to restart application: %s", spawn_err, exc_info=True)
+            if self._root_is_alive():
+                messagebox.showerror(
+                    "Restart Failed",
+                    f"Database was switched, but automatic restart failed:\n{spawn_err}\n\n"
+                    "Please close and reopen the application manually.",
+                )
 
     def _on_app_close(self):
         try:
@@ -2954,36 +3115,33 @@ class UiManager:
                                        "Do you want to continue?")
             
             if result:
-                # Clear current tree data
-                if hasattr(self, 'treeview') and self.treeview:
-                    self.treeview.tree.delete(*self.treeview.tree.get_children())
-                self._invalidate_tree_cache("database_change")
-                
-                # Reset sorting states
-                self.active_sort_mode = None
-                self.is_sorted = False
-                self.current_sort_mode = "none"
-                if hasattr(self, 'update_sort_button_states'):
-                    self.update_sort_button_states()
-                
-                # Clear grid data
-                self.grid_data_model.clear_grid(notify=True)
-                
-                # Trigger database selection
-                self.select_database()
-                self._invalidate_team_cache()
-                self._invalidate_comment_cache()
-                
-                # Update UI with new database
-                self.update_ui()
+                previous_db = self._db_reference(getattr(self, 'db_path', None), getattr(self, 'db_name', None))
+
+                # Trigger database selection/create UI first.
+                # If canceled, leave current DB and current UI state untouched.
+                selected = self.select_database(force_prompt=True)
+                if not selected:
+                    return
+
+                current_db = self._db_reference(getattr(self, 'db_path', None), getattr(self, 'db_name', None))
+                if current_db == previous_db:
+                    messagebox.showinfo("Database Unchanged", "Current database remained selected. No changes were applied.")
+                    return
+
+                self._reset_after_database_change()
                 
                 # Show success message
                 db_name = self.db_name if hasattr(self, 'db_name') and self.db_name else "Selected Database"
-                messagebox.showinfo("Database Changed", f"Successfully switched to: {db_name}\n\nThis database will be loaded automatically on next startup.")
+                messagebox.showinfo(
+                    "Database Changed",
+                    f"Successfully switched to: {db_name}\n\n"
+                    "All views were reloaded for the new database.",
+                )
                 
         except Exception as e:
             print(f"Error changing database: {e}")
-            messagebox.showerror("Error", f"Failed to change database: {e}")
+            if self._root_is_alive():
+                messagebox.showerror("Error", f"Failed to change database: {e}")
     
     def on_configure_rating_system(self):
         """Show dialog to configure rating system preference."""
@@ -2992,34 +3150,80 @@ class UiManager:
             new_system = dialog.show()
             
             if new_system and new_system != self.current_rating_system:
+                previous_rating_system = self.current_rating_system
+
+                proceed = messagebox.askyesno(
+                    "Apply Rating System To Active Database",
+                    "This will apply the selected rating system to the currently active database.\n\n"
+                    "Existing ratings that exceed the new range will be clamped into range.\n"
+                    "No restart is required.",
+                    icon="warning",
+                )
+                if not proceed:
+                    return
+
                 # Update current system
                 self.current_rating_system = new_system
                 self.rating_config = RATING_SYSTEMS[new_system]
                 self.color_map = self.rating_config['color_map']
                 self.rating_range = self.rating_config['range']
+                self._configure_tree_rating_tags()
                 
                 # Save to unified config (KLIK_KLAK_KONFIG.json)
                 self.db_preferences.update_ui_preferences({'rating_system': new_system})
                 
                 # Also save to old settings for backward compatibility
                 self.settings_manager.set_rating_system(new_system)
+
+                # Persist selected scale with this database for future auto-loads.
+                self.db_manager.set_rating_system(new_system)
+                normalized_rows = self.db_manager.normalize_ratings_to_system(new_system)
+                self.logger.info(
+                    "Rating system change db=%s/%s old=%s new=%s normalized_rows=%s",
+                    getattr(self, 'db_path', ''),
+                    getattr(self, 'db_name', ''),
+                    previous_rating_system,
+                    new_system,
+                    normalized_rows,
+                )
+
+                if hasattr(self, 'tree_generator') and self.tree_generator:
+                    self.tree_generator.set_rating_system(new_system)
+
+                # Clear tree snapshots and reload UI from the active DB using the new scale.
+                tree_widget = getattr(getattr(self, 'treeview', None), 'tree', None)
+                if tree_widget is not None:
+                    try:
+                        children = tree_widget.get_children()
+                        if children:
+                            tree_widget.delete(*children)
+                    except tk.TclError:
+                        pass
+
+                self._invalidate_tree_cache("rating_system_change")
+                self._invalidate_team_cache()
+                self._invalidate_comment_cache()
+                self.update_ui()
                 
                 # Update grid colors immediately
                 self.update_grid_colors()
-                self._invalidate_tree_cache("rating_system_change")
                 
                 # Update status bar
                 self.update_status_bar()
                 
                 # Show success message
                 messagebox.showinfo("Rating System Updated", 
-                                  f"Rating system changed to: {self.rating_config['name']}\n\n"
+                                  f"Rating system changed from: {RATING_SYSTEMS[previous_rating_system]['name']}\n"
+                                  f"to: {self.rating_config['name']}\n\n"
+                                  f"Database: {self.db_name}\n"
                                   f"Range: {self.rating_range[0]}-{self.rating_range[1]}\n"
-                                  f"Colors updated throughout the application.")
+                                  f"Normalized ratings: {normalized_rows}\n"
+                                  f"All views updated without restart.")
                 
         except Exception as e:
             print(f"Error configuring rating system: {e}")
-            messagebox.showerror("Error", f"Failed to configure rating system: {e}")
+            if self._root_is_alive():
+                messagebox.showerror("Error", f"Failed to configure rating system: {e}")
 
     def clear_generated_tree_cache_active_matchup(self):
         """Clear persisted tree snapshots for the active matchup selection only."""
@@ -3530,12 +3734,13 @@ class UiManager:
         try:
             menu_window.destroy()  # Close menu first
             action_func()  # Then execute the action
-            if reopen_data_management_on_complete and hasattr(self, "root") and self.root.winfo_exists():
+            if reopen_data_management_on_complete and self._root_is_alive():
                 self.show_data_management_menu()
         except Exception as e:
             print(f"Error executing menu action: {e}")
             from tkinter import messagebox
-            messagebox.showerror("Data Management", self._operation_failed_error(f"menu action could not be executed: {e}"))
+            if self._root_is_alive():
+                messagebox.showerror("Data Management", self._operation_failed_error(f"menu action could not be executed: {e}"))
     
     def export_xlsx(self):
         """Export data to XLSX format - placeholder implementation."""
@@ -5230,6 +5435,14 @@ class UiManager:
             self._set_combobox_values_if_changed(self.combobox_1, team_names)
             self._set_combobox_values_if_changed(self.combobox_2, team_names)
 
+        # Prevent stale selections from a previous database after switching DBs.
+        current_team_1 = self.combobox_1.get().strip()
+        current_team_2 = self.combobox_2.get().strip()
+        if current_team_1 and current_team_1 not in team_names:
+            self.combobox_1.set("")
+        if current_team_2 and current_team_2 not in team_names:
+            self.combobox_2.set("")
+
         if not self._team_dropdowns_initialized:
             self._team_dropdowns_initialized = True
 
@@ -5488,6 +5701,15 @@ class UiManager:
             messagebox.showwarning("Cannot Save", 
                 "Cannot save data while grid is flipped to opponent's perspective.\n"
                 "Please click 'Flip Grid' again to restore friendly perspective before saving.")
+            return
+
+        if not self.validate_grid_data():
+            self.logger.warning(
+                "Save blocked due to validation failure db=%s/%s system=%s",
+                getattr(self, 'db_path', ''),
+                getattr(self, 'db_name', ''),
+                self.current_rating_system,
+            )
             return
         
         team_1 = self.combobox_1.get().strip()
@@ -7320,7 +7542,26 @@ class UiManager:
         if row > 0 and col > 0:
             # Rating cell - convert to int if valid, None if empty
             if current_value and current_value.isdigit():
-                new_value = int(current_value)
+                parsed_value = int(current_value)
+                min_rating, max_rating = self.rating_range
+                if parsed_value < min_rating or parsed_value > max_rating:
+                    messagebox.showwarning(
+                        "Invalid Rating",
+                        f"Rating {parsed_value} is outside the active range {min_rating}-{max_rating} "
+                        f"for {self.rating_config['name']}."
+                    )
+                    self.logger.warning(
+                        "Rejected out-of-range cell input row=%s col=%s value=%s range=%s-%s system=%s",
+                        row,
+                        col,
+                        parsed_value,
+                        min_rating,
+                        max_rating,
+                        self.current_rating_system,
+                    )
+                    self._update_entry_from_model(row, col)
+                    return
+                new_value = parsed_value
             elif not current_value:
                 new_value = None  # Empty string ΓåÆ None
             else:

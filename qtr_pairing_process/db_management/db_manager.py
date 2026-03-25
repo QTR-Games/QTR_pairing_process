@@ -8,23 +8,121 @@ import hashlib
 from qtr_pairing_process.constants import SCENARIO_MAP
 from qtr_pairing_process.secure_db_interface import SecureDBInterface
 from qtr_pairing_process.data_validator import DataValidator
+from qtr_pairing_process.constants import RATING_SYSTEMS, DEFAULT_RATING_SYSTEM
+from qtr_pairing_process.app_logger import get_logger
 
 class DbManager:
     def __init__(self, path=None, name=None) -> None:
         self.path = path or expanduser("~")
         self.name = name or 'default.db'
+        self.logger = get_logger(__name__)
         print(self.path, self.name)
         self.secure_db = None  # Will be initialized when needed
         self.initialize_db()
+
     def initialize_db(self):
-        if not os.path.isfile(f'{self.path}/{self.name}'):
+        os.makedirs(self.path, exist_ok=True)
+        db_file = os.path.join(self.path, self.name)
+        self.logger.info("DbManager.initialize_db start db=%s", db_file)
+
+        if (not os.path.isfile(db_file)) or (not self._has_required_schema()):
+            self.logger.info("DbManager creating/repairing schema for db=%s", db_file)
             self.create_tables()
+
+        self._ensure_default_seed_data()
+        self._ensure_app_settings_table()
+        self.logger.info("DbManager.initialize_db complete db=%s", db_file)
+
+    def _has_required_schema(self):
+        required = {"teams", "players", "scenarios", "ratings"}
+        try:
+            with self.connect_db(self.path, self.name) as db_conn:
+                db_cur = db_conn.cursor()
+                db_cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                existing = {row[0] for row in db_cur.fetchall()}
+            return required.issubset(existing)
+        except sqlite3.Error:
+            return False
+
+    def _ensure_default_seed_data(self):
+        teams_count = self.query_sql("SELECT COUNT(*) FROM teams")[0][0]
+        scenarios_count = self.query_sql("SELECT COUNT(*) FROM scenarios")[0][0]
+        players_count = self.query_sql("SELECT COUNT(*) FROM players")[0][0]
+        ratings_count = self.query_sql("SELECT COUNT(*) FROM ratings")[0][0]
+        self.logger.info(
+            "DbManager seed counts teams=%s scenarios=%s players=%s ratings=%s",
+            teams_count,
+            scenarios_count,
+            players_count,
+            ratings_count,
+        )
+
+        if teams_count == 0:
             self.create_default_teams()
+        if scenarios_count == 0:
             self.create_default_scenarios()
+        if players_count == 0:
             self.create_default_players()
-            self.create_default_ratings()
+        if ratings_count == 0:
+            self.create_default_ratings(rating_system=DEFAULT_RATING_SYSTEM)
+
     def connect_db(self, path, name):
         return sqlite3.connect(f'{path}/{name}')
+
+    def _ensure_app_settings_table(self):
+        self.execute_sql(
+            """
+            CREATE TABLE IF NOT EXISTS app_settings (
+                setting_key TEXT PRIMARY KEY,
+                setting_value TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+    def get_rating_system(self, default="1-5"):
+        self._ensure_app_settings_table()
+        rows = self.query_sql_params(
+            "SELECT setting_value FROM app_settings WHERE setting_key = ?",
+            ("rating_system",),
+        )
+        if rows and rows[0][0]:
+            return str(rows[0][0])
+        inferred = self.infer_rating_system_from_data(default=default)
+        return inferred
+
+    def set_rating_system(self, rating_system):
+        self._ensure_app_settings_table()
+        if rating_system not in RATING_SYSTEMS:
+            raise ValueError(f"Unsupported rating system: {rating_system}")
+        self.execute_sql(
+            """
+            INSERT INTO app_settings (setting_key, setting_value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(setting_key)
+            DO UPDATE SET
+                setting_value = excluded.setting_value,
+                updated_at = excluded.updated_at
+            """,
+            ("rating_system", str(rating_system)),
+        )
+        self.logger.info("DbManager set rating system db=%s/%s rating_system=%s", self.path, self.name, rating_system)
+
+    def infer_rating_system_from_data(self, default=DEFAULT_RATING_SYSTEM):
+        """Infer rating system from stored rating values when metadata is absent."""
+        rows = self.query_sql("SELECT MIN(rating), MAX(rating) FROM ratings")
+        if not rows or rows[0][1] is None:
+            return default
+
+        min_rating, max_rating = rows[0]
+        if min_rating is None or max_rating is None:
+            return default
+
+        for system, cfg in sorted(RATING_SYSTEMS.items(), key=lambda item: item[1]['range'][1]):
+            min_allowed, max_allowed = cfg['range']
+            if int(min_rating) >= int(min_allowed) and int(max_rating) <= int(max_allowed):
+                return system
+        return default
     
     def get_secure_interface(self):
         """Get secure database interface for parameterized queries"""
@@ -627,8 +725,13 @@ class DbManager:
                 
                 for statement in statements:
                     if statement:  # Skip empty statements
-                        rows_affected = self.execute_sql(statement)
-                        # Note: CREATE statements typically return 0 rows affected, so we don't check this
+                        try:
+                            rows_affected = self.execute_sql(statement)
+                            # Note: CREATE statements typically return 0 rows affected, so we don't check this
+                        except sqlite3.OperationalError as exc:
+                            if "already exists" in str(exc).lower():
+                                continue
+                            raise
 
     def create_default_teams(self):
         self.create_team('default_team_1')
@@ -648,11 +751,14 @@ class DbManager:
             for j in range(1,6):
                 self.create_player(f'default_player_{i}_{j}',i)
 
-    def create_default_ratings(self):
+    def create_default_ratings(self, rating_system=DEFAULT_RATING_SYSTEM):
         team_1 = self.query_sql('select player_id, team_id from players where team_id=1')
         team_2 = self.query_sql('select player_id, team_id from players where team_id=2')
-        print(f"team_1 - {team_1}")
-        print(f"team_2 - {team_2}")
+        if rating_system not in RATING_SYSTEMS:
+            rating_system = DEFAULT_RATING_SYSTEM
+        min_rating, max_rating = RATING_SYSTEMS[rating_system]['range']
+        baseline_rating = 1 if min_rating <= 1 <= max_rating else min_rating
+
         for scenario_id in SCENARIO_MAP.keys():
             for player_1_row in team_1:
                 for player_2_row in team_2:
@@ -662,5 +768,35 @@ class DbManager:
                         player_id_2=player_2_row[0],
                         team_id_2=player_2_row[1],
                         scenario_id=scenario_id,
-                        rating=player_1_row[0]**2 + player_2_row[0]**2
+                        rating=baseline_rating
                     )
+
+    def normalize_ratings_to_system(self, rating_system):
+        """Clamp all rating values to the selected rating system range."""
+        if rating_system not in RATING_SYSTEMS:
+            raise ValueError(f"Unsupported rating system: {rating_system}")
+
+        min_rating, max_rating = RATING_SYSTEMS[rating_system]['range']
+        with self.connect_db(self.path, self.name) as db_conn:
+            db_cur = db_conn.cursor()
+            db_cur.execute(
+                """
+                UPDATE ratings
+                SET rating = CASE
+                    WHEN rating < ? THEN ?
+                    WHEN rating > ? THEN ?
+                    ELSE rating
+                END
+                """,
+                (min_rating, min_rating, max_rating, max_rating),
+            )
+            db_conn.commit()
+            updated = db_cur.rowcount if db_cur.rowcount is not None else 0
+        self.logger.info(
+            "DbManager normalized ratings db=%s/%s system=%s updated_rows=%s",
+            self.path,
+            self.name,
+            rating_system,
+            updated,
+        )
+        return updated
