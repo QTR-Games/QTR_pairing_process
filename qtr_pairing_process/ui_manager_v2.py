@@ -397,8 +397,8 @@ class UiManager:
         self.sort_guidance_text = (
             "Sort guidance:\n"
             "Cumulative: steady paths\n"
-            "Confidence: low-variance wins\n"
-            "Counter: resilient picks\n"
+            "Confidence: native-scale reliability\n"
+            "Counter: midpoint-stable resistance\n"
             "Strategic: balanced minimax"
         )
 
@@ -7078,6 +7078,7 @@ class UiManager:
 
         lines = [
             self._get_mode_profile_text(),
+            "Native-scale math: 1-3 coarse, 1-5 medium, 1-10 fine",
             (
                 "C2/Q2/R2: "
                 f"{self._format_explainability_metric('cumulative', c2)} / "
