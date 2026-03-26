@@ -78,20 +78,20 @@ class TreeGenerator:
         self.rating_display_max = int(self.rating_max)
 
     def _to_reference_rating(self, rating):
-        """Normalize active system ratings onto a 1-5 reference scale."""
+        """Map active-scale ratings to the legacy 1-5 reference scale.
+
+        This compatibility helper is intentionally retained for older call
+        sites. Numeric inputs are normalized through
+        ``_normalize_native_rating`` and then projected to [1, 5].
+        Non-numeric inputs preserve historical behavior by returning 0.
+        """
         try:
-            r = int(rating)
+            int(rating)
         except (TypeError, ValueError):
             return 0
 
-        low = int(self.rating_min)
-        high = int(self.rating_max)
-        r = max(low, min(high, r))
-        if high <= low:
-            return 3
-
-        normalized = 1.0 + ((r - low) / float(high - low)) * 4.0
-        return int(round(normalized))
+        n = self._normalize_native_rating(rating)
+        return int(round(1.0 + (4.0 * n)))
 
     def _normalize_native_rating(self, rating):
         """Normalize rating from active scale to [0.0, 1.0]."""
@@ -404,7 +404,15 @@ class TreeGenerator:
             return 0, 0, 0
 
     def calculate_rating_confidence(self, rating):
-        """Convert rating value to confidence score (0-100)"""
+        """Return a 0–100 confidence score derived from a normalized rating.
+
+        The input rating is first mapped to this generator's active rating system
+        via ``_normalize_native_rating``, which projects all supported rating
+        scales onto a common, continuous reference scale. The confidence value
+        is then computed using a continuous formula, so small changes in the
+        underlying rating (on any supported scale) produce proportionate changes
+        in confidence, rather than jumping between fixed confidence buckets.
+        """
         n = self._normalize_native_rating(rating)
         confidence = 15.0 + (80.0 * n)
         return int(round(self._clamp(confidence, 0.0, 100.0)))
@@ -555,7 +563,14 @@ class TreeGenerator:
             return 0
 
     def calculate_counter_resistance(self, rating):
-        """Calculate how resistant a rating is to opponent counters"""
+        """Return counter-resistance on a 0-100 scale with midpoint peak behavior.
+
+        The rating is first normalized to n in [0, 1] so behavior is
+        consistent across 1-3, 1-5, and 1-10 systems. Resistance uses a
+        parabola centered at n=0.5: ``1 - 4(n - 0.5)^2``. This gives highest
+        resistance to balanced mid ratings and lower resistance to extreme
+        low/high ratings, which are easier for opponents to target.
+        """
         n = self._normalize_native_rating(rating)
         peak_midpoint = 1.0 - (4.0 * ((n - 0.5) ** 2))
         peak_midpoint = self._clamp(peak_midpoint, 0.0, 1.0)
@@ -563,7 +578,13 @@ class TreeGenerator:
         return int(round(self._clamp(resistance, 0.0, 100.0)))
 
     def simulate_opponent_counter(self, our_rating):
-        """Simulate how effectively opponent can counter our strategy"""
+        """Estimate counter effectiveness as a continuous extremity curve.
+
+        The rating is normalized to n in [0, 1], then extremity is measured as
+        ``2 * abs(n - 0.5)``. Counter effectiveness grows continuously with
+        distance from midpoint (instead of discrete buckets), ranging from 0.1
+        at midpoint to 0.3 at scale extremes.
+        """
         n = self._normalize_native_rating(our_rating)
         extremity = abs(n - 0.5) * 2.0
         effectiveness = 0.1 + (0.2 * extremity)
@@ -1411,7 +1432,13 @@ class TreeGenerator:
             return max(path_scores) if path_scores else 0
 
     def calculate_base_expected_value(self, rating):
-        """Calculate base expected value from rating with win probability conversion"""
+        """Compute base expected value from a continuous normalized win curve.
+
+        Ratings are normalized to n in [0, 1] for cross-scale consistency.
+        Expected win probability is modeled linearly as ``0.05 + 0.90n``, then
+        expressed as a percentage. This replaces discrete lookup behavior with
+        smooth granularity across supported rating systems.
+        """
         try:
             n = self._normalize_native_rating(rating) if rating != 'N/A' else 0.0
             win_probability = 0.05 + (0.90 * n)
@@ -1420,7 +1447,13 @@ class TreeGenerator:
             return 50  # Neutral expected value
 
     def calculate_win_probability(self, rating):
-        """Calculate probability of winning this specific matchup for 3/5 optimization"""
+        """Estimate matchup win probability for 3/5 planning via a smooth model.
+
+        The rating is normalized to n in [0, 1] and mapped to percent as
+        ``5 + 95n``. The continuous formula preserves ordering and adds finer
+        differentiation than discrete bucket weights, especially on wider
+        scales.
+        """
         try:
             n = self._normalize_native_rating(rating) if rating != 'N/A' else 0.0
             return int(round(self._clamp(5.0 + (95.0 * n), 0.0, 100.0)))
@@ -1428,7 +1461,13 @@ class TreeGenerator:
             return 50
 
     def calculate_floor_protection(self, rating):
-        """Calculate protection against catastrophic matchup failures"""
+        """Score protection against bad outcomes using a convex power curve.
+
+        With n in [0, 1], floor protection is ``100 * n^1.75``. The exponent
+        1.75 intentionally suppresses low and mid ratings while rewarding high
+        ratings more strongly, reflecting that true floor safety should require
+        reliably strong matchups rather than average ones.
+        """
         try:
             n = self._normalize_native_rating(rating) if rating != 'N/A' else 0.0
             protected = 100.0 * (n ** 1.75)
@@ -1437,7 +1476,13 @@ class TreeGenerator:
             return 50
 
     def calculate_counter_resistance_value(self, rating):
-        """Calculate resistance to opponent counter-picks (front-loaded weighting)"""
+        """Score counter-pick resistance with front-loaded diminishing returns.
+
+        Using n in [0, 1], resistance is modeled as ``5 + 85 * sqrt(n)``. The
+        square-root shape gives larger gains at lower-to-mid ratings, then
+        tapering gains near the top end, matching the intended front-loaded
+        strategic weighting.
+        """
         try:
             n = self._normalize_native_rating(rating) if rating != 'N/A' else 0.0
             resistance = 5.0 + (85.0 * math.sqrt(self._clamp(n, 0.0, 1.0)))

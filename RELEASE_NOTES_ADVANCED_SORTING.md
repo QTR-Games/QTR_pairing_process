@@ -19,7 +19,11 @@ Sorts decision paths by **reliability and consistency** rather than pure maximum
 - **Confidence Scoring**: Each rating gets a confidence score based on its reliability:
   - Ratings are normalized from the active scale to `n in [0, 1]`
   - `confidence = round(15 + 80 * n)`
-  - Higher ratings always increase confidence, with full native-scale granularity
+  - Higher ratings always increase confidence, and scores are computed at full granularity for whatever native rating scale you use (1–3, 1–5, 1–10, etc.)
+  - For example, using the same formula:
+    - **1–3 scale**: 1 → 15, 2 → 55, 3 → 95
+    - **1–5 scale**: 1 → 15, 2 → 35, 3 → 55, 4 → 75, 5 → 95
+    - **1–10 scale** (sample): 1 → 15, 5 → 51, 10 → 95
 
 - **Variance Penalty**: Paths with high variance (mix of 1s and 5s) are penalized compared to consistent paths (all 3s-4s)
 - **Floor-Ceiling Analysis**: Calculates both minimum guaranteed and maximum potential outcomes
