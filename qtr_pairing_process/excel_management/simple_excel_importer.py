@@ -20,10 +20,19 @@ class SimpleExcelImporter:
       - Rows N+2 to N+6: Empty in A, friendly player name in B, ratings in C-G
     """
     
-    def __init__(self, db_manager: DbManager, file_path: str, scenario_id: int = 0):
+    def __init__(self, db_manager: DbManager, file_path: str, scenario_id: int = 0, rating_min: int = 1, rating_max: int = 5):
         self.db_manager = db_manager
         self.file_path = file_path
         self.scenario_id = scenario_id  # Default to "Neutral" scenario
+        try:
+            self.rating_min = int(rating_min)
+            self.rating_max = int(rating_max)
+        except (TypeError, ValueError):
+            self.rating_min = 1
+            self.rating_max = 5
+        if self.rating_max < self.rating_min:
+            self.rating_min, self.rating_max = self.rating_max, self.rating_min
+        self.default_rating = int(round((self.rating_min + self.rating_max) / 2.0))
         self.workbook: Optional[Workbook] = None
         self.sheet: Optional[Worksheet] = None
         self.friendly_team_name: Optional[str] = None
@@ -159,21 +168,21 @@ class SimpleExcelImporter:
                         
                     rating_cell = self.sheet[f'{col}{data_row}'].value
                     
-                    # Convert rating to integer, default to 3 if invalid
+                    # Convert rating to integer, default to midpoint if invalid
                     try:
                         if rating_cell is None:
-                            rating = 3
+                            rating = self.default_rating
                         elif isinstance(rating_cell, (int, float)):
                             rating = int(rating_cell)
                         else:
                             rating = int(str(rating_cell))
                             
                         # Validate rating range
-                        if rating < 1 or rating > 5:
-                            rating = 3
+                        if rating < self.rating_min or rating > self.rating_max:
+                            rating = self.default_rating
                             
                     except (ValueError, TypeError):
-                        rating = 3  # Default to neutral
+                        rating = self.default_rating  # Default to neutral midpoint
                         
                     player_ratings.append(rating)
                     
@@ -229,13 +238,19 @@ class SimpleExcelImporter:
     def save_team_to_database(self, team_data):
         """Save team data and ratings to database"""
         try:
-            # Create or update friendly team
-            friendly_team_id = self.db_manager.upsert_team(self.friendly_team_name)
-            self.db_manager.upsert_and_validate_players(friendly_team_id, team_data['friendly_players'])
-            
-            # Create or update opponent team  
-            opponent_team_id = self.db_manager.upsert_team(team_data['opponent_team_name'])
-            self.db_manager.upsert_and_validate_players(opponent_team_id, team_data['opponent_players'])
+            # Anchor matchup orientation to the friendly team declared in A1.
+            friendly_team_id = self._resolve_or_create_matchup_team(
+                self.friendly_team_name,
+                team_data['friendly_players'],
+                team_role="friendly",
+            )
+
+            opponent_team_id = self._resolve_or_create_matchup_team(
+                team_data['opponent_team_name'],
+                team_data['opponent_players'],
+                team_role="opponent",
+                friendly_team_name=self.friendly_team_name,
+            )
             
             # Get player IDs for ratings
             friendly_player_ids = {}
@@ -265,6 +280,28 @@ class SimpleExcelImporter:
             
         except Exception as e:
             raise Exception(f"Database error for team {team_data['opponent_team_name']}: {str(e)}")
+
+    def _resolve_or_create_matchup_team(
+        self,
+        team_name: str,
+        player_names: List[str],
+        team_role: str,
+        friendly_team_name: Optional[str] = None,
+    ) -> int:
+        """Resolve a team for import, creating it when missing, then validate roster."""
+        existing_team_id = self.db_manager.query_team_id(team_name)
+        if existing_team_id is None:
+            team_id = self.db_manager.upsert_team(team_name)
+            if team_role == "opponent" and friendly_team_name:
+                print(
+                    f"Created missing opponent team '{team_name}' for matchup against "
+                    f"friendly team '{friendly_team_name}'."
+                )
+        else:
+            team_id = existing_team_id
+
+        self.db_manager.upsert_and_validate_players(team_id, player_names)
+        return team_id
             
     def execute_import(self):
         """Execute the complete import process"""

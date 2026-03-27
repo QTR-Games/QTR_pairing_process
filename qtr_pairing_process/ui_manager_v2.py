@@ -9,8 +9,10 @@ import sqlite3
 import time
 import threading
 import hashlib
+import io
 import traceback
 import subprocess
+import zipfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple, cast
@@ -3585,6 +3587,7 @@ class UiManager:
             add_menu_button(import_export_body, "Export Individual Ratings", self.export_individual_player_ratings, tier="primary", bg="#e6f2ff", reopen_data_management=True)
             add_menu_button(import_export_body, "Import Individual Ratings", self.import_individual_player_ratings, tier="primary", bg="#e6f2ff", reopen_data_management=True)
             add_menu_button(import_export_body, "Bulk Import Player Files", self.bulk_import_individual_player_ratings, tier="primary", bg="#e6f2ff", reopen_data_management=True)
+            add_menu_button(import_export_body, "Import Names Only", self.import_names_only_csv, tier="primary", bg="#e6f2ff", reopen_data_management=True)
             
             # TOP RIGHT: Data Management section
             data_mgmt_body = create_section(
@@ -3638,6 +3641,7 @@ class UiManager:
             add_menu_button(team_mgmt_body, "Create Team", self.on_create_team, tier="primary", reopen_data_management=True)
             add_menu_button(team_mgmt_body, "Modify Team", self.on_modify_team, tier="primary", reopen_data_management=True)
             add_menu_button(team_mgmt_body, "Delete Team", self.on_delete_team, tier="secondary", reopen_data_management=True)
+            add_menu_button(team_mgmt_body, "Import Templates", self.show_import_templates_popup, tier="utility", reopen_data_management=True)
             
             # BOTTOM RIGHT: Database section
             database_body = create_section(
@@ -3743,12 +3747,93 @@ class UiManager:
                 messagebox.showerror("Data Management", self._operation_failed_error(f"menu action could not be executed: {e}"))
     
     def export_xlsx(self):
-        """Export data to XLSX format - placeholder implementation."""
-        from tkinter import messagebox
+        """Export selected matchup to an XLSX file compatible with XLSX import."""
         try:
-            # TODO: Implement XLSX export functionality
-            messagebox.showinfo("Export XLSX", self._operation_notice_info("XLSX export functionality will be implemented in a future update."))
+            friendly_team = (self.combobox_1.get() if hasattr(self, 'combobox_1') else '').strip()
+            opponent_team = (self.combobox_2.get() if hasattr(self, 'combobox_2') else '').strip()
+
+            if not friendly_team or not opponent_team:
+                messagebox.showerror(
+                    "Export XLSX",
+                    self._operation_failed_error("select both teams before exporting XLSX."),
+                )
+                return
+
+            friendly_team_name, friendly_players = self.retrieve_team_data(friendly_team)
+            opponent_team_name, opponent_players = self.retrieve_team_data(opponent_team)
+
+            if len(friendly_players) != 5 or len(opponent_players) != 5:
+                messagebox.showerror(
+                    "Export XLSX",
+                    self._operation_failed_error(
+                        "XLSX import format requires exactly 5 players per team. "
+                        f"Found {len(friendly_players)} friendly and {len(opponent_players)} opponent players."
+                    ),
+                )
+                return
+
+            file_name = f"{friendly_team_name}_vs_{opponent_team_name}_import_ready.xlsx".replace(" ", "_")
+            file_path = filedialog.asksaveasfilename(
+                title="Export XLSX (Import-Ready Format)",
+                initialfile=file_name,
+                defaultextension=".xlsx",
+                filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            )
+            if not file_path:
+                return
+
+            import openpyxl
+
+            friendly_team_id = self.db_manager.query_team_id(friendly_team_name)
+            opponent_team_id = self.db_manager.query_team_id(opponent_team_name)
+            if friendly_team_id is None or opponent_team_id is None:
+                raise ValueError("could not resolve team ids for selected teams")
+
+            scenario_id = 0
+            min_rating, max_rating = self.rating_range if hasattr(self, "rating_range") else (1, 5)
+            neutral_rating = int(round((int(min_rating) + int(max_rating)) / 2.0))
+            rating_map = self._fetch_matchup_ratings_by_name(
+                friendly_team_id,
+                opponent_team_id,
+                scenario_id=scenario_id,
+            )
+
+            workbook = openpyxl.Workbook()
+            sheet = workbook.active
+            sheet.title = "ImportReady"
+
+            sheet["A1"] = friendly_team_name
+
+            block_row = 3
+            sheet.cell(row=block_row, column=1, value=opponent_team_name)
+            for col_offset, opponent_player in enumerate(opponent_players, start=3):
+                sheet.cell(row=block_row, column=col_offset, value=opponent_player)
+
+            for row_offset, friendly_player in enumerate(friendly_players, start=1):
+                out_row = block_row + row_offset
+                sheet.cell(row=out_row, column=2, value=friendly_player)
+                for col_offset, opponent_player in enumerate(opponent_players, start=3):
+                    rating = rating_map.get((friendly_player, opponent_player), neutral_rating)
+                    sheet.cell(row=out_row, column=col_offset, value=int(rating))
+
+            workbook.save(file_path)
+
+            messagebox.showinfo(
+                "Export XLSX",
+                self._operation_notice_info(
+                    "XLSX exported in import-ready format for the selected matchup "
+                    f"(scenario 0 - Neutral).\n\nFile: {file_path}"
+                ),
+            )
+            self.logger.info(
+                "XLSX export complete: file=%s friendly=%s opponent=%s scenario=%s",
+                file_path,
+                friendly_team_name,
+                opponent_team_name,
+                scenario_id,
+            )
         except Exception as e:
+            self.logger.exception("XLSX export failed")
             print(f"Error exporting XLSX: {e}")
             messagebox.showerror("Export XLSX", self._operation_failed_error(f"could not export XLSX: {e}"))
 
@@ -4080,6 +4165,56 @@ class UiManager:
             raise ValueError("File has no importable data rows.")
         return rows
 
+    def _load_individual_player_xlsx_rows(self, file_path):
+        import openpyxl
+
+        workbook = openpyxl.load_workbook(file_path, data_only=True)
+        try:
+            sheet = workbook.active
+            required_columns = self._individual_player_export_columns()
+            header_cells = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), ())
+            fieldnames = [str(value).strip() if value is not None else "" for value in header_cells]
+            missing = [column for column in required_columns if column not in fieldnames]
+            if missing:
+                raise ValueError(self._schema_missing_columns_error(missing))
+
+            rows = []
+            for row_values in sheet.iter_rows(min_row=2, values_only=True):
+                row_dict = {}
+                for idx, key in enumerate(fieldnames):
+                    if not key:
+                        continue
+                    value = row_values[idx] if idx < len(row_values) else ""
+                    row_dict[key] = "" if value is None else str(value)
+                if not any((value or "").strip() for value in row_dict.values()):
+                    continue
+                rows.append(row_dict)
+        finally:
+            workbook.close()
+
+        if not rows:
+            raise ValueError("File has no importable data rows.")
+        return rows
+
+    def _load_individual_player_rows(self, file_path):
+        suffix = Path(file_path).suffix.lower()
+        if suffix == ".csv":
+            return self._load_individual_player_csv_rows(file_path)
+        if suffix == ".xlsx":
+            return self._load_individual_player_xlsx_rows(file_path)
+        raise ValueError(f"Unsupported import file type '{suffix}'. Use .csv or .xlsx.")
+
+    def _format_individual_import_validation_errors(self, errors):
+        if not errors:
+            return ""
+        limit = 12
+        visible = errors[:limit]
+        remaining = len(errors) - len(visible)
+        message = "Validation failed with the following issues:\n- " + "\n- ".join(visible)
+        if remaining > 0:
+            message += f"\n- ... and {remaining} additional issue(s)."
+        return message
+
     def _validate_individual_import_rows(
         self,
         rows,
@@ -4089,6 +4224,7 @@ class UiManager:
         target_player_name,
     ):
         warnings: List[str] = []
+        errors: List[str] = []
 
         first = rows[0]
         if first.get("schema_version") != "player_ratings_export_v1":
@@ -4130,6 +4266,7 @@ class UiManager:
 
         import_rows = []
         for idx, row in enumerate(rows, start=2):
+            row_errors: List[str] = []
             for metadata_key in (
                 "schema_version",
                 "app_export_version",
@@ -4139,13 +4276,43 @@ class UiManager:
                 "source_player_name",
             ):
                 if (row.get(metadata_key) or "").strip() != (first.get(metadata_key) or "").strip():
-                    raise ValueError(f"Inconsistent file metadata in row {idx} for '{metadata_key}'.")
+                    row_errors.append(f"row {idx}, column '{metadata_key}': inconsistent file metadata")
 
-            scenario_id = DataValidator.validate_integer(row.get("scenario_id"), min_value=min(SCENARIO_MAP.keys()), max_value=max(SCENARIO_MAP.keys()))
-            rating = DataValidator.validate_rating(row.get("rating"), rating_system=self.current_rating_system)
+            try:
+                scenario_id = DataValidator.validate_integer(
+                    row.get("scenario_id"),
+                    min_value=min(SCENARIO_MAP.keys()),
+                    max_value=max(SCENARIO_MAP.keys()),
+                )
+            except ValueError as exc:
+                row_errors.append(f"row {idx}, column 'scenario_id': {exc}")
+                scenario_id = None
 
-            opponent_team_name = DataValidator.validate_team_name(row.get("opponent_team_name", ""))
-            opponent_player_name = DataValidator.validate_player_name(row.get("opponent_player_name", ""))
+            try:
+                rating = DataValidator.validate_rating(row.get("rating"), rating_system=self.current_rating_system)
+            except ValueError as exc:
+                row_errors.append(f"row {idx}, column 'rating': {exc}")
+                rating = None
+
+            try:
+                opponent_team_name = DataValidator.validate_team_name(row.get("opponent_team_name", ""))
+            except ValueError as exc:
+                row_errors.append(f"row {idx}, column 'opponent_team_name': {exc}")
+                opponent_team_name = ""
+
+            try:
+                opponent_player_name = DataValidator.validate_player_name(row.get("opponent_player_name", ""))
+            except ValueError as exc:
+                row_errors.append(f"row {idx}, column 'opponent_player_name': {exc}")
+                opponent_player_name = ""
+
+            comment = row.get("comment") or ""
+            if len(comment) > 2000:
+                row_errors.append(f"row {idx}, column 'comment': exceeds 2000 characters")
+
+            if row_errors:
+                errors.extend(row_errors)
+                continue
 
             opponent_team_id = None
             opponent_player_id = None
@@ -4169,35 +4336,36 @@ class UiManager:
                     (opponent_player_id,),
                 )
                 if not identity_rows:
-                    raise ValueError(self._identity_resolution_error(
-                        f"row {idx} opponent player_id {opponent_player_id} was not found in this database."
+                    errors.append(self._identity_resolution_error(
+                        f"row {idx}, column 'opponent_player_id': value {opponent_player_id} was not found in this database."
                     ))
+                    continue
 
                 actual_player_name, actual_team_id, actual_team_name = identity_rows[0]
                 if actual_team_id != opponent_team_id:
-                    raise ValueError(self._identity_mismatch_error(
-                        f"row {idx} has conflicting opponent IDs (team/player mismatch)."
+                    errors.append(self._identity_mismatch_error(
+                        f"row {idx}: conflicting opponent IDs (team/player mismatch)."
                     ))
+                    continue
                 if actual_team_name != opponent_team_name or actual_player_name != opponent_player_name:
-                    raise ValueError(self._identity_mismatch_error(
+                    errors.append(self._identity_mismatch_error(
                         f"row {idx} opponent ID/name mismatch: file has {opponent_player_name}@{opponent_team_name}, "
                         f"database has {actual_player_name}@{actual_team_name}."
                     ))
+                    continue
             else:
                 opponent_team_id = self.db_manager.query_team_id(opponent_team_name)
                 if opponent_team_id is None:
-                    raise ValueError(self._identity_resolution_error(
-                        f"row {idx} opponent team '{opponent_team_name}' was not found."
+                    errors.append(self._identity_resolution_error(
+                        f"row {idx}, column 'opponent_team_name': team '{opponent_team_name}' was not found."
                     ))
+                    continue
                 opponent_player_id = self.db_manager.query_player_id(opponent_player_name, opponent_team_id)
                 if opponent_player_id is None:
-                    raise ValueError(self._identity_resolution_error(
-                        f"row {idx} opponent player '{opponent_player_name}' was not found on team '{opponent_team_name}'."
+                    errors.append(self._identity_resolution_error(
+                        f"row {idx}, column 'opponent_player_name': player '{opponent_player_name}' was not found on team '{opponent_team_name}'."
                     ))
-
-            comment = row.get("comment") or ""
-            if len(comment) > 2000:
-                raise ValueError(f"Row {idx} comment exceeds 2000 characters.")
+                    continue
 
             import_rows.append(
                 {
@@ -4208,6 +4376,9 @@ class UiManager:
                     "comment": comment,
                 }
             )
+
+        if errors:
+            raise ValueError(self._format_individual_import_validation_errors(errors))
 
         expected_rows_result = self.db_manager.query_sql_params(
             "SELECT COUNT(*) FROM players WHERE team_id != ?",
@@ -4221,7 +4392,7 @@ class UiManager:
         return import_rows, warnings
 
     def _run_individual_player_import(self, file_path, target_team_id, target_team_name, target_player_id, target_player_name, require_confirmation=True):
-        rows = self._load_individual_player_csv_rows(file_path)
+        rows = self._load_individual_player_rows(file_path)
         import_rows, warnings = self._validate_individual_import_rows(
             rows,
             target_team_id,
@@ -4252,7 +4423,7 @@ class UiManager:
     def import_individual_player_ratings(self):
         file_path = filedialog.askopenfilename(
             title="Import Individual Player Ratings",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            filetypes=[("CSV/XLSX files", "*.csv *.xlsx"), ("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("All files", "*.*")],
         )
         if not file_path:
             return
@@ -5815,7 +5986,7 @@ class UiManager:
                     
                 messagebox.showinfo("Success", 
                                   f"Team '{team_name}' has been updated successfully!\n\n"
-                                  f"Players updated:\n" + "\n".join([f"ΓÇó {name}" for name in player_names]))
+                                  f"Players updated:\n" + "\n".join([f"- {name}" for name in player_names]))
             else:
                 # Create new team
                 team_id = self.db_manager.upsert_team(team_name)
@@ -5826,7 +5997,7 @@ class UiManager:
                     
                 messagebox.showinfo("Success", 
                                   f"Team '{team_name}' has been created successfully!\n\n"
-                                  f"Players added:\n" + "\n".join([f"ΓÇó {name}" for name in player_names]))
+                                  f"Players added:\n" + "\n".join([f"- {name}" for name in player_names]))
 
             # Update UI like successful CSV import
             self._invalidate_team_cache()
@@ -5969,6 +6140,402 @@ class UiManager:
         except (ValueError, IndexError) as e:
             print(f"delete_team caused an error trying to update the UI: {e}")
 
+    def _neutral_rating_value(self):
+        min_rating, max_rating = self.rating_range if hasattr(self, "rating_range") else (1, 5)
+        min_rating = int(min_rating)
+        max_rating = int(max_rating)
+        return min_rating + ((max_rating - min_rating) // 2)
+
+    def _build_single_team_csv_template_rows(self):
+        friendly_team = "Friendly Team Example"
+        opponent_team = "Opponent Team Example"
+        friendly_players = [f"Friendly {idx}" for idx in range(1, 6)]
+        opponent_players = [f"Opponent {idx}" for idx in range(1, 6)]
+        neutral_rating = self._neutral_rating_value()
+
+        rows = [
+            [friendly_team] + friendly_players,
+            [opponent_team] + opponent_players,
+        ]
+
+        for scenario_id in sorted(SCENARIO_MAP.keys()):
+            rows.append([scenario_id] + opponent_players)
+            for friendly_player in friendly_players:
+                rows.append([friendly_player] + [neutral_rating] * 5)
+
+        return rows
+
+    def _build_multiple_team_csv_template_rows(self):
+        return [
+            ["team_name", "player_1", "player_2", "player_3", "player_4", "player_5"],
+            ["Team Alpha", "Alpha 1", "Alpha 2", "Alpha 3", "Alpha 4", "Alpha 5"],
+            ["Team Bravo", "Bravo 1", "Bravo 2", "Bravo 3", "Bravo 4", "Bravo 5"],
+            ["Team Charlie", "Charlie 1", "Charlie 2", "Charlie 3", "Charlie 4", "Charlie 5"],
+        ]
+
+    def _build_names_only_csv_template_rows(self):
+        return [
+            ["team_name", "player_1", "player_2", "player_3", "player_4", "player_5"],
+            ["Imported Team 1", "Player 1", "Player 2", "Player 3", "Player 4", "Player 5"],
+            ["Imported Team 2", "Player 1", "Player 2", "Player 3", "Player 4", "Player 5"],
+        ]
+
+    def _build_xlsx_template_bytes(self, multiple_blocks=False):
+        import openpyxl
+
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = "ImportReady"
+        sheet["A1"] = "Friendly Team Example"
+
+        friendly_players = [f"Friendly {idx}" for idx in range(1, 6)]
+        neutral_rating = self._neutral_rating_value()
+
+        blocks = [
+            ("Opponent Team Alpha", [f"Alpha {idx}" for idx in range(1, 6)]),
+        ]
+        if multiple_blocks:
+            blocks.extend(
+                [
+                    ("Opponent Team Bravo", [f"Bravo {idx}" for idx in range(1, 6)]),
+                    ("Opponent Team Charlie", [f"Charlie {idx}" for idx in range(1, 6)]),
+                ]
+            )
+
+        start_row = 3
+        for block_idx, (opponent_team, opponent_players) in enumerate(blocks):
+            block_row = start_row + (block_idx * 7)
+            sheet.cell(row=block_row, column=1, value=opponent_team)
+            for col_offset, opponent_player in enumerate(opponent_players, start=3):
+                sheet.cell(row=block_row, column=col_offset, value=opponent_player)
+
+            for row_offset, friendly_player in enumerate(friendly_players, start=1):
+                out_row = block_row + row_offset
+                sheet.cell(row=out_row, column=2, value=friendly_player)
+                for col_offset in range(3, 8):
+                    sheet.cell(row=out_row, column=col_offset, value=neutral_rating)
+
+        stream = io.BytesIO()
+        workbook.save(stream)
+        workbook.close()
+        return stream.getvalue()
+
+    def _template_specs(self):
+        return {
+            "single_team_xlsx": {
+                "default_name": "single_team_import_template.xlsx",
+                "filetypes": [("Excel files", "*.xlsx"), ("All files", "*.*")],
+                "writer": lambda path: self._write_binary_file(path, self._build_xlsx_template_bytes(multiple_blocks=False)),
+            },
+            "single_team_csv": {
+                "default_name": "single_team_import_template.csv",
+                "filetypes": [("CSV files", "*.csv"), ("All files", "*.*")],
+                "writer": lambda path: self._write_csv_rows(path, self._build_single_team_csv_template_rows()),
+            },
+            "multiple_team_xlsx": {
+                "default_name": "multiple_team_import_template.xlsx",
+                "filetypes": [("Excel files", "*.xlsx"), ("All files", "*.*")],
+                "writer": lambda path: self._write_binary_file(path, self._build_xlsx_template_bytes(multiple_blocks=True)),
+            },
+            "multiple_team_csv": {
+                "default_name": "multiple_team_import_template.csv",
+                "filetypes": [("CSV files", "*.csv"), ("All files", "*.*")],
+                "writer": lambda path: self._write_csv_rows(path, self._build_multiple_team_csv_template_rows()),
+            },
+            "names_only": {
+                "default_name": "names_only_import_template.csv",
+                "filetypes": [("CSV files", "*.csv"), ("All files", "*.*")],
+                "writer": lambda path: self._write_csv_rows(path, self._build_names_only_csv_template_rows()),
+            },
+        }
+
+    def _write_csv_rows(self, file_path, rows):
+        with open(file_path, mode="w", newline="", encoding="utf-8") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerows(rows)
+
+    def _write_binary_file(self, file_path, payload):
+        with open(file_path, mode="wb") as handle:
+            handle.write(payload)
+
+    def _download_template(self, template_key):
+        specs = self._template_specs()
+        if template_key not in specs:
+            raise ValueError(f"Unknown template key: {template_key}")
+
+        spec = specs[template_key]
+        file_path = filedialog.asksaveasfilename(
+            title="Download Import Template",
+            initialfile=spec["default_name"],
+            defaultextension=Path(spec["default_name"]).suffix,
+            filetypes=spec["filetypes"],
+        )
+        if not file_path:
+            return
+
+        spec["writer"](file_path)
+        messagebox.showinfo("Import Templates", self._operation_notice_info(f"Template saved:\n{file_path}"))
+
+    def _download_all_templates_zip(self):
+        specs = self._template_specs()
+        file_path = filedialog.asksaveasfilename(
+            title="Download All Templates (ZIP)",
+            initialfile="import_templates_bundle.zip",
+            defaultextension=".zip",
+            filetypes=[("Zip files", "*.zip"), ("All files", "*.*")],
+        )
+        if not file_path:
+            return
+
+        with zipfile.ZipFile(file_path, mode="w", compression=zipfile.ZIP_DEFLATED) as bundle:
+            for key, spec in specs.items():
+                output_name = spec["default_name"]
+                suffix = Path(output_name).suffix.lower()
+                if suffix == ".csv":
+                    stream = io.StringIO()
+                    writer = csv.writer(stream)
+                    if key == "single_team_csv":
+                        writer.writerows(self._build_single_team_csv_template_rows())
+                    elif key == "multiple_team_csv":
+                        writer.writerows(self._build_multiple_team_csv_template_rows())
+                    else:
+                        writer.writerows(self._build_names_only_csv_template_rows())
+                    bundle.writestr(output_name, stream.getvalue())
+                else:
+                    payload = self._build_xlsx_template_bytes(multiple_blocks=(key == "multiple_team_xlsx"))
+                    bundle.writestr(output_name, payload)
+
+        messagebox.showinfo("Import Templates", self._operation_notice_info(f"Template bundle saved:\n{file_path}"))
+
+    def show_import_templates_popup(self):
+        popup = tk.Toplevel(self.root)
+        popup.title("Import Templates")
+        popup.geometry("520x470")
+        popup.resizable(False, False)
+        popup.transient(self.root)
+        popup.grab_set()
+
+        tk.Label(
+            popup,
+            text="Download Import Templates",
+            font=("Arial", 14, "bold"),
+            pady=12,
+        ).pack(fill=tk.X)
+
+        tk.Label(
+            popup,
+            text="Choose a template. Files include editable example data.",
+            font=("Arial", 10),
+            pady=4,
+        ).pack(fill=tk.X)
+
+        body = tk.Frame(popup, padx=20, pady=12)
+        body.pack(fill=tk.BOTH, expand=True)
+
+        options = [
+            ("Single Team Import XLSX", lambda: self._download_template("single_team_xlsx")),
+            ("Single Team Import CSV", lambda: self._download_template("single_team_csv")),
+            ("Multiple Team Import XLSX", lambda: self._download_template("multiple_team_xlsx")),
+            ("Multiple Team Import CSV", lambda: self._download_template("multiple_team_csv")),
+            ("Names Only", lambda: self._download_template("names_only")),
+            ("Download All (ZIP)", self._download_all_templates_zip),
+        ]
+
+        for label, action in options:
+            tk.Button(
+                body,
+                text=label,
+                command=action,
+                height=1,
+                relief=tk.RAISED,
+                borderwidth=1,
+                bg="#f3f8ff",
+            ).pack(fill=tk.X, pady=4)
+
+        tk.Button(popup, text="Close", command=popup.destroy, bg="#f2a7a7", width=18).pack(pady=10)
+
+    def _load_names_only_csv_rows(self, file_path):
+        rows = []
+        errors: List[str] = []
+        with open(file_path, mode="r", newline="", encoding="utf-8-sig") as csv_file:
+            reader = csv.reader(csv_file)
+            raw_rows = list(reader)
+
+        if not raw_rows:
+            raise ValueError("File has no rows.")
+
+        start_index = 0
+        first_row = [value.strip() for value in raw_rows[0]]
+        if first_row and first_row[0].lower() in {"team_name", "team", "team name"}:
+            start_index = 1
+
+        for index, raw_row in enumerate(raw_rows[start_index:], start=start_index + 1):
+            row = [value.strip() for value in raw_row]
+            if not any(row):
+                continue
+            if len(row) < 6:
+                errors.append(f"row {index}: expected 6 columns (team_name + 5 players), found {len(row)}")
+                continue
+
+            team_name = row[0]
+            player_names = row[1:6]
+
+            if not team_name:
+                errors.append(f"row {index}, column 'team_name': value is required")
+                continue
+
+            try:
+                team_name = DataValidator.validate_team_name(team_name)
+            except ValueError as exc:
+                errors.append(f"row {index}, column 'team_name': {exc}")
+                continue
+
+            if any(not player_name for player_name in player_names):
+                errors.append(f"row {index}: all five player names are required")
+                continue
+
+            row_player_names = []
+            row_has_error = False
+            for player_idx, player_name in enumerate(player_names, start=1):
+                try:
+                    row_player_names.append(DataValidator.validate_player_name(player_name))
+                except ValueError as exc:
+                    errors.append(f"row {index}, column 'player_{player_idx}': {exc}")
+                    row_has_error = True
+            if row_has_error:
+                continue
+
+            if len(set(name.lower() for name in row_player_names)) != 5:
+                errors.append(f"row {index}: player names must be unique within the team")
+                continue
+
+            rows.append(
+                {
+                    "row_number": index,
+                    "team_name": team_name,
+                    "player_names": row_player_names,
+                }
+            )
+
+        if errors:
+            raise ValueError("Validation failed with the following issues:\n- " + "\n- ".join(errors[:20]))
+        if not rows:
+            raise ValueError("File has no importable names-only rows.")
+        return rows
+
+    def import_names_only_csv(self):
+        file_path = filedialog.askopenfilename(
+            title="Import Names Only (CSV)",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        if not file_path:
+            return
+
+        try:
+            with self._busy_ui_operation("Loading - importing names-only teams"):
+                friendly_team_id, friendly_team_name = self._get_selected_friendly_team()
+                friendly_players = self.db_manager.query_players(friendly_team_id)
+                if not friendly_players or len(friendly_players) != 5:
+                    raise ValueError("Selected friendly team must have exactly 5 players before names-only import.")
+
+                friendly_player_ids = [row[0] for row in friendly_players]
+                imported_rows = self._load_names_only_csv_rows(file_path)
+                neutral_rating = self._neutral_rating_value()
+                scenario_ids = sorted(SCENARIO_MAP.keys())
+
+                successful_teams = 0
+                failed_rows: List[str] = []
+                ratings_upserted = 0
+
+                for row in imported_rows:
+                    imported_team_name = row["team_name"]
+                    imported_player_names = row["player_names"]
+                    row_number = row["row_number"]
+
+                    if imported_team_name == friendly_team_name:
+                        failed_rows.append(
+                            f"row {row_number}: imported team '{imported_team_name}' cannot be the selected friendly team"
+                        )
+                        continue
+
+                    try:
+                        imported_team_id = self._resolve_or_create_matchup_team(
+                            imported_team_name,
+                            imported_player_names,
+                            friendly_team_name=friendly_team_name,
+                        )
+                        imported_player_ids = [
+                            self.db_manager.query_player_id(player_name, imported_team_id)
+                            for player_name in imported_player_names
+                        ]
+                        if any(player_id is None for player_id in imported_player_ids):
+                            raise ValueError("could not resolve imported player IDs after roster creation")
+
+                        for scenario_id in scenario_ids:
+                            for friendly_player_id in friendly_player_ids:
+                                for imported_player_id in imported_player_ids:
+                                    self.db_manager.upsert_rating(
+                                        player_id_1=friendly_player_id,
+                                        player_id_2=imported_player_id,
+                                        team_id_1=friendly_team_id,
+                                        team_id_2=imported_team_id,
+                                        scenario_id=scenario_id,
+                                        rating=neutral_rating,
+                                    )
+                                    ratings_upserted += 1
+
+                        successful_teams += 1
+                    except Exception as exc:
+                        failed_rows.append(f"row {row_number}: {exc}")
+
+                self._invalidate_team_cache()
+                self._invalidate_comment_cache()
+                data_cache = getattr(self, "data_cache", None)
+                if data_cache is not None:
+                    data_cache.invalidate_ratings_cache()
+                self.load_grid_data_from_db(refresh_ui=True)
+
+                status = "success" if not failed_rows else "partial_failure"
+                report = self._build_import_report(
+                    operation="import_names_only_csv",
+                    status=status,
+                    details={
+                        "file_path": file_path,
+                        "friendly_team": friendly_team_name,
+                        "neutral_rating": neutral_rating,
+                        "successful_teams": successful_teams,
+                        "failed_rows": failed_rows,
+                        "ratings_upserted": ratings_upserted,
+                    },
+                )
+                log_path = self._write_import_diagnostic_report(report)
+
+                if successful_teams == 0 and failed_rows:
+                    raise ValueError("No teams imported.\n- " + "\n- ".join(failed_rows[:20]))
+
+                message = (
+                    f"Imported teams: {successful_teams}\n"
+                    f"Neutral rating used: {neutral_rating}\n"
+                    f"Ratings upserted: {ratings_upserted}"
+                )
+                if failed_rows:
+                    message += "\n\nSome rows failed:\n- " + "\n- ".join(failed_rows[:10])
+                message += f"\n\nDiagnostics log:\n{log_path}"
+                messagebox.showinfo("Names-Only Import", self._operation_notice_info(message))
+        except Exception as exc:
+            report = self._build_import_report(
+                operation="import_names_only_csv",
+                status="failure",
+                details={"file_path": file_path},
+                exc=exc,
+            )
+            log_path = self._write_import_diagnostic_report(report)
+            self.logger.exception("Names-only import failed")
+            messagebox.showerror(
+                "Names-Only Import",
+                self._operation_failed_error(f"could not import names-only CSV: {exc}\n\nDiagnostics log:\n{log_path}"),
+            )
+
     def import_xlsx(self):
         """Import Excel file using the new simple format"""
         # Let user select the Excel file
@@ -5988,7 +6555,9 @@ class UiManager:
             simple_importer = SimpleExcelImporter(
                 db_manager=self.db_manager, 
                 file_path=file_path, 
-                scenario_id=0  # Default to neutral scenario
+                scenario_id=0,  # Default to neutral scenario
+                rating_min=self.rating_range[0],
+                rating_max=self.rating_range[1],
             )
             
             teams_imported = simple_importer.execute()
@@ -6047,7 +6616,7 @@ class UiManager:
     def retrieve_ratings(self, team1_players, team2_players):
         ratings = {}
         scenario_id = []        
-        for scenario in range(0,6):
+        for scenario in sorted(SCENARIO_MAP.keys()):
             
             scenario_id = scenario
             ratings[scenario_id] = {}
@@ -6075,6 +6644,30 @@ class UiManager:
 
         return ratings
 
+    def _fetch_matchup_ratings_by_name(self, team_1_id, team_2_id, scenario_id=0):
+        """Return {(friendly_name, opponent_name): rating} for one matchup scenario."""
+        ratings_by_name = {}
+        rows = self.db_manager.query_sql(
+            f"""
+            SELECT p1.player_name, p2.player_name, r.rating
+            FROM ratings r
+            JOIN players p1 ON r.team_1_player_id = p1.player_id
+            JOIN players p2 ON r.team_2_player_id = p2.player_id
+            WHERE r.team_1_id = {int(team_1_id)}
+              AND r.team_2_id = {int(team_2_id)}
+              AND r.scenario_id = {int(scenario_id)}
+            """
+        )
+
+        for row in rows:
+            try:
+                friendly_name, opponent_name, rating = row
+                ratings_by_name[(str(friendly_name), str(opponent_name))] = int(rating)
+            except (TypeError, ValueError):
+                continue
+
+        return ratings_by_name
+
 
     
     def import_csvs(self):
@@ -6094,16 +6687,14 @@ class UiManager:
         # CSV import should be exactly 44 lines if done correctly.
         # Let's allow it to be short, in case we don't want to import all 6 scenarios
         # print(f"file length={len(lines)}")
-        if len(lines) < 44:
+        if len(lines) < 3:
             raise ValueError("Insufficient number of lines")
 
         team_lines = lines[:2]
         rating_section = lines[2:]
 
-        team_names = []
         team_name_1 = ""
         team_name_2 = ""
-        player_names = []
         team_players_1 = []
         team_players_2 = []
         team_id_1 = 0
@@ -6112,25 +6703,38 @@ class UiManager:
         team_2_players_ids = {}
 
         for index, line in enumerate(team_lines):
-            team_names.append(line[0])
-            player_names.append(line[1:])
+            if not line or not (line[0] or "").strip():
+                raise ValueError(f"Missing team name in header line {index + 1}")
 
-            # Try to upsert this team and the players.
+            imported_team_name = (line[0] or "").strip()
+            imported_player_names = [name.strip() for name in line[1:] if (name or "").strip()]
+            if len(imported_player_names) != 5:
+                raise ValueError(
+                    f"Team '{imported_team_name}' must provide exactly 5 players in the header row. "
+                    f"Found {len(imported_player_names)}"
+                )
+
+            # Resolve/create matchup teams from the file header so missing teams are created
+            # against the declared friendly team (line 1).
             try:
-                team_id = self.db_manager.upsert_team(line[0])
-                players = self.db_manager.upsert_and_validate_players(team_id, player_names[index])
-                
+                friendly_context = team_name_1 if index == 1 else None
+                team_id = self._resolve_or_create_matchup_team(
+                    imported_team_name,
+                    imported_player_names,
+                    friendly_team_name=friendly_context,
+                )
+
                 # Set combobox values based on the index
                 if index == 0:
-                    team_name_1 = team_names[index]
+                    team_name_1 = imported_team_name
                     self.combobox_1.set(team_name_1)
                     team_id_1 = team_id
-                    team_players_1 = player_names[index]
+                    team_players_1 = imported_player_names
                 elif index == 1:
-                    team_name_2 = team_names[index]
+                    team_name_2 = imported_team_name
                     self.combobox_2.set(team_name_2)
                     team_id_2 = team_id
-                    team_players_2 = player_names[index]
+                    team_players_2 = imported_player_names
             except ValueError as e:
                 print(f"import_csv_header_and_ratings ERROR - {e}")
                 continue
@@ -6188,6 +6792,22 @@ class UiManager:
                             self.db_manager.upsert_rating(player_id_1, player_id_2, team_id_1, team_id_2, scenario_id, rating)
                         except (ValueError, IndexError) as e:
                             print(f"import_csv_header_and_ratings ERROR - {e}")
+
+    def _resolve_or_create_matchup_team(self, team_name, player_names, friendly_team_name=None):
+        existing_team_id = self.db_manager.query_team_id(team_name)
+        if existing_team_id is None:
+            team_id = self.db_manager.upsert_team(team_name)
+            if friendly_team_name:
+                self.logger.info(
+                    "Created missing opponent team '%s' for matchup against friendly team '%s'",
+                    team_name,
+                    friendly_team_name,
+                )
+        else:
+            team_id = existing_team_id
+
+        self.db_manager.upsert_and_validate_players(team_id, player_names)
+        return team_id
 
     #############################################
 
