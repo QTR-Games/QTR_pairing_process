@@ -81,6 +81,8 @@ Use Data Management for:
 Core workflow:
 
 - Ctrl+S: Save Grid to database.
+- Ctrl+Z: Undo last shortcut-tracked calculation/data-management action (with confirmation).
+- Ctrl+Y: Redo last undone shortcut action.
 - Ctrl+R: Recalculate scenario values immediately.
 - Ctrl+Enter: Generate Combinations.
 - Ctrl+F: Flip Grid perspective.
@@ -100,7 +102,7 @@ Clipboard/grid actions:
 
 Data management and utilities:
 
-- Ctrl+D: Open Data Management menu.
+- Ctrl+D: Open comment editor for currently focused matchup cell.
 - Ctrl+Shift+R: Clear all tree cache.
 - Ctrl+Shift+T: Open Import Templates popup.
 - Ctrl+Shift+L: Open import logs folder.

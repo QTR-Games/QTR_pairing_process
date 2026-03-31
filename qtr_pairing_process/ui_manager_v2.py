@@ -497,6 +497,9 @@ class UiManager:
         # Clipboard paste helpers
         self._paste_5x5_button = None
         self._top_left_rating_entry = None
+        self._focused_rating_cell = (1, 1)
+        self._shortcut_undo_stack = []
+        self._shortcut_redo_stack = []
 
         # Header name tooltip state
         self._name_tooltip_window = None
@@ -884,6 +887,11 @@ class UiManager:
                     # We'll use FocusOut event for manual synchronization
                     entry.bind("<FocusOut>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
                     entry.bind("<Return>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
+
+                    if r > 0 and c > 0:
+                        entry.bind("<FocusIn>", lambda event, row=r, col=c: self._set_focused_rating_cell(row, col), add='+')
+                        entry.bind("<Tab>", lambda event, row=r, col=c: self._on_rating_cell_tab(event, row, col), add='+')
+                        entry.bind("<Shift-Tab>", lambda event, row=r, col=c: self._on_rating_cell_shift_tab(event, row, col), add='+')
 
                     if (r == 0 and c > 0) or (c == 0 and r > 0):
                         entry.bind(
@@ -2572,10 +2580,14 @@ class UiManager:
             ("<Control-S>", self._on_shortcut_save_grid),
             ("<Control-Shift-s>", self._on_shortcut_export_csv),
             ("<Control-Shift-S>", self._on_shortcut_export_csv),
-            ("<Control-d>", self._on_shortcut_open_data_management),
-            ("<Control-D>", self._on_shortcut_open_data_management),
+            ("<Control-d>", self._on_shortcut_open_comment_editor),
+            ("<Control-D>", self._on_shortcut_open_comment_editor),
             ("<Control-Return>", self._on_shortcut_generate_combinations),
             ("<Control-KP_Enter>", self._on_shortcut_generate_combinations),
+            ("<Control-z>", self._on_shortcut_undo),
+            ("<Control-Z>", self._on_shortcut_undo),
+            ("<Control-y>", self._on_shortcut_redo),
+            ("<Control-Y>", self._on_shortcut_redo),
             ("<Control-r>", self._on_shortcut_recalculate_now),
             ("<Control-R>", self._on_shortcut_recalculate_now),
             ("<Control-Shift-r>", self._on_shortcut_clear_all_tree_cache),
@@ -2610,8 +2622,11 @@ class UiManager:
         self.save_grid_data_to_db()
         return "break"
 
-    def _on_shortcut_open_data_management(self, _event=None):
-        self.show_data_management_menu()
+    def _on_shortcut_open_comment_editor(self, _event=None):
+        row, col = self._focused_rating_cell
+        if row < 1 or col < 1:
+            return "break"
+        self._open_comment_editor_for_cell(row, col)
         return "break"
 
     def _on_shortcut_export_csv(self, _event=None):
@@ -2623,7 +2638,14 @@ class UiManager:
         return "break"
 
     def _on_shortcut_recalculate_now(self, _event=None):
+        previous_mode = self.active_sort_mode
         self._schedule_scenario_calculations(immediate=True)
+        self._register_shortcut_action(
+            action_label="Recalculate scenario values",
+            category="calculation",
+            undo_fn=lambda mode=previous_mode: self._restore_sort_mode(mode),
+            redo_fn=lambda: self._schedule_scenario_calculations(immediate=True),
+        )
         return "break"
 
     def _on_shortcut_clear_all_tree_cache(self, _event=None):
@@ -2631,19 +2653,27 @@ class UiManager:
         return "break"
 
     def _on_shortcut_strategic_sort(self, _event=None):
+        previous_mode = self.active_sort_mode
         self.toggle_strategic_sort()
+        self._register_sort_toggle_action(previous_mode)
         return "break"
 
     def _on_shortcut_counter_sort(self, _event=None):
+        previous_mode = self.active_sort_mode
         self.toggle_counter_sort()
+        self._register_sort_toggle_action(previous_mode)
         return "break"
 
     def _on_shortcut_confidence_sort(self, _event=None):
+        previous_mode = self.active_sort_mode
         self.toggle_confidence_sort()
+        self._register_sort_toggle_action(previous_mode)
         return "break"
 
     def _on_shortcut_cumulative_sort(self, _event=None):
+        previous_mode = self.active_sort_mode
         self.toggle_cumulative_sort()
+        self._register_sort_toggle_action(previous_mode)
         return "break"
 
     def _on_shortcut_copy_grid(self, _event=None):
@@ -2655,7 +2685,14 @@ class UiManager:
         return "break"
 
     def _on_shortcut_flip_grid(self, _event=None):
+        previous_state = bool(self.grid_is_flipped)
         self.flip_grid_perspective()
+        self._register_shortcut_action(
+            action_label="Flip Grid perspective",
+            category="data_management",
+            undo_fn=lambda state=previous_state: self._restore_flip_state(state),
+            redo_fn=lambda state=(not previous_state): self._restore_flip_state(state),
+        )
         return "break"
 
     def _on_shortcut_focus_first_rating_cell(self, _event=None):
@@ -2688,6 +2725,109 @@ class UiManager:
         self.open_full_user_guide()
         return "break"
 
+    def _on_shortcut_undo(self, _event=None):
+        if not self._shortcut_undo_stack:
+            return "break"
+        action = self._shortcut_undo_stack[-1]
+        category = action.get("category", "")
+        label = action.get("label", "last action")
+        if category in {"calculation", "data_management"}:
+            confirmed = messagebox.askyesno(
+                "Confirm Undo",
+                f"This will revert {label}.\nAre you sure?",
+            )
+            if not confirmed:
+                return "break"
+
+        action = self._shortcut_undo_stack.pop()
+        action["undo"]()
+        self._shortcut_redo_stack.append(action)
+        return "break"
+
+    def _on_shortcut_redo(self, _event=None):
+        if not self._shortcut_redo_stack:
+            return "break"
+        action = self._shortcut_redo_stack.pop()
+        action["redo"]()
+        self._shortcut_undo_stack.append(action)
+        return "break"
+
+    def _register_shortcut_action(self, action_label: str, category: str, undo_fn, redo_fn):
+        self._shortcut_undo_stack.append(
+            {
+                "label": action_label,
+                "category": category,
+                "undo": undo_fn,
+                "redo": redo_fn,
+            }
+        )
+        self._shortcut_redo_stack.clear()
+
+    def _register_sort_toggle_action(self, previous_mode):
+        current_mode = self.active_sort_mode
+        if current_mode == previous_mode:
+            return
+        self._register_shortcut_action(
+            action_label="sort mode change",
+            category="calculation",
+            undo_fn=lambda mode=previous_mode: self._restore_sort_mode(mode),
+            redo_fn=lambda mode=current_mode: self._restore_sort_mode(mode),
+        )
+
+    def _restore_sort_mode(self, mode):
+        if mode == "strategic3":
+            self.sort_by_strategic()
+        elif mode == "resistance":
+            self.sort_by_counter_resistance()
+        elif mode == "confidence":
+            self.sort_by_confidence()
+        elif mode == "cumulative":
+            self.sort_by_cumulative()
+        else:
+            self.unsort_tree()
+
+    def _restore_flip_state(self, target_state: bool):
+        if bool(self.grid_is_flipped) != bool(target_state):
+            self.flip_grid_perspective()
+
+    def _set_focused_rating_cell(self, row: int, col: int):
+        if row > 0 and col > 0:
+            self._focused_rating_cell = (row, col)
+
+    def _on_rating_cell_tab(self, event, row: int, col: int):
+        self._sync_entry_to_model(row, col, event.widget)
+        if col < 5:
+            next_row, next_col = row, col + 1
+        else:
+            next_row, next_col = (row + 1, 1) if row < 5 else (1, 1)
+
+        target = self.grid_widgets[next_row][next_col]
+        if target is not None:
+            target.focus_set()
+            try:
+                target.selection_range(0, tk.END)
+            except tk.TclError:
+                pass
+            self._set_focused_rating_cell(next_row, next_col)
+        return "break"
+
+    def _on_rating_cell_shift_tab(self, event, row: int, col: int):
+        self._sync_entry_to_model(row, col, event.widget)
+        if col > 1:
+            prev_row, prev_col = row, col - 1
+        else:
+            prev_row, prev_col = (row - 1, 5) if row > 1 else (5, 5)
+
+        target = self.grid_widgets[prev_row][prev_col]
+        if target is not None:
+            target.focus_set()
+            try:
+                target.selection_range(0, tk.END)
+            except tk.TclError:
+                pass
+            self._set_focused_rating_cell(prev_row, prev_col)
+        return "break"
+
     def _refresh_paste_button_state(self):
         if not self._paste_5x5_button:
             return
@@ -2700,6 +2840,9 @@ class UiManager:
             self._paste_5x5_button.config(state=tk.DISABLED)
 
     def _apply_5x5_grid(self, grid: List[List[int]]):
+        before_snapshot = self.grid_data_model.get_state_snapshot()
+        before_dirty = bool(self._grid_dirty)
+
         self.grid_data_model.begin_batch()
         for r in range(1, 6):
             for c in range(1, 6):
@@ -2707,6 +2850,20 @@ class UiManager:
         self.grid_data_model.end_batch()
         self._schedule_scenario_calculations()
         self._set_grid_dirty(True)
+
+        after_snapshot = self.grid_data_model.get_state_snapshot()
+        after_dirty = bool(self._grid_dirty)
+        self._register_shortcut_action(
+            action_label="Paste 5x5 grid values",
+            category="data_management",
+            undo_fn=lambda snap=before_snapshot, dirty=before_dirty: self._restore_grid_snapshot(snap, dirty),
+            redo_fn=lambda snap=after_snapshot, dirty=after_dirty: self._restore_grid_snapshot(snap, dirty),
+        )
+
+    def _restore_grid_snapshot(self, snapshot, dirty_state: bool):
+        self.grid_data_model.restore_state_snapshot(snapshot, notify=True)
+        self._set_grid_dirty(dirty_state)
+        self._schedule_scenario_calculations(immediate=True)
 
     def _on_paste_5x5_button(self):
         clipboard_text = self._read_clipboard_text() or ""
