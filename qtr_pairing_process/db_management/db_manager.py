@@ -4,6 +4,7 @@ from os.path import expanduser
 import os
 import json
 import hashlib
+import threading
 
 from qtr_pairing_process.constants import SCENARIO_MAP
 from qtr_pairing_process.secure_db_interface import SecureDBInterface
@@ -17,7 +18,7 @@ class DbManager:
         self.name = name or 'default.db'
         self.logger = get_logger(__name__)
         print(self.path, self.name)
-        self.secure_db = None  # Will be initialized when needed
+        self._secure_db_by_thread = {}
         self.initialize_db()
 
     def initialize_db(self):
@@ -125,11 +126,19 @@ class DbManager:
         return default
     
     def get_secure_interface(self):
-        """Get secure database interface for parameterized queries"""
-        if not self.secure_db:
+        """Get a thread-local secure interface for parameterized queries.
+
+        SQLite connections/cursors are bound to their creating thread by default.
+        Caching a single SecureDBInterface globally can therefore fail when
+        background workers reuse a cursor created on the UI thread.
+        """
+        thread_key = (threading.get_ident(), self.path, self.name)
+        secure_db = self._secure_db_by_thread.get(thread_key)
+        if secure_db is None:
             conn = self.connect_db(self.path, self.name)
-            self.secure_db = SecureDBInterface(conn)
-        return self.secure_db
+            secure_db = SecureDBInterface(conn)
+            self._secure_db_by_thread[thread_key] = secure_db
+        return secure_db
     
     def execute_sql(self, sql, parameters=None):
         with self.connect_db(self.path, self.name) as db_conn:

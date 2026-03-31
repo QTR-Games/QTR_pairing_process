@@ -2,6 +2,7 @@
 """Regression tests for DB bootstrap and per-DB rating metadata."""
 
 import sqlite3
+import threading
 
 from qtr_pairing_process.db_management.db_manager import DbManager
 
@@ -72,3 +73,30 @@ def test_normalize_ratings_to_1_3_clamps_existing_values(tmp_path):
     assert updated_rows > 0
     min_max = manager.query_sql("SELECT MIN(rating), MAX(rating) FROM ratings")[0]
     assert min_max == (3, 3)
+
+
+def test_secure_interface_is_thread_local_for_query_team_id(tmp_path):
+    db_name = "thread_local_secure_interface.db"
+    manager = DbManager(path=str(tmp_path), name=db_name)
+
+    manager.upsert_team("Thread Team")
+    main_interface = manager.get_secure_interface()
+
+    result = {}
+
+    def _worker():
+        try:
+            worker_interface = manager.get_secure_interface()
+            result["thread_interface_id"] = id(worker_interface)
+            result["team_id"] = manager.query_team_id("Thread Team")
+        except Exception as exc:  # pragma: no cover - this is the failure path we guard against
+            result["error"] = str(exc)
+
+    thread = threading.Thread(target=_worker)
+    thread.start()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert "error" not in result
+    assert result.get("team_id") is not None
+    assert result.get("thread_interface_id") != id(main_interface)
