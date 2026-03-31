@@ -361,6 +361,7 @@ class UiManager:
             # set key bindings
             self.root.bind('<Escape>', lambda event: self.root.quit())
             self.root.bind('<Return>', lambda event: self.on_generate_combinations())
+            self._bind_keyboard_shortcuts()
             self.root.bind('<FocusIn>', lambda event: self._on_root_focus_in())
             self.root.bind('<FocusOut>', lambda event: self._hide_all_popups(), add='+')
             self.root.bind('<Button-1>', self._on_root_click_for_popups, add='+')
@@ -671,23 +672,14 @@ class UiManager:
         # Initialize sorting state tracking
         self.active_sort_mode = None
 
-        self.cumulative_button = tk.Button(
+        self.strategic_button = tk.Button(
             self.sort_controls_row_frame,
-            text="Cumulative\nSort",
-            command=self.toggle_cumulative_sort,
+            text="Strategic\nFusion",
+            command=self.toggle_strategic_sort,
             width=16,
             font=control_font,
         )
-        self.cumulative_button.pack(side=tk.LEFT, padx=pad_md)
-
-        self.confidence_button = tk.Button(
-            self.sort_controls_row_frame,
-            text="Highest\nConfidence",
-            command=self.toggle_confidence_sort,
-            width=16,
-            font=control_font,
-        )
-        self.confidence_button.pack(side=tk.LEFT, padx=pad_md)
+        self.strategic_button.pack(side=tk.LEFT, padx=pad_md)
 
         self.counter_button = tk.Button(
             self.sort_controls_row_frame,
@@ -698,14 +690,23 @@ class UiManager:
         )
         self.counter_button.pack(side=tk.LEFT, padx=pad_md)
 
-        self.strategic_button = tk.Button(
+        self.confidence_button = tk.Button(
             self.sort_controls_row_frame,
-            text="Strategic\nFusion",
-            command=self.toggle_strategic_sort,
+            text="Highest\nConfidence",
+            command=self.toggle_confidence_sort,
             width=16,
             font=control_font,
         )
-        self.strategic_button.pack(side=tk.LEFT, padx=pad_md)
+        self.confidence_button.pack(side=tk.LEFT, padx=pad_md)
+
+        self.cumulative_button = tk.Button(
+            self.sort_controls_row_frame,
+            text="Cumulative\nSort",
+            command=self.toggle_cumulative_sort,
+            width=16,
+            font=control_font,
+        )
+        self.cumulative_button.pack(side=tk.LEFT, padx=pad_md)
 
         self.sort_guidance_label = tk.Label(
             self.sort_controls_row_frame,
@@ -2546,6 +2547,146 @@ class UiManager:
             grid.append(row_values)
 
         return grid, None
+
+    def _copy_grid_values_to_clipboard(self):
+        rows = []
+        for r in range(1, 6):
+            row_values = []
+            for c in range(1, 6):
+                value = self.grid_data_model.get_rating(r, c)
+                if value is None or value == "":
+                    row_values.append("0")
+                else:
+                    row_values.append(str(value))
+            rows.append("\t".join(row_values))
+
+        payload = "\n".join(rows)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(payload)
+        self._refresh_paste_button_state()
+
+    def _bind_keyboard_shortcuts(self):
+        # Lowercase and uppercase variants improve reliability across keyboard states.
+        bindings = [
+            ("<Control-s>", self._on_shortcut_save_grid),
+            ("<Control-S>", self._on_shortcut_save_grid),
+            ("<Control-Shift-s>", self._on_shortcut_export_csv),
+            ("<Control-Shift-S>", self._on_shortcut_export_csv),
+            ("<Control-d>", self._on_shortcut_open_data_management),
+            ("<Control-D>", self._on_shortcut_open_data_management),
+            ("<Control-Return>", self._on_shortcut_generate_combinations),
+            ("<Control-KP_Enter>", self._on_shortcut_generate_combinations),
+            ("<Control-r>", self._on_shortcut_recalculate_now),
+            ("<Control-R>", self._on_shortcut_recalculate_now),
+            ("<Control-Shift-r>", self._on_shortcut_clear_all_tree_cache),
+            ("<Control-Shift-R>", self._on_shortcut_clear_all_tree_cache),
+            ("<Control-Key-1>", self._on_shortcut_strategic_sort),
+            ("<Control-Key-2>", self._on_shortcut_counter_sort),
+            ("<Control-Key-3>", self._on_shortcut_confidence_sort),
+            ("<Control-Key-4>", self._on_shortcut_cumulative_sort),
+            ("<Control-c>", self._on_shortcut_copy_grid),
+            ("<Control-C>", self._on_shortcut_copy_grid),
+            ("<Control-v>", self._on_shortcut_paste_5x5),
+            ("<Control-V>", self._on_shortcut_paste_5x5),
+            ("<Control-f>", self._on_shortcut_flip_grid),
+            ("<Control-F>", self._on_shortcut_flip_grid),
+            ("<Control-g>", self._on_shortcut_focus_first_rating_cell),
+            ("<Control-G>", self._on_shortcut_focus_first_rating_cell),
+            ("<Control-Shift-t>", self._on_shortcut_templates),
+            ("<Control-Shift-T>", self._on_shortcut_templates),
+            ("<Control-Shift-l>", self._on_shortcut_open_logs_folder),
+            ("<Control-Shift-L>", self._on_shortcut_open_logs_folder),
+            ("<Control-Shift-x>", self._on_shortcut_export_xlsx),
+            ("<Control-Shift-X>", self._on_shortcut_export_xlsx),
+            ("<Control-n>", self._on_shortcut_new_team),
+            ("<Control-N>", self._on_shortcut_new_team),
+            ("<Control-h>", self._on_shortcut_help_guide),
+            ("<Control-H>", self._on_shortcut_help_guide),
+        ]
+        for sequence, callback in bindings:
+            self.root.bind_all(sequence, callback)
+
+    def _on_shortcut_save_grid(self, _event=None):
+        self.save_grid_data_to_db()
+        return "break"
+
+    def _on_shortcut_open_data_management(self, _event=None):
+        self.show_data_management_menu()
+        return "break"
+
+    def _on_shortcut_export_csv(self, _event=None):
+        self.export_csvs()
+        return "break"
+
+    def _on_shortcut_generate_combinations(self, _event=None):
+        self.on_generate_combinations()
+        return "break"
+
+    def _on_shortcut_recalculate_now(self, _event=None):
+        self._schedule_scenario_calculations(immediate=True)
+        return "break"
+
+    def _on_shortcut_clear_all_tree_cache(self, _event=None):
+        self.clear_generated_tree_cache_all_matchups()
+        return "break"
+
+    def _on_shortcut_strategic_sort(self, _event=None):
+        self.toggle_strategic_sort()
+        return "break"
+
+    def _on_shortcut_counter_sort(self, _event=None):
+        self.toggle_counter_sort()
+        return "break"
+
+    def _on_shortcut_confidence_sort(self, _event=None):
+        self.toggle_confidence_sort()
+        return "break"
+
+    def _on_shortcut_cumulative_sort(self, _event=None):
+        self.toggle_cumulative_sort()
+        return "break"
+
+    def _on_shortcut_copy_grid(self, _event=None):
+        self._copy_grid_values_to_clipboard()
+        return "break"
+
+    def _on_shortcut_paste_5x5(self, _event=None):
+        self._on_paste_5x5_button()
+        return "break"
+
+    def _on_shortcut_flip_grid(self, _event=None):
+        self.flip_grid_perspective()
+        return "break"
+
+    def _on_shortcut_focus_first_rating_cell(self, _event=None):
+        entry = getattr(self, "_top_left_rating_entry", None)
+        if entry is not None:
+            entry.focus_set()
+            try:
+                entry.selection_range(0, tk.END)
+            except tk.TclError:
+                pass
+        return "break"
+
+    def _on_shortcut_templates(self, _event=None):
+        self.show_import_templates_popup()
+        return "break"
+
+    def _on_shortcut_open_logs_folder(self, _event=None):
+        self.open_import_logs_folder()
+        return "break"
+
+    def _on_shortcut_export_xlsx(self, _event=None):
+        self.export_xlsx()
+        return "break"
+
+    def _on_shortcut_new_team(self, _event=None):
+        self.on_create_team()
+        return "break"
+
+    def _on_shortcut_help_guide(self, _event=None):
+        self.open_full_user_guide()
+        return "break"
 
     def _refresh_paste_button_state(self):
         if not self._paste_5x5_button:

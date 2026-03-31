@@ -76,13 +76,49 @@ Use Data Management for:
 - Tree cache clear actions
 - Opening both guides
 
-## 9. Saving and persistence
+## 9. Keyboard shortcuts
+
+Core workflow:
+
+- Ctrl+S: Save Grid to database.
+- Ctrl+R: Recalculate scenario values immediately.
+- Ctrl+Enter: Generate Combinations.
+- Ctrl+F: Flip Grid perspective.
+- Ctrl+G: Focus first rating cell (top-left matchup cell) for rapid data entry.
+
+Sort modes:
+
+- Ctrl+1: Strategic Fusion.
+- Ctrl+2: Counter Pick.
+- Ctrl+3: Highest Confidence.
+- Ctrl+4: Cumulative Sort.
+
+Clipboard/grid actions:
+
+- Ctrl+C: Copy current 5x5 grid values to clipboard.
+- Ctrl+V: Paste 5x5 grid values from clipboard.
+
+Data management and utilities:
+
+- Ctrl+D: Open Data Management menu.
+- Ctrl+Shift+R: Clear all tree cache.
+- Ctrl+Shift+T: Open Import Templates popup.
+- Ctrl+Shift+L: Open import logs folder.
+- Ctrl+Shift+S: Export CSV.
+- Ctrl+Shift+X: Export XLSX.
+
+Team and help:
+
+- Ctrl+N: New Team.
+- Ctrl+H: Open Full User Guide.
+
+## 10. Saving and persistence
 
 - Save Grid writes current friendly-view ratings to DB.
 - Team/scenario selections and preferences are persisted.
 - Generated tree cache persists for faster reloads.
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 If ordering looks incorrect:
 
@@ -97,7 +133,7 @@ If calc guidance seems stale:
 2. Refresh UI from Data Management.
 3. Regenerate combinations.
 
-## 11. Recommended match-day routine
+## 12. Recommended match-day routine
 
 1. Pre-load team/scenario and generate trees.
 2. Validate sort mode aligns with round objective.
