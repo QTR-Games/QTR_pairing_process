@@ -497,7 +497,7 @@ class UiManager:
         # Clipboard paste helpers
         self._paste_5x5_button = None
         self._top_left_rating_entry = None
-        self._focused_rating_cell = (1, 1)
+        self._focused_rating_cell = None
         self._shortcut_undo_stack = []
         self._shortcut_redo_stack = []
 
@@ -2580,8 +2580,10 @@ class UiManager:
             ("<Control-S>", self._on_shortcut_save_grid),
             ("<Control-Shift-s>", self._on_shortcut_export_csv),
             ("<Control-Shift-S>", self._on_shortcut_export_csv),
-            ("<Control-d>", self._on_shortcut_open_comment_editor),
-            ("<Control-D>", self._on_shortcut_open_comment_editor),
+            ("<Control-d>", self._on_shortcut_open_data_management),
+            ("<Control-D>", self._on_shortcut_open_data_management),
+            ("<Control-i>", self._on_shortcut_open_comment_editor),
+            ("<Control-I>", self._on_shortcut_open_comment_editor),
             ("<Control-Return>", self._on_shortcut_generate_combinations),
             ("<Control-KP_Enter>", self._on_shortcut_generate_combinations),
             ("<Control-z>", self._on_shortcut_undo),
@@ -2622,7 +2624,13 @@ class UiManager:
         self.save_grid_data_to_db()
         return "break"
 
+    def _on_shortcut_open_data_management(self, _event=None):
+        self.show_data_management_menu()
+        return "break"
+
     def _on_shortcut_open_comment_editor(self, _event=None):
+        if not self._focused_rating_cell:
+            return "break"
         row, col = self._focused_rating_cell
         if row < 1 or col < 1:
             return "break"

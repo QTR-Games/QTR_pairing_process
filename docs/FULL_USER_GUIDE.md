@@ -102,7 +102,8 @@ Clipboard/grid actions:
 
 Data management and utilities:
 
-- Ctrl+D: Open comment editor for currently focused matchup cell.
+- Ctrl+D: Open Data Management menu.
+- Ctrl+I: Open comment editor for currently focused matchup cell.
 - Ctrl+Shift+R: Clear all tree cache.
 - Ctrl+Shift+T: Open Import Templates popup.
 - Ctrl+Shift+L: Open import logs folder.
