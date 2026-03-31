@@ -11,23 +11,51 @@ from typing import Optional, Union, List
 class DataValidator:
     """Comprehensive data validation and sanitization for database operations"""
     
-    # Dangerous SQL keywords and patterns
-    SQL_INJECTION_PATTERNS = [
-        r"'.*?'.*?'",  # Multiple quotes
-        r"--|\/\*|\*\/",  # SQL comments
-        r"\b(UNION|SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|EXECUTE)\b",  # SQL keywords
-        r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]",  # Control characters
-    ]
+    # Control characters are never valid user-facing text content.
+    CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
     
     # Allowed characters for names (including international and special characters)
-    # Supports: letters, numbers, spaces, hyphens, apostrophes, periods, hash/pound (#),
-    # parentheses, underscores, plus signs, ampersands, forward slashes, and various international characters
+    # Supports: letters, numbers, spaces, hyphens, apostrophes, commas, periods,
+    # hash/pound (#), parentheses, underscores, plus signs, ampersands,
+    # forward slashes, and various international characters
     # (accents, umlauts, cedillas, etc.)
     SAFE_NAME_PATTERN = re.compile(
-        r"^[\w\s\-'\.#\(\)\+&/àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ"
+        r"^[\w\s\-',\.#\(\)\+&/àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ"
         r"\u0100-\u017f\u0180-\u024f\u1e00-\u1eff\u0370-\u03ff\u0400-\u04ff]+$",
         re.IGNORECASE | re.UNICODE
     )
+    SAFE_NAME_CHAR_PATTERN = re.compile(
+        r"[\w\s\-',\.#\(\)\+&/àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ"
+        r"\u0100-\u017f\u0180-\u024f\u1e00-\u1eff\u0370-\u03ff\u0400-\u04ff]",
+        re.IGNORECASE | re.UNICODE,
+    )
+
+    @staticmethod
+    def _display_char(char: str) -> str:
+        if char == " ":
+            return "space"
+        if char == "\t":
+            return "tab"
+        if char == "\n":
+            return "newline"
+        if DataValidator.CONTROL_CHAR_PATTERN.search(char):
+            return f"control(U+{ord(char):04X})"
+        return char
+
+    @staticmethod
+    def _summarize_invalid_characters(text: str, limit: int = 5) -> str:
+        invalid_chars = []
+        for char in text:
+            if DataValidator.SAFE_NAME_CHAR_PATTERN.fullmatch(char):
+                continue
+            display = DataValidator._display_char(char)
+            if display not in invalid_chars:
+                invalid_chars.append(display)
+        if not invalid_chars:
+            return ""
+        shown = invalid_chars[:limit]
+        suffix = "" if len(invalid_chars) <= limit else f", +{len(invalid_chars) - limit} more"
+        return ", ".join(shown) + suffix
     
     @staticmethod
     def sanitize_text_input(text: str, max_length: int = 255, allow_empty: bool = False) -> Optional[str]:
@@ -59,17 +87,20 @@ class DataValidator:
         # Normalize unicode characters
         text = unicodedata.normalize('NFC', text)
         
-        # Check for SQL injection patterns
-        for pattern in DataValidator.SQL_INJECTION_PATTERNS:
-            if re.search(pattern, text, re.IGNORECASE):
-                raise ValueError(f"Input contains potentially dangerous characters or SQL keywords")
+        # Block control characters and SQL comment delimiters while allowing natural language.
+        if DataValidator.CONTROL_CHAR_PATTERN.search(text):
+            raise ValueError("Input contains control characters, which are not allowed")
+        if "--" in text or "/*" in text or "*/" in text:
+            raise ValueError("Input contains SQL-style comment delimiters, which are not allowed")
                 
         # Validate against safe character pattern
         if not DataValidator.SAFE_NAME_PATTERN.match(text):
+            invalid = DataValidator._summarize_invalid_characters(text)
             raise ValueError(
-                "Input contains invalid characters. "
-                "Only letters, numbers, spaces, hyphens, apostrophes, periods, "
-                "hash symbols (#), parentheses, plus signs, ampersands, forward slashes (/), and international characters are allowed."
+                "Input contains invalid characters"
+                + (f": {invalid}. " if invalid else ". ")
+                + "Allowed characters are letters, numbers, spaces, hyphens, apostrophes, commas, periods, "
+                "hash symbols (#), parentheses, plus signs, ampersands, forward slashes (/), and international characters."
             )
             
         return text

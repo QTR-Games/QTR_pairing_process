@@ -155,29 +155,31 @@ class DbManager:
             rows = db_cur.fetchall()
         return rows
     
-    def insert_row(self, value_string, columns, table):
+    def insert_row(self, values, columns, table):
+        placeholders = ','.join(['?'] * len(columns))
         insert_sql = f"""
             INSERT INTO {table}
             ({','.join(columns)})
             VALUES
-            {value_string}
+            ({placeholders})
         """
-        rows_affected = self.execute_sql(insert_sql)
+        rows_affected = self.execute_sql(insert_sql, tuple(values))
         if rows_affected == 0:
             raise ValueError(f'insert_row operation failed for table {table}. No rows were affected.')
 
-    def upsert_row(self, value_string, columns, table, constraint_columns, update_column):
+    def upsert_row(self, values, columns, table, constraint_columns, update_column):
+        placeholders = ','.join(['?'] * len(columns))
         upsert_sql = f"""
             INSERT INTO {table}
             ({','.join(columns)})
             VALUES
-            {value_string}
+            ({placeholders})
             ON CONFLICT({','.join(constraint_columns)})
             DO UPDATE SET
             {update_column} = excluded.{update_column}
         """
         # print(f"sql statement: {upsert_sql}")
-        rows_affected = self.execute_sql(upsert_sql)
+        rows_affected = self.execute_sql(upsert_sql, tuple(values))
         if rows_affected == 0:
             raise ValueError(f'upsert_row operation failed for table {table}. No rows were affected.')
 
@@ -209,10 +211,10 @@ class DbManager:
     def upsert_scenario(self, scenario_id, scenario_name):
         table = 'scenarios'
         columns = ['scenario_id', 'scenario_name']
-        value_string = f"({scenario_id}, '{scenario_name}')"
+        values = (scenario_id, scenario_name)
         constraint_columns = ['scenario_id']
         update_column = 'scenario_name'
-        self.upsert_row(value_string, columns, table, constraint_columns, update_column)
+        self.upsert_row(values, columns, table, constraint_columns, update_column)
 
     #######
     # Teams
@@ -338,10 +340,10 @@ class DbManager:
 
         table = 'ratings'
         columns = ['team_1_player_id', 'team_1_id', 'team_2_player_id', 'team_2_id', 'scenario_id', 'rating']
-        value_string = f"({player_id_1}, {team_id_1}, {player_id_2}, {team_id_2}, {scenario_id}, {rating})"
+        values = (player_id_1, team_id_1, player_id_2, team_id_2, scenario_id, rating)
         constraint_columns = ['team_1_player_id', 'team_2_player_id', 'scenario_id']
         update_column = 'rating'
-        self.upsert_row(value_string, columns, table, constraint_columns, update_column)
+        self.upsert_row(values, columns, table, constraint_columns, update_column)
     
     def get_ratings_count(self):
         """Get the total count of ratings in the database"""
@@ -537,30 +539,20 @@ class DbManager:
         if len(comment) > 2000:
             raise ValueError(f'Comment exceeds maximum length of 2000 characters: {len(comment)}')
 
-        table = 'matchup_comments'
-        columns = ['team_1_player_id', 'team_2_player_id', 'scenario_id', 'comment', 'updated_date']
-        
-        # Escape single quotes in comment
-        escaped_comment = comment.replace("'", "''")
-        value_string = f"({player_id_1}, {player_id_2}, {scenario_id}, '{escaped_comment}', CURRENT_TIMESTAMP)"
-        
-        constraint_columns = ['team_1_player_id', 'team_2_player_id', 'scenario_id']
-        update_columns = ['comment', 'updated_date']
-        
-        # Custom upsert for multiple update columns
-        upsert_sql = f"""
-            INSERT INTO {table}
-            ({','.join(columns)})
-            VALUES {value_string}
-            ON CONFLICT({','.join(constraint_columns)})
+        rows_affected = self.execute_sql(
+            """
+            INSERT INTO matchup_comments
+                (team_1_player_id, team_2_player_id, scenario_id, comment, updated_date)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(team_1_player_id, team_2_player_id, scenario_id)
             DO UPDATE SET
                 comment = excluded.comment,
                 updated_date = excluded.updated_date
-        """
-        
-        rows_affected = self.execute_sql(upsert_sql)
+            """,
+            (player_id_1, player_id_2, scenario_id, comment),
+        )
         if rows_affected == 0:
-            raise ValueError(f'upsert_comment operation failed. No rows were affected.')
+            raise ValueError('upsert_comment operation failed. No rows were affected.')
 
     def query_comment(self, player_id_1, player_id_2, scenario_id):
         """
@@ -569,12 +561,14 @@ class DbManager:
         Returns:
             str or None: Comment text if exists, None if no comment
         """
-        sql = f"""
-            SELECT comment 
-            FROM matchup_comments 
-            WHERE team_1_player_id = {player_id_1} AND team_2_player_id = {player_id_2} AND scenario_id = {scenario_id}
-        """
-        results = self.query_sql(sql)
+        results = self.query_sql_params(
+            """
+            SELECT comment
+            FROM matchup_comments
+            WHERE team_1_player_id = ? AND team_2_player_id = ? AND scenario_id = ?
+            """,
+            (player_id_1, player_id_2, scenario_id),
+        )
         if results and len(results) > 0:
             return results[0][0]
         return None
@@ -586,7 +580,8 @@ class DbManager:
         Returns:
             dict: {(friendly_player_name, opponent_player_name): comment}
         """
-        sql = f"""
+        results = self.query_sql_params(
+            """
             SELECT 
                 p1.player_name as friendly_player,
                 p2.player_name as opponent_player,
@@ -594,9 +589,10 @@ class DbManager:
             FROM matchup_comments mc
             JOIN players p1 ON mc.team_1_player_id = p1.player_id
             JOIN players p2 ON mc.team_2_player_id = p2.player_id
-            WHERE p1.team_id = {team_1_id} AND p2.team_id = {team_2_id} AND mc.scenario_id = {scenario_id}
-        """
-        results = self.query_sql(sql)
+            WHERE p1.team_id = ? AND p2.team_id = ? AND mc.scenario_id = ?
+            """,
+            (team_1_id, team_2_id, scenario_id),
+        )
         
         comments_dict = {}
         for friendly_player, opponent_player, comment in results:
@@ -606,11 +602,13 @@ class DbManager:
 
     def delete_comment(self, player_id_1, player_id_2, scenario_id):
         """Delete a specific matchup comment."""
-        sql = f"""
-            DELETE FROM matchup_comments 
-            WHERE team_1_player_id = {player_id_1} AND team_2_player_id = {player_id_2} AND scenario_id = {scenario_id}
-        """
-        self.execute_sql(sql)
+        self.execute_sql(
+            """
+            DELETE FROM matchup_comments
+            WHERE team_1_player_id = ? AND team_2_player_id = ? AND scenario_id = ?
+            """,
+            (player_id_1, player_id_2, scenario_id),
+        )
 
     def get_comment_statistics(self):
         """Get statistics about comment usage."""

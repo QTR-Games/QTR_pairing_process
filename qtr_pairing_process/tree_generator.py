@@ -108,6 +108,25 @@ class TreeGenerator:
         r = self._clamp(r, low, high)
         return self._clamp((r - low) / (high - low), 0.0, 1.0)
 
+    def _to_int_rating(self, value):
+        """Fast-path rating conversion for hot loops; falls back to 0 for bad values."""
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        if value in (None, '', 'N/A'):
+            return 0
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+
+    def _get_node_primary_rating(self, node):
+        values = self.treeview.tree.item(node, 'values')
+        if not values:
+            return 0
+        return self._to_int_rating(values[0])
+
     def _read_raw_pref(self, path, fallback):
         current = self.strategic_preferences
         try:
@@ -234,25 +253,17 @@ class TreeGenerator:
         if not children:
             # This is a leaf node, its cumulative value is its own value
             if node:  # Skip empty root
-                try:
-                    leaf_value = int(self.treeview.tree.item(node, 'values')[0])
-                    item_data = self.treeview.tree.item(node)
-                    current_tags = list(item_data.get('tags', []))
-                    # Remove any existing cumulative tag and add new one
-                    current_tags = [tag for tag in current_tags if not str(tag).startswith('cumulative_')]
-                    current_tags.append(f'cumulative_{leaf_value}')
-                    self.treeview.tree.item(node, tags=current_tags)
+                leaf_value = self._get_node_primary_rating(node)
+                item_data = self.treeview.tree.item(node)
+                current_tags = list(item_data.get('tags', []))
+                # Remove any existing cumulative tag and add new one
+                current_tags = [tag for tag in current_tags if not str(tag).startswith('cumulative_')]
+                current_tags.append(f'cumulative_{leaf_value}')
+                self.treeview.tree.item(node, tags=current_tags)
 
-                    # Update the cumulative score column (index 1)
-                    self.update_node_cumulative_display(node, leaf_value)
-                    return leaf_value
-                except (ValueError, IndexError):
-                    item_data = self.treeview.tree.item(node)
-                    current_tags = list(item_data.get('tags', []))
-                    current_tags = [tag for tag in current_tags if not str(tag).startswith('cumulative_')]
-                    current_tags.append('cumulative_0')
-                    self.treeview.tree.item(node, tags=current_tags)
-                    return 0
+                # Update the cumulative score column (index 1)
+                self.update_node_cumulative_display(node, leaf_value)
+                return leaf_value
             return 0
         else:
             # This is a branch node, calculate cumulative value from all its complete paths
@@ -260,12 +271,9 @@ class TreeGenerator:
             for child in children:
                 child_cumulative = self.calculate_all_path_values(child)
                 if node:  # Skip empty root
-                    try:
-                        node_value = int(self.treeview.tree.item(node, 'values')[0])
-                        total_cumulative = node_value + child_cumulative
-                        max_cumulative = max(max_cumulative, total_cumulative)
-                    except (ValueError, IndexError):
-                        max_cumulative = max(max_cumulative, child_cumulative)
+                    node_value = self._get_node_primary_rating(node)
+                    total_cumulative = node_value + child_cumulative
+                    max_cumulative = max(max_cumulative, total_cumulative)
                 else:
                     max_cumulative = max(max_cumulative, child_cumulative)
             
@@ -348,16 +356,12 @@ class TreeGenerator:
         if not children:
             # Leaf node - calculate floor, ceiling, and confidence
             if node:
-                try:
-                    leaf_value = int(self.treeview.tree.item(node, 'values')[0])
-                    # For leaf nodes, confidence is based on rating value
-                    # Higher ratings (4-5) = high confidence, middle (3) = medium, low (1-2) = low confidence
-                    confidence_score = self.calculate_rating_confidence(leaf_value)
-                    self.store_confidence_data(node, leaf_value, leaf_value, confidence_score)
-                    return leaf_value, leaf_value, confidence_score
-                except (ValueError, IndexError):
-                    self.store_confidence_data(node, 0, 0, 0)
-                    return 0, 0, 0
+                leaf_value = self._get_node_primary_rating(node)
+                # For leaf nodes, confidence is based on rating value
+                # Higher ratings (4-5) = high confidence, middle (3) = medium, low (1-2) = low confidence
+                confidence_score = self.calculate_rating_confidence(leaf_value)
+                self.store_confidence_data(node, leaf_value, leaf_value, confidence_score)
+                return leaf_value, leaf_value, confidence_score
             return 0, 0, 0
         else:
             # Branch node - aggregate from children
@@ -368,22 +372,17 @@ class TreeGenerator:
             for child in children:
                 child_floor, child_ceiling, child_confidence = self.calculate_confidence_scores(child)
                 if node:
-                    try:
-                        node_value = int(self.treeview.tree.item(node, 'values')[0])
-                        node_confidence = self.calculate_rating_confidence(node_value)
-                        
-                        total_floor = node_value + child_floor
-                        total_ceiling = node_value + child_ceiling
-                        # Combined confidence considers both current rating and path reliability
-                        combined_confidence = (node_confidence + child_confidence) / 2
-                        
-                        path_floors.append(total_floor)
-                        path_ceilings.append(total_ceiling)
-                        path_confidences.append(combined_confidence)
-                    except (ValueError, IndexError):
-                        path_floors.append(child_floor)
-                        path_ceilings.append(child_ceiling)
-                        path_confidences.append(child_confidence)
+                    node_value = self._get_node_primary_rating(node)
+                    node_confidence = self.calculate_rating_confidence(node_value)
+
+                    total_floor = node_value + child_floor
+                    total_ceiling = node_value + child_ceiling
+                    # Combined confidence considers both current rating and path reliability
+                    combined_confidence = (node_confidence + child_confidence) / 2
+
+                    path_floors.append(total_floor)
+                    path_ceilings.append(total_ceiling)
+                    path_confidences.append(combined_confidence)
                 else:
                     path_floors.append(child_floor)
                     path_ceilings.append(child_ceiling)
@@ -521,15 +520,11 @@ class TreeGenerator:
         if not children:
             # Leaf node - evaluate counter-resistance
             if node:
-                try:
-                    leaf_value = int(self.treeview.tree.item(node, 'values')[0])
-                    # Counter-resistance based on rating stability
-                    counter_resistance = self.calculate_counter_resistance(leaf_value)
-                    self.store_counter_resistance_data(node, counter_resistance)
-                    return counter_resistance
-                except (ValueError, IndexError):
-                    self.store_counter_resistance_data(node, 0)
-                    return 0
+                leaf_value = self._get_node_primary_rating(node)
+                # Counter-resistance based on rating stability
+                counter_resistance = self.calculate_counter_resistance(leaf_value)
+                self.store_counter_resistance_data(node, counter_resistance)
+                return counter_resistance
             return 0
         else:
             # Branch node - simulate opponent responses
@@ -538,19 +533,16 @@ class TreeGenerator:
             for child in children:
                 child_resistance = self.calculate_counter_resistance_scores(child)
                 if node:
-                    try:
-                        node_value = int(self.treeview.tree.item(node, 'values')[0])
-                        node_resistance = self.calculate_counter_resistance(node_value)
-                        
-                        # Simulate opponent counter-strategy
-                        # Opponent will try to exploit our weaknesses
-                        opponent_counter_effectiveness = self.simulate_opponent_counter(node_value)
-                        adjusted_resistance = (node_resistance + child_resistance) / 2
-                        adjusted_resistance *= (1 - opponent_counter_effectiveness)
-                        
-                        path_resistances.append(adjusted_resistance)
-                    except (ValueError, IndexError):
-                        path_resistances.append(child_resistance)
+                    node_value = self._get_node_primary_rating(node)
+                    node_resistance = self.calculate_counter_resistance(node_value)
+
+                    # Simulate opponent counter-strategy
+                    # Opponent will try to exploit our weaknesses
+                    opponent_counter_effectiveness = self.simulate_opponent_counter(node_value)
+                    adjusted_resistance = (node_resistance + child_resistance) / 2
+                    adjusted_resistance *= (1 - opponent_counter_effectiveness)
+
+                    path_resistances.append(adjusted_resistance)
                 else:
                     path_resistances.append(child_resistance)
             
@@ -1304,37 +1296,30 @@ class TreeGenerator:
 
     def calculate_confidence_for_rating(self, rating):
         """Calculate confidence score based on rating value"""
-        try:
-            rating_val = int(rating) if rating != 'N/A' else 0
-            return self.calculate_rating_confidence(rating_val)
-        except (ValueError, TypeError):
-            return 0
+        return self.calculate_rating_confidence(self._to_int_rating(rating))
 
     def calculate_resistance_for_rating(self, base_rating, rating_0, rating_1):
         """Calculate resistance score based on rating spread and values"""
-        try:
-            r0 = int(rating_0) if rating_0 != 'N/A' else 0
-            r1 = int(rating_1) if rating_1 != 'N/A' else 0
-            base = int(base_rating) if base_rating != 'N/A' else 0
-            
-            # Resistance is based on:
-            # 1. Lower of the two ratings (how bad worst case is)  
-            # 2. Spread between ratings (consistency)
-            min_rating = min(r0, r1)
-            spread = abs(r0 - r1)
-            
-            # Base resistance from minimum rating (0-50 points)
-            base_resistance = min_rating * 10
-            
-            # Penalty for large spread (inconsistency) (0-25 points penalty)
-            spread_penalty = spread * 5
-            
-            # Final score: base resistance minus spread penalty
-            resistance_score = max(0, base_resistance - spread_penalty)
-            
-            return resistance_score
-        except (ValueError, TypeError):
-            return 0
+        r0 = self._to_int_rating(rating_0)
+        r1 = self._to_int_rating(rating_1)
+        _ = self._to_int_rating(base_rating)
+
+        # Resistance is based on:
+        # 1. Lower of the two ratings (how bad worst case is)
+        # 2. Spread between ratings (consistency)
+        min_rating = min(r0, r1)
+        spread = abs(r0 - r1)
+
+        # Base resistance from minimum rating (0-50 points)
+        base_resistance = min_rating * 10
+
+        # Penalty for large spread (inconsistency) (0-25 points penalty)
+        spread_penalty = spread * 5
+
+        # Final score: base resistance minus spread penalty
+        resistance_score = max(0, base_resistance - spread_penalty)
+
+        return resistance_score
 
     def sort_by_strategic_optimal(self):
         """
