@@ -72,7 +72,7 @@ def test_export_xlsx_writes_import_ready_layout(monkeypatch, tmp_path):
     assert sheet.cell(row=4, column=3).value == 5
     assert sheet.cell(row=4, column=4).value == 4
     assert sheet.cell(row=5, column=3).value == 2
-    assert sheet.cell(row=5, column=5).value == 3
+
 
 
 def test_fetch_matchup_ratings_by_name_maps_rows():

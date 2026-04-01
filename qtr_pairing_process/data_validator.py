@@ -15,6 +15,9 @@ class DataValidator:
     CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
     
     # Allowed characters for names (including international and special characters)
+    # REVIEW DECISION (2026-04): comma support is intentional for real roster/team
+    # names and is regression-covered in `test_import_export_punctuation.py`.
+    # CSV ambiguity is handled by proper quoting in import/export paths.
     # Supports: letters, numbers, spaces, hyphens, apostrophes, commas, periods,
     # hash/pound (#), parentheses, underscores, plus signs, ampersands,
     # forward slashes, and various international characters

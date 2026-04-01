@@ -100,3 +100,32 @@ def test_secure_interface_is_thread_local_for_query_team_id(tmp_path):
     assert "error" not in result
     assert result.get("team_id") is not None
     assert result.get("thread_interface_id") != id(main_interface)
+
+
+def test_secure_interface_cache_bulk_cleanup_removes_dead_threads(tmp_path):
+    # REVIEW DECISION (2026-04): cleanup runs in periodic bulk sweeps for speed,
+    # not aggressively on every access.
+    db_name = "thread_local_secure_interface_cleanup.db"
+    manager = DbManager(path=str(tmp_path), name=db_name)
+    manager._secure_db_cleanup_interval = 1
+
+    manager.upsert_team("Cleanup Team")
+    manager.get_secure_interface()
+
+    worker_meta = {}
+
+    def _worker():
+        manager.get_secure_interface()
+        worker_meta["tid"] = threading.get_ident()
+
+    worker = threading.Thread(target=_worker)
+    worker.start()
+    worker.join(timeout=5)
+
+    assert not worker.is_alive()
+    assert "tid" in worker_meta
+
+    manager.get_secure_interface()
+
+    cache_keys = list(manager._secure_db_by_thread.keys())
+    assert all(key[0] != worker_meta["tid"] for key in cache_keys)

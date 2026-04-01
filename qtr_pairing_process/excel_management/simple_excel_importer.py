@@ -20,10 +20,40 @@ class SimpleExcelImporter:
       - Rows N+2 to N+6: Empty in A, friendly player name in B, ratings in C-G
     """
     
-    def __init__(self, db_manager: DbManager, file_path: str, scenario_id: int = 0, rating_min: int = 1, rating_max: int = 5):
+    def __init__(self, db_manager: DbManager, file_path: str, scenario_id: int = 0, rating_min: Optional[int] = None, rating_max: Optional[int] = None):
         self.db_manager = db_manager
         self.file_path = file_path
         self.scenario_id = scenario_id  # Default to "Neutral" scenario
+
+        # Determine rating bounds, preferring explicitly provided values,
+        # then database configuration, and finally hardcoded defaults.
+        if rating_min is None or rating_max is None:
+            resolved_min = None
+            resolved_max = None
+
+            # Try to obtain rating system from the database manager if available.
+            get_rating_system = getattr(self.db_manager, "get_rating_system", None)
+            if callable(get_rating_system):
+                try:
+                    rating_system = get_rating_system()
+                    # Support common shapes: (min, max), {"min": ..., "max": ...}, etc.
+                    if isinstance(rating_system, (list, tuple)) and len(rating_system) >= 2:
+                        resolved_min, resolved_max = rating_system[0], rating_system[1]
+                    elif isinstance(rating_system, dict):
+                        resolved_min = rating_system.get("min") or rating_system.get("rating_min") or rating_system.get("min_rating")
+                        resolved_max = rating_system.get("max") or rating_system.get("rating_max") or rating_system.get("max_rating")
+                    else:
+                        # Fallback for object-like rating_system with attributes
+                        resolved_min = getattr(rating_system, "min", None) or getattr(rating_system, "rating_min", None) or getattr(rating_system, "min_rating", None)
+                        resolved_max = getattr(rating_system, "max", None) or getattr(rating_system, "rating_max", None) or getattr(rating_system, "max_rating", None)
+                except Exception:
+                    # If anything goes wrong while querying the DB, fall back to defaults below.
+                    resolved_min, resolved_max = None, None
+
+            if rating_min is None:
+                rating_min = resolved_min if resolved_min is not None else 1
+            if rating_max is None:
+                rating_max = resolved_max if resolved_max is not None else 5
         try:
             self.rating_min = int(rating_min)
             self.rating_max = int(rating_max)
@@ -258,7 +288,27 @@ class SimpleExcelImporter:
             
             for i, player_name in enumerate(team_data['friendly_players']):
                 player_id = self.db_manager.query_player_id(player_name, friendly_team_id)
-                friendly_player_ids[i] = player_id
+        """
+        Resolve a team for import, creating it when missing, then validate roster.
+
+        Parameters
+        ----------
+        team_name : str
+            Name of the team to resolve or create.
+        player_names : List[str]
+            List of player names that should belong to this team.
+        team_role : str
+            Role of the team in the matchup. Must be either "friendly" or "opponent".
+            This controls opponent-specific logging when a missing team is created.
+        friendly_team_name : Optional[str]
+            Name of the friendly team, used only for logging when creating an
+            opponent team.
+        """
+        valid_roles = ("friendly", "opponent")
+        if team_role not in valid_roles:
+            raise ValueError(
+                f"Invalid team_role '{team_role}'. Expected one of {valid_roles}."
+            )
                 
             for j, player_name in enumerate(team_data['opponent_players']):
                 player_id = self.db_manager.query_player_id(player_name, opponent_team_id)

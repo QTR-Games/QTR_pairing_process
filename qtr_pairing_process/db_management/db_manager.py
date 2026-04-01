@@ -19,7 +19,37 @@ class DbManager:
         self.logger = get_logger(__name__)
         print(self.path, self.name)
         self._secure_db_by_thread = {}
+        self._secure_db_get_calls = 0
+        self._secure_db_cleanup_interval = 128
         self.initialize_db()
+
+    def _cleanup_secure_interface_cache_if_needed(self, force: bool = False):
+        """Bulk-clean stale thread cache entries on a coarse interval.
+
+        REVIEW DECISION (2026-04): We intentionally avoid per-call aggressive
+        cleanup to keep `get_secure_interface` fast on hot paths. Instead, stale
+        thread entries are removed in periodic bulk sweeps.
+        """
+        if not self._secure_db_by_thread:
+            return
+
+        if not force and self._secure_db_get_calls % self._secure_db_cleanup_interval != 0:
+            return
+
+        active_thread_ids = {t.ident for t in threading.enumerate() if t.ident is not None}
+        stale_keys = [key for key in self._secure_db_by_thread if key[0] not in active_thread_ids]
+        if not stale_keys:
+            return
+
+        for key in stale_keys:
+            secure_db = self._secure_db_by_thread.pop(key, None)
+            if secure_db is None:
+                continue
+            try:
+                secure_db.close()
+            except Exception:
+                # Best-effort resource release only.
+                pass
 
     def initialize_db(self):
         os.makedirs(self.path, exist_ok=True)
@@ -132,6 +162,9 @@ class DbManager:
         Caching a single SecureDBInterface globally can therefore fail when
         background workers reuse a cursor created on the UI thread.
         """
+        self._secure_db_get_calls += 1
+        self._cleanup_secure_interface_cache_if_needed()
+
         thread_key = (threading.get_ident(), self.path, self.name)
         secure_db = self._secure_db_by_thread.get(thread_key)
         if secure_db is None:
@@ -165,6 +198,8 @@ class DbManager:
         return rows
     
     def insert_row(self, values, columns, table):
+        # REVIEW DECISION (2026-04): `table` is an internal call-site constant,
+        # never user input. Do not route external/user strings here.
         placeholders = ','.join(['?'] * len(columns))
         insert_sql = f"""
             INSERT INTO {table}
@@ -177,6 +212,8 @@ class DbManager:
             raise ValueError(f'insert_row operation failed for table {table}. No rows were affected.')
 
     def upsert_row(self, values, columns, table, constraint_columns, update_column):
+        # REVIEW DECISION (2026-04): Identifier interpolation here is internal-only
+        # (fixed table/column names from code), not user-controlled data.
         placeholders = ','.join(['?'] * len(columns))
         upsert_sql = f"""
             INSERT INTO {table}

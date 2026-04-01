@@ -21,7 +21,9 @@ This guide covers the main workflow and key controls in the app.
 
 ## 3. Rating matrix behavior
 
-- Ratings are usually on a 1 to 5 scale.
+- Ratings use the active database rating system (supported: 1-3, 1-5, 1-10).
+- Template/import files may therefore include values above 5 when a higher-range
+  system (for example 1-10) is active.
 - Header cells hold player names.
 - Matchup cells hold numeric ratings.
 - Row/column lock checkboxes affect calc guidance and round context.
