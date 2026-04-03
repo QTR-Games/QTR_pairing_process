@@ -503,6 +503,9 @@ class UiManager:
         self._comment_tooltip_window = None
         self._comment_tooltip_label = None
         self._comment_tooltip_cell = None
+        self._calc_explain_tooltip_window = None
+        self._calc_explain_tooltip_label = None
+        self._calc_explain_tooltip_cell = None
         self._comment_editor_open = False
         self._popup_pending = False
         self.notes_text: Optional[tk.Text] = None
@@ -923,6 +926,11 @@ class UiManager:
                                            state='readonly', font=entry_font, relief=tk.SOLID, borderwidth=1,
                                            readonlybackground="lightgray")
                     display_entry.grid(row=r + 2, column=c + 7, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
+                    display_entry.bind(
+                        "<Button-1>",
+                        lambda event, row=r, col=c: self._toggle_calc_explain_tooltip(event, row, col),
+                        add='+'
+                    )
                     self.grid_display_widgets[r][c] = display_entry
 
         with self.perf.span("grid.seed_display_initial_values"):
@@ -1656,6 +1664,7 @@ class UiManager:
         can_pin_values = {}
         protect_values = {}
         bus_values = {}
+        col_margin_sums = self._get_enabled_column_margin_sums()
 
         for row in range(1, 6):
             if row_mask[row - 1] == 1:
@@ -1680,11 +1689,13 @@ class UiManager:
 
             num_bad_matchups = 0
             good_matchups = 0
+            row_ratings = []
             for col in range(1, 6):
                 widget = self.grid_widgets[row][col]
                 if widget is not None and widget.cget('state') != 'disabled':
                     cell_value = self.grid_data_model.get_rating(row, col)
                     if isinstance(cell_value, int):
+                        row_ratings.append(cell_value)
                         if cell_value < 3:
                             num_bad_matchups += 1
                         if cell_value > 3:
@@ -1699,20 +1710,22 @@ class UiManager:
                 bus_values[row] = "---"
                 continue
 
-            all_margins = []
+            all_margins = {}
             for col in range(1, 6):
-                col_margin_sum = 0
-                for row1 in range(1, 6):
-                    widget = self.grid_widgets[row1][col]
-                    if widget is not None and widget.cget('state') != 'disabled':
-                        cell_value = self.grid_data_model.get_rating(row1, col)
-                        if isinstance(cell_value, int):
-                            col_margin_sum += cell_value
-                all_margins.append(int(floor_value) - col_margin_sum)
+                col_margin_sum = col_margin_sums.get(col, 0)
+                all_margins[col] = int(floor_value) - col_margin_sum
 
-            max_margin = max(all_margins)
-            min_margin = min(all_margins)
-            bus_values[row] = self._get_bus_advisory_label(max_margin=max_margin, min_margin=min_margin)
+            max_margin = max(all_margins.values())
+            min_margin = min(all_margins.values())
+            bus_values[row] = self._get_bus_advisory_label(
+                max_margin=max_margin,
+                min_margin=min_margin,
+                row_ratings=row_ratings,
+                is_pinned=(pinned_values[row] != "---"),
+                can_pin=(can_pin_values[row] != "---"),
+                all_margins=all_margins,
+                col_margin_sums=col_margin_sums,
+            )
 
         return {
             "floor": floor_values,
@@ -2800,12 +2813,196 @@ class UiManager:
             for c in range(6):
                 if self.grid_widgets[r][c] is widget:
                     return
+        for r in range(6):
+            for c in range(5):
+                if self.grid_display_widgets[r][c] is widget:
+                    return
 
         self._hide_all_popups()
+
+    def _ensure_calc_explain_tooltip_window(self):
+        if self._calc_explain_tooltip_window:
+            return
+
+        theme = getattr(self, "ui_theme", {})
+
+        self._calc_explain_tooltip_window = tk.Toplevel(self.root)
+        self._calc_explain_tooltip_window.wm_overrideredirect(True)
+        self._calc_explain_tooltip_window.wm_attributes("-topmost", True)
+        self._calc_explain_tooltip_window.withdraw()
+
+        self._calc_explain_tooltip_label = tk.Label(
+            self._calc_explain_tooltip_window,
+            text="",
+            justify=tk.LEFT,
+            anchor=tk.NW,
+            bg=theme.get("tooltip_bg", "#f8f4d8"),
+            fg=theme.get("tooltip_fg", "#2f3b4a"),
+            font=theme.get("tooltip_body_font", ("Arial", 9)),
+            relief=tk.SOLID,
+            borderwidth=1,
+            padx=theme.get("tooltip_pad_x", 7),
+            pady=theme.get("tooltip_pad_y", 5),
+        )
+        self._calc_explain_tooltip_label.pack(fill=tk.BOTH, expand=True)
+
+    def _hide_calc_explain_tooltip(self):
+        if self._calc_explain_tooltip_window:
+            self._calc_explain_tooltip_window.withdraw()
+        self._calc_explain_tooltip_cell = None
+
+    def _build_bus_analysis_for_display(self, row: int) -> Optional[Dict[str, Any]]:
+        if row <= 0 or row >= 6:
+            return None
+
+        floor_value = self.grid_data_model.get_display(row, 0)
+        if floor_value in (None, "", "---"):
+            return None
+
+        try:
+            floor_rating_sum = int(floor_value)
+        except (TypeError, ValueError):
+            return None
+
+        all_margins = {}
+        col_margin_sums = self._get_enabled_column_margin_sums()
+        for col in range(1, 6):
+            all_margins[col] = floor_rating_sum - col_margin_sums.get(col, 0)
+
+        if not all_margins:
+            return None
+
+        max_margin = max(all_margins.values())
+        min_margin = min(all_margins.values())
+        row_ratings = self._get_enabled_row_ratings(row)
+        is_pinned = self.grid_data_model.get_display(row, 1) != "---"
+        can_pin = self.grid_data_model.get_display(row, 2) != "---"
+
+        return self._build_bus_analysis(
+            max_margin=max_margin,
+            min_margin=min_margin,
+            row_ratings=row_ratings,
+            is_pinned=is_pinned,
+            can_pin=can_pin,
+            all_margins=all_margins,
+            col_margin_sums=col_margin_sums,
+        )
+
+    def _format_calc_explain_text(self, row: int, col: int, display_text: str) -> str:
+        text = (display_text or "").strip()
+        if row > 0 and text in ("", "---"):
+            return ""
+
+        header_meanings = {
+            0: "FLOOR: Sum of enabled row ratings.",
+            1: "PINNED?: Triggered by 2+ bad matchups (<3).",
+            2: "CAN-PIN?: Triggered by 2+ good matchups (>3).",
+            3: "PROTECT: Yes when pinned or can-pin is active.",
+            4: "BUS RIDE: Advisory score for sacrifice vs payoff.",
+        }
+        if row == 0:
+            return header_meanings.get(col, text)
+
+        col_labels = {0: "FLOOR", 1: "PINNED?", 2: "CAN-PIN?", 3: "PROTECT", 4: "BUS RIDE"}
+        title = f"{col_labels.get(col, 'CALC')}: {text}"
+
+        if col == 4:
+            analysis = self._build_bus_analysis_for_display(row)
+            if not analysis:
+                return "\n".join([title, "Advisory-only signal."])
+
+            lines = [title]
+            lines.append(f"Score vs threshold: {analysis['bus_score']} / {analysis['threshold']}")
+            stop_state = "STOP" if analysis.get("abort") else "GO"
+            lines.append(f"Degree: {analysis.get('degree', 'NONE')}  State: {stop_state}")
+            lines.append(f"Spread: {analysis.get('spread', 0)}  Downside: {analysis.get('downside_risk', 0)}")
+
+            bonus_parts = []
+            outlier_bonus = int(analysis.get("outlier_bonus", 0))
+            leverage_bonus = int(analysis.get("leverage_bonus", 0))
+            if outlier_bonus > 0:
+                bonus_parts.append(f"outlier +{outlier_bonus}")
+            if leverage_bonus > 0:
+                bonus_parts.append(f"leverage +{leverage_bonus}")
+            lines.append("Bonuses: " + (", ".join(bonus_parts) if bonus_parts else "none"))
+
+            abort_reasons = analysis.get("abort_reasons", []) or []
+            if abort_reasons:
+                lines.append("Abort reason: " + ", ".join(str(reason) for reason in abort_reasons))
+
+            lines.append("Advisory only; combine with board context.")
+            return "\n".join(lines)
+
+        if col == 0:
+            return "\n".join([title, "Computed as sum of enabled ratings in this row."])
+        if col == 1:
+            return "\n".join([title, "Rule: PINNED when bad matchups (<3) are greater than 1."])
+        if col == 2:
+            return "\n".join([title, "Rule: CAN-PIN when good matchups (>3) are greater than 1."])
+        if col == 3:
+            return "\n".join([title, "Rule: PROTECT is Yes if PINNED or CAN-PIN is active."])
+        return title
+
+    def _toggle_calc_explain_tooltip(self, event, row: int, col: int):
+        if self._comment_editor_open:
+            return
+        self._ensure_calc_explain_tooltip_window()
+
+        widget = self.grid_display_widgets[row][col]
+        if not widget:
+            return
+
+        if self._calc_explain_tooltip_cell == (row, col):
+            self._hide_calc_explain_tooltip()
+            return
+
+        text = widget.get().strip()
+        if row > 0 and text in ("", "---"):
+            self._hide_calc_explain_tooltip()
+            return
+
+        should_show = (row == 0) or (row > 0 and col == 4 and text not in ("", "---")) or self._is_text_truncated(widget, text)
+        if not should_show:
+            self._hide_calc_explain_tooltip()
+            return
+
+        explain_text = self._format_calc_explain_text(row, col, text)
+        if not explain_text:
+            self._hide_calc_explain_tooltip()
+            return
+
+        if self._calc_explain_tooltip_label is None or self._calc_explain_tooltip_window is None:
+            return
+
+        self._popup_pending = True
+        self._hide_name_tooltip()
+        self._hide_comment_tooltip_popup()
+
+        wrap_width = max(280, min(520, self._get_right_grid_width()))
+        self._calc_explain_tooltip_label.config(text=explain_text, wraplength=wrap_width)
+        self._calc_explain_tooltip_window.update_idletasks()
+
+        x = widget.winfo_rootx()
+        tooltip_height = self._calc_explain_tooltip_window.winfo_height()
+        y = widget.winfo_rooty() - tooltip_height - 4
+        if y < 0:
+            y = 0
+        self._calc_explain_tooltip_window.geometry(f"+{x}+{y}")
+
+        def show_popup():
+            if self._calc_explain_tooltip_window is None:
+                return
+            self._calc_explain_tooltip_window.deiconify()
+            self._calc_explain_tooltip_window.lift()
+            self._calc_explain_tooltip_cell = (row, col)
+            self._popup_pending = False
+
+        self.root.after_idle(show_popup)
 
     def _hide_all_popups(self):
         self._hide_name_tooltip()
         self._hide_comment_tooltip_popup()
+        self._hide_calc_explain_tooltip()
 
     def _is_text_truncated(self, widget: tk.Entry, text: str) -> bool:
         widget_width = widget.winfo_width()
@@ -2825,6 +3022,16 @@ class UiManager:
                 width += widget.winfo_width()
         if width <= 0:
             return 360
+        return width
+
+    def _get_right_grid_width(self) -> int:
+        width = 0
+        for c in range(5):
+            widget = self.grid_display_widgets[0][c]
+            if widget:
+                width += widget.winfo_width()
+        if width <= 0:
+            return 400
         return width
     
     # Add this method to update display-only fields
@@ -2925,6 +3132,7 @@ class UiManager:
         self._last_scenario_calc_signature = self._build_scenario_calc_signature()
 
     def check_margins(self):
+        col_margin_sums = self._get_enabled_column_margin_sums()
         for row in range(1, 6):
             try:
                 if self.row_checkboxes and row - 1 < len(self.row_checkboxes) and self.row_checkboxes[row - 1].get() == 1:
@@ -2938,26 +3146,52 @@ class UiManager:
                     continue
                 floor_rating_sum = int(floor_value)
                 
-                all_margins = []
+                all_margins = {}
                 for col in range(1, 6):
-                    col_margin_sum = 0
-                    for row1 in range(1, 6):
-                        widget = self.grid_widgets[row1][col]
-                        if widget is not None and widget.cget('state') != 'disabled':
-                            # V2: Get integer value directly from GridDataModel
-                            cell_value = self.grid_data_model.get_rating(row1, col)
-                            if isinstance(cell_value, int):
-                                col_margin_sum += cell_value
-                    diff = floor_rating_sum - col_margin_sum
-                    all_margins.append(diff)
-                
-                max_margin = max(all_margins)
-                min_margin = min(all_margins)
-                bus_text = self._get_bus_advisory_label(max_margin=max_margin, min_margin=min_margin)
+                    diff = floor_rating_sum - col_margin_sums.get(col, 0)
+                    all_margins[col] = diff
+
+                max_margin = max(all_margins.values())
+                min_margin = min(all_margins.values())
+                row_ratings = self._get_enabled_row_ratings(row)
+                row_pinned = self.grid_data_model.get_display(row, 1) != "---"
+                row_can_pin = self.grid_data_model.get_display(row, 2) != "---"
+                bus_text = self._get_bus_advisory_label(
+                    max_margin=max_margin,
+                    min_margin=min_margin,
+                    row_ratings=row_ratings,
+                    is_pinned=row_pinned,
+                    can_pin=row_can_pin,
+                    all_margins=all_margins,
+                    col_margin_sums=col_margin_sums,
+                )
                 self.update_display_fields(row, 4, bus_text)
                 # SUM MARG removed
             except (ValueError, IndexError) as e:
                 print(f"check_margins has failed for row {row} with error:\n{e}")
+
+    def _get_enabled_row_ratings(self, row):
+        ratings = []
+        for col in range(1, 6):
+            widget = self.grid_widgets[row][col]
+            if widget is not None and widget.cget('state') != 'disabled':
+                cell_value = self.grid_data_model.get_rating(row, col)
+                if isinstance(cell_value, int):
+                    ratings.append(cell_value)
+        return ratings
+
+    def _get_enabled_column_margin_sums(self):
+        col_margin_sums = {}
+        for col in range(1, 6):
+            col_margin_sum = 0
+            for row in range(1, 6):
+                widget = self.grid_widgets[row][col]
+                if widget is not None and widget.cget('state') != 'disabled':
+                    cell_value = self.grid_data_model.get_rating(row, col)
+                    if isinstance(cell_value, int):
+                        col_margin_sum += cell_value
+            col_margin_sums[col] = col_margin_sum
+        return col_margin_sums
 
     def _get_current_round_depth(self):
         """Approximate current round depth from lock-in checkboxes (1..5)."""
@@ -2999,14 +3233,125 @@ class UiManager:
 
         return max(0, min(100, int(threshold)))
 
-    def _get_bus_advisory_label(self, max_margin, min_margin):
-        """Display-only BUS advisory from spread opportunity and downside risk."""
+    def _build_bus_analysis(
+        self,
+        max_margin,
+        min_margin,
+        row_ratings=None,
+        is_pinned=False,
+        can_pin=False,
+        all_margins=None,
+        col_margin_sums=None,
+    ):
+        """Build advisory-only BUS analysis with legacy score compatibility."""
+        bus_cfg = self.strategic_preferences.get("bus", {})
         spread = max_margin - min_margin
         downside_risk = max(0, -min_margin)
-        bus_score = max(0, int((spread * 4) + (downside_risk * 2)))
+
+        base_score = max(0, int((spread * 4) + (downside_risk * 2)))
+
+        outlier_bonus = 0
+        outlier_enabled = bool(bus_cfg.get("outlier_detection_enabled", True))
+        outlier_stdev_trigger = float(bus_cfg.get("outlier_stdev_trigger", 1.0))
+        outlier_score_bonus = int(bus_cfg.get("outlier_score_bonus", 8))
+        if outlier_enabled and isinstance(col_margin_sums, dict) and col_margin_sums:
+            values = [v for v in col_margin_sums.values() if isinstance(v, int)]
+            if len(values) >= 2:
+                mean = sum(values) / len(values)
+                variance = sum((v - mean) ** 2 for v in values) / len(values)
+                sigma = variance ** 0.5
+                if sigma > 0:
+                    hardest_col = max(col_margin_sums, key=col_margin_sums.get)
+                    hardest_z = (col_margin_sums[hardest_col] - mean) / sigma
+                    min_margin_col = None
+                    if isinstance(all_margins, dict) and all_margins:
+                        min_margin_col = min(all_margins, key=all_margins.get)
+                    if min_margin_col == hardest_col and hardest_z >= outlier_stdev_trigger:
+                        outlier_bonus = max(0, outlier_score_bonus)
+
+        leverage_bonus = 0
+        if can_pin:
+            leverage_bonus += int(bus_cfg.get("can_pin_score_bonus", 3))
+        if is_pinned and not can_pin:
+            leverage_bonus += int(bus_cfg.get("pinned_score_bonus", 2))
+
+        bus_score = max(0, base_score + outlier_bonus + leverage_bonus)
         threshold = self._get_bus_threshold()
         bus_yes = bus_score >= threshold
-        return f"YES ({bus_score})" if bus_yes else f"NO ({bus_score})"
+
+        degree_thresholds = bus_cfg.get("degree_thresholds", {})
+        light_threshold = int(degree_thresholds.get("light", 60))
+        moderate_threshold = int(degree_thresholds.get("moderate", 85))
+        hard_commit_threshold = int(degree_thresholds.get("hard_commit", 110))
+        if bus_score >= hard_commit_threshold:
+            degree = "HARD"
+        elif bus_score >= moderate_threshold:
+            degree = "MOD"
+        elif bus_score >= light_threshold:
+            degree = "LIGHT"
+        else:
+            degree = "NONE"
+
+        upset_chance = 0.0
+        if row_ratings:
+            neutral_or_better = sum(1 for rating in row_ratings if isinstance(rating, int) and rating >= 3)
+            upset_chance = neutral_or_better / max(1, len(row_ratings))
+
+        abort_cfg = bus_cfg.get("abort_rules", {})
+        abort_enabled = bool(abort_cfg.get("enabled", True))
+        min_upset_chance = float(abort_cfg.get("min_upset_chance", 0.20))
+        max_downside_risk = int(abort_cfg.get("max_downside_risk", 8))
+        abort_reasons = []
+        if abort_enabled and bus_yes:
+            if upset_chance < min_upset_chance:
+                abort_reasons.append("low_upset")
+            if downside_risk > max_downside_risk:
+                abort_reasons.append("downside_cap")
+
+        return {
+            "bus_score": bus_score,
+            "bus_yes": bus_yes,
+            "threshold": threshold,
+            "spread": spread,
+            "downside_risk": downside_risk,
+            "degree": degree,
+            "abort": len(abort_reasons) > 0,
+            "abort_reasons": abort_reasons,
+            "upset_chance": upset_chance,
+            "base_score": base_score,
+            "outlier_bonus": outlier_bonus,
+            "leverage_bonus": leverage_bonus,
+        }
+
+    def _get_bus_advisory_label(
+        self,
+        max_margin,
+        min_margin,
+        row_ratings=None,
+        is_pinned=False,
+        can_pin=False,
+        all_margins=None,
+        col_margin_sums=None,
+    ):
+        """Display-only BUS advisory with optional degree/abort context."""
+        analysis = self._build_bus_analysis(
+            max_margin=max_margin,
+            min_margin=min_margin,
+            row_ratings=row_ratings,
+            is_pinned=is_pinned,
+            can_pin=can_pin,
+            all_margins=all_margins,
+            col_margin_sums=col_margin_sums,
+        )
+        base_label = f"YES ({analysis['bus_score']})" if analysis["bus_yes"] else f"NO ({analysis['bus_score']})"
+
+        bus_cfg = self.strategic_preferences.get("bus", {})
+        label_mode = str(bus_cfg.get("label_mode", "extended")).strip().lower()
+        if label_mode == "legacy":
+            return base_label
+
+        stop_state = "STOP" if analysis["abort"] else "GO"
+        return f"{base_label} [{analysis['degree']}|{stop_state}]"
 
     def check_protect(self):
         for row in range(1, 6):

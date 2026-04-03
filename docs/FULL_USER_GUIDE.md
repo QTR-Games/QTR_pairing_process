@@ -64,6 +64,44 @@ Hover/select nodes to inspect component details.
 
 For deeper metric interpretation, open Tooltip Numbers Guide in Data Management.
 
+### 7.1 Right-grid Calculation Popup (Compact Explain)
+
+The Calculations panel supports left-click explainability popups for transparent decision support.
+
+- Left-click a right-grid calculation cell.
+- Popup keeps text compact to avoid UI clutter.
+- BUS cells show richer context (even if not visually truncated).
+- Click outside the grid or change focus to dismiss.
+
+Example BUS popup output:
+
+```text
+BUS RIDE: YES (72) [LIGHT|GO]
+Score vs threshold: 72 / 60
+Degree: LIGHT  State: GO
+Spread: 9  Downside: 4
+Bonuses: outlier +8, leverage +2
+Advisory only; combine with board context.
+```
+
+Definitions:
+
+- `YES/NO (score)`: recommendation and calculated bus score.
+- `Score vs threshold`: pass/fail line for recommendation activation.
+- `Degree`: commitment level (`NONE`, `LIGHT`, `MOD`, `HARD`).
+- `State`: `GO` or `STOP` after abort-rule checks.
+- `Spread`: opportunity width from best/worst margin states.
+- `Downside`: immediate sacrifice pressure in worst case.
+- `Bonuses`: outlier and leverage context that modified score.
+- `Abort reason`: displayed when stop/caution conditions are met.
+
+Intended use:
+
+1. Confirm reason transparency before acting on BUS advice.
+2. Weigh `Spread` and `Downside` together, not independently.
+3. Use `Degree` for commitment strength and `State` for go/stop discipline.
+4. Treat output as advisory support; captain judgment remains authoritative.
+
 ## 8. Data Management menu
 
 Use Data Management for:

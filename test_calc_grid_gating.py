@@ -76,3 +76,37 @@ def test_set_grid_dirty_true_clears_calc_grid_signature():
 
     assert u._last_post_load_refresh_signature is None
     assert u._last_calc_grid_rows_signature is None
+
+
+def test_format_calc_explain_text_bus_contains_key_context():
+    ui = UiManager.__new__(UiManager)
+    u = cast(Any, ui)
+
+    u._build_bus_analysis_for_display = lambda _row: {
+        "bus_score": 72,
+        "threshold": 60,
+        "degree": "LIGHT",
+        "abort": False,
+        "spread": 9,
+        "downside_risk": 4,
+        "outlier_bonus": 8,
+        "leverage_bonus": 2,
+        "abort_reasons": [],
+    }
+
+    text = ui._format_calc_explain_text(2, 4, "YES (72) [LIGHT|GO]")
+
+    assert "BUS RIDE" in text
+    assert "Score vs threshold" in text
+    assert "Degree:" in text
+    assert "Bonuses:" in text
+
+
+def test_format_calc_explain_text_pinned_is_concise_and_rule_based():
+    ui = UiManager.__new__(UiManager)
+
+    text = ui._format_calc_explain_text(3, 1, "PINNED!")
+
+    assert "PINNED?" in text
+    assert "Rule:" in text
+    assert "bad matchups" in text

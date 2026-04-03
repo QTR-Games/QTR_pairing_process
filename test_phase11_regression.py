@@ -684,6 +684,66 @@ def test_lock_in_bus_threshold_dynamics():
     root.destroy()
 
 
+def test_bus_advisory_extended_label_includes_degree_and_stop_state():
+    root = tk.Tk()
+    root.withdraw()
+
+    ui = UiManager.__new__(UiManager)
+    prefs = _base_prefs()
+    prefs["bus"].update(
+        {
+            "label_mode": "extended",
+            "global_threshold": 40,
+            "depth_thresholds": {},
+            "degree_thresholds": {"light": 60, "moderate": 85, "hard_commit": 110},
+            "abort_rules": {"enabled": True, "min_upset_chance": 0.8, "max_downside_risk": 6},
+            "outlier_detection_enabled": True,
+            "outlier_stdev_trigger": 1.0,
+            "outlier_score_bonus": 8,
+            "can_pin_score_bonus": 3,
+            "pinned_score_bonus": 2,
+        }
+    )
+    ui.strategic_preferences = prefs
+    ui.row_checkboxes = [tk.IntVar(value=0) for _ in range(5)]
+    ui.column_checkboxes = [tk.IntVar(value=0) for _ in range(5)]
+    ui.scenario_var = tk.StringVar(value="1 - Recon")
+
+    label = ui._get_bus_advisory_label(
+        max_margin=5,
+        min_margin=-4,
+        row_ratings=[1, 2, 2, 3, 2],
+        is_pinned=True,
+        can_pin=False,
+        all_margins={1: 4, 2: 2, 3: -4, 4: 1, 5: 0},
+        col_margin_sums={1: 12, 2: 11, 3: 18, 4: 10, 5: 9},
+    )
+
+    root.destroy()
+    assert label.startswith("YES (")
+    assert "[" in label and "|" in label and "]" in label
+    assert "STOP" in label
+
+
+def test_bus_advisory_legacy_label_keeps_yes_no_score_format():
+    root = tk.Tk()
+    root.withdraw()
+
+    ui = UiManager.__new__(UiManager)
+    prefs = _base_prefs()
+    prefs["bus"]["label_mode"] = "legacy"
+    ui.strategic_preferences = prefs
+    ui.row_checkboxes = [tk.IntVar(value=0) for _ in range(5)]
+    ui.column_checkboxes = [tk.IntVar(value=0) for _ in range(5)]
+    ui.scenario_var = tk.StringVar(value="1 - Recon")
+
+    label = ui._get_bus_advisory_label(max_margin=3, min_margin=-1)
+
+    root.destroy()
+    assert label.startswith("YES (") or label.startswith("NO (")
+    assert "[" not in label
+
+
 def test_confidence_mode_penalizes_regret_spread():
     root = tk.Tk()
     root.withdraw()

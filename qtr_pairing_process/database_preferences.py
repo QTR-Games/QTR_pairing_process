@@ -173,6 +173,22 @@ class DatabasePreferences:
                     "3": 58,
                     "4": 55,
                     "5": 52
+                },
+                "label_mode": "extended",
+                "degree_thresholds": {
+                    "light": 60,
+                    "moderate": 85,
+                    "hard_commit": 110
+                },
+                "outlier_detection_enabled": True,
+                "outlier_stdev_trigger": 1.0,
+                "outlier_score_bonus": 8,
+                "can_pin_score_bonus": 3,
+                "pinned_score_bonus": 2,
+                "abort_rules": {
+                    "enabled": True,
+                    "min_upset_chance": 0.20,
+                    "max_downside_risk": 8
                 }
             }
         }
@@ -224,8 +240,43 @@ class DatabasePreferences:
                 "threshold_policy": bus.get("threshold_policy", defaults["bus"]["threshold_policy"]),
                 "global_threshold": int(self._clamp(bus.get("global_threshold", defaults["bus"]["global_threshold"]), 0.0, 100.0, defaults["bus"]["global_threshold"])),
                 "scenario_thresholds": bus.get("scenario_thresholds", defaults["bus"]["scenario_thresholds"]),
-                "depth_thresholds": bus.get("depth_thresholds", defaults["bus"]["depth_thresholds"])
+                "depth_thresholds": bus.get("depth_thresholds", defaults["bus"]["depth_thresholds"]),
+                "label_mode": bus.get("label_mode", defaults["bus"]["label_mode"]),
+                "degree_thresholds": bus.get("degree_thresholds", defaults["bus"]["degree_thresholds"]),
+                "outlier_detection_enabled": bool(bus.get("outlier_detection_enabled", defaults["bus"]["outlier_detection_enabled"])),
+                "outlier_stdev_trigger": self._clamp(bus.get("outlier_stdev_trigger", defaults["bus"]["outlier_stdev_trigger"]), 0.0, 5.0, defaults["bus"]["outlier_stdev_trigger"]),
+                "outlier_score_bonus": int(self._clamp(bus.get("outlier_score_bonus", defaults["bus"]["outlier_score_bonus"]), 0.0, 100.0, defaults["bus"]["outlier_score_bonus"])),
+                "can_pin_score_bonus": int(self._clamp(bus.get("can_pin_score_bonus", defaults["bus"]["can_pin_score_bonus"]), 0.0, 100.0, defaults["bus"]["can_pin_score_bonus"])),
+                "pinned_score_bonus": int(self._clamp(bus.get("pinned_score_bonus", defaults["bus"]["pinned_score_bonus"]), 0.0, 100.0, defaults["bus"]["pinned_score_bonus"])),
+                "abort_rules": bus.get("abort_rules", defaults["bus"]["abort_rules"])
             }
+        }
+
+        # Clamp BUS degree thresholds and preserve monotonic order.
+        degree_defaults = defaults["bus"]["degree_thresholds"]
+        degree_raw = validated["bus"].get("degree_thresholds", degree_defaults)
+        if not isinstance(degree_raw, dict):
+            degree_raw = degree_defaults
+        light = int(self._clamp(degree_raw.get("light", degree_defaults["light"]), 0.0, 1000.0, degree_defaults["light"]))
+        moderate = int(self._clamp(degree_raw.get("moderate", degree_defaults["moderate"]), 0.0, 1000.0, degree_defaults["moderate"]))
+        hard_commit = int(self._clamp(degree_raw.get("hard_commit", degree_defaults["hard_commit"]), 0.0, 1000.0, degree_defaults["hard_commit"]))
+        moderate = max(light, moderate)
+        hard_commit = max(moderate, hard_commit)
+        validated["bus"]["degree_thresholds"] = {
+            "light": light,
+            "moderate": moderate,
+            "hard_commit": hard_commit,
+        }
+
+        # Clamp BUS abort-rule limits.
+        abort_defaults = defaults["bus"]["abort_rules"]
+        abort_raw = validated["bus"].get("abort_rules", abort_defaults)
+        if not isinstance(abort_raw, dict):
+            abort_raw = abort_defaults
+        validated["bus"]["abort_rules"] = {
+            "enabled": bool(abort_raw.get("enabled", abort_defaults["enabled"])),
+            "min_upset_chance": self._clamp(abort_raw.get("min_upset_chance", abort_defaults["min_upset_chance"]), 0.0, 1.0, abort_defaults["min_upset_chance"]),
+            "max_downside_risk": int(self._clamp(abort_raw.get("max_downside_risk", abort_defaults["max_downside_risk"]), 0.0, 100.0, abort_defaults["max_downside_risk"])),
         }
 
         # Ensure strategic weights are a valid 3-value list that sums to 1.

@@ -94,6 +94,51 @@ def test_persistent_memo_toggle_persists_roundtrip(tmp_path):
     assert prefs_after_enable["strategic3"]["persistent_memo_enabled"] is True
 
 
+def test_bus_advisory_defaults_present(tmp_path):
+    config_path = tmp_path / "KLIK_KLAK_KONFIG.test.json"
+    db_prefs = DatabasePreferences(print_output=False, config_file=config_path)
+
+    prefs = db_prefs.get_strategic_preferences()
+    bus = prefs["bus"]
+
+    assert bus["label_mode"] == "extended"
+    assert bus["degree_thresholds"] == {"light": 60, "moderate": 85, "hard_commit": 110}
+    assert bus["outlier_detection_enabled"] is True
+    assert bus["abort_rules"]["enabled"] is True
+    assert bus["abort_rules"]["min_upset_chance"] == 0.20
+    assert bus["abort_rules"]["max_downside_risk"] == 8
+
+
+def test_bus_advisory_thresholds_and_abort_rules_clamped(tmp_path):
+    config_path = tmp_path / "KLIK_KLAK_KONFIG.test.json"
+    db_prefs = DatabasePreferences(print_output=False, config_file=config_path)
+
+    db_prefs.set_strategic_preferences(
+        {
+            "bus": {
+                "degree_thresholds": {"light": 90, "moderate": 40, "hard_commit": 10},
+                "outlier_stdev_trigger": 8.0,
+                "abort_rules": {
+                    "enabled": True,
+                    "min_upset_chance": 1.5,
+                    "max_downside_risk": -3,
+                },
+            }
+        }
+    )
+
+    prefs = db_prefs.get_strategic_preferences()
+    bus = prefs["bus"]
+    degree = bus["degree_thresholds"]
+
+    assert degree["light"] == 90
+    assert degree["moderate"] == 90
+    assert degree["hard_commit"] == 90
+    assert bus["outlier_stdev_trigger"] == 5.0
+    assert bus["abort_rules"]["min_upset_chance"] == 1.0
+    assert bus["abort_rules"]["max_downside_risk"] == 0
+
+
 def test_normalize_database_reference_resolves_relative_path_against_config_dir(tmp_path):
     config_dir = tmp_path / "config_dir"
     config_dir.mkdir(parents=True, exist_ok=True)

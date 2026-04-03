@@ -237,6 +237,58 @@ Root
 
 ### Advanced Features
 
+#### Calculation Popup Explainability (Right Grid)
+
+The right-side Calculations cells now support a compact explainability popup.
+
+- Left-click a calculation cell to open the popup.
+- The popup is designed to stay concise so layout remains clean.
+- For BUS cells, richer context is shown even when text is not truncated.
+- Click elsewhere or change focus to close the popup.
+
+##### Example Popup Output (BUS RIDE)
+
+```text
+BUS RIDE: YES (72) [LIGHT|GO]
+Score vs threshold: 72 / 60
+Degree: LIGHT  State: GO
+Spread: 9  Downside: 4
+Bonuses: outlier +8, leverage +2
+Advisory only; combine with board context.
+```
+
+##### Field Definitions
+
+- `YES (72)` or `NO (72)`: Recommendation flag and computed bus score.
+- `Score vs threshold`: Current bus score compared to required threshold.
+- `Degree`: Strength of recommendation (`NONE`, `LIGHT`, `MOD`, `HARD`).
+- `State`: `GO` means proceed is acceptable; `STOP` means abort conditions were detected.
+- `Spread`: Opportunity range between best and worst margin outcomes for that row.
+- `Downside`: Worst-case immediate sacrifice pressure.
+- `Bonuses`: Additional context adjustments currently shown as:
+- `outlier +X`: Opponent-outlier signal contributed to score.
+- `leverage +X`: Pin/can-pin leverage context contributed to score.
+- `Abort reason` (when present): Why a BUS recommendation should be treated as stop/caution.
+- `Advisory only`: Final reminder that this is guidance, not forced automation.
+
+##### Non-BUS Popup Values
+
+The popup also explains other right-grid values:
+
+- `FLOOR`: Sum of enabled ratings in the row.
+- `PINNED?`: Triggered when bad matchups (`<3`) are greater than 1.
+- `CAN-PIN?`: Triggered when good matchups (`>3`) are greater than 1.
+- `PROTECT`: `Yes` when `PINNED?` or `CAN-PIN?` is active.
+
+##### Intended Usage Guidelines
+
+1. Use popup text to validate *why* a recommendation exists before committing.
+2. Treat BUS as a transparent advisor, then apply captain judgment and board context.
+3. Compare `Score vs threshold` first, then inspect `Spread` and `Downside` for risk balance.
+4. Use `Degree` for commitment level and `State` for go/stop discipline.
+5. If `Abort reason` appears, assume risk is elevated and re-check pairing alternatives.
+6. Use non-BUS popups to quickly explain floor/pin/protect logic to teammates during live rounds.
+
 #### Import/Export Workflow
 
 **Importing Team Data:**
