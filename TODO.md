@@ -36,3 +36,9 @@ All items from the previous backlog are now implemented.
   - [x] Assert raw-path behavior matches `_read_raw_pref`
   - [x] Assert bounded numeric-path behavior matches `_read_numeric_pref`
 - [x] Add a Modify Team button to data management. This button will allow you to pick a team, and modify the name of the team and/or the names of the players similar to the pop up for creating a team.
+
+## Deferred Backlog
+
+- [ ] Sun-Tzu strategy advisory model (deferred by release decision on 2026-04-03)
+  - [ ] Keep current decision as deferred unless revisit criteria are met
+  - [ ] Full analysis and integration sketch: `docs/SUN_TZU_STRATEGY_DEFERRED_ANALYSIS.md`
