@@ -140,9 +140,9 @@ Submit pull request
 
 ## Version History & Migration
 
-### Current Version: 0.1
+### Current Version: 2.1.1
 
-- **Status**: Production ready with active development
+- **Status**: Maintenance pack release line with active development
 - **Key Features**: Complete pairing analysis, database storage, import/export
 - **Known Issues**: UI alignment, sorting algorithm limitations
 
