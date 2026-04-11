@@ -64,7 +64,7 @@ if (Test-Path $specFile) {
     Write-Host "Building with .spec file for enhanced dependency handling..."
     & $python -m PyInstaller --noconfirm --clean $specFile
 
-    # Spec builds produce the base exe name; normalize to versioned release name.
+    # Normalize spec output name to the versioned release artifact name.
     if ((-not (Test-Path $exeSource)) -and (Test-Path $specExeSource)) {
         Move-Item -Path $specExeSource -Destination $exeSource -Force
     }
