@@ -1275,7 +1275,8 @@ class UiManager:
         self._busy_status_job = None
 
     def _rotate_busy_status(self):
-        if getattr(self, "_busy_operation_depth", 0) <= 0 or getattr(self, "busy_status_label", None) is None:
+        busy_label = getattr(self, "busy_status_label", None)
+        if getattr(self, "_busy_operation_depth", 0) <= 0 or busy_label is None:
             self._busy_status_job = None
             return
         root = getattr(self, "root", None)
@@ -1284,7 +1285,7 @@ class UiManager:
             return
 
         dots = "." * ((self._busy_status_phase % 3) + 1)
-        self.busy_status_label.config(text=f"{self._busy_operation_message}{dots}")
+        busy_label.config(text=f"{self._busy_operation_message}{dots}")
         self._busy_status_phase += 1
         self._busy_status_job = root.after(320, self._rotate_busy_status)
 
@@ -1307,10 +1308,13 @@ class UiManager:
                 fg="#0d47a1",
             )
 
-        if getattr(self, "busy_status_frame", None) is not None:
-            self.busy_status_frame.pack(side=tk.RIGHT, padx=(0, 8), pady=2)
-        if getattr(self, "busy_progress", None) is not None:
-            self.busy_progress.start(12)
+        busy_frame = getattr(self, "busy_status_frame", None)
+        if busy_frame is not None:
+            busy_frame.pack(side=tk.RIGHT, padx=(0, 8), pady=2)
+
+        busy_progress = getattr(self, "busy_progress", None)
+        if busy_progress is not None:
+            busy_progress.start(12)
 
         self._set_heavy_controls_enabled(False)
         root = getattr(self, "root", None)
@@ -1350,10 +1354,13 @@ class UiManager:
             return
 
         self._cancel_busy_animation()
-        if getattr(self, "busy_progress", None) is not None:
-            self.busy_progress.stop()
-        if getattr(self, "busy_status_frame", None) is not None:
-            self.busy_status_frame.pack_forget()
+        busy_progress = getattr(self, "busy_progress", None)
+        if busy_progress is not None:
+            busy_progress.stop()
+
+        busy_frame = getattr(self, "busy_status_frame", None)
+        if busy_frame is not None:
+            busy_frame.pack_forget()
 
         self._set_heavy_controls_enabled(True)
         root = getattr(self, "root", None)
@@ -3980,7 +3987,7 @@ class UiManager:
         if not team_names:
             raise ValueError("No teams are available.")
 
-        selected = [None]
+        selected: List[Optional[str]] = [None]
         dialog = tk.Toplevel(self.root)
         dialog.title(title)
         dialog.geometry("430x170")

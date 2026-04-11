@@ -17,7 +17,6 @@ if (-not (Test-Path $python)) {
 
 $exeName = "QTR_Pairing_Process_v$Version"
 $distDir = Join-Path $repoRoot "dist"
-$buildDir = Join-Path $repoRoot "build"
 $releaseRoot = Join-Path $repoRoot "release"
 $releaseDir = Join-Path $releaseRoot "v$Version"
 $exeSource = Join-Path $distDir "$exeName.exe"
@@ -49,6 +48,9 @@ if (-not $SkipTests) {
 
 if (Test-Path $exeSource) {
     Remove-Item $exeSource -Force
+}
+if (Test-Path (Join-Path $repoRoot "build")) {
+    Remove-Item (Join-Path $repoRoot "build") -Recurse -Force
 }
 
 # Use .spec file for proper dependency bundling
