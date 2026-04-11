@@ -3,24 +3,27 @@
   "version": "1.0",
   "_version_comment": "Config file format version - Do not modify manually",
   "database": {
-    "_comment": "Database persistence - Automatically loads your last used database on startup",
-    "path": "C:/Users/Daniel.Raven",
-    "_path_comment": "Directory path to database file - Set automatically when you select a database",
-    "name": "dapper badgers.db",
-    "_name_comment": "Database filename - Set automatically when you select a database",
-    "last_used": "2025-11-05T09:24:59.629226",
-    "_last_used_comment": "Timestamp of last database access - Do not modify manually"
+    "path": "C:\\Users\\Daniel.Raven",
+    "name": "Base3RatingsDB_5.db",
+    "last_used": "2026-03-25T13:51:21.787422"
   },
   "ui_preferences": {
     "_comment": "User interface preferences - Safe to modify these values",
     "show_welcome_message": false,
     "_show_welcome_message_comment": "Show welcome dialog on startup - Options: true (show) or false (don't show)",
-    "rating_system": "1-5",
+    "rating_system": "1-10",
     "_rating_system_comment": "Rating system to use - Options: '1-5' (Standard) or '1-9' (Extended). Change via Data Management > Rating System menu",
     "auto_tree_sync": true,
     "_auto_tree_sync_comment": "Automatically sync matchups when updates occur - Options: true (on) or false (off)",
+    "tree_autogen_enabled": false,
+    "_tree_autogen_enabled_comment": "Auto-generate tree after grid loads. Requires restart. Options: true (on) or false (off)",
     "matchup_output_format": "standard",
-    "_matchup_output_format_comment": "Matchup extraction display format - Options: 'standard' (concise summary) or 'verbose' (detailed decision path)"
+    "_matchup_output_format_comment": "Matchup extraction display format - Options: 'standard' (concise summary) or 'verbose' (detailed decision path)",
+    "perf_logging_enabled": false,
+    "lazy_sort_on_expand": false,
+    "lazy_sort_mode": "strict",
+    "data_mgmt_show_guides_logs": true,
+    "data_mgmt_show_advanced_settings": true
   },
   "logging": {
     "_comment": "Logging preferences - Controls debug output and log files",
@@ -31,6 +34,6 @@
   },
   "created": "2025-10-23T09:31:34.469763",
   "_created_comment": "Initial config creation timestamp - Do not modify manually",
-  "last_modified": "2026-02-26T13:50:10.140543",
+  "last_modified": "2026-03-25T16:31:39.856720",
   "_last_modified_comment": "Last config update timestamp - Updated automatically when any setting changes"
 }

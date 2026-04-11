@@ -1,90 +1,59 @@
-<<<<<<< HEAD
 #!/usr/bin/env python3
 """
-Test script for the dynamic rating system dialog
+Automation-safe tests for the dynamic rating system dialog.
 """
 import tkinter as tk
-import sys
-import os
-
-# Add the qtr_pairing_process directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'qtr_pairing_process'))
+import pytest
 
 from qtr_pairing_process.rating_system_dialog import RatingSystemDialog
-from qtr_pairing_process.db_management.db_manager import DbManager
 
-def test_rating_dialog():
-    """Test the rating system dialog with dynamic sizing"""
-    # Create test root window
+
+class _StubDbManager:
+    def __init__(self, ratings_count=0):
+        self._ratings_count = ratings_count
+
+    def get_ratings_count(self):
+        return self._ratings_count
+
+
+@pytest.mark.requires_tk
+def test_rating_dialog_cancel_is_non_blocking():
+    """Dialog can open and close via scheduled cancel without manual input."""
     root = tk.Tk()
-    root.withdraw()  # Hide the main window
-    
-    # Create a mock database manager
-    db_manager = DbManager()
-    
-    def show_dialog():
-        """Show the rating system dialog"""
-        dialog = RatingSystemDialog(root, "1-5", db_manager)
+    root.withdraw()
+
+    try:
+        dialog = RatingSystemDialog(root, "1-5", _StubDbManager(ratings_count=0))
+        root.after(120, dialog._on_cancel)
+
         result = dialog.show()
-        
-        print(f"Dialog result: {result}")
-        if result:
-            print(f"Selected system: {result}")
-        
-        root.quit()
-    
-    # Schedule dialog to show after root window is ready
-    root.after(100, show_dialog)
-    
-    # Start the event loop
-    root.mainloop()
+        assert result is None
+        assert dialog.selected_system is None
+    finally:
+        if root.winfo_exists():
+            root.destroy()
 
-if __name__ == "__main__":
-    print("Testing Dynamic Rating System Dialog...")
-    test_rating_dialog()
-=======
-#!/usr/bin/env python3
-"""
-Test script for the dynamic rating system dialog
-"""
-import tkinter as tk
-import sys
-import os
 
-# Add the qtr_pairing_process directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'qtr_pairing_process'))
-
-from qtr_pairing_process.rating_system_dialog import RatingSystemDialog
-from qtr_pairing_process.db_management.db_manager import DbManager
-
-def test_rating_dialog():
-    """Test the rating system dialog with dynamic sizing"""
-    # Create test root window
+@pytest.mark.requires_tk
+def test_rating_dialog_apply_returns_selected_system():
+    """Dialog applies a changed system when data count is zero (no confirm prompt)."""
     root = tk.Tk()
-    root.withdraw()  # Hide the main window
-    
-    # Create a mock database manager
-    db_manager = DbManager()
-    
-    def show_dialog():
-        """Show the rating system dialog"""
-        dialog = RatingSystemDialog(root, "1-5", db_manager)
-        result = dialog.show()
-        
-        print(f"Dialog result: {result}")
-        if result:
-            print(f"Selected system: {result}")
-        
-        root.quit()
-    
-    # Schedule dialog to show after root window is ready
-    root.after(100, show_dialog)
-    
-    # Start the event loop
-    root.mainloop()
+    root.withdraw()
 
-if __name__ == "__main__":
-    print("Testing Dynamic Rating System Dialog...")
-    test_rating_dialog()
->>>>>>> origin/main
-    print("Test completed!")
+    try:
+        dialog = RatingSystemDialog(root, "1-5", _StubDbManager(ratings_count=0))
+
+        def _auto_apply():
+            if dialog.system_var is None:
+                return
+            dialog.system_var.set("1-3")
+            dialog._on_apply()
+
+        root.after(140, _auto_apply)
+
+        result = dialog.show()
+        assert result is None
+        assert dialog.selected_system == "1-3"
+    finally:
+        if root.winfo_exists():
+            root.destroy()

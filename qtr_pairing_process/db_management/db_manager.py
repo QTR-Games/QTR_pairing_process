@@ -2,27 +2,127 @@
 import sqlite3
 from os.path import expanduser
 import os
+import json
+import hashlib
 
 from qtr_pairing_process.constants import SCENARIO_MAP
 from qtr_pairing_process.secure_db_interface import SecureDBInterface
 from qtr_pairing_process.data_validator import DataValidator
+from qtr_pairing_process.constants import RATING_SYSTEMS, DEFAULT_RATING_SYSTEM
+from qtr_pairing_process.app_logger import get_logger
 
 class DbManager:
     def __init__(self, path=None, name=None) -> None:
         self.path = path or expanduser("~")
         self.name = name or 'default.db'
+        self.logger = get_logger(__name__)
         print(self.path, self.name)
         self.secure_db = None  # Will be initialized when needed
         self.initialize_db()
+
     def initialize_db(self):
-        if not os.path.isfile(f'{self.path}/{self.name}'):
+        os.makedirs(self.path, exist_ok=True)
+        db_file = os.path.join(self.path, self.name)
+        self.logger.info("DbManager.initialize_db start db=%s", db_file)
+
+        if (not os.path.isfile(db_file)) or (not self._has_required_schema()):
+            self.logger.info("DbManager creating/repairing schema for db=%s", db_file)
             self.create_tables()
+
+        self._ensure_default_seed_data()
+        self._ensure_app_settings_table()
+        self.logger.info("DbManager.initialize_db complete db=%s", db_file)
+
+    def _has_required_schema(self):
+        required = {"teams", "players", "scenarios", "ratings"}
+        try:
+            with self.connect_db(self.path, self.name) as db_conn:
+                db_cur = db_conn.cursor()
+                db_cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                existing = {row[0] for row in db_cur.fetchall()}
+            return required.issubset(existing)
+        except sqlite3.Error:
+            return False
+
+    def _ensure_default_seed_data(self):
+        teams_count = self.query_sql("SELECT COUNT(*) FROM teams")[0][0]
+        scenarios_count = self.query_sql("SELECT COUNT(*) FROM scenarios")[0][0]
+        players_count = self.query_sql("SELECT COUNT(*) FROM players")[0][0]
+        ratings_count = self.query_sql("SELECT COUNT(*) FROM ratings")[0][0]
+        self.logger.info(
+            "DbManager seed counts teams=%s scenarios=%s players=%s ratings=%s",
+            teams_count,
+            scenarios_count,
+            players_count,
+            ratings_count,
+        )
+
+        if teams_count == 0:
             self.create_default_teams()
+        if scenarios_count == 0:
             self.create_default_scenarios()
+        if players_count == 0:
             self.create_default_players()
-            self.create_default_ratings()
+        if ratings_count == 0:
+            self.create_default_ratings(rating_system=DEFAULT_RATING_SYSTEM)
+
     def connect_db(self, path, name):
         return sqlite3.connect(f'{path}/{name}')
+
+    def _ensure_app_settings_table(self):
+        self.execute_sql(
+            """
+            CREATE TABLE IF NOT EXISTS app_settings (
+                setting_key TEXT PRIMARY KEY,
+                setting_value TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+    def get_rating_system(self, default="1-5"):
+        self._ensure_app_settings_table()
+        rows = self.query_sql_params(
+            "SELECT setting_value FROM app_settings WHERE setting_key = ?",
+            ("rating_system",),
+        )
+        if rows and rows[0][0]:
+            return str(rows[0][0])
+        inferred = self.infer_rating_system_from_data(default=default)
+        return inferred
+
+    def set_rating_system(self, rating_system):
+        self._ensure_app_settings_table()
+        if rating_system not in RATING_SYSTEMS:
+            raise ValueError(f"Unsupported rating system: {rating_system}")
+        self.execute_sql(
+            """
+            INSERT INTO app_settings (setting_key, setting_value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(setting_key)
+            DO UPDATE SET
+                setting_value = excluded.setting_value,
+                updated_at = excluded.updated_at
+            """,
+            ("rating_system", str(rating_system)),
+        )
+        self.logger.info("DbManager set rating system db=%s/%s rating_system=%s", self.path, self.name, rating_system)
+
+    def infer_rating_system_from_data(self, default=DEFAULT_RATING_SYSTEM):
+        """Infer rating system from stored rating values when metadata is absent."""
+        rows = self.query_sql("SELECT MIN(rating), MAX(rating) FROM ratings")
+        if not rows or rows[0][1] is None:
+            return default
+
+        min_rating, max_rating = rows[0]
+        if min_rating is None or max_rating is None:
+            return default
+
+        for system, cfg in sorted(RATING_SYSTEMS.items(), key=lambda item: item[1]['range'][1]):
+            min_allowed, max_allowed = cfg['range']
+            if int(min_rating) >= int(min_allowed) and int(max_rating) <= int(max_allowed):
+                return system
+        return default
     
     def get_secure_interface(self):
         """Get secure database interface for parameterized queries"""
@@ -45,6 +145,13 @@ class DbManager:
         with self.connect_db(self.path, self.name) as db_conn:
             db_cur = db_conn.cursor()
             db_cur.execute(sql)
+            rows = db_cur.fetchall()
+        return rows
+
+    def query_sql_params(self, sql, parameters=None):
+        with self.connect_db(self.path, self.name) as db_conn:
+            db_cur = db_conn.cursor()
+            db_cur.execute(sql, parameters or ())
             rows = db_cur.fetchall()
         return rows
     
@@ -136,6 +243,18 @@ class DbManager:
         except (ValueError, RuntimeError) as e:
             print(f"Error upserting team '{team_name}': {e}")
             raise
+
+    def rename_team(self, team_id, team_name):
+        """Rename an existing team in place using secure parameterized query."""
+        try:
+            secure_db = self.get_secure_interface()
+            rows = secure_db.update_team_name_secure(team_id, team_name)
+            if rows == 0:
+                raise RuntimeError(f"No team row updated for team_id={team_id}")
+            return rows
+        except (ValueError, RuntimeError) as e:
+            print(f"Error renaming team {team_id} to '{team_name}': {e}")
+            raise
             
     #########
     # Players
@@ -179,6 +298,18 @@ class DbManager:
             return results[0][0]
         return None
 
+    def rename_player(self, player_id, team_id, player_name):
+        """Rename an existing player in place using secure parameterized query."""
+        try:
+            secure_db = self.get_secure_interface()
+            rows = secure_db.update_player_name_secure(player_id, team_id, player_name)
+            if rows == 0:
+                raise RuntimeError(f"No player row updated for player_id={player_id} team_id={team_id}")
+            return rows
+        except (ValueError, RuntimeError) as e:
+            print(f"Error renaming player {player_id} on team {team_id} to '{player_name}': {e}")
+            raise
+
     def upsert_and_validate_players(self, team_id, player_names):
         players = self.query_players(team_id)
         # print(f"team_id={team_id};\nplayer_names={player_names};\nplayers={players}")
@@ -217,6 +348,171 @@ class DbManager:
         sql = "SELECT COUNT(*) FROM ratings"
         result = self.query_sql(sql)
         return result[0][0] if result else 0
+
+    def get_db_fingerprint(self):
+        """Build a stable lineage fingerprint from teams, players, and scenarios."""
+        teams = self.query_sql("SELECT team_id, team_name FROM teams ORDER BY team_id")
+        players = self.query_sql("SELECT player_id, team_id, player_name FROM players ORDER BY player_id")
+        scenarios = self.query_sql("SELECT scenario_id, scenario_name FROM scenarios ORDER BY scenario_id")
+        payload = {
+            "teams": teams,
+            "players": players,
+            "scenarios": scenarios,
+        }
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def get_team_roster_hash(self, team_id):
+        """Build a stable hash for a team's player roster including IDs and names."""
+        rows = self.query_sql_params(
+            "SELECT player_id, player_name FROM players WHERE team_id = ? ORDER BY player_id",
+            (team_id,),
+        )
+        raw = json.dumps(rows, separators=(",", ":"))
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def export_individual_player_ratings(self, team_id, player_id):
+        """Export all ratings/comments for a friendly player across all opponents and scenarios."""
+        source_row = self.query_sql_params(
+            """
+            SELECT p.player_id, p.player_name, p.team_id, t.team_name
+            FROM players p
+            JOIN teams t ON t.team_id = p.team_id
+            WHERE p.player_id = ? AND p.team_id = ?
+            """,
+            (player_id, team_id),
+        )
+        if not source_row:
+            raise ValueError(f"Friendly player {player_id} not found for team {team_id}")
+
+        source_player_id, source_player_name, source_team_id, source_team_name = source_row[0]
+
+        rows = self.query_sql_params(
+            """
+            SELECT
+                r.team_2_id,
+                t2.team_name,
+                r.team_2_player_id,
+                p2.player_name,
+                r.scenario_id,
+                r.rating,
+                COALESCE(mc.comment, '')
+            FROM ratings r
+            JOIN teams t2 ON t2.team_id = r.team_2_id
+            JOIN players p2 ON p2.player_id = r.team_2_player_id
+            LEFT JOIN matchup_comments mc
+                ON mc.team_1_player_id = r.team_1_player_id
+               AND mc.team_2_player_id = r.team_2_player_id
+               AND mc.scenario_id = r.scenario_id
+            WHERE r.team_1_id = ?
+              AND r.team_1_player_id = ?
+            ORDER BY r.team_2_id, r.team_2_player_id, r.scenario_id
+            """,
+            (team_id, player_id),
+        )
+
+        export_rows = []
+        for team_2_id, team_2_name, player_2_id, player_2_name, scenario_id, rating, comment in rows:
+            export_rows.append(
+                {
+                    "opponent_team_id": team_2_id,
+                    "opponent_team_name": team_2_name,
+                    "opponent_player_id": player_2_id,
+                    "opponent_player_name": player_2_name,
+                    "scenario_id": scenario_id,
+                    "rating": rating,
+                    "comment": comment or "",
+                }
+            )
+
+        return {
+            "source_team_id": source_team_id,
+            "source_team_name": source_team_name,
+            "source_player_id": source_player_id,
+            "source_player_name": source_player_name,
+            "rows": export_rows,
+        }
+
+    def replace_individual_player_ratings(self, team_id, player_id, rows):
+        """Replace all ratings/comments for a friendly player and import provided rows transactionally."""
+        deleted_ratings = 0
+        deleted_comments = 0
+        upserted_ratings = 0
+        upserted_comments = 0
+        cleared_comments = 0
+
+        with self.connect_db(self.path, self.name) as db_conn:
+            db_cur = db_conn.cursor()
+            try:
+                db_cur.execute("BEGIN")
+
+                db_cur.execute(
+                    "DELETE FROM ratings WHERE team_1_id = ? AND team_1_player_id = ?",
+                    (team_id, player_id),
+                )
+                deleted_ratings = db_cur.rowcount
+
+                db_cur.execute(
+                    "DELETE FROM matchup_comments WHERE team_1_player_id = ?",
+                    (player_id,),
+                )
+                deleted_comments = db_cur.rowcount
+
+                for row in rows:
+                    db_cur.execute(
+                        """
+                        INSERT INTO ratings
+                            (team_1_player_id, team_1_id, team_2_player_id, team_2_id, scenario_id, rating)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(team_1_player_id, team_2_player_id, scenario_id)
+                        DO UPDATE SET rating = excluded.rating
+                        """,
+                        (
+                            player_id,
+                            team_id,
+                            row["opponent_player_id"],
+                            row["opponent_team_id"],
+                            row["scenario_id"],
+                            row["rating"],
+                        ),
+                    )
+                    upserted_ratings += 1
+
+                    comment = (row.get("comment") or "").strip()
+                    if comment:
+                        db_cur.execute(
+                            """
+                            INSERT INTO matchup_comments
+                                (team_1_player_id, team_2_player_id, scenario_id, comment, updated_date)
+                            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                            ON CONFLICT(team_1_player_id, team_2_player_id, scenario_id)
+                            DO UPDATE SET
+                                comment = excluded.comment,
+                                updated_date = excluded.updated_date
+                            """,
+                            (
+                                player_id,
+                                row["opponent_player_id"],
+                                row["scenario_id"],
+                                comment,
+                            ),
+                        )
+                        upserted_comments += 1
+                    else:
+                        cleared_comments += 1
+
+                db_conn.commit()
+            except Exception:
+                db_conn.rollback()
+                raise
+
+        return {
+            "deleted_ratings": deleted_ratings,
+            "deleted_comments": deleted_comments,
+            "upserted_ratings": upserted_ratings,
+            "upserted_comments": upserted_comments,
+            "cleared_comments": cleared_comments,
+        }
 
     #########
     # Comments
@@ -421,7 +717,7 @@ class DbManager:
         files = os.listdir(path)
 
         for file in files:
-            with open(f'{path}/{file}', 'r') as file_read:
+            with open(f'{path}/{file}', 'r', encoding='utf-8-sig') as file_read:
                 sql_content = file_read.read()
                 
                 # Split multiple SQL statements and execute them separately
@@ -429,8 +725,13 @@ class DbManager:
                 
                 for statement in statements:
                     if statement:  # Skip empty statements
-                        rows_affected = self.execute_sql(statement)
-                        # Note: CREATE statements typically return 0 rows affected, so we don't check this
+                        try:
+                            rows_affected = self.execute_sql(statement)
+                            # Note: CREATE statements typically return 0 rows affected, so we don't check this
+                        except sqlite3.OperationalError as exc:
+                            if "already exists" in str(exc).lower():
+                                continue
+                            raise
 
     def create_default_teams(self):
         self.create_team('default_team_1')
@@ -450,11 +751,14 @@ class DbManager:
             for j in range(1,6):
                 self.create_player(f'default_player_{i}_{j}',i)
 
-    def create_default_ratings(self):
+    def create_default_ratings(self, rating_system=DEFAULT_RATING_SYSTEM):
         team_1 = self.query_sql('select player_id, team_id from players where team_id=1')
         team_2 = self.query_sql('select player_id, team_id from players where team_id=2')
-        print(f"team_1 - {team_1}")
-        print(f"team_2 - {team_2}")
+        if rating_system not in RATING_SYSTEMS:
+            rating_system = DEFAULT_RATING_SYSTEM
+        min_rating, max_rating = RATING_SYSTEMS[rating_system]['range']
+        baseline_rating = 1 if min_rating <= 1 <= max_rating else min_rating
+
         for scenario_id in SCENARIO_MAP.keys():
             for player_1_row in team_1:
                 for player_2_row in team_2:
@@ -464,5 +768,35 @@ class DbManager:
                         player_id_2=player_2_row[0],
                         team_id_2=player_2_row[1],
                         scenario_id=scenario_id,
-                        rating=player_1_row[0]**2 + player_2_row[0]**2
+                        rating=baseline_rating
                     )
+
+    def normalize_ratings_to_system(self, rating_system):
+        """Clamp all rating values to the selected rating system range."""
+        if rating_system not in RATING_SYSTEMS:
+            raise ValueError(f"Unsupported rating system: {rating_system}")
+
+        min_rating, max_rating = RATING_SYSTEMS[rating_system]['range']
+        with self.connect_db(self.path, self.name) as db_conn:
+            db_cur = db_conn.cursor()
+            db_cur.execute(
+                """
+                UPDATE ratings
+                SET rating = CASE
+                    WHEN rating < ? THEN ?
+                    WHEN rating > ? THEN ?
+                    ELSE rating
+                END
+                """,
+                (min_rating, min_rating, max_rating, max_rating),
+            )
+            db_conn.commit()
+            updated = db_cur.rowcount if db_cur.rowcount is not None else 0
+        self.logger.info(
+            "DbManager normalized ratings db=%s/%s system=%s updated_rows=%s",
+            self.path,
+            self.name,
+            rating_system,
+            updated,
+        )
+        return updated

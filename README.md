@@ -43,6 +43,7 @@ This application is designed for tournaments following the **World Team Champion
 
 - Python 3.7 or higher
 - tkinter (usually included with Python)
+- For best Windows reliability, prefer python.org Python with Tcl/Tk support included
 - Required Python packages:
 
   ```bash
@@ -80,6 +81,41 @@ This application is designed for tournaments following the **World Team Champion
 4. **Input Ratings**: Fill the 5x5 grid with matchup ratings (1-5)
 5. **Generate Tree**: Click "Generate Combinations" to see all possible pairings
 6. **Analyze Results**: Review the decision tree to find optimal pairings
+
+## Runtime Health (Windows)
+
+The application performs a Tk runtime preflight at startup to prevent hard crashes on machines where Python/Tk is partially installed or misconfigured.
+
+### What users will see
+
+- If Tk runtime is healthy, startup continues normally.
+- If Tk runtime is not healthy, startup stops gracefully with an actionable message instead of a traceback.
+
+### User recovery steps
+
+1. Install Python from python.org (not Microsoft Store) and ensure Tcl/Tk is included.
+2. Recreate the virtual environment.
+3. Reinstall dependencies with `pip install -r requirements.txt`.
+4. Launch again using `python main.py`.
+
+### Developer diagnostics
+
+When preflight fails, detailed diagnostics are logged to `qtr_pairing_process.log`, including:
+
+- Python executable and version
+- `sys.prefix` and `sys.base_prefix`
+- `TCL_LIBRARY` and `TK_LIBRARY` environment values
+- Candidate Tcl/Tk library roots and which ones exist
+- Exception type and full error message from Tk initialization
+
+This data is intended to make machine-specific runtime failures diagnosable and patchable.
+
+### Test behavior
+
+Pytest runs a Tk preflight during collection:
+
+- Tk-dependent tests are skipped when Tk is unavailable, rather than failing the whole suite.
+- Skip events and Tk diagnostics are appended to `qtr_pairing_process.log`.
 
 ### Data Management
 

@@ -17,11 +17,13 @@ Sorts decision paths by **reliability and consistency** rather than pure maximum
 ### How It Works
 
 - **Confidence Scoring**: Each rating gets a confidence score based on its reliability:
-  - Rating 5: 95% confidence (almost certain win)
-  - Rating 4: 80% confidence (strong advantage)
-  - Rating 3: 60% confidence (even matchup)
-  - Rating 2: 35% confidence (disadvantage)
-  - Rating 1: 15% confidence (likely loss)
+  - Ratings are normalized from the active scale to `n in [0, 1]`
+  - `confidence = round(15 + 80 * n)`
+  - Higher ratings always increase confidence, and scores are computed at full granularity for whatever native rating scale you use (1–3, 1–5, 1–10, etc.)
+  - For example, using the same formula:
+    - **1–3 scale**: 1 → 15, 2 → 55, 3 → 95
+    - **1–5 scale**: 1 → 15, 2 → 35, 3 → 55, 4 → 75, 5 → 95
+    - **1–10 scale** (sample): 1 → 15, 5 → 51, 10 → 95
 
 - **Variance Penalty**: Paths with high variance (mix of 1s and 5s) are penalized compared to consistent paths (all 3s-4s)
 - **Floor-Ceiling Analysis**: Calculates both minimum guaranteed and maximum potential outcomes
@@ -50,13 +52,18 @@ Sorts decision paths by how well they perform against **optimal opponent counter
 
 - **Counter-Strategy Modeling**: Simulates likely opponent responses to your moves
 - **Resistance Scoring**: Evaluates how each rating withstands opponent focus:
-  - Rating 5: 60% resistance (high value but draws opponent's best counters)
-  - Rating 4: 75% resistance (good value with moderate vulnerability)
-  - Rating 3: 85% resistance (most counter-resistant - opponent indifferent)
-  - Rating 2: 70% resistance (low value, opponent may ignore)
-  - Rating 1: 50% resistance (very vulnerable to exploitation)
+  - Ratings are normalized from the active scale to `n in [0, 1]`
+  - `resistance = round(50 + 35 * (1 - 4*(n - 0.5)^2))`
+  - Midpoint ratings are most stable; extremes are easier to counter
 
 - **Adaptive Response Simulation**: Models how opponent counter-effectiveness varies based on your strategy
+  - `extremity = abs(n - 0.5) * 2`
+  - `counter_effectiveness = 0.1 + 0.2 * extremity`
+
+- **Scale Granularity**:
+  - `1-3`: coarse differentiation
+  - `1-5`: medium differentiation
+  - `1-10`: fine differentiation (fewer ties in confidence/resistance-driven ordering)
 
 ### Optimal Usage Scenarios
 

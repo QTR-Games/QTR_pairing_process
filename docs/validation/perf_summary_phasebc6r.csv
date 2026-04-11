@@ -1,0 +1,9 @@
+span,baseline_median_ms,new_median_ms,delta_pct,threshold_pct,status,baseline_samples,new_samples
+startup.select_database,3.00,8.57,+185.67%,+5%,FAIL,5,5
+startup.initialize_ui_vars,509.95,1368.50,+168.36%,+5%,FAIL,5,5
+startup.populate_dropdowns,0.71,1.43,+101.41%,+5%,FAIL,5,5
+startup.create_ui_grids,42.60,87.94,+106.43%,+5%,FAIL,5,5
+sort.cumulative (apply_combined),3537.57,4703.22,+32.95%,+10%,FAIL,5,5
+sort.confidence (apply_combined),6847.13,9508.37,+38.87%,+10%,FAIL,5,5
+sort.counter/resistance (apply_combined),4343.59,8458.05,+94.72%,+10%,FAIL,5,5
+sort.strategic (strategic.sort.end_to_end),18375.35,26833.16,+46.03%,+10%,FAIL,5,5

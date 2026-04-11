@@ -3,6 +3,7 @@
 import json
 import os
 import logging
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
@@ -11,10 +12,78 @@ from tkinter import messagebox
 class DatabasePreferences:
     """Manages database preferences and application configuration"""
     
-    def __init__(self, print_output: bool = False):
+    def __init__(self, print_output: bool = False, config_file: Optional[Path] = None):
         self.print_output = print_output
-        self.config_file = Path(__file__).parent.parent / "KLIK_KLAK_KONFIG.json"
+        self.config_file = (
+            Path(config_file)
+            if config_file is not None
+            else Path(__file__).parent.parent / "KLIK_KLAK_KONFIG.json"
+        )
+        self.max_config_backups = 3
+        self._config_cache: Optional[Dict[str, Any]] = None
         self.logger = self._setup_logger()
+
+    def _invalidate_config_cache(self):
+        self._config_cache = None
+
+    def _normalize_path_value(self, path_value: str) -> str:
+        """Normalize and canonicalize a path against the config directory."""
+        # Normalize mixed separators and resolve relative paths against config directory.
+        normalized_value = os.path.normpath(path_value)
+        if not os.path.isabs(normalized_value):
+            base_dir = str(self.config_file.parent)
+            normalized_value = os.path.normpath(os.path.join(base_dir, normalized_value))
+
+        # Fast path for already-clean absolute paths to avoid repeated realpath syscalls.
+        if os.path.isabs(normalized_value):
+            path_obj = Path(normalized_value)
+            has_parent_refs = ".." in path_obj.parts
+            if not has_parent_refs:
+                return normalized_value
+
+        # Policy: persist canonical real path (or deterministic normalized path if unresolved).
+        try:
+            return os.path.realpath(normalized_value)
+        except Exception:
+            return os.path.abspath(normalized_value)
+
+    def _normalize_database_reference(self, path: Optional[str], name: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+        """Normalize database reference into directory path + filename.
+
+        Accepts either:
+        - path=directory, name=filename
+        - path=full_file_path, name optional
+        """
+        if not path and not name:
+            return None, None
+
+        raw_path = str(path).strip() if path is not None else ""
+        raw_name = str(name).strip() if name is not None else ""
+
+        # Support callers that accidentally pass full db path as `name`.
+        if not raw_path and raw_name and ("/" in raw_name or "\\" in raw_name):
+            name_as_path = Path(raw_name)
+            if name_as_path.suffix.lower() == ".db":
+                normalized_file = self._normalize_path_value(raw_name)
+                return str(Path(normalized_file).parent), Path(normalized_file).name
+            raw_name = name_as_path.name
+
+        if not raw_path:
+            return None, raw_name or None
+
+        normalized_path = self._normalize_path_value(raw_path)
+        path_obj = Path(normalized_path)
+
+        # If the provided path already looks like a DB file path, split it.
+        if path_obj.suffix.lower() == ".db":
+            return str(path_obj.parent), path_obj.name
+
+        # If path is a directory and name is provided, keep as-is.
+        if raw_name:
+            normalized_name = Path(raw_name).name
+            return str(path_obj), normalized_name
+
+        return str(path_obj), None
         
     def _setup_logger(self) -> logging.Logger:
         """Setup logging for database preferences"""
@@ -51,8 +120,16 @@ class DatabasePreferences:
                 "show_welcome_message": True,
                 "rating_system": "1-5",
                 "auto_tree_sync": False,
-                "matchup_output_format": "standard"
+                "tree_autogen_enabled": True,
+                "lazy_sort_on_expand": False,
+                "lazy_sort_mode": "strict",
+                "sort_value_refresh_mode": "full",
+                "right_column_panel": "notes",
+                "pairing_plan_notes": "",
+                "matchup_output_format": "standard",
+                "perf_logging_enabled": False
             },
+            "strategic_preferences": self._get_default_strategic_preferences(),
             "logging": {
                 "level": "verbose",
                 "enabled": True
@@ -60,18 +137,156 @@ class DatabasePreferences:
             "created": datetime.now().isoformat(),
             "last_modified": datetime.now().isoformat()
         }
+
+    def _get_default_strategic_preferences(self) -> Dict[str, Any]:
+        """Return default strategic/v2 scoring preferences."""
+        return {
+            "cumulative2": {
+                "alpha": 0.80
+            },
+            "confidence2": {
+                "k": 0.85,
+                "u": 12.0
+            },
+            "resistance2": {
+                "beta": 1.0,
+                "gamma": 2.0
+            },
+            "strategic3": {
+                "weights": [0.40, 0.35, 0.25],
+                "rho": 0.20,
+                "lam": 0.30,
+                "round_win_guardrail_strength": "medium",
+                "tie_break_order": "confidence_then_cumulative",
+                "auto_sort_after_generate": True,
+                "auto_sort_toggle_enabled": True,
+                "persistent_memo_enabled": True,
+                "persistent_memo_max_entries": 50000
+            },
+            "bus": {
+                "threshold_policy": "scenario_dependent",
+                "global_threshold": 60,
+                "scenario_thresholds": {},
+                "depth_thresholds": {
+                    "1": 65,
+                    "2": 62,
+                    "3": 58,
+                    "4": 55,
+                    "5": 52
+                }
+            }
+        }
+
+    def _clamp(self, value: Any, min_value: float, max_value: float, default_value: float) -> float:
+        """Convert to float and clamp safely."""
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            numeric = float(default_value)
+        return max(min_value, min(max_value, numeric))
+
+    def get_strategic_preferences(self) -> Dict[str, Any]:
+        """Get validated strategic/v2 preferences merged with defaults."""
+        config = self.load_config()
+        defaults = self._get_default_strategic_preferences()
+        raw = config.get("strategic_preferences", {})
+
+        cumulative2 = raw.get("cumulative2", {})
+        confidence2 = raw.get("confidence2", {})
+        resistance2 = raw.get("resistance2", {})
+        strategic3 = raw.get("strategic3", {})
+        bus = raw.get("bus", {})
+
+        validated = {
+            "cumulative2": {
+                "alpha": self._clamp(cumulative2.get("alpha", defaults["cumulative2"]["alpha"]), 0.0, 1.0, defaults["cumulative2"]["alpha"])
+            },
+            "confidence2": {
+                "k": self._clamp(confidence2.get("k", defaults["confidence2"]["k"]), 0.0, 5.0, defaults["confidence2"]["k"]),
+                "u": self._clamp(confidence2.get("u", defaults["confidence2"]["u"]), 0.0, 100.0, defaults["confidence2"]["u"])
+            },
+            "resistance2": {
+                "beta": self._clamp(resistance2.get("beta", defaults["resistance2"]["beta"]), 0.0, 10.0, defaults["resistance2"]["beta"]),
+                "gamma": self._clamp(resistance2.get("gamma", defaults["resistance2"]["gamma"]), 0.0, 10.0, defaults["resistance2"]["gamma"])
+            },
+            "strategic3": {
+                "weights": strategic3.get("weights", defaults["strategic3"]["weights"]),
+                "rho": self._clamp(strategic3.get("rho", defaults["strategic3"]["rho"]), 0.0, 5.0, defaults["strategic3"]["rho"]),
+                "lam": self._clamp(strategic3.get("lam", defaults["strategic3"]["lam"]), 0.0, 5.0, defaults["strategic3"]["lam"]),
+                "round_win_guardrail_strength": strategic3.get("round_win_guardrail_strength", defaults["strategic3"]["round_win_guardrail_strength"]),
+                "tie_break_order": strategic3.get("tie_break_order", defaults["strategic3"]["tie_break_order"]),
+                "auto_sort_after_generate": bool(strategic3.get("auto_sort_after_generate", defaults["strategic3"]["auto_sort_after_generate"])),
+                "auto_sort_toggle_enabled": bool(strategic3.get("auto_sort_toggle_enabled", defaults["strategic3"]["auto_sort_toggle_enabled"])),
+                "persistent_memo_enabled": bool(strategic3.get("persistent_memo_enabled", defaults["strategic3"]["persistent_memo_enabled"])),
+                "persistent_memo_max_entries": int(self._clamp(strategic3.get("persistent_memo_max_entries", defaults["strategic3"]["persistent_memo_max_entries"]), 1000.0, 250000.0, defaults["strategic3"]["persistent_memo_max_entries"]))
+            },
+            "bus": {
+                "threshold_policy": bus.get("threshold_policy", defaults["bus"]["threshold_policy"]),
+                "global_threshold": int(self._clamp(bus.get("global_threshold", defaults["bus"]["global_threshold"]), 0.0, 100.0, defaults["bus"]["global_threshold"])),
+                "scenario_thresholds": bus.get("scenario_thresholds", defaults["bus"]["scenario_thresholds"]),
+                "depth_thresholds": bus.get("depth_thresholds", defaults["bus"]["depth_thresholds"])
+            }
+        }
+
+        # Ensure strategic weights are a valid 3-value list that sums to 1.
+        weights = validated["strategic3"]["weights"]
+        if not isinstance(weights, list) or len(weights) != 3:
+            weights = defaults["strategic3"]["weights"]
+        safe_weights = [
+            self._clamp(weights[0], 0.0, 1.0, defaults["strategic3"]["weights"][0]),
+            self._clamp(weights[1], 0.0, 1.0, defaults["strategic3"]["weights"][1]),
+            self._clamp(weights[2], 0.0, 1.0, defaults["strategic3"]["weights"][2]),
+        ]
+        total = sum(safe_weights)
+        if total <= 0:
+            safe_weights = defaults["strategic3"]["weights"]
+        else:
+            safe_weights = [w / total for w in safe_weights]
+        validated["strategic3"]["weights"] = safe_weights
+
+        return validated
+
+    def set_strategic_preferences(self, preferences: Dict[str, Any]) -> bool:
+        """Update strategic/v2 preferences and persist config."""
+        config = self.load_config()
+        existing = config.get("strategic_preferences", self._get_default_strategic_preferences())
+
+        # Shallow merge by section for predictable behavior.
+        merged = dict(existing)
+        for section, values in preferences.items():
+            if isinstance(values, dict) and isinstance(merged.get(section), dict):
+                section_dict = dict(merged[section])
+                section_dict.update(values)
+                merged[section] = section_dict
+            else:
+                merged[section] = values
+
+        config["strategic_preferences"] = merged
+        success = self.save_config(config)
+        if success:
+            self.logger.info("Strategic preferences updated")
+        return success
     
-    def load_config(self) -> Dict[str, Any]:
-        """Load configuration from JSON file"""
+    def load_config(self, force_reload: bool = False) -> Dict[str, Any]:
+        """Load configuration from JSON file.
+
+        Uses an in-memory cache by default to avoid repeated startup disk reads.
+        """
+        if not force_reload and self._config_cache is not None:
+            return dict(self._config_cache)
+
         try:
             if not self.config_file.exists():
                 self.logger.info(f"Config file does not exist: {self.config_file}")
-                return self._create_default_config()
+                config = self._create_default_config()
+                self._config_cache = dict(config)
+                return config
             
             with open(self.config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 
             self.logger.debug(f"Config loaded successfully from: {self.config_file}")
+            self._config_cache = dict(config)
             return config
             
         except json.JSONDecodeError as e:
@@ -80,11 +295,15 @@ class DatabasePreferences:
                 f"Configuration file is corrupted.\n"
                 f"Using default settings.\n\n"
                 f"Error: {str(e)}")
-            return self._create_default_config()
+            config = self._create_default_config()
+            self._config_cache = dict(config)
+            return config
             
         except Exception as e:
             self.logger.error(f"Unexpected error loading config: {e}")
-            return self._create_default_config()
+            config = self._create_default_config()
+            self._config_cache = dict(config)
+            return config
     
     def save_config(self, config: Dict[str, Any]) -> bool:
         """Save configuration to JSON file"""
@@ -99,10 +318,12 @@ class DatabasePreferences:
                 json.dump(config, f, indent=2, ensure_ascii=False)
             
             self.logger.debug(f"Config saved successfully to: {self.config_file}")
+            self._config_cache = dict(config)
             return True
             
         except Exception as e:
             self.logger.error(f"Error saving config: {e}")
+            self._invalidate_config_cache()
             messagebox.showerror("Configuration Error", 
                 f"Could not save configuration.\n\n"
                 f"Error: {str(e)}")
@@ -113,8 +334,10 @@ class DatabasePreferences:
         config = self.load_config()
         db_config = config.get("database", {})
         
-        path = db_config.get("path")
-        name = db_config.get("name")
+        path, name = self._normalize_database_reference(
+            db_config.get("path"),
+            db_config.get("name"),
+        )
         
         if path and name:
             self.logger.info(f"Retrieved last database: {name} at {path}")
@@ -126,10 +349,14 @@ class DatabasePreferences:
     def save_database_preference(self, path: str, name: str) -> bool:
         """Save database preference to config"""
         config = self.load_config()
+        normalized_path, normalized_name = self._normalize_database_reference(path, name)
+        if not normalized_path or not normalized_name:
+            self.logger.error(f"Invalid database preference input: path={path}, name={name}")
+            return False
         
         config["database"] = {
-            "path": str(path),
-            "name": str(name),
+            "path": str(normalized_path),
+            "name": str(normalized_name),
             "last_used": datetime.now().isoformat()
         }
         
@@ -144,8 +371,13 @@ class DatabasePreferences:
     def validate_database_exists(self, path: str, name: str) -> bool:
         """Check if database file exists and is accessible"""
         try:
+            normalized_path, normalized_name = self._normalize_database_reference(path, name)
+            if not normalized_path or not normalized_name:
+                self.logger.warning(f"Database validation failed due to invalid reference: {path}/{name}")
+                return False
+
             # Construct full path from directory path and filename
-            full_path = Path(path) / name
+            full_path = Path(normalized_path) / normalized_name
             if full_path.exists() and full_path.is_file():
                 self.logger.debug(f"Database validation successful: {full_path}")
                 return True
@@ -208,6 +440,24 @@ class DatabasePreferences:
         """Get all UI preferences"""
         config = self.load_config()
         return config.get("ui_preferences", {})
+
+    def get_pairing_plan_notes(self) -> str:
+        """Get persisted pairing plan notes."""
+        notes = self.get_ui_preferences().get("pairing_plan_notes", "")
+        return notes if isinstance(notes, str) else ""
+
+    def set_pairing_plan_notes(self, notes: str) -> bool:
+        """Persist pairing plan notes."""
+        config = self.load_config()
+
+        if "ui_preferences" not in config:
+            config["ui_preferences"] = {}
+
+        config["ui_preferences"]["pairing_plan_notes"] = notes if isinstance(notes, str) else ""
+        success = self.save_config(config)
+        if success:
+            self.logger.info("Pairing plan notes updated")
+        return success
     
     def get_auto_tree_sync(self) -> bool:
         """Get auto tree sync preference (default: False)"""
@@ -227,6 +477,25 @@ class DatabasePreferences:
         if success:
             self.logger.info(f"Auto tree sync preference updated: {enabled}")
         
+        return success
+
+
+    def get_tree_autogen_enabled(self) -> bool:
+        """Get tree auto-generation preference (default: False)."""
+        config = self.load_config()
+        return bool(config.get("ui_preferences", {}).get("tree_autogen_enabled", False))
+
+    def set_tree_autogen_enabled(self, enabled: bool) -> bool:
+        """Set tree auto-generation preference."""
+        config = self.load_config()
+
+        if "ui_preferences" not in config:
+            config["ui_preferences"] = {}
+
+        config["ui_preferences"]["tree_autogen_enabled"] = bool(enabled)
+        success = self.save_config(config)
+        if success:
+            self.logger.info(f"Tree auto-generation preference updated: {enabled}")
         return success
     
     def update_ui_preferences(self, preferences: Dict[str, Any]) -> bool:
@@ -269,12 +538,26 @@ class DatabasePreferences:
         try:
             if not self.config_file.exists():
                 return None
+
+            backup_files = self._list_config_backups()
+            if backup_files:
+                newest_backup = backup_files[0]
+                try:
+                    # Avoid creating duplicate backups when config content is unchanged.
+                    if self._file_sha256(newest_backup) == self._file_sha256(self.config_file):
+                        self._prune_config_backups(self.max_config_backups)
+                        self.logger.info(f"Config backup skipped (unchanged): {newest_backup}")
+                        return str(newest_backup)
+                except Exception:
+                    # If any read/compare issue occurs, fall through to normal backup creation.
+                    pass
             
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             backup_file = self.config_file.with_suffix(f'.backup_{timestamp}.json')
             
             import shutil
             shutil.copy2(self.config_file, backup_file)
+            self._prune_config_backups(self.max_config_backups)
             
             self.logger.info(f"Config backup created: {backup_file}")
             return str(backup_file)
@@ -282,3 +565,25 @@ class DatabasePreferences:
         except Exception as e:
             self.logger.error(f"Failed to create config backup: {e}")
             return None
+
+    def _list_config_backups(self) -> list[Path]:
+        pattern = f"{self.config_file.stem}.backup_*.json"
+        candidates = list(self.config_file.parent.glob(pattern))
+        candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+        return candidates
+
+    def _prune_config_backups(self, keep_count: int):
+        keep_count = max(1, int(keep_count))
+        backups = self._list_config_backups()
+        for old_backup in backups[keep_count:]:
+            try:
+                old_backup.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    def _file_sha256(self, path: Path) -> str:
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(65536), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
