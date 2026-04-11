@@ -51,7 +51,15 @@ if (Test-Path $exeSource) {
     Remove-Item $exeSource -Force
 }
 
-& $python -m PyInstaller --noconfirm --clean --onefile --windowed --name $exeName main.py
+# Use .spec file for proper dependency bundling
+$specFile = Join-Path $repoRoot "QTR_Pairing_Process.spec"
+if (Test-Path $specFile) {
+    Write-Host "Building with .spec file for enhanced dependency handling..."
+    & $python -m PyInstaller --noconfirm --clean $specFile
+} else {
+    Write-Host "Building with command-line options (no .spec file found)..."
+    & $python -m PyInstaller --noconfirm --clean --onefile --windowed --name $exeName main.py
+}
 
 if (-not (Test-Path $exeSource)) {
     throw "Build finished without expected artifact: $exeSource"
