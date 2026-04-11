@@ -40,6 +40,7 @@ from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
 from qtr_pairing_process.create_team_dialog import CreateTeamDialog
 from qtr_pairing_process.excel_management.excel_importer import ExcelImporter
 from qtr_pairing_process.excel_management.simple_excel_importer import SimpleExcelImporter
+from qtr_pairing_process.excel_management.simple_excel_exporter import SimpleExcelExporter
 from qtr_pairing_process.grid_data_model import GridDataModel
 from qtr_pairing_process.perf_timer import PerfTimer
 
@@ -3458,6 +3459,10 @@ class UiManager:
                 "borderwidth": 1,
             }
 
+            # Button tier conventions for future Data Management additions:
+            # - primary: high-value frequent actions (green emphasis)
+            # - secondary: standard/default actions
+            # - utility: helper/reference/log actions (blue tint)
             button_tier_styles = {
                 "primary": {"bg": "#dff0d8", "activebackground": "#cdeac0"},
                 "secondary": {},
@@ -3498,6 +3503,7 @@ class UiManager:
                 bg=None,
                 reopen_data_management=False,
             ):
+                # Keep this helper as the single place where tier visuals are applied.
                 button_kwargs = dict(section_button_opts)
                 tier_style = button_tier_styles.get(tier, {})
                 button_kwargs.update(tier_style)
@@ -3549,15 +3555,6 @@ class UiManager:
             title_label = tk.Label(menu_window, text="Data Management", 
                                  font=ui_tokens["title_font"], bg=ui_tokens["title_bg"], pady=10)
             title_label.pack(fill=tk.X, padx=10, pady=(10, 15))
-
-            tk.Label(
-                menu_window,
-                text="Primary = green, Secondary = default, Utility = blue",
-                bg=ui_tokens["dialog_bg"],
-                fg="#4a4a4a",
-                font=ui_tokens["legend_font"],
-                anchor="w",
-            ).pack(fill=tk.X, padx=18, pady=(0, 6))
             
             # Create main frame for 2x2 grid layout
             main_frame = tk.Frame(menu_window, bg=ui_tokens["dialog_bg"])
@@ -3743,11 +3740,58 @@ class UiManager:
                 messagebox.showerror("Data Management", self._operation_failed_error(f"menu action could not be executed: {e}"))
     
     def export_xlsx(self):
-        """Export data to XLSX format - placeholder implementation."""
-        from tkinter import messagebox
+        """Export selected matchup in the active simple XLSX template."""
         try:
-            # TODO: Implement XLSX export functionality
-            messagebox.showinfo("Export XLSX", self._operation_notice_info("XLSX export functionality will be implemented in a future update."))
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".xlsx",
+                filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            )
+            if not file_path:
+                return
+
+            team_1_name = self.combobox_1.get().strip()
+            team_2_name = self.combobox_2.get().strip()
+            if not team_1_name or not team_2_name:
+                messagebox.showerror(
+                    "Export XLSX",
+                    self._operation_failed_error("select both Team 1 and Team 2 before exporting XLSX"),
+                )
+                return
+
+            team1_name, team1_players = self.retrieve_team_data(team_1_name)
+            team2_name, team2_players = self.retrieve_team_data(team_2_name)
+            ratings = self.retrieve_ratings(team1_players, team2_players)
+
+            scenario_id = self.get_scenario_num()
+            if scenario_id not in ratings:
+                messagebox.showerror(
+                    "Export XLSX",
+                    self._operation_failed_error(
+                        f"no ratings available for scenario {scenario_id}; save ratings first and retry"
+                    ),
+                )
+                return
+
+            rating_data = ratings[scenario_id]
+            matrix = []
+            for friendly_player in team1_players:
+                matrix.append(rating_data.get(friendly_player, [0, 0, 0, 0, 0]))
+
+            exporter = SimpleExcelExporter(
+                file_path=file_path,
+                friendly_team_name=team1_name,
+                opponent_team_name=team2_name,
+                friendly_players=team1_players,
+                opponent_players=team2_players,
+                ratings_matrix=matrix,
+            )
+            exporter.execute()
+            messagebox.showinfo(
+                "Export XLSX",
+                self._operation_notice_info(
+                    f"XLSX exported successfully for scenario {scenario_id}:\n{file_path}"
+                ),
+            )
         except Exception as e:
             print(f"Error exporting XLSX: {e}")
             messagebox.showerror("Export XLSX", self._operation_failed_error(f"could not export XLSX: {e}"))
@@ -6047,7 +6091,7 @@ class UiManager:
     def retrieve_ratings(self, team1_players, team2_players):
         ratings = {}
         scenario_id = []        
-        for scenario in range(0,6):
+        for scenario in range(0,7):
             
             scenario_id = scenario
             ratings[scenario_id] = {}
