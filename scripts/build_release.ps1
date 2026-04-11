@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "2.0.0",
+    [string]$Version = "2.1.1",
     [switch]$SkipInstall,
     [switch]$SkipTests
 )
@@ -15,11 +15,13 @@ if (-not (Test-Path $python)) {
     throw "Python executable not found at $python. Create and configure the venv first."
 }
 
-$exeName = "QTR_Pairing_Process_v$Version"
+$baseExeName = "QTR_Pairing_Process"
+$exeName = "${baseExeName}_v$Version"
 $distDir = Join-Path $repoRoot "dist"
 $releaseRoot = Join-Path $repoRoot "release"
 $releaseDir = Join-Path $releaseRoot "v$Version"
 $exeSource = Join-Path $distDir "$exeName.exe"
+$specExeSource = Join-Path $distDir "$baseExeName.exe"
 $exeRelease = Join-Path $releaseDir "$exeName.exe"
 $checksumFile = Join-Path $releaseDir "SHA256SUMS.txt"
 $zipPath = Join-Path $releaseRoot "${exeName}_release_bundle.zip"
@@ -49,6 +51,9 @@ if (-not $SkipTests) {
 if (Test-Path $exeSource) {
     Remove-Item $exeSource -Force
 }
+if (Test-Path $specExeSource) {
+    Remove-Item $specExeSource -Force
+}
 if (Test-Path (Join-Path $repoRoot "build")) {
     Remove-Item (Join-Path $repoRoot "build") -Recurse -Force
 }
@@ -58,6 +63,11 @@ $specFile = Join-Path $repoRoot "QTR_Pairing_Process.spec"
 if (Test-Path $specFile) {
     Write-Host "Building with .spec file for enhanced dependency handling..."
     & $python -m PyInstaller --noconfirm --clean $specFile
+
+    # Normalize spec output name to the versioned release artifact name.
+    if ((-not (Test-Path $exeSource)) -and (Test-Path $specExeSource)) {
+        Move-Item -Path $specExeSource -Destination $exeSource -Force
+    }
 } else {
     Write-Host "Building with command-line options (no .spec file found)..."
     & $python -m PyInstaller --noconfirm --clean --onefile --windowed --name $exeName main.py
