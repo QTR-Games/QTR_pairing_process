@@ -743,7 +743,7 @@ class UiManager:
         self.root.after(1, self.load_grid_data_from_db)
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
-        self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
+        self.create_tooltip(self.scenario_box, "Choose one of the seven active competition scenarios")
 
         self.update_combobox_colors()
         self.init_display_headers()
@@ -5291,7 +5291,15 @@ class UiManager:
         else:
             self._set_combobox_values_if_changed(
                 self.scenario_box,
-                ["1 - Recon", "2 - Battle Lines", "3 - Wolves At Our Heels", "4 - Payload", "5 - Two Fronts", "6 - Invasion"],
+                [
+                    "1 - Trench Warfare",
+                    "2 - Two Fronts",
+                    "3 - Wolves At Our Heels",
+                    "4 - Pressure Point",
+                    "5 - High Stakes",
+                    "6 - Fault Line",
+                    "7 - Payload",
+                ],
             )
 
     def _on_team_box_change_traced(self, *args):
@@ -5552,12 +5560,12 @@ class UiManager:
         if not team_1 or not team_2:
             return
 
-        scenario = self.scenario_box.get()[:1]
-        if scenario == '':
+        scenario_text = self.scenario_box.get().strip()
+        if scenario_text == '':
             self._scenario_change_auto = True
-            self.scenario_box.set("0 - Neutral")
-            scenario = self.scenario_box.get()[:1]
-        scenario_id = int(scenario)
+            self.scenario_box.set(self._scenario_label_for_internal_id(0))
+            scenario_text = self.scenario_box.get().strip()
+        scenario_id = self._scenario_internal_id_from_label(scenario_text)
 
         selection_key = (team_1, team_2, scenario_id)
         if (
@@ -5765,7 +5773,7 @@ class UiManager:
                 "Please select both teams before saving.")
             return
         
-        scenario_id = int(self.scenario_box.get()[:1])
+        scenario_id = self.get_scenario_num()
 
         team_sql_template = "select team_id from teams where team_name='{team_name}'"
         team_1_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_1))
@@ -6265,16 +6273,31 @@ class UiManager:
     #     current_scenario = self.get_scenario_num()
     #     row_lo, row_hi = self.scenario_ranges.get(current_scenario, (1, 6))  # Default to (1, 6) if scenario is not found
     #     if current_scenario < 1:
-    #         print("Scenario Agnostic Pairing...")
+    #         print("Scenario-specific pairing...")
     #     return row_lo, row_hi
 
     def get_scenario_num(self):
-        num_string = self.scenario_box.get()[:1]
-        num = 0
-        if num_string:
-            num = int(num_string)
-            if self.print_output: print(type(num))
+        scenario_text = self.scenario_box.get().strip() if self.scenario_box else ""
+        num = self._scenario_internal_id_from_label(scenario_text)
+        if self.print_output:
+            print(type(num))
         return num
+
+    def _scenario_internal_id_from_label(self, scenario_label: str) -> int:
+        """Map displayed scenario labels (1-7) to internal IDs (0-6)."""
+        if not scenario_label:
+            return 0
+        token = scenario_label.split("-", 1)[0].strip()
+        try:
+            displayed_number = int(token)
+        except ValueError:
+            return 0
+
+        internal_id = displayed_number - 1
+        return min(max(internal_id, 0), max(SCENARIO_MAP.keys()))
+
+    def _scenario_label_for_internal_id(self, scenario_id: int) -> str:
+        return self.scenario_map.get(scenario_id, SCENARIO_MAP.get(scenario_id, "1 - Trench Warfare"))
 
     def validate_grid_data(self):
         """Validate grid data based on current rating system"""
