@@ -74,13 +74,14 @@ def test_simple_xlsx_export_import_roundtrip(tmp_path, monkeypatch):
         friendly_player_id = target_db.query_player_id(friendly_name, imported_friendly_id)
         for col_idx, opponent_name in enumerate(opponent_players):
             opponent_player_id = target_db.query_player_id(opponent_name, imported_opponent_id)
-            rows = target_db.query_sql(
-                f"""
-                SELECT rating FROM ratings
-                WHERE team_1_player_id = {friendly_player_id}
-                  AND team_2_player_id = {opponent_player_id}
-                  AND scenario_id = {scenario_id}
+            rows = target_db.query_sql_params(
                 """
+                SELECT rating FROM ratings
+                WHERE team_1_player_id = ?
+                  AND team_2_player_id = ?
+                  AND scenario_id = ?
+                """,
+                (friendly_player_id, opponent_player_id, scenario_id),
             )
             assert rows
             assert rows[0][0] == ratings_matrix[row_idx][col_idx]

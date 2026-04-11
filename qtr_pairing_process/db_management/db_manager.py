@@ -306,10 +306,7 @@ class DbManager:
         except (ValueError, RuntimeError) as e:
             print(f"Error querying player ID for '{player_name}' in team {team_id}: {e}")
             raise
-        results = self.query_sql(sql)
-        if results and len(results) > 0:
-            return results[0][0]
-        return None
+
 
     def rename_player(self, player_id, team_id, player_name):
         """Rename an existing player in place using secure parameterized query."""
