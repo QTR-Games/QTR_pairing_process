@@ -129,6 +129,7 @@ $manifestContent = @"
 - SHA256SUMS.txt
 - RELEASE_NOTES_v$Version.md
 - USER_GUIDE_v$Version.md
+- ADVANCED_SORTING_GUIDE.md
 
 ## Integrity
 
