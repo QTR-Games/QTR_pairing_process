@@ -3,8 +3,8 @@
 ## Build Metadata
 
 - Version: v2.1.1
-- Build timestamp (UTC): 2026-04-28T12:40:55Z
-- Commit: cd1413a
+- Build timestamp (UTC): 2026-04-28T12:57:43Z
+- Commit: 119f8d1
 - Build host OS: Windows
 - Build script: scripts/build_release.ps1
 
@@ -18,7 +18,7 @@
 
 ## Integrity
 
-SHA256  7117B73779A386F7DC108986BEBFCD012F98650AC8ED5AEE2B98F5B32837323D  QTR_Pairing_Process_v2.1.1.exe
+SHA256  7E19B60EBD3820D86DF6E38BC2B3A36B06B6AEDB600DED426386245AE2B578B0  QTR_Pairing_Process_v2.1.1.exe
 
 ## Reproducible Build Command
 

@@ -41,6 +41,7 @@ if ($setupContent -notmatch 'version\s*=\s*_read_app_version\(\)') {
 }
 
 $exeName = "QTR_Pairing_Process_v$Version"
+$baseExeName = "QTR_Pairing_Process"
 $distDir = Join-Path $repoRoot "dist"
 $releaseRoot = Join-Path $repoRoot "release"
 $releaseDir = Join-Path $releaseRoot "v$Version"
@@ -94,7 +95,8 @@ if (Test-Path $specFile) {
     }
 } else {
     Write-Host "Building with command-line options (no .spec file found)..."
-    & $python -m PyInstaller --noconfirm --clean --onefile --windowed --name $exeName main.py
+    $sqlDataArg = "qtr_pairing_process/db_management/sql;qtr_pairing_process/db_management/sql"
+    & $python -m PyInstaller --noconfirm --clean --onefile --windowed --name $exeName --add-data $sqlDataArg main.py
 }
 
 if (-not (Test-Path $exeSource)) {

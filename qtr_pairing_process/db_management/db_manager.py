@@ -723,7 +723,13 @@ class DbManager:
         return self.delete_comment(player1_id, player2_id, scenario_id)
         
     def create_tables(self):
-        path = 'qtr_pairing_process/db_management/sql'
+        import sys
+        if getattr(sys, 'frozen', False):
+            # Running as compiled exe — SQL files are bundled under _MEIPASS
+            path = os.path.join(sys._MEIPASS, 'qtr_pairing_process', 'db_management', 'sql')
+        else:
+            # Running from source — locate sql/ relative to this file
+            path = os.path.join(os.path.dirname(__file__), 'sql')
         files = os.listdir(path)
 
         for file in files:
