@@ -4,6 +4,7 @@ from os.path import expanduser
 import os
 import json
 import hashlib
+import threading
 
 from qtr_pairing_process.constants import SCENARIO_MAP
 from qtr_pairing_process.secure_db_interface import SecureDBInterface
@@ -17,8 +18,38 @@ class DbManager:
         self.name = name or 'default.db'
         self.logger = get_logger(__name__)
         print(self.path, self.name)
-        self.secure_db = None  # Will be initialized when needed
+        self._secure_db_by_thread = {}
+        self._secure_db_get_calls = 0
+        self._secure_db_cleanup_interval = 128
         self.initialize_db()
+
+    def _cleanup_secure_interface_cache_if_needed(self, force: bool = False):
+        """Bulk-clean stale thread cache entries on a coarse interval.
+
+        REVIEW DECISION (2026-04): We intentionally avoid per-call aggressive
+        cleanup to keep `get_secure_interface` fast on hot paths. Instead, stale
+        thread entries are removed in periodic bulk sweeps.
+        """
+        if not self._secure_db_by_thread:
+            return
+
+        if not force and self._secure_db_get_calls % self._secure_db_cleanup_interval != 0:
+            return
+
+        active_thread_ids = {t.ident for t in threading.enumerate() if t.ident is not None}
+        stale_keys = [key for key in self._secure_db_by_thread if key[0] not in active_thread_ids]
+        if not stale_keys:
+            return
+
+        for key in stale_keys:
+            secure_db = self._secure_db_by_thread.pop(key, None)
+            if secure_db is None:
+                continue
+            try:
+                secure_db.close()
+            except Exception:
+                # Best-effort resource release only.
+                pass
 
     def initialize_db(self):
         os.makedirs(self.path, exist_ok=True)
@@ -128,11 +159,22 @@ class DbManager:
         return default
     
     def get_secure_interface(self):
-        """Get secure database interface for parameterized queries"""
-        if not self.secure_db:
+        """Get a thread-local secure interface for parameterized queries.
+
+        SQLite connections/cursors are bound to their creating thread by default.
+        Caching a single SecureDBInterface globally can therefore fail when
+        background workers reuse a cursor created on the UI thread.
+        """
+        self._secure_db_get_calls += 1
+        self._cleanup_secure_interface_cache_if_needed()
+
+        thread_key = (threading.get_ident(), self.path, self.name)
+        secure_db = self._secure_db_by_thread.get(thread_key)
+        if secure_db is None:
             conn = self.connect_db(self.path, self.name)
-            self.secure_db = SecureDBInterface(conn)
-        return self.secure_db
+            secure_db = SecureDBInterface(conn)
+            self._secure_db_by_thread[thread_key] = secure_db
+        return secure_db
     
     def execute_sql(self, sql, parameters=None):
         with self.connect_db(self.path, self.name) as db_conn:
@@ -158,29 +200,35 @@ class DbManager:
             rows = db_cur.fetchall()
         return rows
     
-    def insert_row(self, value_string, columns, table):
+    def insert_row(self, values, columns, table):
+        # REVIEW DECISION (2026-04): `table` is an internal call-site constant,
+        # never user input. Do not route external/user strings here.
+        placeholders = ','.join(['?'] * len(columns))
         insert_sql = f"""
             INSERT INTO {table}
             ({','.join(columns)})
             VALUES
-            {value_string}
+            ({placeholders})
         """
-        rows_affected = self.execute_sql(insert_sql)
+        rows_affected = self.execute_sql(insert_sql, tuple(values))
         if rows_affected == 0:
             raise ValueError(f'insert_row operation failed for table {table}. No rows were affected.')
 
-    def upsert_row(self, value_string, columns, table, constraint_columns, update_column):
+    def upsert_row(self, values, columns, table, constraint_columns, update_column):
+        # REVIEW DECISION (2026-04): Identifier interpolation here is internal-only
+        # (fixed table/column names from code), not user-controlled data.
+        placeholders = ','.join(['?'] * len(columns))
         upsert_sql = f"""
             INSERT INTO {table}
             ({','.join(columns)})
             VALUES
-            {value_string}
+            ({placeholders})
             ON CONFLICT({','.join(constraint_columns)})
             DO UPDATE SET
             {update_column} = excluded.{update_column}
         """
         # print(f"sql statement: {upsert_sql}")
-        rows_affected = self.execute_sql(upsert_sql)
+        rows_affected = self.execute_sql(upsert_sql, tuple(values))
         if rows_affected == 0:
             raise ValueError(f'upsert_row operation failed for table {table}. No rows were affected.')
 
@@ -348,10 +396,10 @@ class DbManager:
 
         table = 'ratings'
         columns = ['team_1_player_id', 'team_1_id', 'team_2_player_id', 'team_2_id', 'scenario_id', 'rating']
-        value_string = f"({player_id_1}, {team_id_1}, {player_id_2}, {team_id_2}, {scenario_id}, {rating})"
+        values = (player_id_1, team_id_1, player_id_2, team_id_2, scenario_id, rating)
         constraint_columns = ['team_1_player_id', 'team_2_player_id', 'scenario_id']
         update_column = 'rating'
-        self.upsert_row(value_string, columns, table, constraint_columns, update_column)
+        self.upsert_row(values, columns, table, constraint_columns, update_column)
     
     def get_ratings_count(self):
         """Get the total count of ratings in the database"""
@@ -547,30 +595,20 @@ class DbManager:
         if len(comment) > 2000:
             raise ValueError(f'Comment exceeds maximum length of 2000 characters: {len(comment)}')
 
-        table = 'matchup_comments'
-        columns = ['team_1_player_id', 'team_2_player_id', 'scenario_id', 'comment', 'updated_date']
-        
-        # Escape single quotes in comment
-        escaped_comment = comment.replace("'", "''")
-        value_string = f"({player_id_1}, {player_id_2}, {scenario_id}, '{escaped_comment}', CURRENT_TIMESTAMP)"
-        
-        constraint_columns = ['team_1_player_id', 'team_2_player_id', 'scenario_id']
-        update_columns = ['comment', 'updated_date']
-        
-        # Custom upsert for multiple update columns
-        upsert_sql = f"""
-            INSERT INTO {table}
-            ({','.join(columns)})
-            VALUES {value_string}
-            ON CONFLICT({','.join(constraint_columns)})
+        rows_affected = self.execute_sql(
+            """
+            INSERT INTO matchup_comments
+                (team_1_player_id, team_2_player_id, scenario_id, comment, updated_date)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(team_1_player_id, team_2_player_id, scenario_id)
             DO UPDATE SET
                 comment = excluded.comment,
                 updated_date = excluded.updated_date
-        """
-        
-        rows_affected = self.execute_sql(upsert_sql)
+            """,
+            (player_id_1, player_id_2, scenario_id, comment),
+        )
         if rows_affected == 0:
-            raise ValueError(f'upsert_comment operation failed. No rows were affected.')
+            raise ValueError('upsert_comment operation failed. No rows were affected.')
 
     def query_comment(self, player_id_1, player_id_2, scenario_id):
         """
@@ -579,12 +617,14 @@ class DbManager:
         Returns:
             str or None: Comment text if exists, None if no comment
         """
-        sql = f"""
-            SELECT comment 
-            FROM matchup_comments 
-            WHERE team_1_player_id = {player_id_1} AND team_2_player_id = {player_id_2} AND scenario_id = {scenario_id}
-        """
-        results = self.query_sql(sql)
+        results = self.query_sql_params(
+            """
+            SELECT comment
+            FROM matchup_comments
+            WHERE team_1_player_id = ? AND team_2_player_id = ? AND scenario_id = ?
+            """,
+            (player_id_1, player_id_2, scenario_id),
+        )
         if results and len(results) > 0:
             return results[0][0]
         return None
@@ -596,7 +636,8 @@ class DbManager:
         Returns:
             dict: {(friendly_player_name, opponent_player_name): comment}
         """
-        sql = f"""
+        results = self.query_sql_params(
+            """
             SELECT 
                 p1.player_name as friendly_player,
                 p2.player_name as opponent_player,
@@ -604,9 +645,10 @@ class DbManager:
             FROM matchup_comments mc
             JOIN players p1 ON mc.team_1_player_id = p1.player_id
             JOIN players p2 ON mc.team_2_player_id = p2.player_id
-            WHERE p1.team_id = {team_1_id} AND p2.team_id = {team_2_id} AND mc.scenario_id = {scenario_id}
-        """
-        results = self.query_sql(sql)
+            WHERE p1.team_id = ? AND p2.team_id = ? AND mc.scenario_id = ?
+            """,
+            (team_1_id, team_2_id, scenario_id),
+        )
         
         comments_dict = {}
         for friendly_player, opponent_player, comment in results:
@@ -616,11 +658,13 @@ class DbManager:
 
     def delete_comment(self, player_id_1, player_id_2, scenario_id):
         """Delete a specific matchup comment."""
-        sql = f"""
-            DELETE FROM matchup_comments 
-            WHERE team_1_player_id = {player_id_1} AND team_2_player_id = {player_id_2} AND scenario_id = {scenario_id}
-        """
-        self.execute_sql(sql)
+        self.execute_sql(
+            """
+            DELETE FROM matchup_comments
+            WHERE team_1_player_id = ? AND team_2_player_id = ? AND scenario_id = ?
+            """,
+            (player_id_1, player_id_2, scenario_id),
+        )
 
     def get_comment_statistics(self):
         """Get statistics about comment usage."""

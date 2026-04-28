@@ -35,6 +35,12 @@ Based on user feedback, we're particularly interested in contributions to:
 
 ## Code Review Process
 
+Before starting detailed review (manual or Copilot-assisted), check
+**[Code Review Decisions Log](docs/CODE_REVIEW_DECISIONS.md)** for settled
+decisions and accepted risk tradeoffs. If a topic is listed there, do not
+re-raise it unless new evidence or changed requirements invalidate the prior
+decision.
+
 1. **Automated Checks**: Ensure tests pass and code follows style guidelines
 2. **Technical Review**: Maintainers review code quality, architecture, and functionality
 3. **Documentation Review**: Verify documentation is complete and accurate

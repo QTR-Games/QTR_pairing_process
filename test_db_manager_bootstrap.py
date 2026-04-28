@@ -2,6 +2,7 @@
 """Regression tests for DB bootstrap and per-DB rating metadata."""
 
 import sqlite3
+import threading
 
 from qtr_pairing_process.db_management.db_manager import DbManager
 
@@ -72,3 +73,59 @@ def test_normalize_ratings_to_1_3_clamps_existing_values(tmp_path):
     assert updated_rows > 0
     min_max = manager.query_sql("SELECT MIN(rating), MAX(rating) FROM ratings")[0]
     assert min_max == (3, 3)
+
+
+def test_secure_interface_is_thread_local_for_query_team_id(tmp_path):
+    db_name = "thread_local_secure_interface.db"
+    manager = DbManager(path=str(tmp_path), name=db_name)
+
+    manager.upsert_team("Thread Team")
+    main_interface = manager.get_secure_interface()
+
+    result = {}
+
+    def _worker():
+        try:
+            worker_interface = manager.get_secure_interface()
+            result["thread_interface_id"] = id(worker_interface)
+            result["team_id"] = manager.query_team_id("Thread Team")
+        except Exception as exc:  # pragma: no cover - this is the failure path we guard against
+            result["error"] = str(exc)
+
+    thread = threading.Thread(target=_worker)
+    thread.start()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert "error" not in result
+    assert result.get("team_id") is not None
+    assert result.get("thread_interface_id") != id(main_interface)
+
+
+def test_secure_interface_cache_bulk_cleanup_removes_dead_threads(tmp_path):
+    # REVIEW DECISION (2026-04): cleanup runs in periodic bulk sweeps for speed,
+    # not aggressively on every access.
+    db_name = "thread_local_secure_interface_cleanup.db"
+    manager = DbManager(path=str(tmp_path), name=db_name)
+    manager._secure_db_cleanup_interval = 1
+
+    manager.upsert_team("Cleanup Team")
+    manager.get_secure_interface()
+
+    worker_meta = {}
+
+    def _worker():
+        manager.get_secure_interface()
+        worker_meta["tid"] = threading.get_ident()
+
+    worker = threading.Thread(target=_worker)
+    worker.start()
+    worker.join(timeout=5)
+
+    assert not worker.is_alive()
+    assert "tid" in worker_meta
+
+    manager.get_secure_interface()
+
+    cache_keys = list(manager._secure_db_by_thread.keys())
+    assert all(key[0] != worker_meta["tid"] for key in cache_keys)

@@ -21,7 +21,9 @@ This guide covers the main workflow and key controls in the app.
 
 ## 3. Rating matrix behavior
 
-- Ratings are usually on a 1 to 5 scale.
+- Ratings use the active database rating system (supported: 1-3, 1-5, 1-10).
+- Template/import files may therefore include values above 5 when a higher-range
+  system (for example 1-10) is active.
 - Header cells hold player names.
 - Matchup cells hold numeric ratings.
 - Row/column lock checkboxes affect calc guidance and round context.
@@ -76,13 +78,52 @@ Use Data Management for:
 - Tree cache clear actions
 - Opening both guides
 
-## 9. Saving and persistence
+## 9. Keyboard shortcuts
+
+Core workflow:
+
+- Ctrl+S: Save Grid to database.
+- Ctrl+Z: Undo last shortcut-tracked calculation/data-management action (with confirmation).
+- Ctrl+Y: Redo last undone shortcut action.
+- Ctrl+R: Recalculate scenario values immediately.
+- Ctrl+Enter: Generate Combinations.
+- Ctrl+F: Flip Grid perspective.
+- Ctrl+G: Focus first rating cell (top-left matchup cell) for rapid data entry.
+
+Sort modes:
+
+- Ctrl+1: Strategic Fusion.
+- Ctrl+2: Counter Pick.
+- Ctrl+3: Highest Confidence.
+- Ctrl+4: Cumulative Sort.
+
+Clipboard/grid actions:
+
+- Ctrl+C: Copy current 5x5 grid values to clipboard.
+- Ctrl+V: Paste 5x5 grid values from clipboard.
+
+Data management and utilities:
+
+- Ctrl+D: Open Data Management menu.
+- Ctrl+I: Open comment editor for currently focused matchup cell.
+- Ctrl+Shift+R: Clear all tree cache.
+- Ctrl+Shift+T: Open Import Templates popup.
+- Ctrl+Shift+L: Open import logs folder.
+- Ctrl+Shift+S: Export CSV.
+- Ctrl+Shift+X: Export XLSX.
+
+Team and help:
+
+- Ctrl+N: New Team.
+- Ctrl+H: Open Full User Guide.
+
+## 10. Saving and persistence
 
 - Save Grid writes current friendly-view ratings to DB.
 - Team/scenario selections and preferences are persisted.
 - Generated tree cache persists for faster reloads.
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 If ordering looks incorrect:
 
@@ -97,7 +138,7 @@ If calc guidance seems stale:
 2. Refresh UI from Data Management.
 3. Regenerate combinations.
 
-## 11. Recommended match-day routine
+## 12. Recommended match-day routine
 
 1. Pre-load team/scenario and generate trees.
 2. Validate sort mode aligns with round objective.

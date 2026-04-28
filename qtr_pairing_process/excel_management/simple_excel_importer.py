@@ -20,10 +20,49 @@ class SimpleExcelImporter:
       - Rows N+2 to N+6: Empty in A, friendly player name in B, ratings in C-G
     """
     
-    def __init__(self, db_manager: DbManager, file_path: str, scenario_id: int = 0):
+    def __init__(self, db_manager: DbManager, file_path: str, scenario_id: int = 0, rating_min: Optional[int] = None, rating_max: Optional[int] = None):
         self.db_manager = db_manager
         self.file_path = file_path
         self.scenario_id = scenario_id  # Default to "Neutral" scenario
+
+        # Determine rating bounds, preferring explicitly provided values,
+        # then database configuration, and finally hardcoded defaults.
+        if rating_min is None or rating_max is None:
+            resolved_min = None
+            resolved_max = None
+
+            # Try to obtain rating system from the database manager if available.
+            get_rating_system = getattr(self.db_manager, "get_rating_system", None)
+            if callable(get_rating_system):
+                try:
+                    rating_system = get_rating_system()
+                    # Support common shapes: (min, max), {"min": ..., "max": ...}, etc.
+                    if isinstance(rating_system, (list, tuple)) and len(rating_system) >= 2:
+                        resolved_min, resolved_max = rating_system[0], rating_system[1]
+                    elif isinstance(rating_system, dict):
+                        resolved_min = rating_system.get("min") or rating_system.get("rating_min") or rating_system.get("min_rating")
+                        resolved_max = rating_system.get("max") or rating_system.get("rating_max") or rating_system.get("max_rating")
+                    else:
+                        # Fallback for object-like rating_system with attributes
+                        resolved_min = getattr(rating_system, "min", None) or getattr(rating_system, "rating_min", None) or getattr(rating_system, "min_rating", None)
+                        resolved_max = getattr(rating_system, "max", None) or getattr(rating_system, "rating_max", None) or getattr(rating_system, "max_rating", None)
+                except Exception:
+                    # If anything goes wrong while querying the DB, fall back to defaults below.
+                    resolved_min, resolved_max = None, None
+
+            if rating_min is None:
+                rating_min = resolved_min if resolved_min is not None else 1
+            if rating_max is None:
+                rating_max = resolved_max if resolved_max is not None else 5
+        try:
+            self.rating_min = int(rating_min)
+            self.rating_max = int(rating_max)
+        except (TypeError, ValueError):
+            self.rating_min = 1
+            self.rating_max = 5
+        if self.rating_max < self.rating_min:
+            self.rating_min, self.rating_max = self.rating_max, self.rating_min
+        self.default_rating = int(round((self.rating_min + self.rating_max) / 2.0))
         self.workbook: Optional[Workbook] = None
         self.sheet: Optional[Worksheet] = None
         self.friendly_team_name: Optional[str] = None
@@ -159,21 +198,21 @@ class SimpleExcelImporter:
                         
                     rating_cell = self.sheet[f'{col}{data_row}'].value
                     
-                    # Convert rating to integer, default to 3 if invalid
+                    # Convert rating to integer, default to midpoint if invalid
                     try:
                         if rating_cell is None:
-                            rating = 3
+                            rating = self.default_rating
                         elif isinstance(rating_cell, (int, float)):
                             rating = int(rating_cell)
                         else:
                             rating = int(str(rating_cell))
                             
                         # Validate rating range
-                        if rating < 1 or rating > 5:
-                            rating = 3
+                        if rating < self.rating_min or rating > self.rating_max:
+                            rating = self.default_rating
                             
                     except (ValueError, TypeError):
-                        rating = 3  # Default to neutral
+                        rating = self.default_rating  # Default to neutral midpoint
                         
                     player_ratings.append(rating)
                     
@@ -229,13 +268,19 @@ class SimpleExcelImporter:
     def save_team_to_database(self, team_data):
         """Save team data and ratings to database"""
         try:
-            # Create or update friendly team
-            friendly_team_id = self.db_manager.upsert_team(self.friendly_team_name)
-            self.db_manager.upsert_and_validate_players(friendly_team_id, team_data['friendly_players'])
-            
-            # Create or update opponent team  
-            opponent_team_id = self.db_manager.upsert_team(team_data['opponent_team_name'])
-            self.db_manager.upsert_and_validate_players(opponent_team_id, team_data['opponent_players'])
+            # Anchor matchup orientation to the friendly team declared in A1.
+            friendly_team_id = self._resolve_or_create_matchup_team(
+                self.friendly_team_name,
+                team_data['friendly_players'],
+                team_role="friendly",
+            )
+
+            opponent_team_id = self._resolve_or_create_matchup_team(
+                team_data['opponent_team_name'],
+                team_data['opponent_players'],
+                team_role="opponent",
+                friendly_team_name=self.friendly_team_name,
+            )
             
             # Get player IDs for ratings
             friendly_player_ids = {}
@@ -243,7 +288,27 @@ class SimpleExcelImporter:
             
             for i, player_name in enumerate(team_data['friendly_players']):
                 player_id = self.db_manager.query_player_id(player_name, friendly_team_id)
-                friendly_player_ids[i] = player_id
+        """
+        Resolve a team for import, creating it when missing, then validate roster.
+
+        Parameters
+        ----------
+        team_name : str
+            Name of the team to resolve or create.
+        player_names : List[str]
+            List of player names that should belong to this team.
+        team_role : str
+            Role of the team in the matchup. Must be either "friendly" or "opponent".
+            This controls opponent-specific logging when a missing team is created.
+        friendly_team_name : Optional[str]
+            Name of the friendly team, used only for logging when creating an
+            opponent team.
+        """
+        valid_roles = ("friendly", "opponent")
+        if team_role not in valid_roles:
+            raise ValueError(
+                f"Invalid team_role '{team_role}'. Expected one of {valid_roles}."
+            )
                 
             for j, player_name in enumerate(team_data['opponent_players']):
                 player_id = self.db_manager.query_player_id(player_name, opponent_team_id)
@@ -265,6 +330,28 @@ class SimpleExcelImporter:
             
         except Exception as e:
             raise Exception(f"Database error for team {team_data['opponent_team_name']}: {str(e)}")
+
+    def _resolve_or_create_matchup_team(
+        self,
+        team_name: str,
+        player_names: List[str],
+        team_role: str,
+        friendly_team_name: Optional[str] = None,
+    ) -> int:
+        """Resolve a team for import, creating it when missing, then validate roster."""
+        existing_team_id = self.db_manager.query_team_id(team_name)
+        if existing_team_id is None:
+            team_id = self.db_manager.upsert_team(team_name)
+            if team_role == "opponent" and friendly_team_name:
+                print(
+                    f"Created missing opponent team '{team_name}' for matchup against "
+                    f"friendly team '{friendly_team_name}'."
+                )
+        else:
+            team_id = existing_team_id
+
+        self.db_manager.upsert_and_validate_players(team_id, player_names)
+        return team_id
             
     def execute_import(self):
         """Execute the complete import process"""

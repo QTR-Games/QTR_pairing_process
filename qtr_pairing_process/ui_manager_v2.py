@@ -9,8 +9,11 @@ import sqlite3
 import time
 import threading
 import hashlib
+import io
+import re
 import traceback
 import subprocess
+import zipfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple, cast
@@ -359,6 +362,7 @@ class UiManager:
             # set key bindings
             self.root.bind('<Escape>', lambda event: self.root.quit())
             self.root.bind('<Return>', lambda event: self.on_generate_combinations())
+            self._bind_keyboard_shortcuts()
             self.root.bind('<FocusIn>', lambda event: self._on_root_focus_in())
             self.root.bind('<FocusOut>', lambda event: self._hide_all_popups(), add='+')
             self.root.bind('<Button-1>', self._on_root_click_for_popups, add='+')
@@ -494,6 +498,9 @@ class UiManager:
         # Clipboard paste helpers
         self._paste_5x5_button = None
         self._top_left_rating_entry = None
+        self._focused_rating_cell = None
+        self._shortcut_undo_stack = []
+        self._shortcut_redo_stack = []
 
         # Header name tooltip state
         self._name_tooltip_window = None
@@ -669,23 +676,14 @@ class UiManager:
         # Initialize sorting state tracking
         self.active_sort_mode = None
 
-        self.cumulative_button = tk.Button(
+        self.strategic_button = tk.Button(
             self.sort_controls_row_frame,
-            text="Cumulative\nSort",
-            command=self.toggle_cumulative_sort,
+            text="Strategic\nFusion",
+            command=self.toggle_strategic_sort,
             width=16,
             font=control_font,
         )
-        self.cumulative_button.pack(side=tk.LEFT, padx=pad_md)
-
-        self.confidence_button = tk.Button(
-            self.sort_controls_row_frame,
-            text="Highest\nConfidence",
-            command=self.toggle_confidence_sort,
-            width=16,
-            font=control_font,
-        )
-        self.confidence_button.pack(side=tk.LEFT, padx=pad_md)
+        self.strategic_button.pack(side=tk.LEFT, padx=pad_md)
 
         self.counter_button = tk.Button(
             self.sort_controls_row_frame,
@@ -696,14 +694,23 @@ class UiManager:
         )
         self.counter_button.pack(side=tk.LEFT, padx=pad_md)
 
-        self.strategic_button = tk.Button(
+        self.confidence_button = tk.Button(
             self.sort_controls_row_frame,
-            text="Strategic\nFusion",
-            command=self.toggle_strategic_sort,
+            text="Highest\nConfidence",
+            command=self.toggle_confidence_sort,
             width=16,
             font=control_font,
         )
-        self.strategic_button.pack(side=tk.LEFT, padx=pad_md)
+        self.confidence_button.pack(side=tk.LEFT, padx=pad_md)
+
+        self.cumulative_button = tk.Button(
+            self.sort_controls_row_frame,
+            text="Cumulative\nSort",
+            command=self.toggle_cumulative_sort,
+            width=16,
+            font=control_font,
+        )
+        self.cumulative_button.pack(side=tk.LEFT, padx=pad_md)
 
         self.sort_guidance_label = tk.Label(
             self.sort_controls_row_frame,
@@ -881,6 +888,11 @@ class UiManager:
                     # We'll use FocusOut event for manual synchronization
                     entry.bind("<FocusOut>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
                     entry.bind("<Return>", lambda event, row=r, col=c: self._sync_entry_to_model(row, col, event.widget))
+
+                    if r > 0 and c > 0:
+                        entry.bind("<FocusIn>", lambda event, row=r, col=c: self._set_focused_rating_cell(row, col), add='+')
+                        entry.bind("<Tab>", lambda event, row=r, col=c: self._on_rating_cell_tab(event, row, col), add='+')
+                        entry.bind("<Shift-Tab>", lambda event, row=r, col=c: self._on_rating_cell_shift_tab(event, row, col), add='+')
 
                     if (r == 0 and c > 0) or (c == 0 and r > 0):
                         entry.bind(
@@ -2552,6 +2564,286 @@ class UiManager:
 
         return grid, None
 
+    def _copy_grid_values_to_clipboard(self):
+        rows = []
+        for r in range(1, 6):
+            row_values = []
+            for c in range(1, 6):
+                value = self.grid_data_model.get_rating(r, c)
+                if value is None or value == "":
+                    row_values.append("0")
+                else:
+                    row_values.append(str(value))
+            rows.append("\t".join(row_values))
+
+        payload = "\n".join(rows)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(payload)
+        self._refresh_paste_button_state()
+
+    def _bind_keyboard_shortcuts(self):
+        # Lowercase and uppercase variants improve reliability across keyboard states.
+        bindings = [
+            ("<Control-s>", self._on_shortcut_save_grid),
+            ("<Control-S>", self._on_shortcut_save_grid),
+            ("<Control-Shift-s>", self._on_shortcut_export_csv),
+            ("<Control-Shift-S>", self._on_shortcut_export_csv),
+            ("<Control-d>", self._on_shortcut_open_data_management),
+            ("<Control-D>", self._on_shortcut_open_data_management),
+            ("<Control-i>", self._on_shortcut_open_comment_editor),
+            ("<Control-I>", self._on_shortcut_open_comment_editor),
+            ("<Control-Return>", self._on_shortcut_generate_combinations),
+            ("<Control-KP_Enter>", self._on_shortcut_generate_combinations),
+            ("<Control-z>", self._on_shortcut_undo),
+            ("<Control-Z>", self._on_shortcut_undo),
+            ("<Control-y>", self._on_shortcut_redo),
+            ("<Control-Y>", self._on_shortcut_redo),
+            ("<Control-r>", self._on_shortcut_recalculate_now),
+            ("<Control-R>", self._on_shortcut_recalculate_now),
+            ("<Control-Shift-r>", self._on_shortcut_clear_all_tree_cache),
+            ("<Control-Shift-R>", self._on_shortcut_clear_all_tree_cache),
+            ("<Control-Key-1>", self._on_shortcut_strategic_sort),
+            ("<Control-Key-2>", self._on_shortcut_counter_sort),
+            ("<Control-Key-3>", self._on_shortcut_confidence_sort),
+            ("<Control-Key-4>", self._on_shortcut_cumulative_sort),
+            ("<Control-c>", self._on_shortcut_copy_grid),
+            ("<Control-C>", self._on_shortcut_copy_grid),
+            ("<Control-v>", self._on_shortcut_paste_5x5),
+            ("<Control-V>", self._on_shortcut_paste_5x5),
+            ("<Control-f>", self._on_shortcut_flip_grid),
+            ("<Control-F>", self._on_shortcut_flip_grid),
+            ("<Control-g>", self._on_shortcut_focus_first_rating_cell),
+            ("<Control-G>", self._on_shortcut_focus_first_rating_cell),
+            ("<Control-Shift-t>", self._on_shortcut_templates),
+            ("<Control-Shift-T>", self._on_shortcut_templates),
+            ("<Control-Shift-l>", self._on_shortcut_open_logs_folder),
+            ("<Control-Shift-L>", self._on_shortcut_open_logs_folder),
+            ("<Control-Shift-x>", self._on_shortcut_export_xlsx),
+            ("<Control-Shift-X>", self._on_shortcut_export_xlsx),
+            ("<Control-n>", self._on_shortcut_new_team),
+            ("<Control-N>", self._on_shortcut_new_team),
+            ("<Control-h>", self._on_shortcut_help_guide),
+            ("<Control-H>", self._on_shortcut_help_guide),
+        ]
+        for sequence, callback in bindings:
+            self.root.bind_all(sequence, callback)
+
+    def _on_shortcut_save_grid(self, _event=None):
+        self.save_grid_data_to_db()
+        return "break"
+
+    def _on_shortcut_open_data_management(self, _event=None):
+        self.show_data_management_menu()
+        return "break"
+
+    def _on_shortcut_open_comment_editor(self, _event=None):
+        if not self._focused_rating_cell:
+            return "break"
+        row, col = self._focused_rating_cell
+        if row < 1 or col < 1:
+            return "break"
+        self._open_comment_editor_for_cell(row, col)
+        return "break"
+
+    def _on_shortcut_export_csv(self, _event=None):
+        self.export_csvs()
+        return "break"
+
+    def _on_shortcut_generate_combinations(self, _event=None):
+        self.on_generate_combinations()
+        return "break"
+
+    def _on_shortcut_recalculate_now(self, _event=None):
+        previous_mode = self.active_sort_mode
+        self._schedule_scenario_calculations(immediate=True)
+        self._register_shortcut_action(
+            action_label="Recalculate scenario values",
+            category="calculation",
+            undo_fn=lambda mode=previous_mode: self._restore_sort_mode(mode),
+            redo_fn=lambda: self._schedule_scenario_calculations(immediate=True),
+        )
+        return "break"
+
+    def _on_shortcut_clear_all_tree_cache(self, _event=None):
+        self.clear_generated_tree_cache_all_matchups()
+        return "break"
+
+    def _on_shortcut_strategic_sort(self, _event=None):
+        previous_mode = self.active_sort_mode
+        self.toggle_strategic_sort()
+        self._register_sort_toggle_action(previous_mode)
+        return "break"
+
+    def _on_shortcut_counter_sort(self, _event=None):
+        previous_mode = self.active_sort_mode
+        self.toggle_counter_sort()
+        self._register_sort_toggle_action(previous_mode)
+        return "break"
+
+    def _on_shortcut_confidence_sort(self, _event=None):
+        previous_mode = self.active_sort_mode
+        self.toggle_confidence_sort()
+        self._register_sort_toggle_action(previous_mode)
+        return "break"
+
+    def _on_shortcut_cumulative_sort(self, _event=None):
+        previous_mode = self.active_sort_mode
+        self.toggle_cumulative_sort()
+        self._register_sort_toggle_action(previous_mode)
+        return "break"
+
+    def _on_shortcut_copy_grid(self, _event=None):
+        self._copy_grid_values_to_clipboard()
+        return "break"
+
+    def _on_shortcut_paste_5x5(self, _event=None):
+        self._on_paste_5x5_button()
+        return "break"
+
+    def _on_shortcut_flip_grid(self, _event=None):
+        previous_state = bool(self.grid_is_flipped)
+        self.flip_grid_perspective()
+        self._register_shortcut_action(
+            action_label="Flip Grid perspective",
+            category="data_management",
+            undo_fn=lambda state=previous_state: self._restore_flip_state(state),
+            redo_fn=lambda state=(not previous_state): self._restore_flip_state(state),
+        )
+        return "break"
+
+    def _on_shortcut_focus_first_rating_cell(self, _event=None):
+        entry = getattr(self, "_top_left_rating_entry", None)
+        if entry is not None:
+            entry.focus_set()
+            try:
+                entry.selection_range(0, tk.END)
+            except tk.TclError:
+                pass
+        return "break"
+
+    def _on_shortcut_templates(self, _event=None):
+        self.show_import_templates_popup()
+        return "break"
+
+    def _on_shortcut_open_logs_folder(self, _event=None):
+        self.open_import_logs_folder()
+        return "break"
+
+    def _on_shortcut_export_xlsx(self, _event=None):
+        self.export_xlsx()
+        return "break"
+
+    def _on_shortcut_new_team(self, _event=None):
+        self.on_create_team()
+        return "break"
+
+    def _on_shortcut_help_guide(self, _event=None):
+        self.open_full_user_guide()
+        return "break"
+
+    def _on_shortcut_undo(self, _event=None):
+        if not self._shortcut_undo_stack:
+            return "break"
+        action = self._shortcut_undo_stack[-1]
+        category = action.get("category", "")
+        label = action.get("label", "last action")
+        if category in {"calculation", "data_management"}:
+            confirmed = messagebox.askyesno(
+                "Confirm Undo",
+                f"This will revert {label}.\nAre you sure?",
+            )
+            if not confirmed:
+                return "break"
+
+        action = self._shortcut_undo_stack.pop()
+        action["undo"]()
+        self._shortcut_redo_stack.append(action)
+        return "break"
+
+    def _on_shortcut_redo(self, _event=None):
+        if not self._shortcut_redo_stack:
+            return "break"
+        action = self._shortcut_redo_stack.pop()
+        action["redo"]()
+        self._shortcut_undo_stack.append(action)
+        return "break"
+
+    def _register_shortcut_action(self, action_label: str, category: str, undo_fn, redo_fn):
+        self._shortcut_undo_stack.append(
+            {
+                "label": action_label,
+                "category": category,
+                "undo": undo_fn,
+                "redo": redo_fn,
+            }
+        )
+        self._shortcut_redo_stack.clear()
+
+    def _register_sort_toggle_action(self, previous_mode):
+        current_mode = self.active_sort_mode
+        if current_mode == previous_mode:
+            return
+        self._register_shortcut_action(
+            action_label="sort mode change",
+            category="calculation",
+            undo_fn=lambda mode=previous_mode: self._restore_sort_mode(mode),
+            redo_fn=lambda mode=current_mode: self._restore_sort_mode(mode),
+        )
+
+    def _restore_sort_mode(self, mode):
+        if mode == "strategic3":
+            self.sort_by_strategic()
+        elif mode == "resistance":
+            self.sort_by_counter_resistance()
+        elif mode == "confidence":
+            self.sort_by_confidence()
+        elif mode == "cumulative":
+            self.sort_by_cumulative()
+        else:
+            self.unsort_tree()
+
+    def _restore_flip_state(self, target_state: bool):
+        if bool(self.grid_is_flipped) != bool(target_state):
+            self.flip_grid_perspective()
+
+    def _set_focused_rating_cell(self, row: int, col: int):
+        if row > 0 and col > 0:
+            self._focused_rating_cell = (row, col)
+
+    def _on_rating_cell_tab(self, event, row: int, col: int):
+        self._sync_entry_to_model(row, col, event.widget)
+        if col < 5:
+            next_row, next_col = row, col + 1
+        else:
+            next_row, next_col = (row + 1, 1) if row < 5 else (1, 1)
+
+        target = self.grid_widgets[next_row][next_col]
+        if target is not None:
+            target.focus_set()
+            try:
+                target.selection_range(0, tk.END)
+            except tk.TclError:
+                pass
+            self._set_focused_rating_cell(next_row, next_col)
+        return "break"
+
+    def _on_rating_cell_shift_tab(self, event, row: int, col: int):
+        self._sync_entry_to_model(row, col, event.widget)
+        if col > 1:
+            prev_row, prev_col = row, col - 1
+        else:
+            prev_row, prev_col = (row - 1, 5) if row > 1 else (5, 5)
+
+        target = self.grid_widgets[prev_row][prev_col]
+        if target is not None:
+            target.focus_set()
+            try:
+                target.selection_range(0, tk.END)
+            except tk.TclError:
+                pass
+            self._set_focused_rating_cell(prev_row, prev_col)
+        return "break"
+
     def _refresh_paste_button_state(self):
         if not self._paste_5x5_button:
             return
@@ -2564,6 +2856,9 @@ class UiManager:
             self._paste_5x5_button.config(state=tk.DISABLED)
 
     def _apply_5x5_grid(self, grid: List[List[int]]):
+        before_snapshot = self.grid_data_model.get_state_snapshot()
+        before_dirty = bool(self._grid_dirty)
+
         self.grid_data_model.begin_batch()
         for r in range(1, 6):
             for c in range(1, 6):
@@ -2571,6 +2866,20 @@ class UiManager:
         self.grid_data_model.end_batch()
         self._schedule_scenario_calculations()
         self._set_grid_dirty(True)
+
+        after_snapshot = self.grid_data_model.get_state_snapshot()
+        after_dirty = bool(self._grid_dirty)
+        self._register_shortcut_action(
+            action_label="Paste 5x5 grid values",
+            category="data_management",
+            undo_fn=lambda snap=before_snapshot, dirty=before_dirty: self._restore_grid_snapshot(snap, dirty),
+            redo_fn=lambda snap=after_snapshot, dirty=after_dirty: self._restore_grid_snapshot(snap, dirty),
+        )
+
+    def _restore_grid_snapshot(self, snapshot, dirty_state: bool):
+        self.grid_data_model.restore_state_snapshot(snapshot, notify=True)
+        self._set_grid_dirty(dirty_state)
+        self._schedule_scenario_calculations(immediate=True)
 
     def _on_paste_5x5_button(self):
         clipboard_text = self._read_clipboard_text() or ""
@@ -3589,6 +3898,7 @@ class UiManager:
             add_menu_button(import_export_body, "Export Individual Ratings", self.export_individual_player_ratings, tier="primary", bg="#e6f2ff", reopen_data_management=True)
             add_menu_button(import_export_body, "Import Individual Ratings", self.import_individual_player_ratings, tier="primary", bg="#e6f2ff", reopen_data_management=True)
             add_menu_button(import_export_body, "Bulk Import Player Files", self.bulk_import_individual_player_ratings, tier="primary", bg="#e6f2ff", reopen_data_management=True)
+            add_menu_button(import_export_body, "Import Names Only", self.import_names_only_csv, tier="primary", bg="#e6f2ff", reopen_data_management=True)
             
             # TOP RIGHT: Data Management section
             data_mgmt_body = create_section(
@@ -3642,6 +3952,7 @@ class UiManager:
             add_menu_button(team_mgmt_body, "Create Team", self.on_create_team, tier="primary", reopen_data_management=True)
             add_menu_button(team_mgmt_body, "Modify Team", self.on_modify_team, tier="primary", reopen_data_management=True)
             add_menu_button(team_mgmt_body, "Delete Team", self.on_delete_team, tier="secondary", reopen_data_management=True)
+            add_menu_button(team_mgmt_body, "Import Templates", self.show_import_templates_popup, tier="utility", reopen_data_management=True)
             
             # BOTTOM RIGHT: Database section
             database_body = create_section(
@@ -3800,6 +4111,7 @@ class UiManager:
                 ),
             )
         except Exception as e:
+            self.logger.exception("XLSX export failed")
             print(f"Error exporting XLSX: {e}")
             messagebox.showerror("Export XLSX", self._operation_failed_error(f"could not export XLSX: {e}"))
 
@@ -4040,7 +4352,10 @@ class UiManager:
                 payload = self.db_manager.export_individual_player_ratings(friendly_team_id, source_player_id)
                 rows = payload.get("rows", [])
 
-                default_name = f"{friendly_team_name}_{source_player_name}_player_ratings_export_v1.csv".replace(" ", "_")
+                default_name = (
+                    f"{self._safe_export_filename_token(friendly_team_name)}_"
+                    f"{self._safe_export_filename_token(source_player_name)}_player_ratings_export_v1.csv"
+                )
                 file_path = filedialog.asksaveasfilename(
                     title="Export Individual Player Ratings",
                     initialfile=default_name,
@@ -4131,6 +4446,56 @@ class UiManager:
             raise ValueError("File has no importable data rows.")
         return rows
 
+    def _load_individual_player_xlsx_rows(self, file_path):
+        import openpyxl
+
+        workbook = openpyxl.load_workbook(file_path, data_only=True)
+        try:
+            sheet = workbook.active
+            required_columns = self._individual_player_export_columns()
+            header_cells = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), ())
+            fieldnames = [str(value).strip() if value is not None else "" for value in header_cells]
+            missing = [column for column in required_columns if column not in fieldnames]
+            if missing:
+                raise ValueError(self._schema_missing_columns_error(missing))
+
+            rows = []
+            for row_values in sheet.iter_rows(min_row=2, values_only=True):
+                row_dict = {}
+                for idx, key in enumerate(fieldnames):
+                    if not key:
+                        continue
+                    value = row_values[idx] if idx < len(row_values) else ""
+                    row_dict[key] = "" if value is None else str(value)
+                if not any((value or "").strip() for value in row_dict.values()):
+                    continue
+                rows.append(row_dict)
+        finally:
+            workbook.close()
+
+        if not rows:
+            raise ValueError("File has no importable data rows.")
+        return rows
+
+    def _load_individual_player_rows(self, file_path):
+        suffix = Path(file_path).suffix.lower()
+        if suffix == ".csv":
+            return self._load_individual_player_csv_rows(file_path)
+        if suffix == ".xlsx":
+            return self._load_individual_player_xlsx_rows(file_path)
+        raise ValueError(f"Unsupported import file type '{suffix}'. Use .csv or .xlsx.")
+
+    def _format_individual_import_validation_errors(self, errors):
+        if not errors:
+            return ""
+        limit = 12
+        visible = errors[:limit]
+        remaining = len(errors) - len(visible)
+        message = "Validation failed with the following issues:\n- " + "\n- ".join(visible)
+        if remaining > 0:
+            message += f"\n- ... and {remaining} additional issue(s)."
+        return message
+
     def _validate_individual_import_rows(
         self,
         rows,
@@ -4140,6 +4505,7 @@ class UiManager:
         target_player_name,
     ):
         warnings: List[str] = []
+        errors: List[str] = []
 
         first = rows[0]
         if first.get("schema_version") != "player_ratings_export_v1":
@@ -4181,6 +4547,7 @@ class UiManager:
 
         import_rows = []
         for idx, row in enumerate(rows, start=2):
+            row_errors: List[str] = []
             for metadata_key in (
                 "schema_version",
                 "app_export_version",
@@ -4190,13 +4557,43 @@ class UiManager:
                 "source_player_name",
             ):
                 if (row.get(metadata_key) or "").strip() != (first.get(metadata_key) or "").strip():
-                    raise ValueError(f"Inconsistent file metadata in row {idx} for '{metadata_key}'.")
+                    row_errors.append(f"row {idx}, column '{metadata_key}': inconsistent file metadata")
 
-            scenario_id = DataValidator.validate_integer(row.get("scenario_id"), min_value=min(SCENARIO_MAP.keys()), max_value=max(SCENARIO_MAP.keys()))
-            rating = DataValidator.validate_rating(row.get("rating"), rating_system=self.current_rating_system)
+            try:
+                scenario_id = DataValidator.validate_integer(
+                    row.get("scenario_id"),
+                    min_value=min(SCENARIO_MAP.keys()),
+                    max_value=max(SCENARIO_MAP.keys()),
+                )
+            except ValueError as exc:
+                row_errors.append(f"row {idx}, column 'scenario_id': {exc}")
+                scenario_id = None
 
-            opponent_team_name = DataValidator.validate_team_name(row.get("opponent_team_name", ""))
-            opponent_player_name = DataValidator.validate_player_name(row.get("opponent_player_name", ""))
+            try:
+                rating = DataValidator.validate_rating(row.get("rating"), rating_system=self.current_rating_system)
+            except ValueError as exc:
+                row_errors.append(f"row {idx}, column 'rating': {exc}")
+                rating = None
+
+            try:
+                opponent_team_name = DataValidator.validate_team_name(row.get("opponent_team_name", ""))
+            except ValueError as exc:
+                row_errors.append(f"row {idx}, column 'opponent_team_name': {exc}")
+                opponent_team_name = ""
+
+            try:
+                opponent_player_name = DataValidator.validate_player_name(row.get("opponent_player_name", ""))
+            except ValueError as exc:
+                row_errors.append(f"row {idx}, column 'opponent_player_name': {exc}")
+                opponent_player_name = ""
+
+            comment = row.get("comment") or ""
+            if len(comment) > 2000:
+                row_errors.append(f"row {idx}, column 'comment': exceeds 2000 characters")
+
+            if row_errors:
+                errors.extend(row_errors)
+                continue
 
             opponent_team_id = None
             opponent_player_id = None
@@ -4220,35 +4617,36 @@ class UiManager:
                     (opponent_player_id,),
                 )
                 if not identity_rows:
-                    raise ValueError(self._identity_resolution_error(
-                        f"row {idx} opponent player_id {opponent_player_id} was not found in this database."
+                    errors.append(self._identity_resolution_error(
+                        f"row {idx}, column 'opponent_player_id': value {opponent_player_id} was not found in this database."
                     ))
+                    continue
 
                 actual_player_name, actual_team_id, actual_team_name = identity_rows[0]
                 if actual_team_id != opponent_team_id:
-                    raise ValueError(self._identity_mismatch_error(
-                        f"row {idx} has conflicting opponent IDs (team/player mismatch)."
+                    errors.append(self._identity_mismatch_error(
+                        f"row {idx}: conflicting opponent IDs (team/player mismatch)."
                     ))
+                    continue
                 if actual_team_name != opponent_team_name or actual_player_name != opponent_player_name:
-                    raise ValueError(self._identity_mismatch_error(
+                    errors.append(self._identity_mismatch_error(
                         f"row {idx} opponent ID/name mismatch: file has {opponent_player_name}@{opponent_team_name}, "
                         f"database has {actual_player_name}@{actual_team_name}."
                     ))
+                    continue
             else:
                 opponent_team_id = self.db_manager.query_team_id(opponent_team_name)
                 if opponent_team_id is None:
-                    raise ValueError(self._identity_resolution_error(
-                        f"row {idx} opponent team '{opponent_team_name}' was not found."
+                    errors.append(self._identity_resolution_error(
+                        f"row {idx}, column 'opponent_team_name': team '{opponent_team_name}' was not found."
                     ))
+                    continue
                 opponent_player_id = self.db_manager.query_player_id(opponent_player_name, opponent_team_id)
                 if opponent_player_id is None:
-                    raise ValueError(self._identity_resolution_error(
-                        f"row {idx} opponent player '{opponent_player_name}' was not found on team '{opponent_team_name}'."
+                    errors.append(self._identity_resolution_error(
+                        f"row {idx}, column 'opponent_player_name': player '{opponent_player_name}' was not found on team '{opponent_team_name}'."
                     ))
-
-            comment = row.get("comment") or ""
-            if len(comment) > 2000:
-                raise ValueError(f"Row {idx} comment exceeds 2000 characters.")
+                    continue
 
             import_rows.append(
                 {
@@ -4259,6 +4657,9 @@ class UiManager:
                     "comment": comment,
                 }
             )
+
+        if errors:
+            raise ValueError(self._format_individual_import_validation_errors(errors))
 
         expected_rows_result = self.db_manager.query_sql_params(
             "SELECT COUNT(*) FROM players WHERE team_id != ?",
@@ -4272,7 +4673,7 @@ class UiManager:
         return import_rows, warnings
 
     def _run_individual_player_import(self, file_path, target_team_id, target_team_name, target_player_id, target_player_name, require_confirmation=True):
-        rows = self._load_individual_player_csv_rows(file_path)
+        rows = self._load_individual_player_rows(file_path)
         import_rows, warnings = self._validate_individual_import_rows(
             rows,
             target_team_id,
@@ -4303,7 +4704,7 @@ class UiManager:
     def import_individual_player_ratings(self):
         file_path = filedialog.askopenfilename(
             title="Import Individual Player Ratings",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            filetypes=[("CSV/XLSX files", "*.csv *.xlsx"), ("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("All files", "*.*")],
         )
         if not file_path:
             return
@@ -5424,16 +5825,14 @@ class UiManager:
         if cached:
             return cached
 
-        team_id_result = self.db_manager.query_sql(
-            f"SELECT team_id FROM teams WHERE team_name = '{team_name}'"
-        )
-        if not team_id_result:
+        team_id = self.db_manager.query_team_id(team_name)
+        if team_id is None:
             print(f"Team '{team_name}' not found in database")
             return None
 
-        team_id = team_id_result[0][0]
-        player_results = self.db_manager.query_sql(
-            f"SELECT player_id, player_name FROM players WHERE team_id = {team_id} ORDER BY player_id"
+        player_results = self.db_manager.query_sql_params(
+            "SELECT player_id, player_name FROM players WHERE team_id = ? ORDER BY player_id",
+            (team_id,),
         )
 
         players = [{'id': row[0], 'name': row[1]} for row in player_results]
@@ -5631,6 +6030,21 @@ class UiManager:
         team_1_dict = {row['id']: {'position': i + 1, 'name': row['name']} for i, row in enumerate(team_1_data['players'])}
         team_2_dict = {row['id']: {'position': i + 1, 'name': row['name']} for i, row in enumerate(team_2_data['players'])}
 
+        if not team_1_dict or not team_2_dict:
+            return {
+                'team_1_name': team_1,
+                'team_2_name': team_2,
+                'scenario_id': scenario_id,
+                'team_1_dict': team_1_dict,
+                'team_2_dict': team_2_dict,
+                'ratings_rows': [],
+            }
+
+        team_1_player_ids = tuple(team_1_dict.keys())
+        team_2_player_ids = tuple(team_2_dict.keys())
+        team_1_placeholders = ','.join(['?'] * len(team_1_player_ids))
+        team_2_placeholders = ','.join(['?'] * len(team_2_player_ids))
+
         ratings_sql = f"""
             SELECT
                 team_1_player_id,
@@ -5641,20 +6055,23 @@ class UiManager:
             FROM
                 ratings
             WHERE
-                team_1_player_id IN ({','.join([str(x) for x in team_1_dict.keys()])})
+                team_1_player_id IN ({team_1_placeholders})
               AND
-                team_2_player_id IN ({','.join([str(x) for x in team_2_dict.keys()])})
+                team_2_player_id IN ({team_2_placeholders})
               AND
-                team_1_id = {team_1_id}
+                team_1_id = ?
               AND
-                team_2_id = {team_2_id}
+                team_2_id = ?
               AND
-                scenario_id = {scenario_id}
+                scenario_id = ?
             ORDER BY
                 team_1_player_id, team_2_player_id
         """
 
-        ratings_rows = self.db_manager.query_sql(ratings_sql)
+        ratings_rows = self.db_manager.query_sql_params(
+            ratings_sql,
+            team_1_player_ids + team_2_player_ids + (team_1_id, team_2_id, scenario_id),
+        )
         return {
             'team_1_name': team_1,
             'team_2_name': team_2,
@@ -5668,16 +6085,14 @@ class UiManager:
         if not team_name:
             return None
 
-        team_id_result = self.db_manager.query_sql(
-            f"SELECT team_id FROM teams WHERE team_name = '{team_name}'"
-        )
-        if not team_id_result:
+        team_id = self.db_manager.query_team_id(team_name)
+        if team_id is None:
             print(f"Team '{team_name}' not found in database")
             return None
 
-        team_id = team_id_result[0][0]
-        player_results = self.db_manager.query_sql(
-            f"SELECT player_id, player_name FROM players WHERE team_id = {team_id} ORDER BY player_id"
+        player_results = self.db_manager.query_sql_params(
+            "SELECT player_id, player_name FROM players WHERE team_id = ? ORDER BY player_id",
+            (team_id,),
         )
 
         players = [{'id': row[0], 'name': row[1]} for row in player_results]
@@ -5782,22 +6197,24 @@ class UiManager:
         
         scenario_id = self.get_scenario_num()
 
-        team_sql_template = "select team_id from teams where team_name='{team_name}'"
-        team_1_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_1))
-        if not team_1_row:
+        team_1_id = self.db_manager.query_team_id(team_1)
+        if team_1_id is None:
             print(f"Team '{team_1}' not found in database")
             return
-        team_1_id = team_1_row[0][0]
 
-        team_2_row = self.db_manager.query_sql(team_sql_template.format(team_name=team_2))
-        if not team_2_row:
+        team_2_id = self.db_manager.query_team_id(team_2)
+        if team_2_id is None:
             print(f"Team '{team_2}' not found in database")
             return
-        team_2_id = team_2_row[0][0]
 
-        player_sql_template = "select player_id, player_name from players where team_id={team_id} order by player_id"
-        team_1_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_1_id))
-        team_2_players = self.db_manager.query_sql(player_sql_template.format(team_id=team_2_id))
+        team_1_players = self.db_manager.query_sql_params(
+            "select player_id, player_name from players where team_id = ? order by player_id",
+            (team_1_id,),
+        )
+        team_2_players = self.db_manager.query_sql_params(
+            "select player_id, player_name from players where team_id = ? order by player_id",
+            (team_2_id,),
+        )
 
         team_1_dict = {i+1:{'id':row[0],'name':row[1]} for i,row in enumerate(team_1_players)}
         team_2_dict = {i+1:{'id':row[0],'name':row[1]}for i,row in enumerate(team_2_players)}
@@ -5809,11 +6226,7 @@ class UiManager:
                 if not rating_value:
                     continue
                 try:
-                    # Convert to int if needed
-                    if isinstance(rating_value, str):
-                        rating = int(rating_value)
-                    else:
-                        rating = rating_value
+                    rating = int(rating_value)
                     
                     team_1_player_id = team_1_dict[row]['id']
                     team_2_player_id = team_2_dict[col]['id']
@@ -5874,7 +6287,7 @@ class UiManager:
                     
                 messagebox.showinfo("Success", 
                                   f"Team '{team_name}' has been updated successfully!\n\n"
-                                  f"Players updated:\n" + "\n".join([f"ΓÇó {name}" for name in player_names]))
+                                  f"Players updated:\n" + "\n".join([f"- {name}" for name in player_names]))
             else:
                 # Create new team
                 team_id = self.db_manager.upsert_team(team_name)
@@ -5885,7 +6298,7 @@ class UiManager:
                     
                 messagebox.showinfo("Success", 
                                   f"Team '{team_name}' has been created successfully!\n\n"
-                                  f"Players added:\n" + "\n".join([f"ΓÇó {name}" for name in player_names]))
+                                  f"Players added:\n" + "\n".join([f"- {name}" for name in player_names]))
 
             # Update UI like successful CSV import
             self._invalidate_team_cache()
@@ -6028,6 +6441,411 @@ class UiManager:
         except (ValueError, IndexError) as e:
             print(f"delete_team caused an error trying to update the UI: {e}")
 
+    def _neutral_rating_value(self):
+        min_rating, max_rating = self.rating_range if hasattr(self, "rating_range") else (1, 5)
+        min_rating = int(min_rating)
+        max_rating = int(max_rating)
+        return min_rating + ((max_rating - min_rating) // 2)
+
+    def _safe_export_filename_token(self, value):
+        token = str(value or "").strip()
+        if not token:
+            return "unnamed"
+        token = re.sub(r"[\\/:*?\"<>|]", "-", token)
+        token = re.sub(r"\s+", "_", token)
+        token = token.strip("._-")
+        return token or "unnamed"
+
+    def _build_single_team_csv_template_rows(self):
+        friendly_team = "Friendly Team Example"
+        opponent_team = "Opponent Team Example"
+        friendly_players = [f"Friendly {idx}" for idx in range(1, 6)]
+        opponent_players = [f"Opponent {idx}" for idx in range(1, 6)]
+        neutral_rating = self._neutral_rating_value()
+
+        rows = [
+            [friendly_team] + friendly_players,
+            [opponent_team] + opponent_players,
+        ]
+
+        for scenario_id in sorted(SCENARIO_MAP.keys()):
+            rows.append([scenario_id] + opponent_players)
+            for friendly_player in friendly_players:
+                rows.append([friendly_player] + [neutral_rating] * 5)
+
+        return rows
+
+    def _build_multiple_team_csv_template_rows(self):
+        return [
+            ["team_name", "player_1", "player_2", "player_3", "player_4", "player_5"],
+            ["Team Alpha", "Alpha 1", "Alpha 2", "Alpha 3", "Alpha 4", "Alpha 5"],
+            ["Team Bravo", "Bravo 1", "Bravo 2", "Bravo 3", "Bravo 4", "Bravo 5"],
+            ["Team Charlie", "Charlie 1", "Charlie 2", "Charlie 3", "Charlie 4", "Charlie 5"],
+        ]
+
+    def _build_names_only_csv_template_rows(self):
+        return [
+            ["team_name", "player_1", "player_2", "player_3", "player_4", "player_5"],
+            ["Imported Team 1", "Player 1", "Player 2", "Player 3", "Player 4", "Player 5"],
+            ["Imported Team 2", "Player 1", "Player 2", "Player 3", "Player 4", "Player 5"],
+        ]
+
+    def _build_xlsx_template_bytes(self, multiple_blocks=False):
+        import openpyxl
+
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = "ImportReady"
+        sheet["A1"] = "Friendly Team Example"
+
+        friendly_players = [f"Friendly {idx}" for idx in range(1, 6)]
+        neutral_rating = self._neutral_rating_value()
+
+        blocks = [
+            ("Opponent Team Alpha", [f"Alpha {idx}" for idx in range(1, 6)]),
+        ]
+        if multiple_blocks:
+            blocks.extend(
+                [
+                    ("Opponent Team Bravo", [f"Bravo {idx}" for idx in range(1, 6)]),
+                    ("Opponent Team Charlie", [f"Charlie {idx}" for idx in range(1, 6)]),
+                ]
+            )
+
+        start_row = 3
+        for block_idx, (opponent_team, opponent_players) in enumerate(blocks):
+            block_row = start_row + (block_idx * 7)
+            sheet.cell(row=block_row, column=1, value=opponent_team)
+            for col_offset, opponent_player in enumerate(opponent_players, start=3):
+                sheet.cell(row=block_row, column=col_offset, value=opponent_player)
+
+            for row_offset, friendly_player in enumerate(friendly_players, start=1):
+                out_row = block_row + row_offset
+                sheet.cell(row=out_row, column=2, value=friendly_player)
+                for col_offset in range(3, 8):
+                    sheet.cell(row=out_row, column=col_offset, value=neutral_rating)
+
+        stream = io.BytesIO()
+        workbook.save(stream)
+        workbook.close()
+        return stream.getvalue()
+
+    def _template_specs(self):
+        return {
+            "single_team_xlsx": {
+                "default_name": "single_team_import_template.xlsx",
+                "filetypes": [("Excel files", "*.xlsx"), ("All files", "*.*")],
+                "writer": lambda path: self._write_binary_file(path, self._build_xlsx_template_bytes(multiple_blocks=False)),
+            },
+            "single_team_csv": {
+                "default_name": "single_team_import_template.csv",
+                "filetypes": [("CSV files", "*.csv"), ("All files", "*.*")],
+                "writer": lambda path: self._write_csv_rows(path, self._build_single_team_csv_template_rows()),
+            },
+            "multiple_team_xlsx": {
+                "default_name": "multiple_team_import_template.xlsx",
+                "filetypes": [("Excel files", "*.xlsx"), ("All files", "*.*")],
+                "writer": lambda path: self._write_binary_file(path, self._build_xlsx_template_bytes(multiple_blocks=True)),
+            },
+            "multiple_team_csv": {
+                "default_name": "multiple_team_import_template.csv",
+                "filetypes": [("CSV files", "*.csv"), ("All files", "*.*")],
+                "writer": lambda path: self._write_csv_rows(path, self._build_multiple_team_csv_template_rows()),
+            },
+            "names_only": {
+                "default_name": "names_only_import_template.csv",
+                "filetypes": [("CSV files", "*.csv"), ("All files", "*.*")],
+                "writer": lambda path: self._write_csv_rows(path, self._build_names_only_csv_template_rows()),
+            },
+        }
+
+    def _write_csv_rows(self, file_path, rows):
+        with open(file_path, mode="w", newline="", encoding="utf-8") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerows(rows)
+
+    def _write_binary_file(self, file_path, payload):
+        with open(file_path, mode="wb") as handle:
+            handle.write(payload)
+
+    def _download_template(self, template_key):
+        specs = self._template_specs()
+        if template_key not in specs:
+            raise ValueError(f"Unknown template key: {template_key}")
+
+        spec = specs[template_key]
+        file_path = filedialog.asksaveasfilename(
+            title="Download Import Template",
+            initialfile=spec["default_name"],
+            defaultextension=Path(spec["default_name"]).suffix,
+            filetypes=spec["filetypes"],
+        )
+        if not file_path:
+            return
+
+        spec["writer"](file_path)
+        messagebox.showinfo("Import Templates", self._operation_notice_info(f"Template saved:\n{file_path}"))
+
+    def _download_all_templates_zip(self):
+        specs = self._template_specs()
+        file_path = filedialog.asksaveasfilename(
+            title="Download All Templates (ZIP)",
+            initialfile="import_templates_bundle.zip",
+            defaultextension=".zip",
+            filetypes=[("Zip files", "*.zip"), ("All files", "*.*")],
+        )
+        if not file_path:
+            return
+
+        with zipfile.ZipFile(file_path, mode="w", compression=zipfile.ZIP_DEFLATED) as bundle:
+            for key, spec in specs.items():
+                output_name = spec["default_name"]
+                suffix = Path(output_name).suffix.lower()
+                if suffix == ".csv":
+                    stream = io.StringIO()
+                    writer = csv.writer(stream)
+                    if key == "single_team_csv":
+                        writer.writerows(self._build_single_team_csv_template_rows())
+                    elif key == "multiple_team_csv":
+                        writer.writerows(self._build_multiple_team_csv_template_rows())
+                    else:
+                        writer.writerows(self._build_names_only_csv_template_rows())
+                    bundle.writestr(output_name, stream.getvalue())
+                else:
+                    payload = self._build_xlsx_template_bytes(multiple_blocks=(key == "multiple_team_xlsx"))
+                    bundle.writestr(output_name, payload)
+
+        messagebox.showinfo("Import Templates", self._operation_notice_info(f"Template bundle saved:\n{file_path}"))
+
+    def show_import_templates_popup(self):
+        popup = tk.Toplevel(self.root)
+        popup.title("Import Templates")
+        popup.geometry("520x470")
+        popup.resizable(False, False)
+        popup.transient(self.root)
+        popup.grab_set()
+
+        tk.Label(
+            popup,
+            text="Download Import Templates",
+            font=("Arial", 14, "bold"),
+            pady=12,
+        ).pack(fill=tk.X)
+
+        tk.Label(
+            popup,
+            text="Choose a template. Files include editable example data.",
+            font=("Arial", 10),
+            pady=4,
+        ).pack(fill=tk.X)
+
+        body = tk.Frame(popup, padx=20, pady=12)
+        body.pack(fill=tk.BOTH, expand=True)
+
+        options = [
+            ("Single Team Import XLSX", lambda: self._download_template("single_team_xlsx")),
+            ("Single Team Import CSV", lambda: self._download_template("single_team_csv")),
+            ("Multiple Team Import XLSX", lambda: self._download_template("multiple_team_xlsx")),
+            ("Multiple Team Import CSV", lambda: self._download_template("multiple_team_csv")),
+            ("Names Only", lambda: self._download_template("names_only")),
+            ("Download All (ZIP)", self._download_all_templates_zip),
+        ]
+
+        for label, action in options:
+            tk.Button(
+                body,
+                text=label,
+                command=action,
+                height=1,
+                relief=tk.RAISED,
+                borderwidth=1,
+                bg="#f3f8ff",
+            ).pack(fill=tk.X, pady=4)
+
+        tk.Button(popup, text="Close", command=popup.destroy, bg="#f2a7a7", width=18).pack(pady=10)
+
+    def _load_names_only_csv_rows(self, file_path):
+        rows = []
+        errors: List[str] = []
+        with open(file_path, mode="r", newline="", encoding="utf-8-sig") as csv_file:
+            reader = csv.reader(csv_file)
+            raw_rows = list(reader)
+
+        if not raw_rows:
+            raise ValueError("File has no rows.")
+
+        start_index = 0
+        first_row = [value.strip() for value in raw_rows[0]]
+        if first_row and first_row[0].lower() in {"team_name", "team", "team name"}:
+            start_index = 1
+
+        for index, raw_row in enumerate(raw_rows[start_index:], start=start_index + 1):
+            row = [value.strip() for value in raw_row]
+            if not any(row):
+                continue
+            if len(row) < 6:
+                errors.append(f"row {index}: expected 6 columns (team_name + 5 players), found {len(row)}")
+                continue
+
+            team_name = row[0]
+            player_names = row[1:6]
+
+            if not team_name:
+                errors.append(f"row {index}, column 'team_name': value is required")
+                continue
+
+            try:
+                team_name = DataValidator.validate_team_name(team_name)
+            except ValueError as exc:
+                errors.append(f"row {index}, column 'team_name': {exc}")
+                continue
+
+            if any(not player_name for player_name in player_names):
+                errors.append(f"row {index}: all five player names are required")
+                continue
+
+            row_player_names = []
+            row_has_error = False
+            for player_idx, player_name in enumerate(player_names, start=1):
+                try:
+                    row_player_names.append(DataValidator.validate_player_name(player_name))
+                except ValueError as exc:
+                    errors.append(f"row {index}, column 'player_{player_idx}': {exc}")
+                    row_has_error = True
+            if row_has_error:
+                continue
+
+            if len(set(name.lower() for name in row_player_names)) != 5:
+                errors.append(f"row {index}: player names must be unique within the team")
+                continue
+
+            rows.append(
+                {
+                    "row_number": index,
+                    "team_name": team_name,
+                    "player_names": row_player_names,
+                }
+            )
+
+        if errors:
+            raise ValueError("Validation failed with the following issues:\n- " + "\n- ".join(errors[:20]))
+        if not rows:
+            raise ValueError("File has no importable names-only rows.")
+        return rows
+
+    def import_names_only_csv(self):
+        file_path = filedialog.askopenfilename(
+            title="Import Names Only (CSV)",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        if not file_path:
+            return
+
+        try:
+            with self._busy_ui_operation("Loading - importing names-only teams"):
+                friendly_team_id, friendly_team_name = self._get_selected_friendly_team()
+                friendly_players = self.db_manager.query_players(friendly_team_id)
+                if not friendly_players or len(friendly_players) != 5:
+                    raise ValueError("Selected friendly team must have exactly 5 players before names-only import.")
+
+                friendly_player_ids = [row[0] for row in friendly_players]
+                imported_rows = self._load_names_only_csv_rows(file_path)
+                neutral_rating = self._neutral_rating_value()
+                scenario_ids = sorted(SCENARIO_MAP.keys())
+
+                successful_teams = 0
+                failed_rows: List[str] = []
+                ratings_upserted = 0
+
+                for row in imported_rows:
+                    imported_team_name = row["team_name"]
+                    imported_player_names = row["player_names"]
+                    row_number = row["row_number"]
+
+                    if imported_team_name == friendly_team_name:
+                        failed_rows.append(
+                            f"row {row_number}: imported team '{imported_team_name}' cannot be the selected friendly team"
+                        )
+                        continue
+
+                    try:
+                        imported_team_id = self._resolve_or_create_matchup_team(
+                            imported_team_name,
+                            imported_player_names,
+                            friendly_team_name=friendly_team_name,
+                        )
+                        imported_player_ids = [
+                            self.db_manager.query_player_id(player_name, imported_team_id)
+                            for player_name in imported_player_names
+                        ]
+                        if any(player_id is None for player_id in imported_player_ids):
+                            raise ValueError("could not resolve imported player IDs after roster creation")
+
+                        for scenario_id in scenario_ids:
+                            for friendly_player_id in friendly_player_ids:
+                                for imported_player_id in imported_player_ids:
+                                    self.db_manager.upsert_rating(
+                                        player_id_1=friendly_player_id,
+                                        player_id_2=imported_player_id,
+                                        team_id_1=friendly_team_id,
+                                        team_id_2=imported_team_id,
+                                        scenario_id=scenario_id,
+                                        rating=neutral_rating,
+                                    )
+                                    ratings_upserted += 1
+
+                        successful_teams += 1
+                    except Exception as exc:
+                        failed_rows.append(f"row {row_number}: {exc}")
+
+                self._invalidate_team_cache()
+                self._invalidate_comment_cache()
+                data_cache = getattr(self, "data_cache", None)
+                if data_cache is not None:
+                    data_cache.invalidate_ratings_cache()
+                self.load_grid_data_from_db(refresh_ui=True)
+
+                status = "success" if not failed_rows else "partial_failure"
+                report = self._build_import_report(
+                    operation="import_names_only_csv",
+                    status=status,
+                    details={
+                        "file_path": file_path,
+                        "friendly_team": friendly_team_name,
+                        "neutral_rating": neutral_rating,
+                        "successful_teams": successful_teams,
+                        "failed_rows": failed_rows,
+                        "ratings_upserted": ratings_upserted,
+                    },
+                )
+                log_path = self._write_import_diagnostic_report(report)
+
+                if successful_teams == 0 and failed_rows:
+                    raise ValueError("No teams imported.\n- " + "\n- ".join(failed_rows[:20]))
+
+                message = (
+                    f"Imported teams: {successful_teams}\n"
+                    f"Neutral rating used: {neutral_rating}\n"
+                    f"Ratings upserted: {ratings_upserted}"
+                )
+                if failed_rows:
+                    message += "\n\nSome rows failed:\n- " + "\n- ".join(failed_rows[:10])
+                message += f"\n\nDiagnostics log:\n{log_path}"
+                messagebox.showinfo("Names-Only Import", self._operation_notice_info(message))
+        except Exception as exc:
+            report = self._build_import_report(
+                operation="import_names_only_csv",
+                status="failure",
+                details={"file_path": file_path},
+                exc=exc,
+            )
+            log_path = self._write_import_diagnostic_report(report)
+            self.logger.exception("Names-only import failed")
+            messagebox.showerror(
+                "Names-Only Import",
+                self._operation_failed_error(f"could not import names-only CSV: {exc}\n\nDiagnostics log:\n{log_path}"),
+            )
+
     def import_xlsx(self):
         """Import Excel file using the new simple format"""
         # Let user select the Excel file
@@ -6047,7 +6865,9 @@ class UiManager:
             simple_importer = SimpleExcelImporter(
                 db_manager=self.db_manager, 
                 file_path=file_path, 
-                scenario_id=0  # Default to neutral scenario
+                scenario_id=0,  # Default to neutral scenario
+                rating_min=self.rating_range[0],
+                rating_max=self.rating_range[1],
             )
             
             teams_imported = simple_importer.execute()
@@ -6099,7 +6919,10 @@ class UiManager:
 
     def retrieve_team_data(self, team_name):
         team_id = self.db_manager.query_team_id(team_name)
-        players = self.db_manager.query_sql(f"SELECT player_name FROM players WHERE team_id = {team_id} ORDER BY player_id")
+        players = self.db_manager.query_sql_params(
+            "SELECT player_name FROM players WHERE team_id = ? ORDER BY player_id",
+            (team_id,),
+        )
         player_names = [player[0] for player in players]
         return team_name, player_names
 
@@ -6111,142 +6934,302 @@ class UiManager:
             scenario_id = scenario
             ratings[scenario_id] = {}
             for player1 in team1_players:
-                player1_result = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player1}'")
-                if not player1_result:
+                player1_id = team1_player_ids.get(player1)
+                if player1_id is None:
                     print(f"Player '{player1}' not found in database")
                     continue
-                player1_id = player1_result[0][0]
-                # print(f"player1 - {player1_id}: {player1}")
                 player_ratings = []
                 for player2 in team2_players:
-                    player2_result = self.db_manager.query_sql(f"SELECT player_id FROM players WHERE player_name = '{player2}'")
-                    if not player2_result:
+                    player2_id = team2_player_ids.get(player2)
+                    if player2_id is None:
                         print(f"Player '{player2}' not found in database")
                         player_ratings.append(0)
                         continue
-                    player2_id = player2_result[0][0]
-                    rating = self.db_manager.query_sql(f"""
+                    rating = self.db_manager.query_sql_params(
+                        """
                         SELECT rating FROM ratings
-                        WHERE team_1_player_id = {player1_id} AND team_2_player_id = {player2_id} AND scenario_id = {scenario_id}
-                    """)
+                        WHERE team_1_player_id = ? AND team_2_player_id = ? AND scenario_id = ?
+                        """,
+                        (player1_id, player2_id, scenario_id),
+                    )
                     player_ratings.append(rating[0][0] if rating else 0)  # Default to 0 if no rating found
                 ratings[scenario_id][player1] = player_ratings
 
         return ratings
 
+    def _fetch_matchup_ratings_by_name(self, team_1_id, team_2_id, scenario_id=0):
+        """Return {(friendly_name, opponent_name): rating} for one matchup scenario."""
+        ratings_by_name = {}
+        if hasattr(self.db_manager, "query_sql_params"):
+            rows = self.db_manager.query_sql_params(
+                """
+                SELECT p1.player_name, p2.player_name, r.rating
+                FROM ratings r
+                JOIN players p1 ON r.team_1_player_id = p1.player_id
+                JOIN players p2 ON r.team_2_player_id = p2.player_id
+                WHERE r.team_1_id = ?
+                  AND r.team_2_id = ?
+                  AND r.scenario_id = ?
+                """,
+                (int(team_1_id), int(team_2_id), int(scenario_id)),
+            )
+        else:
+            rows = self.db_manager.query_sql(
+                f"""
+                SELECT p1.player_name, p2.player_name, r.rating
+                FROM ratings r
+                JOIN players p1 ON r.team_1_player_id = p1.player_id
+                JOIN players p2 ON r.team_2_player_id = p2.player_id
+                WHERE r.team_1_id = {int(team_1_id)}
+                  AND r.team_2_id = {int(team_2_id)}
+                  AND r.scenario_id = {int(scenario_id)}
+                """
+            )
+
+        for row in rows:
+            try:
+                friendly_name, opponent_name, rating = row
+                ratings_by_name[(str(friendly_name), str(opponent_name))] = int(rating)
+            except (TypeError, ValueError):
+                continue
+
+        return ratings_by_name
+
 
     
     def import_csvs(self):
         file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-        with open(file_path, newline='') as csvfile:
-            reader = csv.reader(csvfile)
-            lines = list(reader)
+        if not file_path:
+            return
 
-        self.import_csv_header_and_ratings(lines)
-        # self.import_csv_ratings(lines)
-        self._invalidate_team_cache()
-        self._invalidate_comment_cache()
-        self.update_ui()
+        try:
+            with self._busy_ui_operation("Loading - importing CSV matchup data"):
+                with open(file_path, newline='', encoding='utf-8-sig') as csvfile:
+                    reader = csv.reader(csvfile)
+                    lines = list(reader)
+
+                summary = self.import_csv_header_and_ratings(lines)
+                self._invalidate_team_cache()
+                self._invalidate_comment_cache()
+                self.update_ui()
+
+                report = self._build_import_report(
+                    operation="import_csvs",
+                    status="success",
+                    details={"file_path": file_path, **summary},
+                )
+                log_path = self._write_import_diagnostic_report(report)
+                messagebox.showinfo(
+                    "Import CSV",
+                    self._operation_notice_info(
+                        f"CSV import complete. Upserted ratings: {summary.get('ratings_upserted', 0)}\n"
+                        f"Friendly: {summary.get('team_1_name', '')}\n"
+                        f"Opponent: {summary.get('team_2_name', '')}\n\n"
+                        f"Diagnostics log:\n{log_path}"
+                    ),
+                )
+        except Exception as exc:
+            report = self._build_import_report(
+                operation="import_csvs",
+                status="failure",
+                details={"file_path": file_path},
+                exc=exc,
+            )
+            log_path = self._write_import_diagnostic_report(report)
+            self.logger.exception("CSV import failed")
+            messagebox.showerror(
+                "Import CSV",
+                self._operation_failed_error(
+                    f"could not import CSV matchup data: {exc}\n\nDiagnostics log:\n{log_path}"
+                ),
+            )
 
     def import_csv_header_and_ratings(self, lines):
         # Only take the first two lines from the file.
         # CSV import should be exactly 44 lines if done correctly.
         # Let's allow it to be short, in case we don't want to import all 6 scenarios
         # print(f"file length={len(lines)}")
-        if len(lines) < 44:
+        if len(lines) < 3:
             raise ValueError("Insufficient number of lines")
 
         team_lines = lines[:2]
         rating_section = lines[2:]
 
-        team_names = []
         team_name_1 = ""
         team_name_2 = ""
-        player_names = []
         team_players_1 = []
         team_players_2 = []
         team_id_1 = 0
         team_id_2 = 0
 
-        team_2_players_ids = {}
-
+        header_errors: List[str] = []
         for index, line in enumerate(team_lines):
-            team_names.append(line[0])
-            player_names.append(line[1:])
-
-            # Try to upsert this team and the players.
-            try:
-                team_id = self.db_manager.upsert_team(line[0])
-                players = self.db_manager.upsert_and_validate_players(team_id, player_names[index])
-                
-                # Set combobox values based on the index
-                if index == 0:
-                    team_name_1 = team_names[index]
-                    self.combobox_1.set(team_name_1)
-                    team_id_1 = team_id
-                    team_players_1 = player_names[index]
-                elif index == 1:
-                    team_name_2 = team_names[index]
-                    self.combobox_2.set(team_name_2)
-                    team_id_2 = team_id
-                    team_players_2 = player_names[index]
-            except ValueError as e:
-                print(f"import_csv_header_and_ratings ERROR - {e}")
+            row_num = index + 1
+            if not line or not (line[0] or "").strip():
+                header_errors.append(f"row {row_num}, column 'team_name': value is required")
                 continue
 
-        scenario_id = 0  # Initialize scenario_id
-        team_2_players_ids = {}
+            raw_team_name = (line[0] or "").strip()
+            try:
+                imported_team_name = DataValidator.validate_team_name(raw_team_name)
+            except ValueError as exc:
+                header_errors.append(f"row {row_num}, column 'team_name': {exc}")
+                continue
 
-        for line in rating_section:
-            # if this line DOES NOT CONTAIN a friendly player followed by ratings
-            # this line must contain scenario number followed by enemy player names
-            rating_line = all(item.isdigit() for item in line[1:])
+            imported_player_names = [name.strip() for name in line[1:6]]
+            if len(imported_player_names) != 5 or any(not name for name in imported_player_names):
+                header_errors.append(
+                    f"row {row_num}: expected exactly 5 player names in columns player_1..player_5"
+                )
+                continue
+
+            validated_players: List[str] = []
+            row_has_error = False
+            for player_idx, raw_player_name in enumerate(imported_player_names, start=1):
+                try:
+                    validated_players.append(DataValidator.validate_player_name(raw_player_name))
+                except ValueError as exc:
+                    header_errors.append(f"row {row_num}, column 'player_{player_idx}': {exc}")
+                    row_has_error = True
+            if row_has_error:
+                continue
+
+            try:
+                DataValidator.validate_batch_names(validated_players, DataValidator.validate_player_name)
+            except ValueError as exc:
+                header_errors.append(f"row {row_num}: {exc}")
+                continue
+
+            friendly_context = team_name_1 if index == 1 else None
+            team_id = self._resolve_or_create_matchup_team(
+                imported_team_name,
+                validated_players,
+                friendly_team_name=friendly_context,
+            )
+
+            if index == 0:
+                team_name_1 = imported_team_name
+                self.combobox_1.set(team_name_1)
+                team_id_1 = team_id
+                team_players_1 = validated_players
+            elif index == 1:
+                team_name_2 = imported_team_name
+                self.combobox_2.set(team_name_2)
+                team_id_2 = team_id
+                team_players_2 = validated_players
+
+        if header_errors:
+            raise ValueError("Header validation failed:\n- " + "\n- ".join(header_errors[:20]))
+
+        scenario_id = None
+        line_errors: List[str] = []
+        ratings_upserted = 0
+
+        team_1_players_ids = {name: self.db_manager.query_player_id(name, team_id_1) for name in team_players_1}
+        team_2_players_ids = {name: self.db_manager.query_player_id(name, team_id_2) for name in team_players_2}
+
+        for offset, line in enumerate(rating_section, start=3):
+            if not any((item or "").strip() for item in line):
+                continue
+
+            rating_line = len(line) >= 6 and all((item or "").strip().lstrip("-").isdigit() for item in line[1:6])
             if not rating_line:
-                scenario_id = int(line[0])
-
-                # Retrieve player_ids for team_1
-                team_1_players_ids = {
-                    player_name: player_id
-                    for player_name, player_id in self.db_manager.query_sql(
-                        f"""SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'"{name}"' for name in team_players_1)}) and team_id={team_id_1} ORDER BY player_id"""
+                try:
+                    scenario_id = DataValidator.validate_integer(
+                        (line[0] if len(line) > 0 else "").strip(),
+                        min_value=min(SCENARIO_MAP.keys()),
+                        max_value=max(SCENARIO_MAP.keys()),
                     )
-                }
+                except ValueError as exc:
+                    line_errors.append(f"row {offset}, column 'scenario_id': {exc}")
+                    continue
 
-                # Retrieve player_ids for team_2
-                team_2_players_ids = {
-                    player_name: player_id
-                    for player_name, player_id in self.db_manager.query_sql(
-                        f"""SELECT player_name, player_id FROM players WHERE player_name IN ({', '.join(f'"{name}"' for name in team_players_2)}) and team_id={team_id_2} ORDER BY player_id"""
+                header_players = [(value or "").strip() for value in line[1:6]]
+                try:
+                    validated_header_players = [DataValidator.validate_player_name(value) for value in header_players]
+                except ValueError as exc:
+                    line_errors.append(f"row {offset}, opponent header columns: {exc}")
+                    continue
+
+                if validated_header_players != team_players_2:
+                    line_errors.append(
+                        f"row {offset}, opponent header mismatch: expected {team_players_2}, found {validated_header_players}"
                     )
-                }
+                continue
 
-            elif len(line) > 1 and not line[0].isdigit():
-                # if this line DOES contain a friendly player followed by ratings
-                # this line must contain ratings to upsert
+            if scenario_id is None:
+                line_errors.append(f"row {offset}: rating row encountered before scenario header")
+                continue
 
-                if team_2_players_ids and 'scenario_id' in locals():
-                    player_1 = line[0]
-                    ratings = list(map(int, line[1:]))
-                    # Retrieve player_id and team_id for friendly team (team_1)
-                    result = self.db_manager.query_sql(f"SELECT player_id, team_id FROM players WHERE player_name='{player_1}' and team_id={team_id_1}")
-                    # if results are retrieved then we can continue.
-                    player_id_1 = 0
-                    try: 
-                        if result:
-                            player_id_1, team_id_1 = result[0]
-                        else:
-                            raise ValueError(f'{player_1}')
-                    except (ValueError) as e:
-                        print(f"VALUE ERROR ON IMPORT: {e}\nThis name doesn't match any friendly player. Check the import file for mistakes based on this name: {e}")
-                        continue
+            try:
+                player_1_name = DataValidator.validate_player_name((line[0] or "").strip())
+            except ValueError as exc:
+                line_errors.append(f"row {offset}, column 'friendly_player': {exc}")
+                continue
 
-                    for i, rating in enumerate(ratings):
-                        try:
-                            player_name_2 = list(team_2_players_ids.keys())[i]
-                            player_id_2 = team_2_players_ids[player_name_2]
-                            self.db_manager.upsert_rating(player_id_1, player_id_2, team_id_1, team_id_2, scenario_id, rating)
-                        except (ValueError, IndexError) as e:
-                            print(f"import_csv_header_and_ratings ERROR - {e}")
+            player_id_1 = team_1_players_ids.get(player_1_name)
+            if player_id_1 is None:
+                line_errors.append(
+                    f"row {offset}, column 'friendly_player': player '{player_1_name}' not found on team '{team_name_1}'"
+                )
+                continue
+
+            raw_ratings = line[1:6]
+            if len(raw_ratings) != 5:
+                line_errors.append(f"row {offset}: expected 5 ratings columns, found {len(raw_ratings)}")
+                continue
+
+            validated_ratings: List[int] = []
+            rating_error = False
+            for rating_idx, raw_rating in enumerate(raw_ratings, start=1):
+                try:
+                    validated_ratings.append(
+                        DataValidator.validate_rating(
+                            (raw_rating or "").strip(),
+                            rating_system=self.current_rating_system,
+                        )
+                    )
+                except ValueError as exc:
+                    line_errors.append(f"row {offset}, column 'rating_{rating_idx}': {exc}")
+                    rating_error = True
+            if rating_error:
+                continue
+
+            for idx, rating in enumerate(validated_ratings):
+                opponent_name = team_players_2[idx]
+                player_id_2 = team_2_players_ids.get(opponent_name)
+                if player_id_2 is None:
+                    line_errors.append(
+                        f"row {offset}, column 'rating_{idx + 1}': opponent '{opponent_name}' could not be resolved"
+                    )
+                    continue
+                self.db_manager.upsert_rating(player_id_1, player_id_2, team_id_1, team_id_2, scenario_id, rating)
+                ratings_upserted += 1
+
+        if line_errors:
+            raise ValueError("CSV rating section validation failed:\n- " + "\n- ".join(line_errors[:30]))
+
+        return {
+            "team_1_name": team_name_1,
+            "team_2_name": team_name_2,
+            "ratings_upserted": ratings_upserted,
+        }
+
+    def _resolve_or_create_matchup_team(self, team_name, player_names, friendly_team_name=None):
+        existing_team_id = self.db_manager.query_team_id(team_name)
+        if existing_team_id is None:
+            team_id = self.db_manager.upsert_team(team_name)
+            if friendly_team_name:
+                self.logger.info(
+                    "Created missing opponent team '%s' for matchup against friendly team '%s'",
+                    team_name,
+                    friendly_team_name,
+                )
+        else:
+            team_id = existing_team_id
+
+        self.db_manager.upsert_and_validate_players(team_id, player_names)
+        return team_id
 
     #############################################
 

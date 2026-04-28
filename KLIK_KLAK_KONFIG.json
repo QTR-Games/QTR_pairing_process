@@ -23,7 +23,7 @@
     "lazy_sort_on_expand": false,
     "lazy_sort_mode": "strict",
     "data_mgmt_show_guides_logs": true,
-    "data_mgmt_show_advanced_settings": true
+    "data_mgmt_show_advanced_settings": false
   },
   "logging": {
     "_comment": "Logging preferences - Controls debug output and log files",
@@ -34,6 +34,6 @@
   },
   "created": "2025-10-23T09:31:34.469763",
   "_created_comment": "Initial config creation timestamp - Do not modify manually",
-  "last_modified": "2026-03-25T16:31:39.856720",
+  "last_modified": "2026-03-31T14:07:12.802244",
   "_last_modified_comment": "Last config update timestamp - Updated automatically when any setting changes"
 }

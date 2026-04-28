@@ -67,3 +67,23 @@ def test_active_scoring_paths_do_not_require_reference_bucket():
     assert gen.calculate_win_probability(8) >= 0
     assert gen.calculate_floor_protection(8) >= 0
     assert gen.calculate_counter_resistance_value(8) >= 0
+
+
+def test_fast_path_rating_coercion_handles_expected_and_bad_inputs():
+    gen = _make_generator("1-10")
+
+    assert gen._to_int_rating(7) == 7
+    assert gen._to_int_rating(7.9) == 7
+    assert gen._to_int_rating("9") == 9
+    assert gen._to_int_rating("N/A") == 0
+    assert gen._to_int_rating(None) == 0
+    assert gen._to_int_rating("invalid") == 0
+
+
+def test_confidence_and_resistance_use_fast_path_without_raising():
+    gen = _make_generator("1-10")
+
+    assert gen.calculate_confidence_for_rating("8") == gen.calculate_rating_confidence(8)
+    assert gen.calculate_confidence_for_rating("invalid") == gen.calculate_rating_confidence(0)
+    assert gen.calculate_resistance_for_rating("8", "6", "5") == 45
+    assert gen.calculate_resistance_for_rating("bad", "bad", "bad") == 0

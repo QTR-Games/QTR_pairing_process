@@ -19,6 +19,17 @@ class SecureDBInterface:
         """
         self.connection = connection
         self.cursor = connection.cursor()
+
+    def close(self):
+        """Release cursor/connection resources for cache cleanup."""
+        try:
+            self.cursor.close()
+        except Exception:
+            pass
+        try:
+            self.connection.close()
+        except Exception:
+            pass
     
     def execute_parameterized(self, query: str, params: Tuple = ()) -> int:
         """
