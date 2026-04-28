@@ -1,7 +1,10 @@
 param(
     [string]$Version = "",
     [switch]$SkipInstall,
-    [switch]$SkipTests
+    [switch]$SkipTests,
+    # Pass -SkipGitChecks only in an emergency (e.g. offline build).
+    # All normal releases MUST pass every git pre-flight check.
+    [switch]$SkipGitChecks
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,6 +12,111 @@ Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
+
+# ─── Git pre-flight checks ───────────────────────────────────────────────────
+if ($SkipGitChecks) {
+    Write-Warning "Git pre-flight checks are SKIPPED (-SkipGitChecks). Use only in an emergency."
+} else {
+    Write-Host ""
+    Write-Host "=== Git Pre-Flight Checks ==="
+
+    # Fetch so local tracking refs reflect current remote state.
+    Write-Host "  Fetching latest state from origin..."
+    git fetch origin 2>&1 | Out-Null
+
+    # 1. Must be on main.
+    $currentBranch = (git rev-parse --abbrev-ref HEAD).Trim()
+    if ($currentBranch -ne "main") {
+        throw "Pre-flight failed: You are on branch '$currentBranch'. All releases must be built from 'main'. Switch to main and retry."
+    }
+    Write-Host "  [OK] Current branch: main"
+
+    # 2. Working directory must be clean.
+    $dirtyFiles = git status --porcelain
+    if ($dirtyFiles) {
+        Write-Host ""
+        Write-Host "Pre-flight failed: Working directory has uncommitted changes:"
+        $dirtyFiles | ForEach-Object { Write-Host "  $_" }
+        throw "Commit or stash all changes before building a release."
+    }
+    Write-Host "  [OK] Working directory is clean"
+
+    # 3. Local main must be in sync with origin/main (no unpushed commits, no unpulled commits).
+    $localCommit  = (git rev-parse main).Trim()
+    $remoteCommit = (git rev-parse origin/main).Trim()
+    if ($localCommit -ne $remoteCommit) {
+        $ahead  = [int](git rev-list --count "origin/main..main")
+        $behind = [int](git rev-list --count "main..origin/main")
+        Write-Host ""
+        if ($ahead -gt 0) {
+            Write-Host "  Local main is $ahead commit(s) AHEAD of origin/main (unpushed):"
+            git log --oneline "origin/main..main" | ForEach-Object { Write-Host "    $_" }
+        }
+        if ($behind -gt 0) {
+            Write-Host "  Local main is $behind commit(s) BEHIND origin/main (unpulled):"
+            git log --oneline "main..origin/main" | ForEach-Object { Write-Host "    $_" }
+        }
+        throw "Pre-flight failed: Local main and origin/main are out of sync. Push or pull before releasing."
+    }
+    Write-Host "  [OK] Local main is in sync with origin/main"
+
+    # 4. Check for local branches that have commits not yet merged into main.
+    $rawUnmerged = git branch --no-merged main 2>&1
+    $unmergedBranches = $rawUnmerged |
+        Where-Object { $_ -match '\S' } |
+        ForEach-Object { $_.Trim().TrimStart('* ') } |
+        Where-Object { $_ -ne '' }
+    if ($unmergedBranches) {
+        Write-Host ""
+        Write-Host "  Pre-flight failed: The following local branches have commits NOT merged into main:"
+        foreach ($b in $unmergedBranches) {
+            $unmergedCount = [int](git rev-list --count "main..$b" 2>$null)
+            Write-Host "    - $b  ($unmergedCount unmerged commit(s))"
+            git log --oneline "main..$b" | ForEach-Object { Write-Host "        $_" }
+        }
+        Write-Host ""
+        Write-Host "  Review the commits above and decide whether they should be merged into main before this release."
+        Write-Host "  To skip this check in an emergency: -SkipGitChecks"
+        throw "Pre-flight failed: Unmerged local branches exist. Merge or delete them before releasing."
+    }
+    Write-Host "  [OK] No local branches with unmerged commits"
+
+    # 5. Check for open pull requests (requires gh CLI; skipped gracefully if unavailable).
+    $ghCmd = Get-Command gh -ErrorAction SilentlyContinue
+    if ($ghCmd) {
+        Write-Host "  Checking for open pull requests..."
+        $prJson = gh pr list --state open --json number,title,headRefName 2>$null
+        if ($prJson) {
+            try {
+                $openPRs = $prJson | ConvertFrom-Json
+                if ($openPRs -and $openPRs.Count -gt 0) {
+                    Write-Host ""
+                    Write-Host "  Pre-flight failed: $($openPRs.Count) open pull request(s) exist:"
+                    foreach ($pr in $openPRs) {
+                        Write-Host "    - PR #$($pr.number): '$($pr.title)'  [branch: $($pr.headRefName)]"
+                    }
+                    Write-Host ""
+                    Write-Host "  Merge, close, or confirm each PR is intentionally excluded before releasing."
+                    Write-Host "  To skip this check in an emergency: -SkipGitChecks"
+                    throw "Pre-flight failed: Open pull requests exist. Resolve them before releasing."
+                }
+                Write-Host "  [OK] No open pull requests"
+            } catch [System.Management.Automation.RuntimeException] {
+                # Rethrow our own throw; swallow JSON parse errors from gh output.
+                throw
+            } catch {
+                Write-Warning "  Could not parse PR list from gh CLI; skipping PR check."
+            }
+        }
+    } else {
+        Write-Warning "  gh CLI not found; skipping open-PR check. Install GitHub CLI for full pre-flight coverage."
+    }
+
+    Write-Host ""
+    Write-Host "All pre-flight checks passed."
+    Write-Host ""
+}
+# ─────────────────────────────────────────────────────────────────────────────
 
 $python = Join-Path $repoRoot ".venv/Scripts/python.exe"
 if (-not (Test-Path $python)) {
@@ -83,26 +191,19 @@ if (Test-Path (Join-Path $repoRoot "build")) {
     Remove-Item (Join-Path $repoRoot "build") -Recurse -Force
 }
 
-# Use .spec file for proper dependency bundling
-$specFile = Join-Path $repoRoot "QTR_Pairing_Process.spec"
-if (Test-Path $specFile) {
-    Write-Host "Building with .spec file for enhanced dependency handling..."
-    & $python -m PyInstaller --noconfirm --clean $specFile
-
-    # Normalize spec output name to the versioned release artifact name.
-    if ((-not (Test-Path $exeSource)) -and (Test-Path $specExeSource)) {
-        Move-Item -Path $specExeSource -Destination $exeSource -Force
-    }
-} else {
-    Write-Host "Building with command-line options (no .spec file found)..."
-    $sqlDataArg = "qtr_pairing_process/db_management/sql;qtr_pairing_process/db_management/sql"
-    $docsDataArg = "docs;docs"
-    & $python -m PyInstaller --noconfirm --clean --onefile --windowed --name $exeName `
-        --add-data $sqlDataArg `
-        --add-data $docsDataArg `
-        --collect-all qtr_pairing_process `
-        main.py
-}
+# Always build a self-contained single-file exe using explicit flags.
+# Required data bundles (prevents runtime errors in the frozen exe):
+#   --collect-all qtr_pairing_process  — bundles every sub-package so no ModuleNotFoundError at launch
+#   --add-data docs;docs               — bundles FULL_USER_GUIDE.md so Help > User Guide works
+#   --add-data sql;sql                 — bundles SQL schema files for database bootstrap
+Write-Host "Building self-contained exe..."
+$sqlDataArg  = "qtr_pairing_process/db_management/sql;qtr_pairing_process/db_management/sql"
+$docsDataArg = "docs;docs"
+& $python -m PyInstaller --noconfirm --clean --onefile --windowed --name $exeName `
+    --add-data $sqlDataArg `
+    --add-data $docsDataArg `
+    --collect-all qtr_pairing_process `
+    main.py
 
 if (-not (Test-Path $exeSource)) {
     throw "Build finished without expected artifact: $exeSource"
