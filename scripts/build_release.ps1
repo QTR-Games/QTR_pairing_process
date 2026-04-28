@@ -116,9 +116,14 @@ $publishChecklist = Join-Path $releaseDir "RELEASE_PUBLISH_CHECKLIST_v$Version.m
 if (-not (Test-Path $releaseNotes)) {
     "# Release Notes`n`nAdd release notes for v$Version." | Set-Content $releaseNotes
 }
-if (-not (Test-Path $userGuide)) {
-    "# User Guide`n`nAdd end-user documentation for v$Version." | Set-Content $userGuide
+
+# Always copy the canonical user guide from docs/ into the release folder.
+$canonicalGuide = Join-Path $repoRoot "docs\FULL_USER_GUIDE.md"
+if (-not (Test-Path $canonicalGuide)) {
+    throw "Preflight failed: docs/FULL_USER_GUIDE.md not found. Update the user guide before building a release."
 }
+Copy-Item $canonicalGuide $userGuide -Force
+Write-Host "User guide copied: $userGuide"
 if (-not (Test-Path $publishChecklist)) {
     @"
 # Release Publish Checklist - v$Version
@@ -150,7 +155,7 @@ $manifestContent = @"
 - $exeName.exe
 - SHA256SUMS.txt
 - RELEASE_NOTES_v$Version.md
-- USER_GUIDE_v$Version.md
+- USER_GUIDE_v$Version.md  (copied from docs/FULL_USER_GUIDE.md)
 - ADVANCED_SORTING_GUIDE.md
 
 ## Integrity
