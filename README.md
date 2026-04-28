@@ -256,8 +256,9 @@ For questions, issues, or feature requests, please contact the development team 
 
 ## Version History
 
+- **v2.1.1**: Current maintenance pack under service release 1
+- **v2.0.0**: Service release baseline with strategic sorting and release packaging
 - **v0.1**: Initial release with core pairing functionality
-- **Current**: Active development with database integration and Excel support
 
 ## Future Roadmap
 

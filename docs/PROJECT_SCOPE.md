@@ -2,7 +2,7 @@
 
 ## Current Project Status
 
-**Version**: 0.1 (Active Development)
+**Version**: 2.1.1 (Maintenance Pack)
 **Status**: Production-ready with ongoing enhancements
 **Primary Users**: Competitive miniature wargaming teams
 **Deployment**: Desktop application with SQLite database
@@ -18,7 +18,7 @@ The QTR Pairing Process aims to be the definitive strategic analysis tool for te
 - **Reliability**: Rock-solid performance during high-stress tournament conditions
 - **Portability**: Easy sharing of analysis between team members and across devices
 
-## Current Scope (Version 0.1)
+## Current Scope (Version 2.1.1)
 
 ### ✅ Implemented Features
 
