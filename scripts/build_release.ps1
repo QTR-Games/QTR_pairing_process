@@ -96,7 +96,12 @@ if (Test-Path $specFile) {
 } else {
     Write-Host "Building with command-line options (no .spec file found)..."
     $sqlDataArg = "qtr_pairing_process/db_management/sql;qtr_pairing_process/db_management/sql"
-    & $python -m PyInstaller --noconfirm --clean --onefile --windowed --name $exeName --add-data $sqlDataArg main.py
+    $docsDataArg = "docs;docs"
+    & $python -m PyInstaller --noconfirm --clean --onefile --windowed --name $exeName `
+        --add-data $sqlDataArg `
+        --add-data $docsDataArg `
+        --collect-all qtr_pairing_process `
+        main.py
 }
 
 if (-not (Test-Path $exeSource)) {

@@ -3652,7 +3652,12 @@ class UiManager:
     def _open_markdown_guide(self, title: str, relative_path: str, reopen_data_management_on_close: bool = False):
         """Open a markdown guide in a simple in-app reader window."""
         try:
-            guide_path = Path(__file__).parent.parent / relative_path
+            import sys
+            if getattr(sys, 'frozen', False):
+                # Running as compiled exe — files are under _MEIPASS
+                guide_path = Path(sys._MEIPASS) / relative_path
+            else:
+                guide_path = Path(__file__).parent.parent / relative_path
             if not guide_path.exists():
                 messagebox.showerror("Guide", f"Guide file not found:\n{guide_path}")
                 return
@@ -3952,7 +3957,7 @@ class UiManager:
             add_menu_button(team_mgmt_body, "Create Team", self.on_create_team, tier="primary", reopen_data_management=True)
             add_menu_button(team_mgmt_body, "Modify Team", self.on_modify_team, tier="primary", reopen_data_management=True)
             add_menu_button(team_mgmt_body, "Delete Team", self.on_delete_team, tier="secondary", reopen_data_management=True)
-            add_menu_button(team_mgmt_body, "Import Templates", self.show_import_templates_popup, tier="utility", reopen_data_management=True)
+            add_menu_button(team_mgmt_body, "Import Templates", self.show_import_templates_popup, tier="utility", reopen_data_management=False)
             
             # BOTTOM RIGHT: Database section
             database_body = create_section(
@@ -6617,7 +6622,6 @@ class UiManager:
         popup.geometry("520x470")
         popup.resizable(False, False)
         popup.transient(self.root)
-        popup.grab_set()
 
         tk.Label(
             popup,
