@@ -4078,22 +4078,16 @@ class UiManager:
 
             team1_name, team1_players = self.retrieve_team_data(team_1_name)
             team2_name, team2_players = self.retrieve_team_data(team_2_name)
-            ratings = self.retrieve_ratings(team1_players, team2_players)
 
-            scenario_id = self.get_scenario_num()
-            if scenario_id not in ratings:
-                messagebox.showerror(
-                    "Export XLSX",
-                    self._operation_failed_error(
-                        f"no ratings available for scenario {scenario_id}; save ratings first and retry"
-                    ),
-                )
-                return
+            team1_id = self.db_manager.query_team_id(team1_name)
+            team2_id = self.db_manager.query_team_id(team2_name)
+            scenario_id = getattr(self, 'get_scenario_num', lambda: 0)()
+            ratings_by_name = self._fetch_matchup_ratings_by_name(team1_id, team2_id, scenario_id=scenario_id)
 
-            rating_data = ratings[scenario_id]
             matrix = []
             for friendly_player in team1_players:
-                matrix.append(rating_data.get(friendly_player, [0, 0, 0, 0, 0]))
+                row = [ratings_by_name.get((friendly_player, opp_player), 0) for opp_player in team2_players]
+                matrix.append(row)
 
             exporter = SimpleExcelExporter(
                 file_path=file_path,

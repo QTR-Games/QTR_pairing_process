@@ -288,27 +288,7 @@ class SimpleExcelImporter:
             
             for i, player_name in enumerate(team_data['friendly_players']):
                 player_id = self.db_manager.query_player_id(player_name, friendly_team_id)
-        """
-        Resolve a team for import, creating it when missing, then validate roster.
-
-        Parameters
-        ----------
-        team_name : str
-            Name of the team to resolve or create.
-        player_names : List[str]
-            List of player names that should belong to this team.
-        team_role : str
-            Role of the team in the matchup. Must be either "friendly" or "opponent".
-            This controls opponent-specific logging when a missing team is created.
-        friendly_team_name : Optional[str]
-            Name of the friendly team, used only for logging when creating an
-            opponent team.
-        """
-        valid_roles = ("friendly", "opponent")
-        if team_role not in valid_roles:
-            raise ValueError(
-                f"Invalid team_role '{team_role}'. Expected one of {valid_roles}."
-            )
+                friendly_player_ids[i] = player_id
                 
             for j, player_name in enumerate(team_data['opponent_players']):
                 player_id = self.db_manager.query_player_id(player_name, opponent_team_id)

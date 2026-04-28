@@ -61,17 +61,17 @@ def test_export_xlsx_writes_import_ready_layout(monkeypatch, tmp_path):
     assert info_calls
 
     workbook = openpyxl.load_workbook(out_path)
-    sheet = workbook["ImportReady"]
+    sheet = workbook["Import Data"]
 
     assert sheet["A1"].value == "Friendly Team"
-    assert sheet["A3"].value == "Opponent Team"
+    assert sheet["A2"].value == "Opponent Team"
 
-    assert [sheet.cell(row=3, column=col).value for col in range(3, 8)] == ["O1", "O2", "O3", "O4", "O5"]
-    assert [sheet.cell(row=row, column=2).value for row in range(4, 9)] == ["F1", "F2", "F3", "F4", "F5"]
+    assert [sheet.cell(row=2, column=col).value for col in range(3, 8)] == ["O1", "O2", "O3", "O4", "O5"]
+    assert [sheet.cell(row=row, column=2).value for row in range(3, 8)] == ["F1", "F2", "F3", "F4", "F5"]
 
-    assert sheet.cell(row=4, column=3).value == 5
-    assert sheet.cell(row=4, column=4).value == 4
-    assert sheet.cell(row=5, column=3).value == 2
+    assert sheet.cell(row=3, column=3).value == 5
+    assert sheet.cell(row=3, column=4).value == 4
+    assert sheet.cell(row=4, column=3).value == 2
 
 
 

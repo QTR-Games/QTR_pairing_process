@@ -52,7 +52,7 @@ def test_rating_dialog_apply_returns_selected_system():
         root.after(140, _auto_apply)
 
         result = dialog.show()
-        assert result is None
+        assert result == "1-3"
         assert dialog.selected_system == "1-3"
     finally:
         if root.winfo_exists():
