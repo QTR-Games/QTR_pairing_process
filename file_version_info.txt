@@ -1,0 +1,34 @@
+# UTF-8
+#
+# Version information for QTR Pairing Process executable
+# This file is used by PyInstaller to embed version info in the .exe
+
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(2, 1, 1, 0),
+    prodvers=(2, 1, 1, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo(
+      [
+      StringTable(
+        u'040904B0',
+        [StringStruct(u'CompanyName', u'GronkSoft'),
+        StringStruct(u'FileDescription', u'QTR Pairing Process - Team Matchup Analysis'),
+        StringStruct(u'FileVersion', u'2.1.1.0'),
+        StringStruct(u'InternalName', u'QTR_Pairing_Process'),
+        StringStruct(u'LegalCopyright', u'© Daniel P Raven and Matt Russell 2024 All Rights Reserved'),
+        StringStruct(u'OriginalFilename', u'QTR_Pairing_Process_v2.1.1.exe'),
+        StringStruct(u'ProductName', u'QTR Pairing Process'),
+        StringStruct(u'ProductVersion', u'2.1.1.0')])
+      ]
+    ),
+    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
+  ]
+)

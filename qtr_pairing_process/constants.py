@@ -53,16 +53,16 @@ DEFAULT_COLOR_MAP = RATING_SYSTEMS[DEFAULT_RATING_SYSTEM]['color_map']
 DIRECTORY = os.getcwd()
 
 SCENARIO_MAP = {
-    0: "0 - Neutral",
-    1: "1 - Recon",
-    2: "2 - Battle Lines",
-    3: "3 - Wolves At Our Heels",
-    4: "4 - Payload",
-    5: "5 - Two Fronts",
-    6: "6 - Invasion"}
+    0: "1 - Trench Warfare",
+    1: "2 - Two Fronts",
+    2: "3 - Wolves At Our Heels",
+    3: "4 - Pressure Point",
+    4: "5 - High Stakes",
+    5: "6 - Fault Line",
+    6: "7 - Payload"}
 
 SCENARIO_RANGES = {
-    0: (1, 6),    # Scenario Agnostic
+    0: (1, 6),
     1: (7, 12),
     2: (13, 18),
     3: (19, 24),

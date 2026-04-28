@@ -97,6 +97,9 @@ class DbManager:
         if ratings_count == 0:
             self.create_default_ratings(rating_system=DEFAULT_RATING_SYSTEM)
 
+        # Keep scenario labels aligned to current-season naming conventions.
+        self.insert_scenarios()
+
     def connect_db(self, path, name):
         return sqlite3.connect(f'{path}/{name}')
 
@@ -255,12 +258,22 @@ class DbManager:
             self.upsert_scenario(num, desc)
 
     def upsert_scenario(self, scenario_id, scenario_name):
-        table = 'scenarios'
-        columns = ['scenario_id', 'scenario_name']
-        values = (scenario_id, scenario_name)
-        constraint_columns = ['scenario_id']
-        update_column = 'scenario_name'
-        self.upsert_row(values, columns, table, constraint_columns, update_column)
+        """Upsert scenario name by ID across both modern and legacy schemas.
+
+        Some legacy databases have a `scenarios` table without a UNIQUE/PK
+        constraint on `scenario_id`, so `ON CONFLICT(scenario_id)` is invalid.
+        Use update-then-insert logic that works regardless of table constraints.
+        """
+        updated = self.execute_sql(
+            "UPDATE scenarios SET scenario_name = ? WHERE scenario_id = ?",
+            (scenario_name, scenario_id),
+        )
+
+        if updated == 0:
+            self.execute_sql(
+                "INSERT INTO scenarios (scenario_id, scenario_name) VALUES (?, ?)",
+                (scenario_id, scenario_name),
+            )
 
     #######
     # Teams
@@ -341,10 +354,7 @@ class DbManager:
         except (ValueError, RuntimeError) as e:
             print(f"Error querying player ID for '{player_name}' in team {team_id}: {e}")
             raise
-        results = self.query_sql(sql)
-        if results and len(results) > 0:
-            return results[0][0]
-        return None
+
 
     def rename_player(self, player_id, team_id, player_name):
         """Rename an existing player in place using secure parameterized query."""
@@ -757,7 +767,13 @@ class DbManager:
         return self.delete_comment(player1_id, player2_id, scenario_id)
         
     def create_tables(self):
-        path = 'qtr_pairing_process/db_management/sql'
+        import sys
+        if getattr(sys, 'frozen', False):
+            # Running as compiled exe — SQL files are bundled under _MEIPASS
+            path = os.path.join(sys._MEIPASS, 'qtr_pairing_process', 'db_management', 'sql')
+        else:
+            # Running from source — locate sql/ relative to this file
+            path = os.path.join(os.path.dirname(__file__), 'sql')
         files = os.listdir(path)
 
         for file in files:
@@ -782,13 +798,13 @@ class DbManager:
         self.create_team('default_team_2')
 
     def create_default_scenarios(self):
-        self.create_scenario(0,'0 - Neutral')
-        self.create_scenario(1,'1 - Recon')
-        self.create_scenario(2,'2 - Battle Lines')
-        self.create_scenario(3,'3 - Wolves At Our Heels')
-        self.create_scenario(4,'4 - Payload')
-        self.create_scenario(5,'5 - Two Fronts')
-        self.create_scenario(6,'6 - Invasion')
+        self.create_scenario(0,'1 - Trench Warfare')
+        self.create_scenario(1,'2 - Two Fronts')
+        self.create_scenario(2,'3 - Wolves At Our Heels')
+        self.create_scenario(3,'4 - Pressure Point')
+        self.create_scenario(4,'5 - High Stakes')
+        self.create_scenario(5,'6 - Fault Line')
+        self.create_scenario(6,'7 - Payload')
 
     def create_default_players(self):
         for i in range(1,3):

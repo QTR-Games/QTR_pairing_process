@@ -1,11 +1,11 @@
 """ © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 SHEET_NAMES = [
     "Teams",
-    "0 - Neutral",
-    "1 - Recon",
-    "2 - Battle Lines",
+    "1 - Trench Warfare",
+    "2 - Two Fronts",
     "3 - Wolves At Our Heels",
-    "4 - Payload",
-    "5 - Two Fronts",
-    "6 - Invasion"
+    "4 - Pressure Point",
+    "5 - High Stakes",
+    "6 - Fault Line",
+    "7 - Payload"
 ]

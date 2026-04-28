@@ -43,6 +43,7 @@ from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
 from qtr_pairing_process.create_team_dialog import CreateTeamDialog
 from qtr_pairing_process.excel_management.excel_importer import ExcelImporter
 from qtr_pairing_process.excel_management.simple_excel_importer import SimpleExcelImporter
+from qtr_pairing_process.excel_management.simple_excel_exporter import SimpleExcelExporter
 from qtr_pairing_process.grid_data_model import GridDataModel
 from qtr_pairing_process.perf_timer import PerfTimer
 
@@ -749,7 +750,7 @@ class UiManager:
         self.root.after(1, self.load_grid_data_from_db)
 
         self.create_tooltip(self.combobox_1, "Select a CSV file to import")
-        self.create_tooltip(self.scenario_box, "Choose 0 for Scenario Agnostic Ratings\nChoose a Steamroller Scenario for specific ratings")
+        self.create_tooltip(self.scenario_box, "Choose one of the seven active competition scenarios")
 
         self.update_combobox_colors()
         self.init_display_headers()
@@ -1286,7 +1287,8 @@ class UiManager:
         self._busy_status_job = None
 
     def _rotate_busy_status(self):
-        if getattr(self, "_busy_operation_depth", 0) <= 0 or getattr(self, "busy_status_label", None) is None:
+        busy_label = getattr(self, "busy_status_label", None)
+        if getattr(self, "_busy_operation_depth", 0) <= 0 or busy_label is None:
             self._busy_status_job = None
             return
         root = getattr(self, "root", None)
@@ -1295,7 +1297,7 @@ class UiManager:
             return
 
         dots = "." * ((self._busy_status_phase % 3) + 1)
-        self.busy_status_label.config(text=f"{self._busy_operation_message}{dots}")
+        busy_label.config(text=f"{self._busy_operation_message}{dots}")
         self._busy_status_phase += 1
         self._busy_status_job = root.after(320, self._rotate_busy_status)
 
@@ -1318,10 +1320,13 @@ class UiManager:
                 fg="#0d47a1",
             )
 
-        if getattr(self, "busy_status_frame", None) is not None:
-            self.busy_status_frame.pack(side=tk.RIGHT, padx=(0, 8), pady=2)
-        if getattr(self, "busy_progress", None) is not None:
-            self.busy_progress.start(12)
+        busy_frame = getattr(self, "busy_status_frame", None)
+        if busy_frame is not None:
+            busy_frame.pack(side=tk.RIGHT, padx=(0, 8), pady=2)
+
+        busy_progress = getattr(self, "busy_progress", None)
+        if busy_progress is not None:
+            busy_progress.start(12)
 
         self._set_heavy_controls_enabled(False)
         root = getattr(self, "root", None)
@@ -1361,10 +1366,13 @@ class UiManager:
             return
 
         self._cancel_busy_animation()
-        if getattr(self, "busy_progress", None) is not None:
-            self.busy_progress.stop()
-        if getattr(self, "busy_status_frame", None) is not None:
-            self.busy_status_frame.pack_forget()
+        busy_progress = getattr(self, "busy_progress", None)
+        if busy_progress is not None:
+            busy_progress.stop()
+
+        busy_frame = getattr(self, "busy_status_frame", None)
+        if busy_frame is not None:
+            busy_frame.pack_forget()
 
         self._set_heavy_controls_enabled(True)
         root = getattr(self, "root", None)
@@ -3767,6 +3775,10 @@ class UiManager:
                 "borderwidth": 1,
             }
 
+            # Button tier conventions for future Data Management additions:
+            # - primary: high-value frequent actions (green emphasis)
+            # - secondary: standard/default actions
+            # - utility: helper/reference/log actions (blue tint)
             button_tier_styles = {
                 "primary": {"bg": "#dff0d8", "activebackground": "#cdeac0"},
                 "secondary": {},
@@ -3807,6 +3819,7 @@ class UiManager:
                 bg=None,
                 reopen_data_management=False,
             ):
+                # Keep this helper as the single place where tier visuals are applied.
                 button_kwargs = dict(section_button_opts)
                 tier_style = button_tier_styles.get(tier, {})
                 button_kwargs.update(tier_style)
@@ -3858,15 +3871,6 @@ class UiManager:
             title_label = tk.Label(menu_window, text="Data Management", 
                                  font=ui_tokens["title_font"], bg=ui_tokens["title_bg"], pady=10)
             title_label.pack(fill=tk.X, padx=10, pady=(10, 15))
-
-            tk.Label(
-                menu_window,
-                text="Primary = green, Secondary = default, Utility = blue",
-                bg=ui_tokens["dialog_bg"],
-                fg="#4a4a4a",
-                font=ui_tokens["legend_font"],
-                anchor="w",
-            ).pack(fill=tk.X, padx=18, pady=(0, 6))
             
             # Create main frame for 2x2 grid layout
             main_frame = tk.Frame(menu_window, bg=ui_tokens["dialog_bg"])
@@ -4054,98 +4058,57 @@ class UiManager:
                 messagebox.showerror("Data Management", self._operation_failed_error(f"menu action could not be executed: {e}"))
     
     def export_xlsx(self):
-        """Export selected matchup to an XLSX file compatible with XLSX import."""
+        """Export selected matchup in the active simple XLSX template."""
         try:
-            friendly_team = (self.combobox_1.get() if hasattr(self, 'combobox_1') else '').strip()
-            opponent_team = (self.combobox_2.get() if hasattr(self, 'combobox_2') else '').strip()
-
-            if not friendly_team or not opponent_team:
-                messagebox.showerror(
-                    "Export XLSX",
-                    self._operation_failed_error("select both teams before exporting XLSX."),
-                )
-                return
-
-            friendly_team_name, friendly_players = self.retrieve_team_data(friendly_team)
-            opponent_team_name, opponent_players = self.retrieve_team_data(opponent_team)
-
-            if len(friendly_players) != 5 or len(opponent_players) != 5:
-                messagebox.showerror(
-                    "Export XLSX",
-                    self._operation_failed_error(
-                        "XLSX import format requires exactly 5 players per team. "
-                        f"Found {len(friendly_players)} friendly and {len(opponent_players)} opponent players."
-                    ),
-                )
-                return
-
-            filename_tokenizer = getattr(
-                self,
-                "_safe_export_filename_token",
-                lambda value: str(value or "").replace(" ", "_"),
-            )
-            file_name = (
-                f"{filename_tokenizer(friendly_team_name)}"
-                f"_vs_{filename_tokenizer(opponent_team_name)}_import_ready.xlsx"
-            )
             file_path = filedialog.asksaveasfilename(
-                title="Export XLSX (Import-Ready Format)",
-                initialfile=file_name,
                 defaultextension=".xlsx",
                 filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
             )
             if not file_path:
                 return
 
-            import openpyxl
+            team_1_name = self.combobox_1.get().strip()
+            team_2_name = self.combobox_2.get().strip()
+            if not team_1_name or not team_2_name:
+                messagebox.showerror(
+                    "Export XLSX",
+                    self._operation_failed_error("select both Team 1 and Team 2 before exporting XLSX"),
+                )
+                return
 
-            friendly_team_id = self.db_manager.query_team_id(friendly_team_name)
-            opponent_team_id = self.db_manager.query_team_id(opponent_team_name)
-            if friendly_team_id is None or opponent_team_id is None:
-                raise ValueError("could not resolve team ids for selected teams")
+            team1_name, team1_players = self.retrieve_team_data(team_1_name)
+            team2_name, team2_players = self.retrieve_team_data(team_2_name)
+            ratings = self.retrieve_ratings(team1_players, team2_players)
 
-            scenario_id = 0
-            min_rating, max_rating = self.rating_range if hasattr(self, "rating_range") else (1, 5)
-            neutral_rating = int(round((int(min_rating) + int(max_rating)) / 2.0))
-            rating_map = self._fetch_matchup_ratings_by_name(
-                friendly_team_id,
-                opponent_team_id,
-                scenario_id=scenario_id,
+            scenario_id = self.get_scenario_num()
+            if scenario_id not in ratings:
+                messagebox.showerror(
+                    "Export XLSX",
+                    self._operation_failed_error(
+                        f"no ratings available for scenario {scenario_id}; save ratings first and retry"
+                    ),
+                )
+                return
+
+            rating_data = ratings[scenario_id]
+            matrix = []
+            for friendly_player in team1_players:
+                matrix.append(rating_data.get(friendly_player, [0, 0, 0, 0, 0]))
+
+            exporter = SimpleExcelExporter(
+                file_path=file_path,
+                friendly_team_name=team1_name,
+                opponent_team_name=team2_name,
+                friendly_players=team1_players,
+                opponent_players=team2_players,
+                ratings_matrix=matrix,
             )
-
-            workbook = openpyxl.Workbook()
-            sheet = workbook.active
-            sheet.title = "ImportReady"
-
-            sheet["A1"] = friendly_team_name
-
-            block_row = 3
-            sheet.cell(row=block_row, column=1, value=opponent_team_name)
-            for col_offset, opponent_player in enumerate(opponent_players, start=3):
-                sheet.cell(row=block_row, column=col_offset, value=opponent_player)
-
-            for row_offset, friendly_player in enumerate(friendly_players, start=1):
-                out_row = block_row + row_offset
-                sheet.cell(row=out_row, column=2, value=friendly_player)
-                for col_offset, opponent_player in enumerate(opponent_players, start=3):
-                    rating = rating_map.get((friendly_player, opponent_player), neutral_rating)
-                    sheet.cell(row=out_row, column=col_offset, value=int(rating))
-
-            workbook.save(file_path)
-
+            exporter.execute()
             messagebox.showinfo(
                 "Export XLSX",
                 self._operation_notice_info(
-                    "XLSX exported in import-ready format for the selected matchup "
-                    f"(scenario 0 - Neutral).\n\nFile: {file_path}"
+                    f"XLSX exported successfully for scenario {scenario_id}:\n{file_path}"
                 ),
-            )
-            self.logger.info(
-                "XLSX export complete: file=%s friendly=%s opponent=%s scenario=%s",
-                file_path,
-                friendly_team_name,
-                opponent_team_name,
-                scenario_id,
             )
         except Exception as e:
             self.logger.exception("XLSX export failed")
@@ -4336,7 +4299,7 @@ class UiManager:
         if not team_names:
             raise ValueError("No teams are available.")
 
-        selected = [None]
+        selected: List[Optional[str]] = [None]
         dialog = tk.Toplevel(self.root)
         dialog.title(title)
         dialog.geometry("430x170")
@@ -5736,7 +5699,15 @@ class UiManager:
         else:
             self._set_combobox_values_if_changed(
                 self.scenario_box,
-                ["1 - Recon", "2 - Battle Lines", "3 - Wolves At Our Heels", "4 - Payload", "5 - Two Fronts", "6 - Invasion"],
+                [
+                    "1 - Trench Warfare",
+                    "2 - Two Fronts",
+                    "3 - Wolves At Our Heels",
+                    "4 - Pressure Point",
+                    "5 - High Stakes",
+                    "6 - Fault Line",
+                    "7 - Payload",
+                ],
             )
 
     def _on_team_box_change_traced(self, *args):
@@ -5995,12 +5966,12 @@ class UiManager:
         if not team_1 or not team_2:
             return
 
-        scenario = self.scenario_box.get()[:1]
-        if scenario == '':
+        scenario_text = self.scenario_box.get().strip()
+        if scenario_text == '':
             self._scenario_change_auto = True
-            self.scenario_box.set("0 - Neutral")
-            scenario = self.scenario_box.get()[:1]
-        scenario_id = int(scenario)
+            self.scenario_box.set(self._scenario_label_for_internal_id(0))
+            scenario_text = self.scenario_box.get().strip()
+        scenario_id = self._scenario_internal_id_from_label(scenario_text)
 
         selection_key = (team_1, team_2, scenario_id)
         if (
@@ -6224,7 +6195,7 @@ class UiManager:
                 "Please select both teams before saving.")
             return
         
-        scenario_id = int(self.scenario_box.get()[:1])
+        scenario_id = self.get_scenario_num()
 
         team_1_id = self.db_manager.query_team_id(team_1)
         if team_1_id is None:
@@ -6957,23 +6928,9 @@ class UiManager:
 
     def retrieve_ratings(self, team1_players, team2_players):
         ratings = {}
-        team_1_name = (self.combobox_1.get() or "").strip()
-        team_2_name = (self.combobox_2.get() or "").strip()
-        team_1_id = self.db_manager.query_team_id(team_1_name)
-        team_2_id = self.db_manager.query_team_id(team_2_name)
-        if team_1_id is None or team_2_id is None:
-            return ratings
-
-        team1_player_ids = {
-            player_name: self.db_manager.query_player_id(player_name, team_1_id)
-            for player_name in team1_players
-        }
-        team2_player_ids = {
-            player_name: self.db_manager.query_player_id(player_name, team_2_id)
-            for player_name in team2_players
-        }
-
-        for scenario in sorted(SCENARIO_MAP.keys()):
+        scenario_id = []        
+        for scenario in range(0,7):
+            
             scenario_id = scenario
             ratings[scenario_id] = {}
             for player1 in team1_players:
@@ -7306,16 +7263,31 @@ class UiManager:
     #     current_scenario = self.get_scenario_num()
     #     row_lo, row_hi = self.scenario_ranges.get(current_scenario, (1, 6))  # Default to (1, 6) if scenario is not found
     #     if current_scenario < 1:
-    #         print("Scenario Agnostic Pairing...")
+    #         print("Scenario-specific pairing...")
     #     return row_lo, row_hi
 
     def get_scenario_num(self):
-        num_string = self.scenario_box.get()[:1]
-        num = 0
-        if num_string:
-            num = int(num_string)
-            if self.print_output: print(type(num))
+        scenario_text = self.scenario_box.get().strip() if self.scenario_box else ""
+        num = self._scenario_internal_id_from_label(scenario_text)
+        if self.print_output:
+            print(type(num))
         return num
+
+    def _scenario_internal_id_from_label(self, scenario_label: str) -> int:
+        """Map displayed scenario labels (1-7) to internal IDs (0-6)."""
+        if not scenario_label:
+            return 0
+        token = scenario_label.split("-", 1)[0].strip()
+        try:
+            displayed_number = int(token)
+        except ValueError:
+            return 0
+
+        internal_id = displayed_number - 1
+        return min(max(internal_id, 0), max(SCENARIO_MAP.keys()))
+
+    def _scenario_label_for_internal_id(self, scenario_id: int) -> str:
+        return self.scenario_map.get(scenario_id, SCENARIO_MAP.get(scenario_id, "1 - Trench Warfare"))
 
     def validate_grid_data(self):
         """Validate grid data based on current rating system"""
