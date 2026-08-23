@@ -1,0 +1,36 @@
+# Tool configuration only.
+#
+# The project build intentionally still uses setup.py; this file does NOT declare
+# a [build-system] table, so packaging/installation behavior is unchanged. It exists
+# to give pytest, ruff, and mypy a single, discoverable configuration home.
+
+[tool.pytest.ini_options]
+# Register custom markers so --strict-markers can catch typos without flagging ours.
+markers = [
+    "requires_tk: test requires a live Tk runtime; skipped automatically when no display is available",
+]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    "qtr_pairing_process/legacy",
+    "build",
+    "dist",
+    "release",
+    "*.egg-info",
+]
+
+[tool.ruff.lint]
+# Conservative starting set: correctness and imports, not aggressive style.
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",  # line length is advisory, not blocking
+]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_redundant_casts = true
+check_untyped_defs = false
