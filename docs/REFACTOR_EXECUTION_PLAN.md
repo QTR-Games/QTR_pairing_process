@@ -160,12 +160,39 @@ proven on all fixtures.
 
 1. Golden-master suite passes identically under `QTR_ENGINE=widget` and
    `QTR_ENGINE=model` for every fixture and every sort mode.
-2. No change to `TreeGenerator`'s public method signatures.
-3. Pre-existing test suite passes with no new failures.
-4. A recorded before/after timing on the 5v5 fixture.
+2. The **model-derived** digest equals the committed **widget-derived** digest,
+   byte-for-byte, on all 20 snapshots (see below).
+3. No change to `TreeGenerator`'s public method signatures.
+4. Pre-existing test suite passes with no new failures.
+5. A recorded before/after timing on the 5v5 fixture.
 
 Expected: the 69x on solver-internal work; end-to-end gain capped by rendering
 until p2 lands.
+
+### The oracle must migrate off the widget — and why that is the real proof
+
+The harness currently derives its digest from the widget
+(`_iter_canonical_records(tree, "")`). That is correct today because the widget
+holds all 48,751 nodes.
+
+**Phase 2 breaks that assumption by design.** Once rendering is virtualized the
+widget deliberately holds only expanded rows, so a widget-derived oracle would
+be inspecting a tree that is *supposed* to be incomplete. The dangerous outcome
+is not a spurious failure — it is a **pass** obtained by checking a few hundred
+nodes instead of 48,751. A safety net that reports green because it quietly
+stopped covering anything is worse than no safety net.
+
+So p1 adds a model-side capture producing byte-identical canonical records, and
+asserts the two independent traversals agree on every committed fixture.
+
+That assertion is worth more than the refactor. If a Tk walk and a plain-Python
+walk emit identical digests across all 20 snapshots, it is direct evidence that
+**the widget never held information the model lacks** — that it was always a
+projection, not a source of truth. That is the entire premise of this refactor,
+converted from an argument into a test.
+
+It also has a practical payoff: the oracle stops needing Tk, which takes the
+gate from ~64 s to near-instant and lets it run on any machine.
 
 ---
 
@@ -175,15 +202,25 @@ until p2 lands.
 in production (`enable_demo_population` is off). All 48,750 nodes are inserted to
 show ~40.
 
-Project only visible/expanded nodes into the widget and fill children on
-`<<TreeviewOpen>>` from the model. This is where the 4,135 ms redraw and the
-4.2 s freeze die. It requires no change of UI toolkit.
+Convenient detail: the `<<TreeviewOpen>>` binding is attached only when
+`enable_demo_population or print_output` (line 31), both False in production — so
+production currently has **no open handler at all**. The hook Phase 2 needs is
+free, and claiming it cannot disturb existing behavior.
+
+Approach: project only depth-1 nodes initially, each with a placeholder child so
+the expand arrow appears; on `<<TreeviewOpen>>`, replace the placeholder with real
+children from the model. This requires no change of UI toolkit.
+
+Sorting stays correct because the model holds every computed value in memory —
+the tree is sorted in the model and merely *projected* lazily. This is the reason
+p2 depends on p1c rather than being an independent tweak.
 
 Once this works, `_capture_tree_snapshot`/`_restore_tree_snapshot` and the
 persistent tree cache become largely redundant — rebuilding the model is ~30 ms.
 
-Exit: `teams.change.redraw` and `event_loop.lag` both under ~100 ms on a 5v5,
-measured through the existing `perf` spans.
+Exit: `teams.change.redraw` (currently `update_idletasks` at 4,135 ms, line 5763)
+and `event_loop.lag` both under ~100 ms on a 5v5, measured through the existing
+`perf` spans.
 
 ---
 
