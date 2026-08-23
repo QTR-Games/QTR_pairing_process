@@ -29,7 +29,12 @@ class DatabasePreferences:
     def _normalize_path_value(self, path_value: str) -> str:
         """Normalize and canonicalize a path against the config directory."""
         # Normalize mixed separators and resolve relative paths against config directory.
-        normalized_value = os.path.normpath(path_value)
+        # Treat '\\' and '/' as equivalent separators regardless of host OS so that
+        # Windows-style stored paths normalize correctly on POSIX (e.g. Linux CI) too.
+        # os.path.normpath alone only collapses the host separator, leaving '\\' as a
+        # literal filename char on Linux and breaking mixed-separator inputs.
+        unified_value = path_value.replace("\\", "/")
+        normalized_value = os.path.normpath(unified_value)
         if not os.path.isabs(normalized_value):
             base_dir = str(self.config_file.parent)
             normalized_value = os.path.normpath(os.path.join(base_dir, normalized_value))
