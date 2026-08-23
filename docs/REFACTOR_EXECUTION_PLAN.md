@@ -121,6 +121,23 @@ Two changes here are worth calling out because they delete whole classes of cost
 objects. Field access replaces tag serialization — no `f'cumulative_{v}'`
 formatting, no `int(str(tag).replace(...))` parsing.
 
+Two latent hazards in the current tag scheme disappear as a side effect, and
+they are worth naming because both are the kind of bug that stays silent:
+
+**Prefix collision.** The tag namespace is flat and untyped, so
+`strategic3_` is a string prefix of `strategic3_exploit_`. Reading the former
+matches the latter, and `_extract_prefixed_tag_value` only survives it because
+`int("exploit_42")` happens to raise, at which point it *continues the loop*
+(line 690). It works by accident of the sibling value being non-numeric. A tag
+like `strategic3_v2_` would silently return the wrong field. Dataclass
+attributes cannot collide by prefix.
+
+**Silent zeros.** The same accessor wraps its Tk call in `except TypeError:
+pass` and falls through to `default=0`. A widget-layer failure therefore yields
+a *plausible score* rather than an error — a wrong answer that looks right and
+propagates into sorting. In the model, a missing value is an `AttributeError`
+at the point of the mistake.
+
 ### p1c. Projection adapter + feature flag
 
 New `TreeProjector` owns the model↔widget boundary and the only Tk calls:
