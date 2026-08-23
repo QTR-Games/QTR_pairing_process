@@ -106,3 +106,28 @@ git config core.hooksPath githooks
 
 See `.github/copilot-instructions.md` for the architecture map and module overview -
 it's the fastest orientation to the codebase, whether you're a person or an AI agent.
+
+## Optional: local pre-commit hook
+
+This repo ships an opt-in pre-commit hook that runs `ruff` on your staged changes and the fast (non-Tk) test subset before each commit, so obvious problems are caught before they reach CI.
+
+**off by default**. To enable it in your clone:
+
+```sh
+git config core.hooksPath githooks
+```
+
+To disable it again:
+
+```sh
+git config --unset core.hooksPath
+```
+
+To skip it for a single commit (emergency):
+
+```sh
+git commit --no-verify
+```
+
+The hook is intentionally lightweight and never needs a display. The full suite (including
+Tk tests across Linux and Windows) still runs in CI regardless of whether you use the hook.

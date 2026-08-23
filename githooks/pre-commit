@@ -1,0 +1,47 @@
+#!/bin/sh
+# QTR Pairing Process - opt-in pre-commit hook.
+#
+# Enable it (per clone, one time):
+#     git config core.hooksPath githooks
+# Disable:
+#     git config --unset core.hooksPath
+# Skip once (emergency):
+#     git commit --no-verify
+#
+# Keep it FAST and non-blocking-by-default. It lints only the Python files you are
+# committing (so pre-existing lint debt elsewhere never blocks your commit) and runs the
+# non-Tk test subset, so it never needs a display. Full/Tk tests run in CI, not here.
+
+set -e
+
+# Ruff, but only on the Python files staged for THIS commit.
+staged_py=$(git diff --cached --name-only --diff-filter=ACM -- '*.py')
+if [ -n "$staged_py" ]; then
+    echo "[pre-commit] ruff check (staged Python files)..."
+    if command -v ruff >/dev/null 2>&1; then
+        RUFF="ruff"
+    elif python -m ruff --version >/dev/null 2>&1; then
+        RUFF="python -m ruff"
+    else
+        RUFF=""
+        echo "[pre-commit] ruff not installed; skipping lint (run: pip install ruff)"
+    fi
+    if [ -n "$RUFF" ]; then
+        echo "$staged_py" | xargs $RUFF check || {
+            echo "[pre-commit] ruff found issues in staged files - commit aborted. Fix them, or use --no-verify to override."
+            exit 1
+        }
+    fi
+else
+    echo "[pre-commit] no staged Python files; skipping ruff."
+fi
+
+echo "[pre-commit] fast tests (non-Tk)..."
+# Isolated basetemp dodges the Windows 'pytest-current' cleanup PermissionError.
+PT_TEMP="${TMPDIR:-/tmp}/qtr-pre-commit-pt"
+python -m pytest -q -m "not requires_tk" --basetemp="$PT_TEMP" || {
+    echo "[pre-commit] fast tests failed - commit aborted. Use --no-verify to override."
+    exit 1
+}
+
+echo "[pre-commit] OK"
