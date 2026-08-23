@@ -10,6 +10,7 @@ from pathlib import Path
 import tkinter as tk
 
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
+from qtr_pairing_process.pairing_model import PairingNode, TreeProjector
 from qtr_pairing_process.tree_generator import TreeGenerator
 
 from golden_master_scenarios import GoldenScenario
@@ -101,6 +102,68 @@ def generate_snapshot(scenario: GoldenScenario, sort_mode: str) -> dict:
             },
         )
 
+    return snapshot
+
+
+def generate_model_snapshot(scenario: GoldenScenario, sort_mode: str) -> dict:
+    """Generate a snapshot by traversing PairingNode state, not Treeview rows."""
+    if sort_mode not in SORT_MODES:
+        raise KeyError(f"unknown sort mode: {sort_mode}")
+
+    with tk_treeview() as treeview:
+        generator = TreeGenerator(
+            treeview=treeview,
+            sort_alpha=False,
+            strategic_preferences={},
+            rating_system=scenario.rating_system,
+        )
+        generator.generate_combinations(
+            list(scenario.our_players),
+            list(scenario.opponent_players),
+            scenario.our_ratings,
+            scenario.opponent_ratings,
+            our_team_first=scenario.our_team_first,
+        )
+        SORT_MODES[sort_mode](generator)
+        snapshot = capture_model_snapshot(
+            generator.model_root,
+            metadata={
+                "schema_version": SNAPSHOT_SCHEMA_VERSION,
+                "scenario": scenario.slug,
+                "description": scenario.description,
+                "sort_mode": sort_mode,
+                "our_team_first": scenario.our_team_first,
+                "rating_system": scenario.rating_system,
+                "our_players": list(scenario.our_players),
+                "opponent_players": list(scenario.opponent_players),
+            },
+        )
+
+    return snapshot
+
+
+def capture_model_snapshot(model_root: PairingNode | None, metadata: dict) -> dict:
+    """Capture the same golden-master snapshot shape from PairingNode state."""
+    records = list(_iter_canonical_records_from_model(model_root))
+    node_count = len(records)
+    digest = _digest_records(record for _, _, record in records)
+    depth_histogram = _depth_histogram(records)
+    fidelity = "full" if node_count <= FULL_FIDELITY_NODE_THRESHOLD else "digest"
+
+    snapshot = {
+        "metadata": metadata,
+        "fidelity": fidelity,
+        "node_count": node_count,
+        "digest": digest,
+    }
+
+    if fidelity == "full":
+        snapshot["tree"] = _serialize_model_children(model_root)
+        return snapshot
+
+    snapshot["depth_histogram"] = depth_histogram
+    snapshot["top_level"] = _serialize_model_top_level_decisions(model_root)
+    snapshot["subtree_digests"] = _model_subtree_digests(model_root)
     return snapshot
 
 
@@ -339,6 +402,71 @@ def _iter_canonical_records_for_item(
         yield from _iter_canonical_records_for_item(tree, child_id, (*path, index))
 
 
+def _serialize_model_children(model_root: PairingNode | None) -> list[dict]:
+    if model_root is None:
+        return []
+    return [_serialize_model_node(model_root, (0,), max_depth=None)]
+
+
+def _serialize_model_top_level_decisions(model_root: PairingNode | None) -> list[dict]:
+    if model_root is None:
+        return []
+    top_level = []
+    for index, node in enumerate(model_root.children):
+        top_level.append(_serialize_model_node(node, (0, index), max_depth=2))
+    return top_level
+
+
+def _serialize_model_node(
+    node: PairingNode,
+    path: tuple[int, ...],
+    max_depth: int | None,
+) -> dict:
+    serialized = {
+        "path": ".".join(str(part) for part in path),
+        "text": node.text,
+        "values": list(TreeProjector.values_for(node)),
+        "tags": sorted(str(tag) for tag in TreeProjector.tags_for(node)),
+        "children": [],
+    }
+
+    effective_depth = _effective_depth(path)
+    if max_depth is None or effective_depth < max_depth:
+        children = []
+        for index, child in enumerate(node.children):
+            children.append(_serialize_model_node(child, (*path, index), max_depth))
+        serialized["children"] = children
+    return serialized
+
+
+def _iter_canonical_records_from_model(
+    model_root: PairingNode | None,
+) -> Iterable[tuple[str, int, str]]:
+    if model_root is None:
+        return
+    yield from _iter_canonical_records_for_model_node(model_root, (0,))
+
+
+def _iter_canonical_records_for_model_node(
+    node: PairingNode,
+    path: tuple[int, ...],
+) -> Iterable[tuple[str, int, str]]:
+    path_text = ".".join(str(part) for part in path)
+    values = list(TreeProjector.values_for(node))
+    tags = sorted(str(tag) for tag in TreeProjector.tags_for(node))
+    record = "|".join(
+        (
+            path_text,
+            str(node.text),
+            json.dumps(values, ensure_ascii=False, separators=(",", ":")),
+            json.dumps(tags, ensure_ascii=False, separators=(",", ":")),
+        )
+    )
+    yield path_text, _effective_depth(path), record
+    for index, child in enumerate(node.children):
+        yield from _iter_canonical_records_for_model_node(child, (*path, index))
+
+
 def _subtree_digests(tree: tk.ttk.Treeview) -> dict[str, str]:
     pairings_roots = tree.get_children("")
     if not pairings_roots:
@@ -350,6 +478,22 @@ def _subtree_digests(tree: tk.ttk.Treeview) -> dict[str, str]:
         path = (0, index)
         path_text = ".".join(str(part) for part in path)
         records = (record for _, _, record in _iter_canonical_records_for_item(tree, item_id, path))
+        digests[path_text] = _digest_records(records)
+    return digests
+
+
+def _model_subtree_digests(model_root: PairingNode | None) -> dict[str, str]:
+    if model_root is None:
+        return {}
+
+    digests = {}
+    for index, node in enumerate(model_root.children):
+        path = (0, index)
+        path_text = ".".join(str(part) for part in path)
+        records = (
+            record
+            for _, _, record in _iter_canonical_records_for_model_node(node, path)
+        )
         digests[path_text] = _digest_records(records)
     return digests
 

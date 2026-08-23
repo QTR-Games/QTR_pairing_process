@@ -1,6 +1,7 @@
 """ © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 
 from itertools import combinations, permutations
+import os
 import tkinter
 import math
 import hashlib
@@ -8,6 +9,7 @@ import json
 
 import qtr_pairing_process.utility_funcs as uf
 from qtr_pairing_process.constants import RATING_SYSTEMS, DEFAULT_RATING_SYSTEM
+from qtr_pairing_process.pairing_model import PairingNode, TreeProjector
 
 class TreeGenerator:
     def __init__(
@@ -68,6 +70,12 @@ class TreeGenerator:
         self._suppress_display_updates = False
         self._confidence_aux_tags_enabled = True
         self._materialize_strategic_tags_on_memo_hit = True
+        self.engine = os.environ.get("QTR_ENGINE", "widget").strip().lower()
+        if self.engine not in {"widget", "model"}:
+            self.engine = "widget"
+        self.model_root = None
+        self.projector = TreeProjector()
+        self._model_original_order = {}
         self.reset_strategic_profile_stats()
 
     def set_rating_system(self, rating_system):
@@ -167,6 +175,9 @@ class TreeGenerator:
     def generate_combinations(self, fNames, oNames, fRatings, oRatings, our_team_first=True):
         self.fRatings = fRatings
         self.our_team_first = our_team_first
+        if self._use_model_engine():
+            self._generate_combinations_model(fNames, oNames, fRatings, oRatings)
+            return
         self.treeview.tree.delete(*self.treeview.tree.get_children())
         # Reset sorting state for new generation
         self.original_order_saved = False
@@ -215,7 +226,6 @@ class TreeGenerator:
                     opponent_perms = sorted(opponent_perms)
                 for opponent, next_fName in opponent_perms:                    
                     nested_oNames = [name for name in oNames if name != opponent and name!=next_fName]
-                    nested_fNames = [name for name in fNames if name != first_fName]
                     # Calculate scores for child node
                     child_rating = fRatings[first_fName].get(opponent, 0)
                     child_cumulative = 0  # Will be calculated during sort operations
@@ -231,8 +241,591 @@ class TreeGenerator:
                     )
                     self.generate_nested_combinations(next_fName,nested_oNames, fNames, oRatings, fRatings, child_id)
 
+    def _use_model_engine(self):
+        return self.engine == "model"
+
+    def _generate_combinations_model(self, fNames, oNames, fRatings, oRatings):
+        self.projector.reset_state()
+        self._model_original_order = {}
+        self.original_order_saved = False
+        self.model_root = PairingNode(
+            text="Pairings",
+            base=0,
+            depth=0,
+            is_opponent_choice=self._resolve_opponent_choice_level(0),
+        )
+
+        fNames_sorted = list(fNames)
+        oNames_sorted = list(oNames)
+        if self.sort_alpha:
+            fNames_sorted.sort()
+            oNames_sorted.sort()
+
+        for name in fNames_sorted:
+            fnames_filtered = [x for x in fNames_sorted if x != name]
+            self._generate_nested_combinations_model(
+                name,
+                fnames_filtered,
+                oNames_sorted,
+                fRatings,
+                oRatings,
+                self.model_root,
+            )
+            fNames_sorted[:] = uf.cycle_list(fNames_sorted)
+
+        self.projector.project(self.model_root, self.treeview)
+
+    def _generate_nested_combinations_model(self, first_fName, fNames, oNames, fRatings, oRatings, parent):
+        combs = list(combinations(oNames, 2))
+        if oNames and not combs:
+            first_oName = oNames[0]
+            combs = list(combinations([first_oName, first_oName], 2))
+        combs_sorted = sorted(combs) if self.sort_alpha else combs
+        depth = parent.depth + 1
+        for comb in combs_sorted:
+            rating_0 = fRatings[first_fName].get(comb[0], 'N/A')
+            rating_1 = fRatings[first_fName].get(comb[1], 'N/A')
+            base_rating = max(rating_0, rating_1)
+            confidence_score = self.calculate_confidence_for_rating(base_rating)
+            resistance_score = self.calculate_resistance_for_rating(base_rating, rating_0, rating_1)
+            node = PairingNode(
+                text=(
+                    f"{first_fName} vs {comb[0]} ({rating_0}/{self.rating_display_max}) "
+                    f"OR {comb[1]} ({rating_1}/{self.rating_display_max})"
+                ),
+                base=self._to_int_rating(base_rating),
+                depth=depth,
+                is_opponent_choice=self._resolve_opponent_choice_level(depth),
+                parent=parent,
+                confidence=confidence_score,
+                resistance=resistance_score,
+            )
+            parent.children.append(node)
+            self.projector.initialize_node(
+                node,
+                sort_value=0,
+                confidence_value=confidence_score,
+                resistance_value=resistance_score,
+            )
+
+            if fNames:
+                opponent_perms = list(permutations(comb, 2))
+                if self.sort_alpha:
+                    opponent_perms = sorted(opponent_perms)
+                for opponent, next_fName in opponent_perms:
+                    nested_oNames = [name for name in oNames if name != opponent and name != next_fName]
+                    child_rating = fRatings[first_fName].get(opponent, 0)
+                    child_confidence = self.calculate_confidence_for_rating(child_rating)
+                    child_resistance = self.calculate_resistance_for_rating(
+                        child_rating,
+                        child_rating,
+                        child_rating,
+                    )
+                    child_depth = node.depth + 1
+                    child = PairingNode(
+                        text=f"{opponent} rating {child_rating}",
+                        base=self._to_int_rating(child_rating),
+                        depth=child_depth,
+                        is_opponent_choice=self._resolve_opponent_choice_level(child_depth),
+                        parent=node,
+                        confidence=child_confidence,
+                        resistance=child_resistance,
+                    )
+                    node.children.append(child)
+                    self.projector.initialize_node(
+                        child,
+                        sort_value=0,
+                        confidence_value=child_confidence,
+                        resistance_value=child_resistance,
+                    )
+                    self._generate_nested_combinations_model(
+                        next_fName,
+                        nested_oNames,
+                        fNames,
+                        oRatings,
+                        fRatings,
+                        child,
+                    )
+
+    def _project_model(self):
+        self.projector.project(self.model_root, self.treeview)
+
+    def _model_node_from_arg(self, node):
+        if node == "":
+            return None
+        if isinstance(node, PairingNode):
+            return node
+        try:
+            return self.projector.node_for(node)
+        except (KeyError, TypeError):
+            return None
+
+    def _model_children_for_arg(self, node):
+        model_node = self._model_node_from_arg(node)
+        if model_node is None:
+            return [self.model_root] if self.model_root is not None else []
+        return model_node.children
+
+    def _walk_model_nodes(self, node):
+        if node is not None:
+            yield node
+            children = node.children
+        else:
+            children = [self.model_root] if self.model_root is not None else []
+        for child in children:
+            yield from self._walk_model_nodes(child)
+
+    def _set_model_metric(self, node, prefix, value):
+        attr = TreeProjector._PREFIX_TO_ATTR[prefix]
+        setattr(node, attr, int(value))
+        self.projector.mark_metric(node, prefix)
+
+    def _set_model_metrics(self, node, prefix_values):
+        for prefix, value in prefix_values.items():
+            attr = TreeProjector._PREFIX_TO_ATTR[prefix]
+            setattr(node, attr, int(value))
+        self.projector.mark_metrics(node, tuple(prefix_values.keys()))
+
+    def _resolve_opponent_choice_level(self, depth):
+        if self.our_team_first:
+            if depth == 1 or depth == 3:
+                return False
+            if depth == 2 or depth == 4 or depth == 5:
+                return True
+        else:
+            if depth == 1 or depth == 3:
+                return True
+            if depth == 2 or depth == 4 or depth == 5:
+                return False
+        return (depth % 2) != (1 if self.our_team_first else 0)
+
+    def _calculate_all_path_values_model(self, model_node):
+        children = self._model_children_for_arg(model_node)
+        current = self._model_node_from_arg(model_node)
+        if not children:
+            if current is not None:
+                leaf_value = current.base
+                self._set_model_metric(current, "cumulative_", leaf_value)
+                self.projector.set_sort_value(current, leaf_value)
+                return leaf_value
+            return 0
+
+        max_cumulative = 0
+        for child in children:
+            child_cumulative = self._calculate_all_path_values_model(child)
+            if current is not None:
+                total_cumulative = current.base + child_cumulative
+                max_cumulative = max(max_cumulative, total_cumulative)
+            else:
+                max_cumulative = max(max_cumulative, child_cumulative)
+
+        if current is not None:
+            self._set_model_metric(current, "cumulative_", max_cumulative)
+            self.projector.set_sort_value(current, max_cumulative)
+        return max_cumulative
+
+    def _sort_model_children_by_metric(self, model_node, metric_attr):
+        children = self._model_children_for_arg(model_node)
+        if not children:
+            return
+        is_opponent_choice_level = children[0].is_opponent_choice
+        children.sort(
+            key=lambda child: int(getattr(child, metric_attr, 0)),
+            reverse=not is_opponent_choice_level,
+        )
+        for child in children:
+            self._sort_model_children_by_metric(child, metric_attr)
+
+    def _calculate_confidence_scores_model(self, model_node):
+        children = self._model_children_for_arg(model_node)
+        current = self._model_node_from_arg(model_node)
+        if not children:
+            if current is not None:
+                leaf_value = current.base
+                confidence_score = self.calculate_rating_confidence(leaf_value)
+                self._store_confidence_data_model(
+                    current,
+                    leaf_value,
+                    leaf_value,
+                    confidence_score,
+                )
+                return leaf_value, leaf_value, confidence_score
+            return 0, 0, 0
+
+        path_floors = []
+        path_ceilings = []
+        path_confidences = []
+        for child in children:
+            child_floor, child_ceiling, child_confidence = self._calculate_confidence_scores_model(child)
+            if current is not None:
+                node_value = current.base
+                node_confidence = self.calculate_rating_confidence(node_value)
+                path_floors.append(node_value + child_floor)
+                path_ceilings.append(node_value + child_ceiling)
+                path_confidences.append((node_confidence + child_confidence) / 2)
+            else:
+                path_floors.append(child_floor)
+                path_ceilings.append(child_ceiling)
+                path_confidences.append(child_confidence)
+
+        if current is not None and path_floors and path_ceilings and path_confidences:
+            best_floor = max(path_floors)
+            best_ceiling = max(path_ceilings)
+            avg_confidence = sum(path_confidences) / len(path_confidences)
+            variance_penalty = self.calculate_variance_penalty(path_floors + path_ceilings)
+            final_confidence = avg_confidence - variance_penalty
+            self._store_confidence_data_model(current, best_floor, best_ceiling, final_confidence)
+            return best_floor, best_ceiling, final_confidence
+        return 0, 0, 0
+
+    def _store_confidence_data_model(self, node, floor_val, ceiling_val, confidence):
+        node.floor = int(floor_val)
+        node.ceiling = int(ceiling_val)
+        node.confidence = int(confidence)
+        self.projector.mark_metrics(node, ("confidence_", "floor_", "ceiling_"))
+        self.projector.set_confidence_value(node, confidence)
+
+    def _calculate_counter_resistance_scores_model(self, model_node):
+        children = self._model_children_for_arg(model_node)
+        current = self._model_node_from_arg(model_node)
+        if not children:
+            if current is not None:
+                counter_resistance = self.calculate_counter_resistance(current.base)
+                self._store_counter_resistance_data_model(current, counter_resistance)
+                return counter_resistance
+            return 0
+
+        path_resistances = []
+        for child in children:
+            child_resistance = self._calculate_counter_resistance_scores_model(child)
+            if current is not None:
+                node_resistance = self.calculate_counter_resistance(current.base)
+                opponent_counter_effectiveness = self.simulate_opponent_counter(current.base)
+                adjusted_resistance = (node_resistance + child_resistance) / 2
+                adjusted_resistance *= (1 - opponent_counter_effectiveness)
+                path_resistances.append(adjusted_resistance)
+            else:
+                path_resistances.append(child_resistance)
+
+        if current is not None and path_resistances:
+            best_resistance = max(path_resistances)
+            self._store_counter_resistance_data_model(current, best_resistance)
+            return best_resistance
+        return 0
+
+    def _store_counter_resistance_data_model(self, node, resistance):
+        node.resistance = int(resistance)
+        self.projector.mark_metric(node, "resistance_")
+        self.projector.set_resistance_value(node, resistance)
+
+    def _calculate_all_path_values_enhanced_model(self, model_node, alpha=None):
+        alpha = self.cumulative2_alpha if alpha is None else alpha
+        children = self._model_children_for_arg(model_node)
+        current = self._model_node_from_arg(model_node)
+        if not children:
+            if current is not None:
+                leaf_value = current.base
+                self._set_model_metric(current, "cumulative2_", leaf_value)
+                self.projector.set_sort_value(current, leaf_value)
+                return leaf_value
+            return 0
+
+        child_scores = [
+            self._calculate_all_path_values_enhanced_model(child, alpha=alpha)
+            for child in children
+        ]
+        if current is not None:
+            if children[0].is_opponent_choice:
+                min_child = min(child_scores)
+                mean_child = sum(child_scores) / max(1, len(child_scores))
+                child_component = alpha * min_child + (1.0 - alpha) * mean_child
+            else:
+                child_component = max(child_scores)
+            total_value = int(round(current.base + child_component))
+            self._set_model_metric(current, "cumulative2_", total_value)
+            self.projector.set_sort_value(current, total_value)
+            return total_value
+        return max(child_scores) if child_scores else 0
+
+    def _calculate_confidence_scores_enhanced_model(self, model_node, k=None, u=None):
+        k = self.confidence2_k if k is None else k
+        u = self.confidence2_u if u is None else u
+        write_aux_tags = bool(getattr(self, "_confidence_aux_tags_enabled", True))
+        children = self._model_children_for_arg(model_node)
+        current = self._model_node_from_arg(model_node)
+        if not children:
+            if current is not None:
+                base_conf = self.calculate_rating_confidence(current.base)
+                score = int(self._clamp(base_conf, 0, 100))
+                prefix_values = {"confidence2_": score, "regret2_": 0}
+                if write_aux_tags:
+                    prefix_values["floor2_"] = score
+                    prefix_values["ceiling2_"] = score
+                self._set_model_metrics(current, prefix_values)
+                self.projector.set_confidence_value(current, score)
+                return score, score, score
+            return 0, 0, 0
+
+        child_triplets = [
+            self._calculate_confidence_scores_enhanced_model(child, k=k, u=u)
+            for child in children
+        ]
+        child_scores = [triplet[2] for triplet in child_triplets]
+        mu = sum(child_scores) / max(1, len(child_scores))
+        if len(child_scores) > 1:
+            variance = sum((s - mu) ** 2 for s in child_scores) / len(child_scores)
+            sigma = math.sqrt(variance)
+        else:
+            sigma = 0.0
+        conservative = mu - (k * sigma) - (u / math.sqrt(max(1, len(child_scores))))
+
+        if current is not None:
+            node_conf = self.calculate_rating_confidence(current.base)
+            score = int(round(self._clamp((0.6 * node_conf) + (0.4 * conservative), 0, 100)))
+            floor2 = int(round(self._clamp(min(child_scores), 0, 100)))
+            ceiling2 = int(round(self._clamp(max(child_scores), 0, 100)))
+            regret2 = max(0, ceiling2 - floor2)
+            prefix_values = {"confidence2_": score, "regret2_": regret2}
+            if write_aux_tags:
+                prefix_values["floor2_"] = floor2
+                prefix_values["ceiling2_"] = ceiling2
+            self._set_model_metrics(current, prefix_values)
+            self.projector.set_confidence_value(current, score)
+            return floor2, ceiling2, score
+        return 0, 0, int(round(self._clamp(conservative, 0, 100)))
+
+    def _calculate_counter_resistance_scores_enhanced_model(self, model_node, beta=None, gamma=None, _depth=0):
+        beta = self.resistance2_beta if beta is None else beta
+        gamma = self.resistance2_gamma if gamma is None else gamma
+        children = self._model_children_for_arg(model_node)
+        current = self._model_node_from_arg(model_node)
+        if not children:
+            if current is not None:
+                base = self.calculate_counter_resistance(current.base)
+                score = int(round(self._clamp(base, 0, 100)))
+                self._set_model_metric(current, "resistance2_", score)
+                self.projector.set_resistance_value(current, score)
+                return score
+            return 0
+
+        child_scores = [
+            self._calculate_counter_resistance_scores_enhanced_model(
+                child,
+                beta=beta,
+                gamma=gamma,
+                _depth=_depth + 1,
+            )
+            for child in children
+        ]
+
+        if current is not None:
+            base_stability = self.calculate_counter_resistance(current.base)
+            best_our = max(child_scores) if child_scores else 0
+            worst_opp = min(child_scores) if child_scores else 0
+            regret = max(0.0, best_our - worst_opp)
+            depth_buffer = max(0.0, 6.0 - float(_depth))
+            score = base_stability - (beta * regret) + (gamma * depth_buffer)
+            score = int(round(self._clamp(score, 0, 100)))
+            self._set_model_metric(current, "resistance2_", score)
+            self.projector.set_resistance_value(current, score)
+            return score
+        return max(child_scores) if child_scores else 0
+
+    def _build_structural_memo_key_model(self, node):
+        lineage = []
+        current = node
+        while current is not None:
+            base_rating = None if current.parent is None else current.base
+            lineage.append((str(current.text), base_rating))
+            current = current.parent
+        lineage.reverse()
+        return tuple(lineage)
+
+    def _calculate_strategic3_scores_model(self, model_node, weights=None, rho=None, lam=None):
+        weights = self.strategic3_weights if weights is None else weights
+        rho = self.strategic3_rho if rho is None else rho
+        lam = self.strategic3_lam if lam is None else lam
+        guardrail_coeff = self._get_guardrail_coefficient()
+
+        if model_node == "":
+            self.reset_strategic_profile_stats()
+            memo_context = self._build_strategic_memo_context()
+            if memo_context != self._strategic_memo_context:
+                self.clear_memoization(reason="memo_context_change")
+                self._strategic_memo_context = memo_context
+            all_nodes = list(self._walk_model_nodes(None))
+            self._strategic_profile_stats["range_nodes"] = len(all_nodes)
+            c_values = [n.cumulative2 for n in all_nodes]
+            q_values = [n.confidence2 for n in all_nodes]
+            r_values = [n.resistance2 for n in all_nodes]
+            if not all_nodes:
+                return 0
+            if not (any(v != 0 for v in c_values) and any(v != 0 for v in q_values) and any(v != 0 for v in r_values)):
+                return 0
+            self._strategic3_ranges = {
+                "c_min": min(c_values) if c_values else 0,
+                "c_max": max(c_values) if c_values else 1,
+                "q_min": min(q_values) if q_values else 0,
+                "q_max": max(q_values) if q_values else 100,
+                "r_min": min(r_values) if r_values else 0,
+                "r_max": max(r_values) if r_values else 100,
+            }
+
+        current = self._model_node_from_arg(model_node)
+        if current is not None:
+            self._strategic_profile_stats["nodes_visited"] += 1
+            memo_key = self._build_structural_memo_key_model(current)
+            if memo_key in self._strategic_memo:
+                self._strategic_memo_hits += 1
+                self._strategic_profile_stats["memo_hits"] += 1
+                strategic_value = int(self._strategic_memo[memo_key])
+                materialize_on_hit = bool(getattr(self, "_materialize_strategic_tags_on_memo_hit", True))
+                if materialize_on_hit and not self.projector.has_metric(current, "strategic3_"):
+                    self._set_model_metric(current, "strategic3_", strategic_value)
+                    self._strategic_profile_stats["tag_writes"] += 1
+                self.projector.set_sort_value(current, strategic_value)
+                if materialize_on_hit:
+                    self._materialize_strategic_descendants_from_memo_model(
+                        current,
+                        weights=weights,
+                        rho=rho,
+                        lam=lam,
+                    )
+                return strategic_value
+            self._strategic_memo_misses += 1
+            self._strategic_profile_stats["memo_misses"] += 1
+
+        children = self._model_children_for_arg(model_node)
+
+        def normalize(value, key_min, key_max):
+            min_v = self._strategic3_ranges.get(key_min, 0)
+            max_v = self._strategic3_ranges.get(key_max, 1)
+            denom = max(1e-9, max_v - min_v)
+            return self._clamp((value - min_v) / denom, 0.0, 1.0)
+
+        child_scores = [
+            self._calculate_strategic3_scores_model(child, weights=weights, rho=rho, lam=lam)
+            for child in children
+        ]
+
+        if current is not None:
+            c_raw = current.cumulative2
+            q_raw = current.confidence2
+            r_raw = current.resistance2
+            memo_key = self._build_structural_memo_key_model(current)
+            floor2 = current.floor2 if self.projector.has_metric(current, "floor2_") else q_raw
+            ceiling2 = current.ceiling2 if self.projector.has_metric(current, "ceiling2_") else q_raw
+            c_norm = normalize(c_raw, "c_min", "c_max")
+            q_norm = normalize(q_raw, "q_min", "q_max")
+            r_norm = normalize(r_raw, "r_min", "r_max")
+            w_c, w_q, w_r = weights
+            t_core = max(w_c * (1.0 - c_norm), w_q * (1.0 - q_norm), w_r * (1.0 - r_norm))
+            smooth = (w_c * c_norm) + (w_q * q_norm) + (w_r * r_norm)
+            downside = self._clamp((ceiling2 - floor2) / 100.0, 0.0, 1.0)
+            round_win_feasibility = self._clamp((q_norm - 0.5) * 2.0, -1.0, 1.0)
+            guardrail_term = guardrail_coeff * round_win_feasibility
+            utility = (-t_core) + (rho * smooth) - (lam * downside) + guardrail_term
+            node_gain = utility * 100.0
+            if children:
+                child_component = min(child_scores) if children[0].is_opponent_choice else max(child_scores)
+                exploitability = max(child_scores) - min(child_scores)
+            else:
+                child_component = 0.0
+                exploitability = 0.0
+            strategic_value = int(round(node_gain + child_component))
+            self._set_model_metrics(
+                current,
+                {
+                    "strategic3_": strategic_value,
+                    "strategic3_exploit_": int(round(exploitability)),
+                },
+            )
+            self._strategic_profile_stats["tag_writes"] += 1
+            self.projector.set_sort_value(current, strategic_value)
+            self._strategic_memo[memo_key] = strategic_value
+            return strategic_value
+        return max(child_scores) if child_scores else 0
+
+    def _materialize_strategic_descendants_from_memo_model(self, node, weights, rho, lam):
+        for child in node.children:
+            if self.projector.has_metric(child, "strategic3_"):
+                continue
+            self._strategic_profile_stats["nodes_visited"] += 1
+            child_key = self._build_structural_memo_key_model(child)
+            memo_value = self._strategic_memo.get(child_key)
+            if memo_value is None:
+                self._strategic_profile_stats["materialize_recursions"] += 1
+                self._calculate_strategic3_scores_model(child, weights=weights, rho=rho, lam=lam)
+                continue
+            self._strategic_memo_hits += 1
+            self._strategic_profile_stats["memo_hits"] += 1
+            self._set_model_metric(child, "strategic3_", int(memo_value))
+            self._strategic_profile_stats["tag_writes"] += 1
+            self._strategic_profile_stats["memo_materialized"] += 1
+            self.projector.set_sort_value(child, int(memo_value))
+            self._materialize_strategic_descendants_from_memo_model(child, weights=weights, rho=rho, lam=lam)
+
+    def _calculate_strategic_optimal_scores_model(self, model_node):
+        children = self._model_children_for_arg(model_node)
+        current = self._model_node_from_arg(model_node)
+        if not children:
+            if current is not None:
+                rating = current.base
+                base_ev = self.calculate_base_expected_value(rating)
+                win_probability = self.calculate_win_probability(rating)
+                floor_protection = self.calculate_floor_protection(rating)
+                counter_resistance = self.calculate_counter_resistance_value(rating)
+                strategic_score = self.combine_strategic_factors(
+                    base_ev,
+                    win_probability,
+                    floor_protection,
+                    counter_resistance,
+                )
+                self._store_strategic_optimal_data_model(current, strategic_score)
+                return strategic_score
+            return 0
+
+        path_scores = []
+        for child in children:
+            child_score = self._calculate_strategic_optimal_scores_model(child)
+            if current is not None and current.parent is not None:
+                rating = current.base
+                node_base_ev = self.calculate_base_expected_value(rating)
+                node_win_prob = self.calculate_win_probability(rating)
+                node_floor = self.calculate_floor_protection(rating)
+                node_counter = self.calculate_counter_resistance_value(rating)
+                node_strategic = self.combine_strategic_factors(
+                    node_base_ev,
+                    node_win_prob,
+                    node_floor,
+                    node_counter,
+                )
+                path_scores.append(self.aggregate_path_scores(node_strategic, child_score))
+            else:
+                path_scores.append(child_score)
+
+        if current is not None:
+            best_strategic = max(path_scores) if path_scores else 0
+            self._store_strategic_optimal_data_model(current, best_strategic)
+            return best_strategic
+        return max(path_scores) if path_scores else 0
+
+    def _store_strategic_optimal_data_model(self, node, strategic_score):
+        node.strategic = int(strategic_score)
+        self.projector.mark_metric(node, "strategic_")
+        self.projector.set_sort_value(node, strategic_score)
+
     def sort_by_cumulative_value(self):
         """Sort all tree branches by their cumulative path values (best to worst)"""
+        if self._use_model_engine():
+            if self.model_root is not None:
+                if not hasattr(self, 'original_order_saved') or not self.original_order_saved:
+                    self.save_original_order()
+                    self.original_order_saved = True
+                self._calculate_all_path_values_model("")
+                self._sort_model_children_by_metric(self.model_root, "cumulative")
+                self._project_model()
+            return
         root_nodes = self.treeview.tree.get_children()
         if root_nodes:
             # Save original order before first sort
@@ -248,6 +841,10 @@ class TreeGenerator:
 
     def calculate_all_path_values(self, node):
         """Calculate and store cumulative values for all paths in the tree"""
+        if self._use_model_engine():
+            result = self._calculate_all_path_values_model(node)
+            self._project_model()
+            return result
         children = self.treeview.tree.get_children(node)
         
         if not children:
@@ -291,6 +888,10 @@ class TreeGenerator:
 
     def sort_children_by_cumulative(self, node):
         """Recursively sort children by their cumulative path values"""
+        if self._use_model_engine():
+            self._sort_model_children_by_metric(node, "cumulative")
+            self._project_model()
+            return
         children = self.treeview.tree.get_children(node)
         if not children:
             return
@@ -324,6 +925,9 @@ class TreeGenerator:
 
     def get_cumulative_value_from_tags(self, node):
         """Extract cumulative value from node tags"""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            return int(model_node.cumulative) if model_node is not None else 0
         try:
             item_data = self.treeview.tree.item(node)
             tags = item_data.get('tags', [])
@@ -336,6 +940,15 @@ class TreeGenerator:
 
     def sort_by_risk_adjusted_confidence(self):
         """Sort tree branches by risk-adjusted confidence scores (reliable outcomes prioritized)"""
+        if self._use_model_engine():
+            if self.model_root is not None:
+                if not hasattr(self, 'original_order_saved') or not self.original_order_saved:
+                    self.save_original_order()
+                    self.original_order_saved = True
+                self._calculate_confidence_scores_model("")
+                self._sort_model_children_by_metric(self.model_root, "confidence")
+                self._project_model()
+            return
         root_nodes = self.treeview.tree.get_children()
         if root_nodes:
             # Save original order before first sort
@@ -351,6 +964,10 @@ class TreeGenerator:
 
     def calculate_confidence_scores(self, node):
         """Calculate risk-adjusted confidence scores for all paths"""
+        if self._use_model_engine():
+            result = self._calculate_confidence_scores_model(node)
+            self._project_model()
+            return result
         children = self.treeview.tree.get_children(node)
         
         if not children:
@@ -455,6 +1072,10 @@ class TreeGenerator:
 
     def sort_children_by_confidence(self, node):
         """Recursively sort children by their confidence scores"""
+        if self._use_model_engine():
+            self._sort_model_children_by_metric(node, "confidence")
+            self._project_model()
+            return
         children = self.treeview.tree.get_children(node)
         if not children:
             return
@@ -488,6 +1109,9 @@ class TreeGenerator:
 
     def get_confidence_from_tags(self, node):
         """Extract confidence score from node tags"""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            return int(model_node.confidence) if model_node is not None else 0
         try:
             item_data = self.treeview.tree.item(node)
             tags = item_data.get('tags', [])
@@ -500,6 +1124,15 @@ class TreeGenerator:
 
     def sort_by_opponent_response_simulation(self):
         """Sort tree branches by performance against optimal opponent counter-strategies"""
+        if self._use_model_engine():
+            if self.model_root is not None:
+                if not hasattr(self, 'original_order_saved') or not self.original_order_saved:
+                    self.save_original_order()
+                    self.original_order_saved = True
+                self._calculate_counter_resistance_scores_model("")
+                self._sort_model_children_by_metric(self.model_root, "resistance")
+                self._project_model()
+            return
         root_nodes = self.treeview.tree.get_children()
         if root_nodes:
             # Save original order before first sort
@@ -515,6 +1148,10 @@ class TreeGenerator:
 
     def calculate_counter_resistance_scores(self, node):
         """Calculate how well each path performs against opponent counter-strategies"""
+        if self._use_model_engine():
+            result = self._calculate_counter_resistance_scores_model(node)
+            self._project_model()
+            return result
         children = self.treeview.tree.get_children(node)
         
         if not children:
@@ -594,6 +1231,10 @@ class TreeGenerator:
 
     def sort_children_by_counter_resistance(self, node):
         """Recursively sort children by their counter-resistance scores"""
+        if self._use_model_engine():
+            self._sort_model_children_by_metric(node, "resistance")
+            self._project_model()
+            return
         children = self.treeview.tree.get_children(node)
         if not children:
             return
@@ -627,6 +1268,9 @@ class TreeGenerator:
 
     def get_resistance_from_tags(self, node):
         """Extract counter-resistance score from node tags"""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            return int(model_node.resistance) if model_node is not None else 0
         try:
             item_data = self.treeview.tree.item(node)
             tags = item_data.get('tags', [])
@@ -639,6 +1283,9 @@ class TreeGenerator:
 
     def get_cumulative_from_tags(self, node):
         """Extract cumulative value from node tags"""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            return int(model_node.cumulative) if model_node is not None else 0
         try:
             item_data = self.treeview.tree.item(node)
             tags = item_data.get('tags', [])
@@ -651,6 +1298,11 @@ class TreeGenerator:
 
     def _replace_prefixed_tag(self, node, prefix, value):
         """Replace all tags with given prefix and add a new value tag."""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            if model_node is not None:
+                self._set_model_metric(model_node, prefix, value)
+                return
         item_data = self.treeview.tree.item(node)
         current_tags = list(item_data.get('tags', []))
         current_tags = [tag for tag in current_tags if not str(tag).startswith(prefix)]
@@ -661,6 +1313,11 @@ class TreeGenerator:
         """Replace multiple prefixed tags with a single tree item write."""
         if not prefix_values:
             return
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            if model_node is not None:
+                self._set_model_metrics(model_node, prefix_values)
+                return
 
         item_data = self.treeview.tree.item(node)
         current_tags = list(item_data.get('tags', []))
@@ -677,6 +1334,13 @@ class TreeGenerator:
 
     def _extract_prefixed_tag_value(self, node, prefix, default=0):
         """Read an integer tag value by prefix from a tree node."""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            if model_node is not None:
+                attr = TreeProjector._PREFIX_TO_ATTR.get(prefix)
+                if attr is not None and self.projector.has_metric(model_node, prefix):
+                    return int(getattr(model_node, attr))
+            return default
         try:
             item_data = self.treeview.tree.item(node)
             tags = item_data.get('tags', [])
@@ -696,6 +1360,9 @@ class TreeGenerator:
 
     def _has_prefixed_tag(self, node, prefix):
         """Return True when node has at least one tag with the given prefix."""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            return bool(model_node is not None and self.projector.has_metric(model_node, prefix))
         try:
             item_data = self.treeview.tree.item(node)
             tags = item_data.get('tags', [])
@@ -831,6 +1498,10 @@ class TreeGenerator:
 
     def _build_structural_memo_key(self, node):
         """Build a stable node signature from root-to-node text/value path."""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            if model_node is not None:
+                return self._build_structural_memo_key_model(model_node)
         lineage = []
         current = node
         while current:
@@ -936,6 +1607,10 @@ class TreeGenerator:
 
     def calculate_all_path_values_enhanced(self, node, alpha=None):
         """Enhanced cumulative scoring that is optimistic for us and adversarial for opponent turns."""
+        if self._use_model_engine():
+            result = self._calculate_all_path_values_enhanced_model(node, alpha=alpha)
+            self._project_model()
+            return result
         alpha = self.cumulative2_alpha if alpha is None else alpha
         children = self.treeview.tree.get_children(node)
 
@@ -977,10 +1652,17 @@ class TreeGenerator:
 
     def get_cumulative2_from_tags(self, node):
         """Extract enhanced cumulative value from node tags."""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            return int(model_node.cumulative2) if model_node is not None else 0
         return self._extract_prefixed_tag_value(node, 'cumulative2_', default=0)
 
     def calculate_confidence_scores_enhanced(self, node, k=None, u=None):
         """Enhanced confidence with volatility and sample-size penalties."""
+        if self._use_model_engine():
+            result = self._calculate_confidence_scores_enhanced_model(node, k=k, u=u)
+            self._project_model()
+            return result
         k = self.confidence2_k if k is None else k
         u = self.confidence2_u if u is None else u
         write_aux_tags = bool(getattr(self, "_confidence_aux_tags_enabled", True))
@@ -1040,14 +1722,29 @@ class TreeGenerator:
 
     def get_confidence2_from_tags(self, node):
         """Extract enhanced confidence value from node tags."""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            return int(model_node.confidence2) if model_node is not None else 0
         return self._extract_prefixed_tag_value(node, 'confidence2_', default=0)
 
     def get_regret2_from_tags(self, node):
         """Extract confidence regret spread from node tags (lower is better)."""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            return int(model_node.regret2) if model_node is not None else 0
         return self._extract_prefixed_tag_value(node, 'regret2_', default=0)
 
     def calculate_counter_resistance_scores_enhanced(self, node, beta=None, gamma=None, _depth=0):
         """Enhanced resistance with opponent-regret penalty."""
+        if self._use_model_engine():
+            result = self._calculate_counter_resistance_scores_enhanced_model(
+                node,
+                beta=beta,
+                gamma=gamma,
+                _depth=_depth,
+            )
+            self._project_model()
+            return result
         beta = self.resistance2_beta if beta is None else beta
         gamma = self.resistance2_gamma if gamma is None else gamma
         children = self.treeview.tree.get_children(node)
@@ -1094,10 +1791,17 @@ class TreeGenerator:
 
     def get_resistance2_from_tags(self, node):
         """Extract enhanced resistance value from node tags."""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            return int(model_node.resistance2) if model_node is not None else 0
         return self._extract_prefixed_tag_value(node, 'resistance2_', default=0)
 
     def calculate_strategic3_scores(self, node, weights=None, rho=None, lam=None):
         """Strategic fusion score built from enhanced cumulative/confidence/resistance metrics."""
+        if self._use_model_engine():
+            result = self._calculate_strategic3_scores_model(node, weights=weights, rho=rho, lam=lam)
+            self._project_model()
+            return result
         weights = self.strategic3_weights if weights is None else weights
         rho = self.strategic3_rho if rho is None else rho
         lam = self.strategic3_lam if lam is None else lam
@@ -1223,6 +1927,21 @@ class TreeGenerator:
 
     def get_strategic3_from_tags(self, node):
         """Extract strategic fusion value from node tags."""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            if model_node is None:
+                return 0
+            if self.projector.has_metric(model_node, "strategic3_"):
+                return int(model_node.strategic3)
+            try:
+                memo_key = self._build_structural_memo_key_model(model_node)
+                memo_value = self._strategic_memo.get(memo_key)
+                if memo_value is not None:
+                    self._strategic_profile_stats["memo_fastpath_reads"] += 1
+                    return int(memo_value)
+            except Exception:
+                pass
+            return 0
         if self._has_prefixed_tag(node, 'strategic3_'):
             return self._extract_prefixed_tag_value(node, 'strategic3_', default=0)
         try:
@@ -1237,10 +1956,21 @@ class TreeGenerator:
 
     def get_strategic3_exploitability_from_tags(self, node):
         """Extract strategic exploitability spread (lower is better)."""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            return int(model_node.strategic3_exploit) if model_node is not None else 0
         return self._extract_prefixed_tag_value(node, 'strategic3_exploit_', default=0)
 
     def unsort_tree(self):
         """Remove sorting and restore original tree order"""
+        if self._use_model_engine():
+            if self._model_original_order:
+                self._unsort_model_tree()
+            else:
+                self.clear_cumulative_values("")
+                return
+            self._project_model()
+            return
         if hasattr(self, 'original_order') and self.original_order:
             self.unsort_matchup_tree()
         else:
@@ -1250,6 +1980,12 @@ class TreeGenerator:
 
     def clear_cumulative_values(self, node):
         """Clear cumulative values from all nodes"""
+        if self._use_model_engine():
+            current = self._model_node_from_arg(node)
+            for model_node in self._walk_model_nodes(current):
+                self.projector.clear_metric(model_node, "cumulative_")
+            self._project_model()
+            return
         children = self.treeview.tree.get_children(node)
         for child in children:
             try:
@@ -1263,6 +1999,21 @@ class TreeGenerator:
             self.clear_cumulative_values(child)
     def save_original_order(self):
         # Save the original order of the children for each root node
+        if self._use_model_engine():
+            self._model_original_order = {}
+            self.original_order = {}
+            root_nodes = [self.model_root] if self.model_root is not None else []
+            for root in root_nodes:
+                if root.children:
+                    self._model_original_order[id(root)] = list(root.children)
+                    widget_id = self.projector.widget_id_for(root)
+                    if widget_id is not None:
+                        self.original_order[widget_id] = [
+                            self.projector.widget_id_for(child)
+                            for child in root.children
+                            if self.projector.widget_id_for(child) is not None
+                        ]
+            return
         root_nodes = self.treeview.tree.get_children()
         for root in root_nodes:
             child_ids = self.treeview.tree.get_children(root)
@@ -1271,6 +2022,10 @@ class TreeGenerator:
 
     def unsort_matchup_tree(self):
         # Restore the original order of the children for each root node
+        if self._use_model_engine():
+            self._unsort_model_tree()
+            self._project_model()
+            return
         for root, original_child_ids in self.original_order.items():
             try:
                 # Get the current child nodes
@@ -1293,6 +2048,12 @@ class TreeGenerator:
                     self.treeview.tree.move(child_id, root, 'end')
                 except tkinter.TclError as e:
                     print(f"Error moving child {child_id} to root {root}: {e}")
+
+    def _unsort_model_tree(self):
+        for model_node in self._walk_model_nodes(None):
+            original_children = self._model_original_order.get(id(model_node))
+            if original_children is not None:
+                model_node.children[:] = original_children
 
     def calculate_confidence_for_rating(self, rating):
         """Calculate confidence score based on rating value"""
@@ -1327,6 +2088,15 @@ class TreeGenerator:
         with intelligent weighting to maximize 3/5 win probability while preventing 
         catastrophic failures and accounting for opponent counter-strategies.
         """
+        if self._use_model_engine():
+            if self.model_root is not None:
+                if not hasattr(self, 'original_order_saved') or not self.original_order_saved:
+                    self.save_original_order()
+                    self.original_order_saved = True
+                self._calculate_strategic_optimal_scores_model("")
+                self._sort_model_children_by_metric(self.model_root, "strategic")
+                self._project_model()
+            return
         root_nodes = self.treeview.tree.get_children()
         if root_nodes:
             # Save original order before first sort
@@ -1351,6 +2121,10 @@ class TreeGenerator:
         4. Counter-pick resistance (front-loaded)
         5. Team strength adaptive weighting
         """
+        if self._use_model_engine():
+            result = self._calculate_strategic_optimal_scores_model(node)
+            self._project_model()
+            return result
         children = self.treeview.tree.get_children(node)
         
         if not children:
@@ -1535,6 +2309,10 @@ class TreeGenerator:
 
     def sort_children_by_strategic_optimal(self, node):
         """Recursively sort children by their strategic optimal scores"""
+        if self._use_model_engine():
+            self._sort_model_children_by_metric(node, "strategic")
+            self._project_model()
+            return
         children = self.treeview.tree.get_children(node)
         if not children:
             return
@@ -1568,6 +2346,9 @@ class TreeGenerator:
 
     def get_strategic_score_from_tags(self, node):
         """Extract strategic score from node tags"""
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            return int(model_node.strategic) if model_node is not None else 0
         try:
             item_data = self.treeview.tree.item(node)
             tags = item_data.get('tags', [])
@@ -1594,6 +2375,10 @@ class TreeGenerator:
         Returns:
             True if this is an opponent choice level, False if it's our choice level
         """
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            if model_node is not None:
+                return bool(model_node.is_opponent_choice)
         if not node:
             return False
         
@@ -1626,6 +2411,10 @@ class TreeGenerator:
         Returns:
             Depth as integer (1-based)
         """
+        if self._use_model_engine():
+            model_node = self._model_node_from_arg(node)
+            if model_node is not None:
+                return int(model_node.depth)
         depth = 0
         current = node
         
