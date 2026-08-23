@@ -36,6 +36,8 @@ class PairingNode:
 class TreeProjector:
     """Project a PairingNode tree into a ttk.Treeview and map ids back."""
 
+    LAZY_PLACEHOLDER_TAG = "__qtr_lazy_placeholder__"
+
     _TAG_ORDER = (
         "cumulative_",
         "confidence_",
@@ -130,12 +132,41 @@ class TreeProjector:
     def widget_id_for(self, node: PairingNode) -> str | None:
         return self.node_to_widget.get(id(node))
 
-    def project(self, model: PairingNode | None, treeview) -> None:
+    def project(
+        self,
+        model: PairingNode | None,
+        treeview,
+        *,
+        lazy: bool = False,
+        expanded_node_ids: set[int] | None = None,
+    ) -> None:
         tree = treeview.tree if hasattr(treeview, "tree") else treeview
+        if lazy and expanded_node_ids is None:
+            expanded_node_ids = self.expanded_node_ids(tree)
+        yview = None
+        if lazy:
+            try:
+                yview = tree.yview()
+            except Exception:
+                yview = None
         tree.delete(*tree.get_children())
         self.widget_to_node.clear()
         self.node_to_widget.clear()
         if model is None:
+            return
+        if lazy:
+            self._project_node_lazy(
+                model,
+                tree,
+                "",
+                materialize_through_depth=1,
+                expanded_node_ids=expanded_node_ids or set(),
+            )
+            if yview:
+                try:
+                    tree.yview_moveto(yview[0])
+                except Exception:
+                    pass
             return
         self._project_node(model, tree, "")
 
@@ -155,6 +186,98 @@ class TreeProjector:
         for child in node.children:
             self._project_node(child, tree, widget_id)
         return widget_id
+
+    def _project_node_lazy(
+        self,
+        node: PairingNode,
+        tree,
+        parent_id: str,
+        *,
+        materialize_through_depth: int,
+        expanded_node_ids: set[int],
+    ) -> str:
+        widget_id = self._insert_node(node, tree, parent_id)
+        is_expanded = id(node) in expanded_node_ids
+        if is_expanded:
+            tree.item(widget_id, open=True)
+
+        should_materialize_children = (
+            node.depth < materialize_through_depth or is_expanded
+        )
+        if should_materialize_children:
+            for child in node.children:
+                self._project_node_lazy(
+                    child,
+                    tree,
+                    widget_id,
+                    materialize_through_depth=materialize_through_depth,
+                    expanded_node_ids=expanded_node_ids,
+                )
+        elif node.children:
+            self._insert_placeholder(tree, widget_id)
+        return widget_id
+
+    def _insert_node(self, node: PairingNode, tree, parent_id: str) -> str:
+        if node.parent is None and node.depth == 0:
+            widget_id = tree.insert(parent_id, "end", text=node.text, tags=self._tags_for(node))
+        else:
+            widget_id = tree.insert(
+                parent_id,
+                "end",
+                text=node.text,
+                values=self._values_for(node),
+                tags=self._tags_for(node),
+            )
+        self.widget_to_node[widget_id] = node
+        self.node_to_widget[id(node)] = widget_id
+        return widget_id
+
+    def _insert_placeholder(self, tree, parent_id: str) -> str:
+        return tree.insert(parent_id, "end", text="", tags=(self.LAZY_PLACEHOLDER_TAG,))
+
+    def is_placeholder(self, tree, widget_id: str) -> bool:
+        try:
+            tags = tree.item(widget_id, "tags") or ()
+        except Exception:
+            return False
+        if isinstance(tags, str):
+            tags = (tags,)
+        return self.LAZY_PLACEHOLDER_TAG in set(str(tag) for tag in tags)
+
+    def expanded_node_ids(self, tree) -> set[int]:
+        expanded: set[int] = set()
+        for widget_id, node in list(self.widget_to_node.items()):
+            try:
+                if tree.item(widget_id, "open"):
+                    expanded.add(id(node))
+            except Exception:
+                continue
+        return expanded
+
+    def materialize_children(self, treeview, widget_id: str) -> bool:
+        tree = treeview.tree if hasattr(treeview, "tree") else treeview
+        node = self.widget_to_node.get(widget_id)
+        if node is None or not node.children:
+            return False
+
+        existing_children = tree.get_children(widget_id)
+        if existing_children and not all(
+            self.is_placeholder(tree, child_id) for child_id in existing_children
+        ):
+            return False
+
+        if existing_children:
+            tree.delete(*existing_children)
+
+        for child in node.children:
+            self._project_node_lazy(
+                child,
+                tree,
+                widget_id,
+                materialize_through_depth=child.depth,
+                expanded_node_ids=set(),
+            )
+        return True
 
     def _values_for(self, node: PairingNode) -> tuple[int, int, int, int]:
         return self.values_for(node)

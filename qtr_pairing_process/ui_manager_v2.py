@@ -1797,6 +1797,29 @@ class UiManager:
             return False
         return bool(self.treeview.tree.get_children())
 
+    def _tree_generator_uses_model(self) -> bool:
+        tree_gen = getattr(self, "tree_generator", None)
+        return bool(
+            tree_gen is not None
+            and callable(getattr(tree_gen, "_use_model_engine", None))
+            and tree_gen._use_model_engine()
+            and getattr(tree_gen, "model_root", None) is not None
+        )
+
+    def _using_lazy_model_render(self) -> bool:
+        tree_gen = getattr(self, "tree_generator", None)
+        return bool(
+            tree_gen is not None
+            and callable(getattr(tree_gen, "_use_lazy_rendering", None))
+            and tree_gen._use_lazy_rendering()
+        )
+
+    def _iter_pairing_model_nodes(self):
+        tree_gen = getattr(self, "tree_generator", None)
+        if not self._tree_generator_uses_model():
+            return
+        yield from tree_gen._walk_model_nodes(None)
+
     def _build_tree_cache_key(self) -> Optional[tuple]:
         if not hasattr(self, 'team1_var') or not hasattr(self, 'team2_var'):
             return None
@@ -2102,6 +2125,28 @@ class UiManager:
             self.logger.warning(f"Failed to persist tree cache snapshot: {exc}")
 
     def _capture_tree_snapshot(self):
+        if self._tree_generator_uses_model():
+            tree_gen = self.tree_generator
+            projector = tree_gen.projector
+
+            def model_walk(model_node):
+                widget_id = projector.widget_id_for(model_node)
+                is_open = False
+                if widget_id:
+                    try:
+                        is_open = bool(self.treeview.tree.item(widget_id, "open"))
+                    except tk.TclError:
+                        is_open = False
+                return {
+                    "text": model_node.text,
+                    "values": projector.values_for(model_node),
+                    "tags": projector.tags_for(model_node),
+                    "open": is_open,
+                    "children": [model_walk(child) for child in model_node.children],
+                }
+
+            return [model_walk(tree_gen.model_root)] if tree_gen.model_root is not None else []
+
         def walk(node_id):
             item = self.treeview.tree.item(node_id)
             children = self.treeview.tree.get_children(node_id)
@@ -2269,6 +2314,19 @@ class UiManager:
         if not prefix:
             return True
 
+        if self._tree_generator_uses_model():
+            projector = self.tree_generator.projector
+
+            def model_walk(model_node):
+                if not projector.has_metric(model_node, prefix):
+                    return False
+                return all(model_walk(child) for child in model_node.children)
+
+            return bool(
+                self.tree_generator.model_root is not None
+                and model_walk(self.tree_generator.model_root)
+            )
+
         roots = self.treeview.tree.get_children("")
         if not roots:
             return False
@@ -2287,6 +2345,14 @@ class UiManager:
     def _all_strategic_scores_are_zero(self) -> bool:
         if not hasattr(self, 'treeview') or not self.treeview:
             return False
+        if self._tree_generator_uses_model():
+            nodes = list(self._iter_pairing_model_nodes())
+            if not nodes:
+                return False
+            get_score = getattr(self.tree_generator, "get_strategic3_from_tags", None)
+            if not callable(get_score):
+                return False
+            return all(get_score(model_node) == 0 for model_node in nodes)
         roots = self.treeview.tree.get_children("")
         if not roots:
             return False
@@ -2331,6 +2397,16 @@ class UiManager:
         get_score = getattr(self.tree_generator, "get_strategic3_from_tags", None)
         if not callable(get_score):
             return None
+
+        if self._tree_generator_uses_model():
+            nodes = list(self._iter_pairing_model_nodes())
+            total = len(nodes)
+            non_zero = sum(1 for model_node in nodes if get_score(model_node) != 0)
+            return {
+                "total": total,
+                "non_zero": non_zero,
+                "zero": max(0, total - non_zero),
+            }
 
         roots = self.treeview.tree.get_children("")
         if not roots:
@@ -4934,7 +5010,7 @@ class UiManager:
 
             cache_key = self._build_tree_cache_key()
             our_team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
-            if self._tree_cache_enabled and cache_key:
+            if self._tree_cache_enabled and cache_key and not self._using_lazy_model_render():
                 if cache_key == self._tree_cache_key and self._tree_has_nodes():
                     self.tree_generator.our_team_first = our_team_first
                     self._set_tree_generation_id(self._tree_generation_id)
@@ -4994,7 +5070,7 @@ class UiManager:
             if root_nodes:
                 self.treeview.tree.item(root_nodes[0], open=True)
 
-            if self._tree_cache_enabled and cache_key:
+            if self._tree_cache_enabled and cache_key and not self._using_lazy_model_render():
                 cache_payload = {
                     "snapshot": self._capture_tree_snapshot(),
                     "generation_id": self._tree_generation_id,
@@ -5407,6 +5483,9 @@ class UiManager:
             )
 
     def _sort_children_combined(self, node, primary_mode, secondary_column, _profile=None, _depth=0, recurse_mode="all"):
+        if _depth == 0 and self._using_lazy_model_render():
+            self._sort_model_children_combined(primary_mode, secondary_column)
+            return
         profile_owner = _profile is None
         perf_enabled = bool(getattr(getattr(self, 'perf', None), 'enabled', False))
         if profile_owner and perf_enabled and primary_mode:
@@ -5687,6 +5766,111 @@ class UiManager:
                 reorder_skip_nodes=int(_profile["reorder_skip_nodes"]),
                 recurse_ms=f"{_profile['recurse_ms']:.2f}",
             )
+
+    def _sort_model_children_combined(self, primary_mode, secondary_column):
+        tree_gen = getattr(self, "tree_generator", None)
+        root = getattr(tree_gen, "model_root", None)
+        if root is None:
+            return
+
+        secondary_state = "none"
+        if secondary_column:
+            secondary_state = self.column_sort_states.get(secondary_column, "none")
+        secondary_reverse = secondary_state == "desc"
+
+        def primary_key(model_node):
+            if primary_mode == "cumulative":
+                return int(getattr(model_node, "cumulative2", 0))
+            if primary_mode == "confidence":
+                return int(getattr(model_node, "confidence2", 0))
+            if primary_mode == "resistance":
+                return int(getattr(model_node, "resistance2", 0))
+            if primary_mode == "strategic3":
+                return int(getattr(model_node, "strategic3", 0))
+            return 0
+
+        def secondary_key(model_node):
+            if not secondary_column:
+                return 0
+            if secondary_column == "#0":
+                return (getattr(model_node, "text", "") or "").lower()
+            if secondary_column == "Rating":
+                return int(getattr(model_node, "base", 0))
+            return int(getattr(model_node, "sort_value", 0))
+
+        def metric_value(model_node, metric):
+            if metric == "cumulative":
+                return int(getattr(model_node, "cumulative2", 0))
+            if metric == "confidence":
+                return int(getattr(model_node, "confidence2", 0))
+            if metric == "resistance":
+                return int(getattr(model_node, "resistance2", 0))
+            if metric == "regret":
+                return -int(getattr(model_node, "regret2", 0))
+            if metric == "strategic3":
+                return int(getattr(model_node, "strategic3", 0))
+            if metric == "strategic_exploit":
+                return -int(getattr(model_node, "strategic3_exploit", 0))
+            if metric == "rating":
+                return int(getattr(model_node, "base", 0))
+            return 0
+
+        def resolve_tie_break_chain():
+            mode_defaults = {
+                "confidence": ["regret", "cumulative", "resistance"],
+                "cumulative": ["confidence", "resistance"],
+                "resistance": ["confidence", "cumulative"],
+                "strategic3": ["strategic_exploit", "confidence", "cumulative"],
+            }
+            if primary_mode in mode_defaults:
+                configured = mode_defaults[primary_mode]
+            else:
+                configured = {
+                    "confidence_then_cumulative": ["confidence", "cumulative", "resistance"],
+                    "cumulative_then_confidence": ["cumulative", "confidence", "resistance"],
+                    "resistance_then_confidence": ["resistance", "confidence", "cumulative"],
+                }.get(self.tie_break_order, ["confidence", "cumulative", "resistance"])
+
+            excluded = set()
+            if primary_mode:
+                excluded.add(primary_mode)
+            if secondary_column == "Rating":
+                excluded.add("rating")
+            return [metric for metric in configured if metric not in excluded]
+
+        def sort_children(parent_node):
+            children = list(parent_node.children)
+            if not children:
+                return
+
+            primary_reverse = bool(primary_mode and not children[0].is_opponent_choice)
+            primary_has_ties = False
+            if primary_mode:
+                primary_values = [primary_key(child) for child in children]
+                primary_has_ties = len(set(primary_values)) != len(primary_values)
+
+            if not primary_mode or primary_has_ties:
+                children.sort(key=lambda child: (getattr(child, "text", "") or "").lower())
+
+            if primary_mode and primary_has_ties:
+                for tie_metric in reversed(resolve_tie_break_chain()):
+                    children.sort(
+                        key=lambda child, metric=tie_metric: metric_value(child, metric),
+                        reverse=primary_reverse,
+                    )
+
+            if secondary_column and secondary_state != "none" and (not primary_mode or primary_has_ties):
+                children.sort(key=secondary_key, reverse=secondary_reverse)
+
+            if primary_mode:
+                children.sort(key=primary_key, reverse=primary_reverse)
+
+            parent_node.children[:] = children
+            for child in children:
+                sort_children(child)
+
+        sort_children(root)
+        tree_gen._project_model()
 
     def update_scenario_box(self):
         scenarios = []
@@ -7762,6 +7946,9 @@ class UiManager:
 
     def update_sort_value_recursive(self, node, recurse_mode="all"):
         """Recursively update sort values for all nodes in tree"""
+        if self._using_lazy_model_render():
+            self._refresh_materialized_sort_values()
+            return
         children = self.treeview.tree.get_children(node)
         
         for child in children:
@@ -7797,6 +7984,23 @@ class UiManager:
                     should_recurse = False
             if should_recurse:
                 self.update_sort_value_recursive(child, recurse_mode=recurse_mode)
+
+    def _refresh_materialized_sort_values(self):
+        tree_gen = getattr(self, "tree_generator", None)
+        if tree_gen is None:
+            return
+        tree = self.treeview.tree
+        for widget_id in list(tree_gen.projector.widget_to_node.keys()):
+            try:
+                sort_value = str(self.get_sort_value_for_node(widget_id))
+                current_values = list(tree.item(widget_id, 'values'))
+                if len(current_values) < 2:
+                    current_values.append(sort_value)
+                else:
+                    current_values[1] = sort_value
+                tree.item(widget_id, values=current_values)
+            except tk.TclError:
+                continue
 
     def get_sort_value_for_node(self, node):
         """Extract the appropriate sort value from node tags based on current sort mode"""

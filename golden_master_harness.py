@@ -88,6 +88,8 @@ def generate_snapshot(scenario: GoldenScenario, sort_mode: str) -> dict:
             our_team_first=scenario.our_team_first,
         )
         SORT_MODES[sort_mode](generator)
+        if hasattr(generator, "materialize_full_tree"):
+            generator.materialize_full_tree()
         snapshot = _capture_tree_snapshot(
             treeview.tree,
             metadata={

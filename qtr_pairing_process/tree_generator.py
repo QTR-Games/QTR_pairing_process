@@ -73,8 +73,15 @@ class TreeGenerator:
         self.engine = os.environ.get("QTR_ENGINE", "widget").strip().lower()
         if self.engine not in {"widget", "model"}:
             self.engine = "widget"
+        self.render_mode = os.environ.get("QTR_RENDER", "eager").strip().lower()
+        if self.render_mode not in {"eager", "lazy"}:
+            self.render_mode = "eager"
+        if self.render_mode == "lazy" and self.engine != "model":
+            self.render_mode = "eager"
         self.model_root = None
         self.projector = TreeProjector()
+        if self.render_mode == "lazy":
+            self._bind_lazy_tree_open_handler()
         self._model_original_order = {}
         self.reset_strategic_profile_stats()
 
@@ -244,6 +251,36 @@ class TreeGenerator:
     def _use_model_engine(self):
         return self.engine == "model"
 
+    def _use_lazy_rendering(self):
+        return self._use_model_engine() and self.render_mode == "lazy"
+
+    def _bind_lazy_tree_open_handler(self):
+        tree = getattr(self.treeview, "tree", None)
+        if tree is None:
+            return
+        try:
+            tree.bind("<<TreeviewOpen>>", self._on_lazy_tree_open, add="+")
+        except TypeError:
+            tree.bind("<<TreeviewOpen>>", self._on_lazy_tree_open)
+
+    def _on_lazy_tree_open(self, event=None):
+        tree = getattr(self.treeview, "tree", None)
+        if tree is None:
+            return
+        item_id = ""
+        if event is not None:
+            item_id = getattr(event, "item", "") or ""
+            event_widget = getattr(event, "widget", None)
+            if event_widget is not None:
+                tree = event_widget
+        if not item_id:
+            try:
+                item_id = tree.focus()
+            except Exception:
+                item_id = ""
+        if item_id:
+            self.projector.materialize_children(tree, item_id)
+
     def _generate_combinations_model(self, fNames, oNames, fRatings, oRatings):
         self.projector.reset_state()
         self._model_original_order = {}
@@ -273,7 +310,7 @@ class TreeGenerator:
             )
             fNames_sorted[:] = uf.cycle_list(fNames_sorted)
 
-        self.projector.project(self.model_root, self.treeview)
+        self._project_model()
 
     def _generate_nested_combinations_model(self, first_fName, fNames, oNames, fRatings, oRatings, parent):
         combs = list(combinations(oNames, 2))
@@ -348,7 +385,15 @@ class TreeGenerator:
                     )
 
     def _project_model(self):
-        self.projector.project(self.model_root, self.treeview)
+        self.projector.project(
+            self.model_root,
+            self.treeview,
+            lazy=self._use_lazy_rendering(),
+        )
+
+    def materialize_full_tree(self):
+        if self._use_model_engine():
+            self.projector.project(self.model_root, self.treeview, lazy=False)
 
     def _model_node_from_arg(self, node):
         if node == "":
