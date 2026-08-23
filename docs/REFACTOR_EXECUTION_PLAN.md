@@ -169,6 +169,30 @@ proven on all fixtures.
 Expected: the 69x on solver-internal work; end-to-end gain capped by rendering
 until p2 lands.
 
+### Measured result of Phase 1
+
+5v5, `enhanced_v3_scores`, the heaviest real case:
+
+| | time | vs baseline |
+|---|---|---|
+| widget engine (baseline) | 27,564 ms | — |
+| model engine, total | 4,281 ms | **6.4x** |
+| └─ compute only | 1,394 ms | **19.8x** |
+| └─ projection into Tk | 2,887 ms | — |
+
+The headline 6.4x understates what happened to the math. Isolating the two
+halves shows compute fell **19.8x**, and that **67% of what remains is not
+computation at all** — it is writing 48,751 rows of tags into Tk, which p1
+deliberately preserves so the widget stays byte-identical for the oracle.
+
+This is the plan confirming itself rather than an assumption: rendering is now
+demonstrably the larger cost, which is precisely what p2 removes, and the
+1,394 ms compute residue is what p3a/p3b then attack with the measured 39x.
+Neither phase is speculative any more; both have a number attached.
+
+Projected end state: ~27.5 s → under 100 ms, with the two remaining phases each
+targeting the share the measurement assigns to it.
+
 ### The oracle must migrate off the widget — and why that is the real proof
 
 The harness currently derives its digest from the widget
