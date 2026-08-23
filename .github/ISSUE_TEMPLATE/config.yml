@@ -1,0 +1,6 @@
+blank_issues_enabled: true
+# GitHub Discussions is disabled for this repository, so there is no discussions
+# contact link (it would 404). Questions that are neither a bug nor a concrete feature
+# request can be opened as a blank issue (enabled above). If Discussions is enabled
+# later, set blank_issues_enabled to false and add a contact_links entry pointing at
+# https://github.com/QTR-Games/QTR_pairing_process/discussions
