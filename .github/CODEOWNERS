@@ -1,0 +1,15 @@
+# CODEOWNERS - QTR Pairing Process
+#
+# When branch protection requires code-owner review, every pull request requests a
+# review from the owner(s) matched by the MOST SPECIFIC rule below. Docs:
+# https://docs.github.com/repositories/managing-your-repos-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Scope: all repository collaborators own all paths - chosen for maximum review
+# coverage on a small, tightly-held team. If this becomes noisy later, replace the
+# global rule with narrower path rules (e.g. build/release scripts to release owners,
+# .github/ to maintainers).
+#
+# Every account listed here must have write access to the repo (all four are
+# collaborators, so this is satisfied).
+
+* @pm8k @quotemyname @dravenVTX @jakerot-1

@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest a new capability or improvement for the pairing app.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do that's hard or impossible today?
+      placeholder: When running a large event, I can't export the pairing history to...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should the app do? Sketch the behavior or UI if you can.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Matchup grid / data model
+        - Pairing decision tree
+        - CSV/XLSX import or export
+        - Database / persistence (SQLite)
+        - UI / Tkinter window
+        - Settings
+        - Packaging / release build
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
