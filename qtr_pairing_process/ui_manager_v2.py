@@ -5897,6 +5897,26 @@ class UiManager:
             secondary_state = self.column_sort_states.get(secondary_column, "none")
         secondary_reverse = secondary_state == "desc"
 
+        strategic_cache: dict[int, tuple[int, int]] = {}
+
+        def strategic_pair(model_node):
+            """Return (strategic3, strategic3_exploit) honoring the strategic memo.
+
+            The fused sort suppresses tag materialization on memo hits, so the
+            raw model fields can still hold their defaults while the memo holds
+            the real values. The generator accessors know that fallback; reading
+            the fields directly would rank every memo-hit row as zero.
+            """
+            cache_key = id(model_node)
+            cached = strategic_cache.get(cache_key)
+            if cached is None:
+                cached = (
+                    int(tree_gen.get_strategic3_from_tags(model_node)),
+                    int(tree_gen.get_strategic3_exploitability_from_tags(model_node)),
+                )
+                strategic_cache[cache_key] = cached
+            return cached
+
         def primary_key(model_node):
             if primary_mode == "cumulative":
                 return int(getattr(model_node, "cumulative2", 0))
@@ -5905,7 +5925,7 @@ class UiManager:
             if primary_mode == "resistance":
                 return int(getattr(model_node, "resistance2", 0))
             if primary_mode == "strategic3":
-                return int(getattr(model_node, "strategic3", 0))
+                return strategic_pair(model_node)[0]
             return 0
 
         def secondary_key(model_node):
@@ -5932,9 +5952,9 @@ class UiManager:
             if metric == "regret":
                 return -int(getattr(model_node, "regret2", 0))
             if metric == "strategic3":
-                return int(getattr(model_node, "strategic3", 0))
+                return strategic_pair(model_node)[0]
             if metric == "strategic_exploit":
-                return -int(getattr(model_node, "strategic3_exploit", 0))
+                return -strategic_pair(model_node)[1]
             if metric == "rating":
                 return int(getattr(model_node, "base", 0))
             return 0

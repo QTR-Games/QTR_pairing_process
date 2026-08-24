@@ -278,6 +278,27 @@ change results.
 What *is* prunable is the **floor** axis alone, which is a true minimax
 quantity. Route the optimization there instead; see p4.
 
+### p2b. Sort-on-expand re-sorts the whole model — **deferred, measured**
+
+`_sort_children_combined` early-returns into `_sort_model_children_combined`
+when `_depth == 0` and lazy model render is active
+(`ui_manager_v2.py` ~5578). That early return **discards both `node` and
+`recurse_mode`**, but `_on_tree_node_opened` (~1538) calls it with the opened
+row and `recurse_mode="expanded"`. So while a sort is active, expanding any row
+sorts the entire model and reprojects, instead of sorting just the branch that
+opened.
+
+Ordering stays correct — a full sort is a superset of the branch sort — so this
+is a cost, not a bug. Measured on `FIVE_V_FIVE_COUNTER_TEN_POINT` (48,751
+nodes, depth 9): **~48 ms per expansion**, steady state, for sorting a branch
+that is usually a handful of rows. That is the exact full-tree work p2 exists
+to avoid.
+
+Deferred rather than patched because honoring `node`/`recurse_mode` means
+partial sorts and partial reprojection, and the sort comparators were the
+source of three separate correctness bugs in review. Fix it as its own change,
+with the golden master as the guard.
+
 ### p3c. Fix v1 optimistic propagation
 
 `calculate_all_path_values` propagates `max()` at opponent levels while

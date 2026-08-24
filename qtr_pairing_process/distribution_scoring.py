@@ -140,6 +140,15 @@ def softmax(values: list[float], lam: float) -> list[float]:
     if lam <= 0.0:
         return [1.0] * len(values)
     largest = max(values)
+    if not math.isfinite(lam):
+        # The module documents "lam -> infinity : pure minimax". Taking that
+        # limit literally in the exponential gives inf * 0 == nan for the
+        # maximising entries, which then poisons every downstream statistic.
+        # Evaluate the limit directly instead: all mass on the argmax, shared
+        # evenly across ties.
+        winners = [1.0 if value == largest else 0.0 for value in values]
+        total = sum(winners)
+        return [w / total for w in winners]
     exps = [math.exp(lam * (value - largest)) for value in values]
     total = sum(exps)
     if total <= 0.0:
@@ -277,9 +286,14 @@ class DistributionScorer:
     def distribution_for(self, node, need: int | None = None) -> Distribution:
         """Distribution of subtree totals reachable from ``node``.
 
-        Iterative post-order: the tree is ~200 levels deep at 5v5 and
-        Python's recursion limit is 1000 by default, so recursion is a
-        latent crash on larger scenarios.
+        Iterative post-order over an explicit stack. Depth is 2N-1 for an
+        NvN match (measured: 5 at 3v3, 9 at 5v5), so recursion would not
+        overflow at any realistic roster size -- you would need roughly a
+        500v500 match to reach Python's default limit of 1000. The cost here
+        is breadth, not depth: 48,751 nodes at 5v5. The explicit stack is
+        kept because it makes the traversal order and its interaction with
+        the memo below easy to reason about, not because recursion would
+        crash.
 
         Shift-invariance and why the memo key differs by objective
         ----------------------------------------------------------

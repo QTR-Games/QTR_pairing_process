@@ -192,3 +192,54 @@ def test_opponent_first_complements_ratings_into_our_perspective(monkeypatch):
         assert any(
             node.base_for_our_team != node.base for node in first_level
         ), "no rating was actually complemented; the fix is not exercised"
+
+
+@pytest.mark.requires_tk
+@pytest.mark.parametrize("column", ["P(win)", "Floor", "P10", "Sigma"])
+def test_lazy_model_path_sorts_real_risk_columns(monkeypatch, column):
+    """Drive the real lazy sorter, not just the shared key helper.
+
+    Review noted this file asserted on ``TreeProjector.risk_sort_key`` directly
+    and never invoked ``_sort_model_children_combined`` with a risk column, so a
+    regression in the lazy path's wiring would still pass.
+    """
+    monkeypatch.setenv("QTR_ENGINE", "model")
+    monkeypatch.setenv("QTR_RENDER", "lazy")
+    monkeypatch.setenv("QTR_RISK", "1")
+    scenario = THREE_V_THREE_UNIFORM
+
+    with tk_treeview() as treeview:
+        generator = TreeGenerator(
+            treeview=treeview,
+            sort_alpha=False,
+            strategic_preferences={},
+            rating_system=scenario.rating_system,
+        )
+        generator.generate_combinations(
+            list(scenario.our_players),
+            list(scenario.opponent_players),
+            scenario.our_ratings,
+            scenario.opponent_ratings,
+            our_team_first=scenario.our_team_first,
+        )
+
+        field = TreeProjector.RISK_SORT_FIELDS[column]
+        top = generator.model_root.children
+        assert top, "expected a generated first choice level"
+        assert all(
+            float(getattr(n, TreeProjector.RISK_ANNOTATION_FIELD)) >= 0.0 for n in top
+        ), "risk annotation did not run; the test would be vacuous"
+
+        ui = UiManager.__new__(UiManager)
+        ui.tree_generator = generator
+        ui.tie_break_order = "confidence_then_cumulative"
+
+        ui.column_sort_states = {column: "desc"}
+        ui._sort_model_children_combined(None, column)
+        desc = [float(getattr(n, field)) for n in generator.model_root.children]
+        assert desc == sorted(desc, reverse=True), f"{column} desc: {desc}"
+
+        ui.column_sort_states = {column: "asc"}
+        ui._sort_model_children_combined(None, column)
+        asc = [float(getattr(n, field)) for n in generator.model_root.children]
+        assert asc == sorted(asc), f"{column} asc: {asc}"

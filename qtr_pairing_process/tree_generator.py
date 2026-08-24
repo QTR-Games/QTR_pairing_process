@@ -2750,7 +2750,20 @@ class TreeGenerator:
         """Extract strategic exploitability spread (lower is better)."""
         if self._use_model_engine():
             model_node = self._model_node_from_arg(node)
-            return int(model_node.strategic3_exploit) if model_node is not None else 0
+            if model_node is None:
+                return 0
+            if self.projector.has_metric(model_node, "strategic3_exploit_"):
+                return int(model_node.strategic3_exploit)
+            try:
+                memo_key = self._build_structural_memo_key_model(model_node)
+                memo_value = self._strategic_memo.get(memo_key)
+                if memo_value is not None:
+                    self._strategic_profile_stats["memo_fastpath_reads"] += 1
+                    _, exploitability = self._strategic_memo_fields(memo_value)
+                    return exploitability
+            except Exception:
+                pass
+            return int(model_node.strategic3_exploit)
         return self._extract_prefixed_tag_value(node, 'strategic3_exploit_', default=0)
 
     def unsort_tree(self):

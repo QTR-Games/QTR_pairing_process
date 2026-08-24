@@ -1,6 +1,10 @@
 # Proposal: propagate distributions instead of scalars
 
-Status: analysis complete, measured. Not implemented. Supersedes part of p4.
+Status: implemented and shipped as an opt-in engine. `distribution_scoring.py`
+provides the traversal, `annotate_risk()` attaches the results, and the risk
+columns surface them behind `QTR_RISK=1` with `QTR_ENGINE=model`. This document
+is kept as the design rationale and derivation; see `SCORING_MATHEMATICS.md`
+for the shipped math. Supersedes part of p4.
 
 You asked whether there is a better way to score, especially a more efficient
 one. There is, and unusually it is both — but it changes results, so it must be

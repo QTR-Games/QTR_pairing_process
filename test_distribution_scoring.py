@@ -100,6 +100,24 @@ def test_softmax_is_overflow_safe_on_large_lambda():
     assert math.isclose(weights[0], 1.0, abs_tol=1e-9)
 
 
+def test_softmax_evaluates_the_documented_infinite_lambda_limit():
+    """``lam -> infinity`` is documented as pure minimax.
+
+    Taken literally in the exponential it gives ``inf * 0 == nan`` for the
+    maximising entries, which then silently poisons every downstream
+    statistic instead of raising. Not reachable from the app (QTR_RISK_LAMBDA
+    rejects non-finite values) but ``softmax`` is a public helper.
+    """
+    weights = softmax([5.0, 5.0, 3.0], lam=float("inf"))
+
+    assert not any(math.isnan(w) for w in weights)
+    assert math.isclose(sum(weights), 1.0, rel_tol=1e-12)
+    # All mass on the joint maximisers, shared evenly.
+    assert math.isclose(weights[0], 0.5)
+    assert math.isclose(weights[1], 0.5)
+    assert weights[2] == 0.0
+
+
 def test_prob_at_least_counts_the_inclusive_tail():
     dist = {14: 0.25, 15: 0.25, 16: 0.5}
     assert math.isclose(prob_at_least(dist, 16), 0.5)
