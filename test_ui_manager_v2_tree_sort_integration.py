@@ -3,6 +3,7 @@ from __future__ import annotations
 import gc
 import os
 import shutil
+import sys
 import time
 from collections import Counter
 from pathlib import Path
@@ -136,6 +137,16 @@ def _invoke_heading(tree, column: str) -> None:
 
 
 @pytest.mark.requires_tk
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason=(
+        "UiManager resets the sort buttons to the Tk system color "
+        "'SystemButtonFace' (ui_manager_v2.py:5329-5332), which only exists on "
+        "Windows. Windows is the app's primary platform and runs this test "
+        "natively in CI; recolouring production buttons purely to satisfy the "
+        "Linux job would change shipped UI appearance."
+    ),
+)
 def test_v2_risk_column_heading_click_sorts_real_tree(real_ui_manager):
     ui = real_ui_manager
     tree = ui.treeview.tree
