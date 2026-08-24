@@ -222,29 +222,8 @@ def test_risk_sort_fields_cover_every_risk_column_and_name_real_node_fields():
         assert hasattr(node, field), f"{column_id} maps to missing field {field}"
 
 
-def _risk_sort_key(column_id, reverse):
-    """Mirror of the risk branch in ui_manager_v2's secondary_key."""
-    field = TreeProjector.RISK_SORT_FIELDS[column_id]
-
-    def key(node):
-        value = float(getattr(node, field, -1.0))
-        if value < 0.0:
-            return float("-inf") if reverse else float("inf")
-        return value
-
-    return key
-
-
-def test_unannotated_nodes_sort_to_the_bottom_in_both_directions():
-    """The -1.0 sentinel must never masquerade as a genuinely low score."""
-    annotated = _node("scored", 1, 1)
-    annotated.risk_win_prob = 0.25
-    unannotated = _node("not scored", 1, 1)  # keeps the -1.0 sentinel
-    assert unannotated.risk_win_prob == -1.0
-
-    for reverse in (True, False):
-        children = [unannotated, annotated]
-        children.sort(key=_risk_sort_key("P(win)", reverse), reverse=reverse)
-        assert children[-1] is unannotated, (
-            f"unannotated node did not sink with reverse={reverse}"
-        )
+# Sentinel/blank-row sorting used to be pinned here against a *copy* of the
+# production logic, which is precisely why the Floor/P10 defect survived: the
+# mirror only ever exercised P(win), where the per-field check happens to work.
+# Both render paths now share TreeProjector.risk_sort_key, covered for every
+# risk column in test_risk_sort_paths.py.

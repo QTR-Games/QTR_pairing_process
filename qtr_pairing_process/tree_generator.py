@@ -366,7 +366,7 @@ class TreeGenerator:
                 fRatings,
                 oRatings,
                 self.model_root,
-                "our",
+                "our" if self.our_team_first else "opponent",
             )
             fNames_sorted[:] = uf.cycle_list(fNames_sorted)
 

@@ -5617,6 +5617,17 @@ class UiManager:
             secondary_state = self.column_sort_states.get(secondary_column, "none")
         secondary_reverse = secondary_state == "desc"
 
+        # Risk columns live on the model, not in the widget's cached cells, so
+        # resolve them through the projector. Without this the default eager
+        # render falls through to sort_value and clicking P(win)/Floor/P10/
+        # Sigma silently sorts by the wrong column.
+        risk_nodes = None
+        if secondary_column in TreeProjector.RISK_SORT_FIELDS:
+            projector = getattr(
+                getattr(self, "tree_generator", None), "projector", None
+            )
+            risk_nodes = getattr(projector, "widget_to_node", None)
+
         # Hot-path snapshot: pull UI item metadata once per sibling set.
         child_sort_meta = {}
         for child_id in children:
@@ -5681,6 +5692,20 @@ class UiManager:
                 value = child_sort_meta.get(child_id, {}).get("text", "")
             elif secondary_column == "Rating":
                 value = child_sort_meta.get(child_id, {}).get("rating", 0)
+            elif risk_nodes is not None:
+                model_node = risk_nodes.get(child_id)
+                risk_value = (
+                    None
+                    if model_node is None
+                    else TreeProjector.risk_sort_key(
+                        model_node, secondary_column, secondary_reverse
+                    )
+                )
+                value = (
+                    child_sort_meta.get(child_id, {}).get("sort_value", 0)
+                    if risk_value is None
+                    else risk_value
+                )
             else:
                 value = child_sort_meta.get(child_id, {}).get("sort_value", 0)
             secondary_value_cache[child_id] = value
@@ -5890,15 +5915,11 @@ class UiManager:
                 return (getattr(model_node, "text", "") or "").lower()
             if secondary_column == "Rating":
                 return int(getattr(model_node, "base", 0))
-            risk_field = TreeProjector.RISK_SORT_FIELDS.get(secondary_column)
-            if risk_field is not None:
-                # -1.0 is the "not annotated" sentinel. Unannotated nodes sort
-                # below every real value in either direction, so a partially
-                # annotated tree never floats blanks to the top.
-                value = float(getattr(model_node, risk_field, -1.0))
-                if value < 0.0:
-                    return float("-inf") if secondary_reverse else float("inf")
-                return value
+            risk_value = TreeProjector.risk_sort_key(
+                model_node, secondary_column, secondary_reverse
+            )
+            if risk_value is not None:
+                return risk_value
             return int(getattr(model_node, "sort_value", 0))
 
         def metric_value(model_node, metric):

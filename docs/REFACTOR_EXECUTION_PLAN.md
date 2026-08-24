@@ -265,10 +265,18 @@ collapses the measured 36.6x redundancy (48,750 evaluations → 625 distinct
 states). Note this **invalidates persisted memo snapshots** — bump
 `_memo_schema_version` so old payloads are rejected rather than misread.
 
-### p3b. Alpha-beta pruning
+### p3b. Alpha-beta pruning — **deferred: unsound on the shipped blend**
 
-Cut branches provably worse than one already secured. Sound — never changes the
-result. PoC measured 142.74 ms → 3.64 ms (39.2x) with asserted-identical values.
+The PoC that measured 142.74 ms → 3.64 ms (39.2x) pruned a *pure minimax*
+tree. The shipped v2 score is `alpha*min + (1-alpha)*mean` (alpha = 0.80), and
+alpha-beta is **not** valid on that blend: the mean term means a branch cannot
+be discarded on a partial bound, because a later sibling still moves the
+parent's value. Counterexample `[10, 2, 2, 2]` in `docs/SCORING_MATHEMATICS.md`.
+The 39.2x figure therefore does not transfer, and pruning here would silently
+change results.
+
+What *is* prunable is the **floor** axis alone, which is a true minimax
+quantity. Route the optimization there instead; see p4.
 
 ### p3c. Fix v1 optimistic propagation
 

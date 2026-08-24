@@ -68,6 +68,28 @@ class TreeProjector:
         "Sigma": "risk_std",
     }
 
+    #: ``annotate_risk`` fills every risk field in one pass, so this single
+    #: field answers "was this node scored at all". Floor and P10 cannot carry
+    #: their own sentinel: 0 is a legitimate banked total, so a per-field check
+    #: would sort genuinely-zero rows as if they were blank.
+    RISK_ANNOTATION_FIELD = "risk_win_prob"
+
+    @classmethod
+    def risk_sort_key(cls, node, column_id, reverse):
+        """Sort key for ``column_id``, or ``None`` when it is not a risk column.
+
+        Shared by the eager and lazy sort paths so the two can never disagree
+        about which rows are blank. Unannotated nodes sink to the bottom in
+        both directions rather than masquerading as a genuinely low score.
+        """
+        field = cls.RISK_SORT_FIELDS.get(column_id)
+        if field is None:
+            return None
+        annotation = float(getattr(node, cls.RISK_ANNOTATION_FIELD, -1.0))
+        if annotation < 0.0:
+            return float("-inf") if reverse else float("inf")
+        return float(getattr(node, field, 0.0))
+
     _TAG_ORDER = (
         "cumulative_",
         "confidence_",
