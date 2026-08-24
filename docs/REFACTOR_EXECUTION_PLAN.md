@@ -278,26 +278,53 @@ change results.
 What *is* prunable is the **floor** axis alone, which is a true minimax
 quantity. Route the optimization there instead; see p4.
 
-### p2b. Sort-on-expand re-sorts the whole model — **deferred, measured**
+### p2b. Sort-on-expand re-sorts the whole model — **fixed**
 
 `_sort_children_combined` early-returns into `_sort_model_children_combined`
 when `_depth == 0` and lazy model render is active
-(`ui_manager_v2.py` ~5578). That early return **discards both `node` and
+(`ui_manager_v2.py` ~5578). That early return **discarded both `node` and
 `recurse_mode`**, but `_on_tree_node_opened` (~1538) calls it with the opened
-row and `recurse_mode="expanded"`. So while a sort is active, expanding any row
-sorts the entire model and reprojects, instead of sorting just the branch that
+row and `recurse_mode="expanded"`. So while a sort was active, expanding any row
+sorted the entire model and reprojected, instead of sorting just the branch that
 opened.
 
 Ordering stays correct — a full sort is a superset of the branch sort — so this
-is a cost, not a bug. Measured on `FIVE_V_FIVE_COUNTER_TEN_POINT` (48,751
-nodes, depth 9): **~48 ms per expansion**, steady state, for sorting a branch
-that is usually a handful of rows. That is the exact full-tree work p2 exists
-to avoid.
+was a cost, not a bug.
 
-Deferred rather than patched because honoring `node`/`recurse_mode` means
-partial sorts and partial reprojection, and the sort comparators were the
-source of three separate correctness bugs in review. Fix it as its own change,
-with the golden master as the guard.
+**Re-measured before fixing, and the earlier figure was wrong.** The previously
+recorded "~48 ms per expansion" understated it by roughly 3x. On
+`FIVE_V_FIVE_COUNTER_TEN_POINT` (48,751 nodes), primary mode `confidence`,
+steady state:
+
+| render mode | sort recursion | re-projection | total per expansion |
+| --- | --- | --- | --- |
+| `eager` | 157.0 ms (11.4%) | 1220.5 ms (88.6%) | 1377.4 ms |
+| `lazy` | 149.8 ms (98.5%) | 2.2 ms (1.5%) | **152.1 ms** |
+
+The lazy row is the one that matters — the fast path only fires when
+`render_mode == "lazy"`. Measuring only the eager path would have pointed at
+subtree *projection* as the fix, which would have been wrong: under lazy render
+the projector already materializes just 51 of 48,751 rows (0.1%), so projection
+is already cheap and the sort recursion is essentially the entire cost.
+
+**Fix:** forward `node` through the fast path and sort from the corresponding
+model node instead of the root. A column-header sort still passes `node=""`,
+which resolves back to the real root, so full-tree ordering is untouched
+(golden master green).
+
+Measured after: full sort 112.5 ms (48,751 nodes) vs scoped expansion
+**3.0 ms** (975 nodes) — **38x**. Expansion drops from ~152 ms to ~5 ms.
+
+Guarded by `test_sort_on_expand_scope.py`, which pins the scoping property (a
+scoped sort must not reorder a sibling subtree) and the over-scoping guard (a
+full sort must still cover the whole tree). Both drive the real
+`_sort_children_combined` entry point; an earlier draft that called
+`_sort_model_children_combined` directly passed even with the fix reverted.
+
+One behavior worth knowing: `_project_model` clears and rebuilds the
+widget↔node maps, so a widget id captured before a sort no longer resolves and
+falls back to a whole-tree sort. Callers must resolve the opened row against the
+current projection.
 
 ### p3c. Fix v1 optimistic propagation
 

@@ -5576,7 +5576,7 @@ class UiManager:
 
     def _sort_children_combined(self, node, primary_mode, secondary_column, _profile=None, _depth=0, recurse_mode="all"):
         if _depth == 0 and self._using_lazy_model_render():
-            self._sort_model_children_combined(primary_mode, secondary_column)
+            self._sort_model_children_combined(primary_mode, secondary_column, node=node)
             return
         profile_owner = _profile is None
         perf_enabled = bool(getattr(getattr(self, 'perf', None), 'enabled', False))
@@ -5883,7 +5883,7 @@ class UiManager:
                 recurse_ms=f"{_profile['recurse_ms']:.2f}",
             )
 
-    def _sort_model_children_combined(self, primary_mode, secondary_column):
+    def _sort_model_children_combined(self, primary_mode, secondary_column, node=""):
         tree_gen = getattr(self, "tree_generator", None)
         root = getattr(tree_gen, "model_root", None)
         if root is None:
@@ -5891,6 +5891,16 @@ class UiManager:
         if not getattr(tree_gen, "original_order_saved", False):
             tree_gen.save_original_order()
             tree_gen.original_order_saved = True
+
+        # Expanding one node only reorders that node's descendants, so sort the
+        # opened subtree instead of the whole model. On 5v5 the full recursion
+        # is ~150ms of a ~152ms expansion; a depth-1 subtree is ~3ms. `node` is
+        # "" for a column-header sort, which resolves back to the real root.
+        subtree_root = root
+        if node:
+            scoped = tree_gen._model_node_from_arg(node)
+            if scoped is not None:
+                subtree_root = scoped
 
         secondary_state = "none"
         if secondary_column:
@@ -6018,7 +6028,7 @@ class UiManager:
             for child in children:
                 sort_children(child)
 
-        sort_children(root)
+        sort_children(subtree_root)
         tree_gen._project_model()
 
     def update_scenario_box(self):
