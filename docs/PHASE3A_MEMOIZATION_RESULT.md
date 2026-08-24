@@ -30,7 +30,16 @@ genuinely first-time. There is no headroom left in this axis.
 
 Note the earlier estimate of ~625 states was wrong: 625 counts distinct
 *remaining-pool* configurations, but a node's value also depends on its own
-pairing, so the true state count is 5,392. Still a 9.0x collapse from 48,751.
+pairing, so the app-memo state count is 5,392. Still a 9.0x collapse from 48,751.
+
+**Later correction.** 5,392 is the count produced by enumerating canonical keys
+over the whole tree, which is what this memo path does. It double-counts 60
+states that are presentation-order variants of the same offer (`A OR B` vs
+`B OR A`). The distribution engine's descent from the root collapses them and
+computes 5,332, and the two orderings were measured to yield bit-identical
+distributions. 5,332 is the true distinct-state count; the numbers above remain
+accurate as a description of this memo's behavior. See `SCORING_MATHEMATICS.md`
+§4.2.
 
 ## Two hypotheses I tested and discarded
 

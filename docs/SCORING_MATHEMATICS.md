@@ -269,15 +269,46 @@ changes whether you should play safe or gamble.
 
 ### 4.2 Consequence for the memo
 
-The tree's 48,751 nodes collapse to **5,392 distinct game states** — a 9.0×
+The tree's 48,751 nodes collapse to **5,332 distinct game states** — a 9.1×
 reduction, and memoizing on canonical state is provably optimal for the
 shift-invariant objectives (misses equal distinct states exactly).
+
+Two counts appear in earlier notes — 5,332 and 5,392 — and the difference is a
+measurement artifact, not a defect. Enumerating `_canonical_key` over all 48,751
+nodes yields 5,392; the engine's descent from the root computes 5,332. The
+60-state gap is exactly the set of **presentation-order variants of offer
+nodes**: `Vex vs Pulse (3/10) OR Rune (10/10)` and
+`Vex vs Rune (10/10) OR Pulse (3/10)` are the same offer with the two options
+listed in the opposite order, and the canonical key is not invariant to that
+ordering. All 60 sit at depth 7 and span 720 nodes. The engine memoizes the
+first ordering it encounters and skips the duplicate parent, so the reversed
+children are never separately computed.
+
+The collapse was verified rather than assumed, and the verified result is
+narrower than "the two subtrees are identical." Across **both** the 4v4 and 5v5
+scenarios and all three objectives, every affected parent state yields an
+identical **objective value** (max gap \(0\)) — the quantity that drives ranking
+and sorting is preserved exactly, which is what the memo needs.
+
+The full distributions are *not* always identical. On 4v4 they differ by up to
+0.26 (floor) and 0.73 (win probability); on 5v5 they happen to agree exactly.
+The cause is tie-breaking: when two children tie on the objective,
+`max(child_dists, key=...)` keeps the first in list order, so which
+equally-good subtree survives depends on presentation order. The score is
+unaffected by construction — tied means equal — but the displayed *spread* can
+shift. Anything that reads the distribution itself rather than its objective
+value should not assume order-independence.
+
+**5,332 is the true distinct-state count; 5,392 counts each order-variant twice.**
 
 But for win probability, the canonical state is **not a sufficient key**. The
 same state reached with 12 points banked versus 9 is a genuinely different
 decision problem. The key must include the remaining requirement
-\(N - c\). Empirically this widens the state space from 5,332 to 19,807 (collapse
-9.1× → 2.5×) — a real cost, paid only by the objective that needs it.
+\(N - c\). Measured on the same 5v5 scenario this widens the state space from
+5,332 to **13,415** (collapse 9.1× → 3.6×) — a real cost, paid only by the
+objective that needs it. The figure is threshold-invariant: raising or lowering
+\(N\) shifts every \(need\) uniformly and does not change how many distinct
+\((\text{state}, need)\) pairs exist (verified at \(N\) from 10 to 35).
 
 ### 4.3 How the error surfaced
 
@@ -484,10 +515,7 @@ it is shift-invariant.
 1. **Can \(\lambda\) be fitted from data?** Every completed round is an
    observation of an opponent decision. With enough history, \(\lambda\) becomes
    measured rather than assumed — and could be per-opponent.
-2. **A 60-state discrepancy.** The engine computes 5,332 states where the app's
-   memo finds 5,392. The difference involves root `base` handling and is not yet
-   explained. It is small, but unexplained is unexplained.
-3. **Three matchups from one team** is a thin evidence base for §7. The
+2. **Three matchups from one team** is a thin evidence base for §7. The
    conclusion that `strategic3` is near-optimal deserves a wider test before it
    is treated as settled.
-4. **Branch-and-bound on the floor axis** is valid and unexploited.
+3. **Branch-and-bound on the floor axis** is valid and unexploited.
