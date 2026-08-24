@@ -543,6 +543,27 @@ over the tree to 1.0**.
 
 ## 7. What the numbers say about the existing system
 
+> **Validated against a real tournament.** Sections 1–6 reason about the model
+> from the inside. `docs/WTC2024_GROUND_TRUTH.md` checks it from the outside,
+> against the 400 real games of Warmachine WTC 2024 joined to the 5,425 ratings
+> Team Irving entered *before* that event. Three results there bear directly on
+> the mathematics in this document:
+>
+> - **The scenario dimension is constant.** Across every real database ever
+>   produced — 1,150 matchup cells — **zero** vary by scenario. Every
+>   scenario-aware cost in §6 is a 7× multiplier over a constant.
+> - **The rating is not a calibrated strength.** 74.1% of WTC ratings are the
+>   single value `3`, the value `5` was never used once, and Irving won 70% of
+>   games their own ratings implied they would win ~45% of. Every objective in
+>   §2 treats the rating as calibrated. It is closer to an ordinal hint with a
+>   pessimistic bias — so **absolute path totals are not meaningful quantities,
+>   only comparisons between lines are.**
+> - **The decisive game of the event was rated "dead even."** No search over
+>   that grid could have flagged it, at any α, under any opponent model. This
+>   bounds what §3 can achieve: with a near-uniform input matrix, a faithful
+>   search correctly reports "no preference," and the honest output is to say
+>   the grid is too flat to support a recommendation.
+
 This is the part I got wrong first, and the correction matters more than the
 original claim.
 
