@@ -39,6 +39,9 @@ def _run_strategic_optimal(generator: TreeGenerator) -> None:
 
 
 def _run_enhanced_v3_scores(generator: TreeGenerator) -> None:
+    if hasattr(generator, "calculate_enhanced_v3_scores"):
+        generator.calculate_enhanced_v3_scores("")
+        return
     generator.calculate_all_path_values_enhanced("")
     generator.calculate_confidence_scores_enhanced("")
     generator.calculate_counter_resistance_scores_enhanced("")

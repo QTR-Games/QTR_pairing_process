@@ -463,13 +463,17 @@ class TreeGenerator:
         return model_node.children
 
     def _walk_model_nodes(self, node):
-        if node is not None:
-            yield node
-            children = node.children
+        if node is None:
+            if self.model_root is None:
+                return
+            stack = [self.model_root]
         else:
-            children = [self.model_root] if self.model_root is not None else []
-        for child in children:
-            yield from self._walk_model_nodes(child)
+            stack = [node]
+
+        while stack:
+            current = stack.pop()
+            yield current
+            stack.extend(reversed(current.children))
 
     def _set_model_metric(self, node, prefix, value):
         attr = TreeProjector._PREFIX_TO_ATTR[prefix]
@@ -909,10 +913,253 @@ class TreeGenerator:
             elif metric_name == "resistance2":
                 self._apply_resistance2_memo_model(node, payload)
 
-    def _materialize_all_strategic_from_memo_model(self):
+    def _materialize_all_metrics_from_memo_model(self, metric_contexts, all_nodes):
+        if not self._metric_memo_enabled_model():
+            return
+        memos = {
+            metric_name: self._metric_memo_for(metric_name, context)
+            for metric_name, context in metric_contexts.items()
+        }
+        for node in all_nodes:
+            key = self._build_structural_memo_key_model(node)
+            for metric_name, context in metric_contexts.items():
+                payload = memos[metric_name].get(key)
+                if payload is None:
+                    if metric_name == "cumulative2":
+                        self._calculate_all_path_values_enhanced_model(node, alpha=context[1][0])
+                    elif metric_name == "confidence2":
+                        self._calculate_confidence_scores_enhanced_model(
+                            node,
+                            k=context[1][0],
+                            u=context[1][1],
+                        )
+                    elif metric_name == "resistance2":
+                        self._calculate_counter_resistance_scores_enhanced_model(
+                            node,
+                            beta=context[1][0],
+                            gamma=context[1][1],
+                            _depth=node.depth,
+                        )
+                    continue
+                if metric_name == "cumulative2":
+                    self._apply_cumulative2_memo_model(node, payload)
+                elif metric_name == "confidence2":
+                    self._apply_confidence2_memo_model(node, payload)
+                elif metric_name == "resistance2":
+                    self._apply_resistance2_memo_model(node, payload)
+
+    def _enhanced_metric_contexts_model(self, alpha=None, k=None, u=None, beta=None, gamma=None):
+        effective_alpha = self.cumulative2_alpha if alpha is None else alpha
+        effective_k = self.confidence2_k if k is None else k
+        effective_u = self.confidence2_u if u is None else u
+        effective_beta = self.resistance2_beta if beta is None else beta
+        effective_gamma = self.resistance2_gamma if gamma is None else gamma
+        return {
+            "cumulative2": self._metric_memo_context(
+                "cumulative2",
+                round(float(effective_alpha), 6),
+            ),
+            "confidence2": self._metric_memo_context(
+                "confidence2",
+                round(float(effective_k), 6),
+                round(float(effective_u), 6),
+                bool(getattr(self, "_confidence_aux_tags_enabled", True)),
+            ),
+            "resistance2": self._metric_memo_context(
+                "resistance2",
+                round(float(effective_beta), 6),
+                round(float(effective_gamma), 6),
+            ),
+        }
+
+    def _calculate_enhanced_prerequisites_model(
+        self,
+        model_node,
+        *,
+        alpha=None,
+        k=None,
+        u=None,
+        beta=None,
+        gamma=None,
+        _depth=0,
+        needed_metrics=None,
+        contexts=None,
+        memos=None,
+    ):
+        alpha = self.cumulative2_alpha if alpha is None else alpha
+        k = self.confidence2_k if k is None else k
+        u = self.confidence2_u if u is None else u
+        beta = self.resistance2_beta if beta is None else beta
+        gamma = self.resistance2_gamma if gamma is None else gamma
+        write_aux_tags = bool(getattr(self, "_confidence_aux_tags_enabled", True))
+        if contexts is None:
+            contexts = self._enhanced_metric_contexts_model(alpha=alpha, k=k, u=u, beta=beta, gamma=gamma)
+        if memos is None:
+            if self._metric_memo_enabled_model():
+                memos = {
+                    metric_name: self._metric_memo_for(metric_name, context)
+                    for metric_name, context in contexts.items()
+                }
+            else:
+                memos = {}
+        if needed_metrics is None:
+            needed_metrics = frozenset(("cumulative2", "confidence2", "resistance2"))
+        else:
+            needed_metrics = frozenset(needed_metrics)
+
+        children = self._model_children_for_arg(model_node)
+        current = self._model_node_from_arg(model_node)
+        results = {}
+        missing_metrics = set(needed_metrics)
+        memo_key = None
+
+        if current is not None and memos:
+            memo_key = self._build_structural_memo_key_model(current)
+            for metric_name in needed_metrics:
+                payload = memos[metric_name].get(memo_key)
+                if payload is None:
+                    self._record_metric_memo_miss(metric_name)
+                    continue
+                self._record_metric_memo_hit(metric_name)
+                if metric_name == "cumulative2":
+                    results[metric_name] = self._apply_cumulative2_memo_model(current, payload)
+                elif metric_name == "confidence2":
+                    results[metric_name] = self._apply_confidence2_memo_model(current, payload)
+                elif metric_name == "resistance2":
+                    results[metric_name] = self._apply_resistance2_memo_model(current, payload)
+                missing_metrics.discard(metric_name)
+
+        if not children:
+            if current is None:
+                return {
+                    "cumulative2": 0,
+                    "confidence2": (0, 0, 0),
+                    "resistance2": 0,
+                }
+            if "cumulative2" in missing_metrics:
+                leaf_value = current.base
+                results["cumulative2"] = self._apply_cumulative2_memo_model(current, leaf_value)
+                if memos:
+                    memos["cumulative2"][memo_key] = int(leaf_value)
+            if "confidence2" in missing_metrics:
+                base_conf = self.calculate_rating_confidence(current.base)
+                score = int(self._clamp(base_conf, 0, 100))
+                prefix_values = {"confidence2_": score, "regret2_": 0}
+                if write_aux_tags:
+                    prefix_values["floor2_"] = score
+                    prefix_values["ceiling2_"] = score
+                self._set_model_metrics(current, prefix_values)
+                self.projector.set_confidence_value(current, score)
+                results["confidence2"] = (score, score, score)
+                if memos:
+                    memos["confidence2"][memo_key] = (score, score, score, 0, write_aux_tags)
+            if "resistance2" in missing_metrics:
+                base = self.calculate_counter_resistance(current.base)
+                score = int(round(self._clamp(base, 0, 100)))
+                results["resistance2"] = self._apply_resistance2_memo_model(current, score)
+                if memos:
+                    memos["resistance2"][memo_key] = int(score)
+            return results
+
+        if missing_metrics or current is None:
+            child_results = [
+                self._calculate_enhanced_prerequisites_model(
+                    child,
+                    alpha=alpha,
+                    k=k,
+                    u=u,
+                    beta=beta,
+                    gamma=gamma,
+                    _depth=_depth + 1,
+                    needed_metrics=missing_metrics,
+                    contexts=contexts,
+                    memos=memos,
+                )
+                for child in children
+            ]
+        else:
+            child_results = []
+
+        if current is None:
+            if "cumulative2" in needed_metrics:
+                child_scores = [result["cumulative2"] for result in child_results]
+                results["cumulative2"] = max(child_scores) if child_scores else 0
+            if "confidence2" in needed_metrics:
+                child_scores = [result["confidence2"][2] for result in child_results]
+                mu = sum(child_scores) / max(1, len(child_scores))
+                if len(child_scores) > 1:
+                    variance = sum((s - mu) ** 2 for s in child_scores) / len(child_scores)
+                    sigma = math.sqrt(variance)
+                else:
+                    sigma = 0.0
+                conservative = mu - (k * sigma) - (u / math.sqrt(max(1, len(child_scores))))
+                results["confidence2"] = (0, 0, int(round(self._clamp(conservative, 0, 100))))
+            if "resistance2" in needed_metrics:
+                child_scores = [result["resistance2"] for result in child_results]
+                results["resistance2"] = max(child_scores) if child_scores else 0
+            return results
+
+        if "cumulative2" in missing_metrics:
+            child_scores = [result["cumulative2"] for result in child_results]
+            if children[0].is_opponent_choice:
+                min_child = min(child_scores)
+                mean_child = sum(child_scores) / max(1, len(child_scores))
+                child_component = alpha * min_child + (1.0 - alpha) * mean_child
+            else:
+                child_component = max(child_scores)
+            total_value = int(round(current.base + child_component))
+            results["cumulative2"] = self._apply_cumulative2_memo_model(current, total_value)
+            if memos:
+                memos["cumulative2"][memo_key] = int(total_value)
+
+        if "confidence2" in missing_metrics:
+            child_triplets = [result["confidence2"] for result in child_results]
+            child_scores = [triplet[2] for triplet in child_triplets]
+            mu = sum(child_scores) / max(1, len(child_scores))
+            if len(child_scores) > 1:
+                variance = sum((s - mu) ** 2 for s in child_scores) / len(child_scores)
+                sigma = math.sqrt(variance)
+            else:
+                sigma = 0.0
+            conservative = mu - (k * sigma) - (u / math.sqrt(max(1, len(child_scores))))
+            node_conf = self.calculate_rating_confidence(current.base)
+            score = int(round(self._clamp((0.6 * node_conf) + (0.4 * conservative), 0, 100)))
+            floor2 = int(round(self._clamp(min(child_scores), 0, 100)))
+            ceiling2 = int(round(self._clamp(max(child_scores), 0, 100)))
+            regret2 = max(0, ceiling2 - floor2)
+            prefix_values = {"confidence2_": score, "regret2_": regret2}
+            if write_aux_tags:
+                prefix_values["floor2_"] = floor2
+                prefix_values["ceiling2_"] = ceiling2
+            self._set_model_metrics(current, prefix_values)
+            self.projector.set_confidence_value(current, score)
+            results["confidence2"] = (floor2, ceiling2, score)
+            if memos:
+                memos["confidence2"][memo_key] = (floor2, ceiling2, score, regret2, write_aux_tags)
+
+        if "resistance2" in missing_metrics:
+            child_scores = [result["resistance2"] for result in child_results]
+            base_stability = self.calculate_counter_resistance(current.base)
+            best_our = max(child_scores) if child_scores else 0
+            worst_opp = min(child_scores) if child_scores else 0
+            regret = max(0.0, best_our - worst_opp)
+            depth_buffer = max(0.0, 6.0 - float(_depth))
+            score = base_stability - (beta * regret) + (gamma * depth_buffer)
+            score = int(round(self._clamp(score, 0, 100)))
+            results["resistance2"] = self._apply_resistance2_memo_model(current, score)
+            if memos:
+                memos["resistance2"][memo_key] = int(score)
+
+        return results
+
+    def _materialized_model_nodes(self):
+        return list(self._walk_model_nodes(None))
+
+    def _materialize_all_strategic_from_memo_model(self, all_nodes=None):
         if not bool(getattr(self, "_materialize_strategic_tags_on_memo_hit", True)):
             return
-        for node in self._walk_model_nodes(None):
+        nodes = self._materialized_model_nodes() if all_nodes is None else all_nodes
+        for node in nodes:
             if self.projector.has_metric(node, "strategic3_"):
                 continue
             memo_value = self._strategic_memo.get(self._build_structural_memo_key_model(node))
@@ -925,7 +1172,7 @@ class TreeGenerator:
             self._materialize_strategic_memo_hit_model(node, strategic_value, exploitability)
             self.projector.set_sort_value(node, strategic_value)
 
-    def _calculate_strategic3_scores_model(self, model_node, weights=None, rho=None, lam=None):
+    def _calculate_strategic3_scores_model(self, model_node, weights=None, rho=None, lam=None, all_nodes=None):
         weights = self.strategic3_weights if weights is None else weights
         rho = self.strategic3_rho if rho is None else rho
         lam = self.strategic3_lam if lam is None else lam
@@ -938,7 +1185,7 @@ class TreeGenerator:
             if memo_context != self._strategic_memo_context:
                 self._clear_strategic_memoization(reason="memo_context_change")
                 self._strategic_memo_context = memo_context
-            all_nodes = list(self._walk_model_nodes(None))
+            all_nodes = self._materialized_model_nodes() if all_nodes is None else all_nodes
             self._strategic_profile_stats["range_nodes"] = len(all_nodes)
             c_values = [n.cumulative2 for n in all_nodes]
             q_values = [n.confidence2 for n in all_nodes]
@@ -2028,6 +2275,37 @@ class TreeGenerator:
             return total_value
 
         return max(child_scores) if child_scores else 0
+
+    def calculate_enhanced_v3_scores(self, node="", alpha=None, k=None, u=None, beta=None, gamma=None):
+        """Compute cumulative2, confidence2, resistance2, and strategic3 for the model path."""
+        if not self._use_model_engine():
+            self.calculate_all_path_values_enhanced(node, alpha=alpha)
+            self.calculate_confidence_scores_enhanced(node, k=k, u=u)
+            self.calculate_counter_resistance_scores_enhanced(node, beta=beta, gamma=gamma)
+            return self.calculate_strategic3_scores(node)
+
+        contexts = self._enhanced_metric_contexts_model(alpha=alpha, k=k, u=u, beta=beta, gamma=gamma)
+        self._calculate_enhanced_prerequisites_model(
+            node,
+            alpha=alpha,
+            k=k,
+            u=u,
+            beta=beta,
+            gamma=gamma,
+            contexts=contexts,
+        )
+        all_nodes = self._materialized_model_nodes() if node == "" else None
+        if all_nodes is not None:
+            self._materialize_all_metrics_from_memo_model(contexts, all_nodes)
+            result = self._calculate_strategic3_scores_model(node, all_nodes=all_nodes)
+            self._materialize_all_strategic_from_memo_model(all_nodes=all_nodes)
+        else:
+            for metric_name, context in contexts.items():
+                self._materialize_all_metric_from_memo_model(metric_name, context)
+            result = self._calculate_strategic3_scores_model(node)
+            self._materialize_all_strategic_from_memo_model()
+        self._project_model()
+        return result
 
     def get_cumulative2_from_tags(self, node):
         """Extract enhanced cumulative value from node tags."""
