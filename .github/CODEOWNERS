@@ -4,12 +4,25 @@
 # review from the owner(s) matched by the MOST SPECIFIC rule below. Docs:
 # https://docs.github.com/repositories/managing-your-repos-settings-and-features/customizing-your-repository/about-code-owners
 #
-# Scope: all repository collaborators own all paths - chosen for maximum review
-# coverage on a small, tightly-held team. If this becomes noisy later, replace the
-# global rule with narrower path rules (e.g. build/release scripts to release owners,
-# .github/ to maintainers).
+# IMPORTANT - why this rule is deliberately narrow:
 #
-# Every account listed here must have write access to the repo (all four are
-# collaborators, so this is satisfied).
+# A global rule listing several collaborators (`* @a @b @c`) does not merely
+# document ownership. GitHub auto-requests a review from every matched owner on
+# EVERY pull request, and each request notifies that person. On a small team where
+# most pull requests come from one author, that is pure notification noise: owners
+# do not opt in per-PR, and it cannot be suppressed from the PR side.
+#
+# Listing only the repo owner keeps this file useful for future branch protection
+# while auto-requesting nobody, because GitHub never requests a review from the
+# pull request's own author.
+#
+# If enforced team review is wanted later, prefer NARROW PATH RULES over a global
+# rule, so reviewers are only pulled in on the areas they actually own. Example:
+#
+#   /.github/                             @dravenVTX
+#   /qtr_pairing_process/db_management/   @dravenVTX
+#   /setup.py                             @dravenVTX
+#
+# Any account listed here must have write access to the repo.
 
-* @pm8k @quotemyname @dravenVTX @jakerot-1
+* @dravenVTX
