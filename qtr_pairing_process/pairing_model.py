@@ -59,6 +59,15 @@ class TreeProjector:
 
     RISK_COLUMNS = ("P(win)", "Floor", "P10", "Sigma")
 
+    # Column id -> model attribute, for sorting. Kept next to RISK_COLUMNS so a
+    # renamed column cannot silently stop being sortable.
+    RISK_SORT_FIELDS = {
+        "P(win)": "risk_win_prob",
+        "Floor": "risk_floor",
+        "P10": "risk_p10",
+        "Sigma": "risk_std",
+    }
+
     _TAG_ORDER = (
         "cumulative_",
         "confidence_",

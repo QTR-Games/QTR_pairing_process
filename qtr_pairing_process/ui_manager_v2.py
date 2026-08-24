@@ -41,6 +41,7 @@ from qtr_pairing_process.excel_management.simple_excel_exporter import SimpleExc
 from qtr_pairing_process.excel_management.simple_excel_importer import SimpleExcelImporter
 from qtr_pairing_process.grid_data_model import GridDataModel
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
+from qtr_pairing_process.pairing_model import TreeProjector
 from qtr_pairing_process.perf_timer import PerfTimer
 from qtr_pairing_process.rating_system_dialog import RatingSystemDialog
 from qtr_pairing_process.settings_manager import SettingsManager
@@ -775,10 +776,15 @@ class UiManager:
                 ("Sigma", "Std Dev", 65),
             )
             for column_id, label, width in risk_headings:
-                self.treeview.tree.heading(column_id, text=label)
+                self.treeview.tree.heading(
+                    column_id,
+                    text=label,
+                    command=lambda c=column_id: self.on_column_click(c),
+                )
                 self.treeview.tree.column(
                     column_id, width=width, minwidth=45, anchor="e"
                 )
+                self.column_sort_states.setdefault(column_id, "none")
         self._configure_tree_rating_tags()
         self.treeview.tree.bind("<<TreeviewSelect>>", self._on_tree_selection_changed, add='+')
         self.treeview.tree.bind("<<TreeviewOpen>>", self._on_tree_node_opened, add='+')
@@ -2228,6 +2234,11 @@ class UiManager:
         self.is_sorted = False
         self.current_sort_mode = "none"
         self.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
+        if getattr(self, "_risk_columns", False):
+            # Rebuilt from scratch above, so re-register the risk columns or
+            # they stop responding to header clicks after any tree reset.
+            for column_id in TreeProjector.RISK_COLUMNS:
+                self.column_sort_states[column_id] = "none"
         self.active_column_sort = None
         self._sorted_children_cache.clear()
         self._primary_metrics_dirty = True
@@ -5373,8 +5384,18 @@ class UiManager:
             "Rating": "Rating",
             "Sort Value": self._get_sort_value_header_base(),
         }
+        ordered = ["#0", "Rating", "Sort Value"]
+        if getattr(self, "_risk_columns", False):
+            base_names.update({
+                "P(win)": "P(win)",
+                "Floor": "Floor",
+                "P10": "P10",
+                # ASCII on purpose -- see the heading setup for why.
+                "Sigma": "Std Dev",
+            })
+            ordered.extend(TreeProjector.RISK_COLUMNS)
 
-        for column_id in ["#0", "Rating", "Sort Value"]:
+        for column_id in ordered:
             state = self.column_sort_states.get(column_id, "none")
             suffix = ""
             if state == "asc":
@@ -5869,6 +5890,15 @@ class UiManager:
                 return (getattr(model_node, "text", "") or "").lower()
             if secondary_column == "Rating":
                 return int(getattr(model_node, "base", 0))
+            risk_field = TreeProjector.RISK_SORT_FIELDS.get(secondary_column)
+            if risk_field is not None:
+                # -1.0 is the "not annotated" sentinel. Unannotated nodes sort
+                # below every real value in either direction, so a partially
+                # annotated tree never floats blanks to the top.
+                value = float(getattr(model_node, risk_field, -1.0))
+                if value < 0.0:
+                    return float("-inf") if secondary_reverse else float("inf")
+                return value
             return int(getattr(model_node, "sort_value", 0))
 
         def metric_value(model_node, metric):

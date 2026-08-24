@@ -156,6 +156,35 @@ def test_annotation_reports_round_totals_not_subtree_totals():
     assert [node.risk_p10 for node in chain] == [12, 12, 12]
 
 
+def test_annotation_banks_points_from_our_perspective_not_the_raw_base():
+    """Regression: annotate_risk must bank the same value distribution_for does.
+
+    The generator stores the OPPONENT's rating in ``base`` for opponent-side
+    resolutions and our complement in ``base_for_our_team``. Banking raw
+    ``base`` diverged on 41.8% of contributing nodes in the real 5v5 tree,
+    with a maximum banked-total error of 18 points against a win_need of 28.
+    """
+    # A 1-10 chain where our perspective (8) is the complement of the stored
+    # opponent rating (3): 11 - 3 = 8.
+    root = _node("Pairings", 0, 0)
+    first = _node("Ours rating 6", 6, 1, parent=root, counts_toward_total=True)
+    second = _node(
+        "Theirs rating 3", 3, 2, parent=first,
+        counts_toward_total=True, base_for_our_team=8,
+    )
+    third = _node("Ours rating 7", 7, 3, parent=second, counts_toward_total=True)
+
+    scorer = DistributionScorer(threshold=16.5, lam=1.0, objective="win_probability")
+    annotate_risk(root, scorer)
+
+    # Round total from OUR perspective is 6 + 8 + 7 = 21, not 6 + 3 + 7 = 16.
+    assert [n.risk_floor for n in (first, second, third)] == [21, 21, 21]
+    assert [n.risk_p10 for n in (first, second, third)] == [21, 21, 21]
+    # 21 clears 16.5, so every node is a certain win. Banking raw base would
+    # have produced 16, which does not.
+    assert third.risk_win_prob == pytest.approx(1.0)
+
+
 def test_annotation_skips_the_root_so_it_renders_blank():
     root = _linear_tree([3, 4])
     scorer = DistributionScorer(threshold=15.0, lam=1.0, objective="win_probability")
@@ -184,3 +213,38 @@ def test_a_determined_total_scores_zero_or_one_against_the_threshold():
 def test_annotate_risk_tolerates_a_missing_tree():
     scorer = DistributionScorer(threshold=15.0, lam=1.0, objective="win_probability")
     assert annotate_risk(None, scorer) == 0
+
+def test_risk_sort_fields_cover_every_risk_column_and_name_real_node_fields():
+    """A typo here silently makes a column unsortable, so pin the mapping."""
+    node = _node("probe", 1, 1)
+    assert set(TreeProjector.RISK_SORT_FIELDS) == set(TreeProjector.RISK_COLUMNS)
+    for column_id, field in TreeProjector.RISK_SORT_FIELDS.items():
+        assert hasattr(node, field), f"{column_id} maps to missing field {field}"
+
+
+def _risk_sort_key(column_id, reverse):
+    """Mirror of the risk branch in ui_manager_v2's secondary_key."""
+    field = TreeProjector.RISK_SORT_FIELDS[column_id]
+
+    def key(node):
+        value = float(getattr(node, field, -1.0))
+        if value < 0.0:
+            return float("-inf") if reverse else float("inf")
+        return value
+
+    return key
+
+
+def test_unannotated_nodes_sort_to_the_bottom_in_both_directions():
+    """The -1.0 sentinel must never masquerade as a genuinely low score."""
+    annotated = _node("scored", 1, 1)
+    annotated.risk_win_prob = 0.25
+    unannotated = _node("not scored", 1, 1)  # keeps the -1.0 sentinel
+    assert unannotated.risk_win_prob == -1.0
+
+    for reverse in (True, False):
+        children = [unannotated, annotated]
+        children.sort(key=_risk_sort_key("P(win)", reverse), reverse=reverse)
+        assert children[-1] is unannotated, (
+            f"unannotated node did not sink with reverse={reverse}"
+        )
