@@ -291,9 +291,13 @@ Two conclusions, and the second is the surprising one.
 
 The bias is a property of the *rule*, not of the data: the optimistic excess is
 non-negative on every matchup tested, and the minimax excess non-positive on
-every one. `test_zero_sum_conservation.py` pins this hermetically on a
-synthetic grid, including a guard that the mirror construction is faithful
-before any conclusion is drawn from it.
+every one. `test_zero_sum_conservation.py` pins **the optimistic half** of that
+hermetically on a synthetic grid — weakly, then strictly on an uneven grid —
+plus a guard that the mirror construction is faithful before any conclusion is
+drawn from it, and a check that the quantal rule's conservation error is smaller
+than the optimistic rule's. The minimax sign and all three real-data magnitudes
+come from `probe_cumulative2_bias.py` against `teamIrving2024_FinalDB.db`, which
+is deliberately not a test fixture; **no test exercises minimax.**
 
 This does **not** close the wider p3c question. It establishes which rule is
 self-consistent; whether the sort path should adopt it is a separate decision

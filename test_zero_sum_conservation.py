@@ -14,14 +14,22 @@ punishes us must produce two root values summing to ``6n``. A rule that lets
 each side assume the other cooperates makes BOTH sides overestimate, so the sum
 comes out high; the excess is the cooperation bias in tournament points.
 
-Measured on real event data (Team Irving 2024, six opponents), the excess is:
+Measured on real event data (Team Irving 2024, six opponents) by the separate
+probe ``probe_cumulative2_bias.py``, the excess is:
 
     optimistic (max at every level)   mean +1.67, never below 0
     minimax    (min at their levels)  mean -1.83, never above 0
     quantal    (what the engine does) mean -0.18
 
 So "just flip max to min" is not the fix -- pure minimax is wrong by about as
-much as pure optimism, in the opposite direction. These tests pin that result.
+much as pure optimism, in the opposite direction.
+
+**What these tests actually pin**, on a hermetic synthetic 4v4 grid: that the
+mirror is faithful, that optimistic propagation's excess is positive (weakly,
+then strictly on an uneven grid), and that the quantal rule's conservation
+error is smaller than the optimistic rule's. They do **not** exercise minimax
+and they do **not** reproduce the real-data magnitudes above -- those come from
+the probe and from a database that is deliberately not a test fixture.
 """
 
 from __future__ import annotations
