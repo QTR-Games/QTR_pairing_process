@@ -1,0 +1,2107 @@
+{
+  "digest": "63727ad88dff285959c08c825d8b16b833d2115feaf2077af1da17f6fe3cceef",
+  "fidelity": "full",
+  "metadata": {
+    "description": "3v3 near-uniform 1-5 ratings with our team choosing first.",
+    "opponent_players": [
+      "Hydra",
+      "Ion",
+      "Jade"
+    ],
+    "our_players": [
+      "Aegis",
+      "Blaze",
+      "Cipher"
+    ],
+    "our_team_first": true,
+    "rating_system": "1-5",
+    "scenario": "3v3_uniform_default_first",
+    "schema_version": 1,
+    "sort_mode": "risk_adjusted_confidence"
+  },
+  "node_count": 118,
+  "tree": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.0.0.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Aegis vs Hydra (3/5) OR Hydra (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.0.0.0.0",
+                      "tags": [
+                        "3",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Cipher rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        30
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.0.0.0.1.0",
+                          "tags": [
+                            "4",
+                            "ceiling_4",
+                            "confidence_75",
+                            "floor_4"
+                          ],
+                          "text": "Cipher vs Hydra (4/5) OR Hydra (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            40
+                          ]
+                        }
+                      ],
+                      "path": "0.0.0.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling_8",
+                        "confidence_75",
+                        "floor_8"
+                      ],
+                      "text": "Aegis rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        40
+                      ]
+                    }
+                  ],
+                  "path": "0.0.0.0",
+                  "tags": [
+                    "4",
+                    "ceiling_12",
+                    "confidence_68",
+                    "floor_12"
+                  ],
+                  "text": "Jade vs Cipher (3/5) OR Aegis (4/5)",
+                  "values": [
+                    4,
+                    0,
+                    68,
+                    25
+                  ]
+                }
+              ],
+              "path": "0.0.0",
+              "tags": [
+                "3",
+                "ceiling_15",
+                "confidence_61",
+                "floor_15"
+              ],
+              "text": "Ion rating 3",
+              "values": [
+                3,
+                0,
+                61,
+                30
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.0.1.0.0.0",
+                          "tags": [
+                            "4",
+                            "ceiling_4",
+                            "confidence_75",
+                            "floor_4"
+                          ],
+                          "text": "Cipher vs Hydra (4/5) OR Hydra (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            40
+                          ]
+                        }
+                      ],
+                      "path": "0.0.1.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Aegis rating 2",
+                      "values": [
+                        2,
+                        0,
+                        55,
+                        20
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.0.1.0.1.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Aegis vs Hydra (3/5) OR Hydra (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.0.1.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling_7",
+                        "confidence_65",
+                        "floor_7"
+                      ],
+                      "text": "Cipher rating 4",
+                      "values": [
+                        4,
+                        0,
+                        65,
+                        40
+                      ]
+                    }
+                  ],
+                  "path": "0.0.1.0",
+                  "tags": [
+                    "4",
+                    "ceiling_11",
+                    "confidence_67",
+                    "floor_11"
+                  ],
+                  "text": "Ion vs Cipher (4/5) OR Aegis (2/5)",
+                  "values": [
+                    4,
+                    0,
+                    67,
+                    10
+                  ]
+                }
+              ],
+              "path": "0.0.1",
+              "tags": [
+                "4",
+                "ceiling_15",
+                "confidence_71",
+                "floor_15"
+              ],
+              "text": "Jade rating 4",
+              "values": [
+                4,
+                0,
+                71,
+                40
+              ]
+            }
+          ],
+          "path": "0.0",
+          "tags": [
+            "4",
+            "ceiling_19",
+            "confidence_70",
+            "floor_19"
+          ],
+          "text": "Blaze vs Ion (3/5) OR Jade (4/5)",
+          "values": [
+            4,
+            0,
+            70,
+            25
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.1.0.0.0.0",
+                          "tags": [
+                            "2",
+                            "ceiling_2",
+                            "confidence_35",
+                            "floor_2"
+                          ],
+                          "text": "Cipher vs Jade (2/5) OR Jade (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            20
+                          ]
+                        }
+                      ],
+                      "path": "0.1.0.0.0",
+                      "tags": [
+                        "3",
+                        "ceiling_5",
+                        "confidence_45",
+                        "floor_5"
+                      ],
+                      "text": "Blaze rating 3",
+                      "values": [
+                        3,
+                        0,
+                        45,
+                        30
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.1.0.0.1.0",
+                          "tags": [
+                            "4",
+                            "ceiling_4",
+                            "confidence_75",
+                            "floor_4"
+                          ],
+                          "text": "Blaze vs Jade (4/5) OR Jade (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            40
+                          ]
+                        }
+                      ],
+                      "path": "0.1.0.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling_8",
+                        "confidence_75",
+                        "floor_8"
+                      ],
+                      "text": "Cipher rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        40
+                      ]
+                    }
+                  ],
+                  "path": "0.1.0.0",
+                  "tags": [
+                    "4",
+                    "ceiling_12",
+                    "confidence_64",
+                    "floor_12"
+                  ],
+                  "text": "Ion vs Blaze (3/5) OR Cipher (4/5)",
+                  "values": [
+                    4,
+                    0,
+                    64,
+                    25
+                  ]
+                }
+              ],
+              "path": "0.1.0",
+              "tags": [
+                "3",
+                "ceiling_15",
+                "confidence_59",
+                "floor_15"
+              ],
+              "text": "Hydra rating 3",
+              "values": [
+                3,
+                0,
+                59,
+                30
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.1.1.0.0.0",
+                          "tags": [
+                            "2",
+                            "ceiling_2",
+                            "confidence_35",
+                            "floor_2"
+                          ],
+                          "text": "Cipher vs Jade (2/5) OR Jade (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            20
+                          ]
+                        }
+                      ],
+                      "path": "0.1.1.0.0",
+                      "tags": [
+                        "4",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Blaze rating 4",
+                      "values": [
+                        4,
+                        0,
+                        55,
+                        40
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.1.1.0.1.0",
+                          "tags": [
+                            "4",
+                            "ceiling_4",
+                            "confidence_75",
+                            "floor_4"
+                          ],
+                          "text": "Blaze vs Jade (4/5) OR Jade (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            40
+                          ]
+                        }
+                      ],
+                      "path": "0.1.1.0.1",
+                      "tags": [
+                        "2",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Cipher rating 2",
+                      "values": [
+                        2,
+                        0,
+                        55,
+                        20
+                      ]
+                    }
+                  ],
+                  "path": "0.1.1.0",
+                  "tags": [
+                    "4",
+                    "ceiling_10",
+                    "confidence_65",
+                    "floor_10"
+                  ],
+                  "text": "Hydra vs Blaze (4/5) OR Cipher (2/5)",
+                  "values": [
+                    4,
+                    0,
+                    65,
+                    10
+                  ]
+                }
+              ],
+              "path": "0.1.1",
+              "tags": [
+                "4",
+                "ceiling_14",
+                "confidence_70",
+                "floor_14"
+              ],
+              "text": "Ion rating 4",
+              "values": [
+                4,
+                0,
+                70,
+                40
+              ]
+            }
+          ],
+          "path": "0.1",
+          "tags": [
+            "4",
+            "ceiling_19",
+            "confidence_69",
+            "floor_19"
+          ],
+          "text": "Aegis vs Hydra (3/5) OR Ion (4/5)",
+          "values": [
+            4,
+            0,
+            69,
+            25
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.2.0.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Aegis vs Jade (3/5) OR Jade (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.2.0.0.0",
+                      "tags": [
+                        "4",
+                        "ceiling_7",
+                        "confidence_65",
+                        "floor_7"
+                      ],
+                      "text": "Blaze rating 4",
+                      "values": [
+                        4,
+                        0,
+                        65,
+                        40
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.2.0.0.1.0",
+                          "tags": [
+                            "4",
+                            "ceiling_4",
+                            "confidence_75",
+                            "floor_4"
+                          ],
+                          "text": "Blaze vs Jade (4/5) OR Jade (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            40
+                          ]
+                        }
+                      ],
+                      "path": "0.2.0.0.1",
+                      "tags": [
+                        "3",
+                        "ceiling_7",
+                        "confidence_65",
+                        "floor_7"
+                      ],
+                      "text": "Aegis rating 3",
+                      "values": [
+                        3,
+                        0,
+                        65,
+                        30
+                      ]
+                    }
+                  ],
+                  "path": "0.2.0.0",
+                  "tags": [
+                    "4",
+                    "ceiling_11",
+                    "confidence_70",
+                    "floor_11"
+                  ],
+                  "text": "Hydra vs Blaze (4/5) OR Aegis (3/5)",
+                  "values": [
+                    4,
+                    0,
+                    70,
+                    25
+                  ]
+                }
+              ],
+              "path": "0.2.0",
+              "tags": [
+                "3",
+                "ceiling_14",
+                "confidence_62",
+                "floor_14"
+              ],
+              "text": "Ion rating 3",
+              "values": [
+                3,
+                0,
+                62,
+                30
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.2.1.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Aegis vs Jade (3/5) OR Jade (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.2.1.0.0",
+                      "tags": [
+                        "3",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Blaze rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        30
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.2.1.0.1.0",
+                          "tags": [
+                            "4",
+                            "ceiling_4",
+                            "confidence_75",
+                            "floor_4"
+                          ],
+                          "text": "Blaze vs Jade (4/5) OR Jade (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            40
+                          ]
+                        }
+                      ],
+                      "path": "0.2.1.0.1",
+                      "tags": [
+                        "2",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Aegis rating 2",
+                      "values": [
+                        2,
+                        0,
+                        55,
+                        20
+                      ]
+                    }
+                  ],
+                  "path": "0.2.1.0",
+                  "tags": [
+                    "3",
+                    "ceiling_9",
+                    "confidence_55",
+                    "floor_9"
+                  ],
+                  "text": "Ion vs Blaze (3/5) OR Aegis (2/5)",
+                  "values": [
+                    3,
+                    0,
+                    55,
+                    15
+                  ]
+                }
+              ],
+              "path": "0.2.1",
+              "tags": [
+                "4",
+                "ceiling_13",
+                "confidence_65",
+                "floor_13"
+              ],
+              "text": "Hydra rating 4",
+              "values": [
+                4,
+                0,
+                65,
+                40
+              ]
+            }
+          ],
+          "path": "0.2",
+          "tags": [
+            "4",
+            "ceiling_18",
+            "confidence_69",
+            "floor_18"
+          ],
+          "text": "Cipher vs Hydra (4/5) OR Ion (3/5)",
+          "values": [
+            4,
+            0,
+            69,
+            25
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.3.0.0.0.0",
+                          "tags": [
+                            "2",
+                            "ceiling_2",
+                            "confidence_35",
+                            "floor_2"
+                          ],
+                          "text": "Blaze vs Hydra (2/5) OR Hydra (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            20
+                          ]
+                        }
+                      ],
+                      "path": "0.3.0.0.0",
+                      "tags": [
+                        "4",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Cipher rating 4",
+                      "values": [
+                        4,
+                        0,
+                        55,
+                        40
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.3.0.0.1.0",
+                          "tags": [
+                            "4",
+                            "ceiling_4",
+                            "confidence_75",
+                            "floor_4"
+                          ],
+                          "text": "Cipher vs Hydra (4/5) OR Hydra (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            40
+                          ]
+                        }
+                      ],
+                      "path": "0.3.0.0.1",
+                      "tags": [
+                        "3",
+                        "ceiling_7",
+                        "confidence_65",
+                        "floor_7"
+                      ],
+                      "text": "Blaze rating 3",
+                      "values": [
+                        3,
+                        0,
+                        65,
+                        30
+                      ]
+                    }
+                  ],
+                  "path": "0.3.0.0",
+                  "tags": [
+                    "4",
+                    "ceiling_11",
+                    "confidence_67",
+                    "floor_11"
+                  ],
+                  "text": "Ion vs Blaze (3/5) OR Cipher (4/5)",
+                  "values": [
+                    4,
+                    0,
+                    67,
+                    25
+                  ]
+                }
+              ],
+              "path": "0.3.0",
+              "tags": [
+                "3",
+                "ceiling_14",
+                "confidence_61",
+                "floor_14"
+              ],
+              "text": "Jade rating 3",
+              "values": [
+                3,
+                0,
+                61,
+                30
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.3.1.0.0.0",
+                          "tags": [
+                            "2",
+                            "ceiling_2",
+                            "confidence_35",
+                            "floor_2"
+                          ],
+                          "text": "Blaze vs Hydra (2/5) OR Hydra (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            20
+                          ]
+                        }
+                      ],
+                      "path": "0.3.1.0.0",
+                      "tags": [
+                        "3",
+                        "ceiling_5",
+                        "confidence_45",
+                        "floor_5"
+                      ],
+                      "text": "Cipher rating 3",
+                      "values": [
+                        3,
+                        0,
+                        45,
+                        30
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.3.1.0.1.0",
+                          "tags": [
+                            "4",
+                            "ceiling_4",
+                            "confidence_75",
+                            "floor_4"
+                          ],
+                          "text": "Cipher vs Hydra (4/5) OR Hydra (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            40
+                          ]
+                        }
+                      ],
+                      "path": "0.3.1.0.1",
+                      "tags": [
+                        "2",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Blaze rating 2",
+                      "values": [
+                        2,
+                        0,
+                        55,
+                        20
+                      ]
+                    }
+                  ],
+                  "path": "0.3.1.0",
+                  "tags": [
+                    "3",
+                    "ceiling_9",
+                    "confidence_52",
+                    "floor_9"
+                  ],
+                  "text": "Jade vs Blaze (2/5) OR Cipher (3/5)",
+                  "values": [
+                    3,
+                    0,
+                    52,
+                    15
+                  ]
+                }
+              ],
+              "path": "0.3.1",
+              "tags": [
+                "4",
+                "ceiling_13",
+                "confidence_63",
+                "floor_13"
+              ],
+              "text": "Ion rating 4",
+              "values": [
+                4,
+                0,
+                63,
+                40
+              ]
+            }
+          ],
+          "path": "0.3",
+          "tags": [
+            "4",
+            "ceiling_18",
+            "confidence_68",
+            "floor_18"
+          ],
+          "text": "Aegis vs Ion (4/5) OR Jade (3/5)",
+          "values": [
+            4,
+            0,
+            68,
+            25
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.4.0.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Blaze vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.4.0.0.0",
+                      "tags": [
+                        "3",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Aegis rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        30
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.4.0.0.1.0",
+                          "tags": [
+                            "4",
+                            "ceiling_4",
+                            "confidence_75",
+                            "floor_4"
+                          ],
+                          "text": "Aegis vs Ion (4/5) OR Ion (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            40
+                          ]
+                        }
+                      ],
+                      "path": "0.4.0.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling_8",
+                        "confidence_75",
+                        "floor_8"
+                      ],
+                      "text": "Blaze rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        40
+                      ]
+                    }
+                  ],
+                  "path": "0.4.0.0",
+                  "tags": [
+                    "4",
+                    "ceiling_12",
+                    "confidence_68",
+                    "floor_12"
+                  ],
+                  "text": "Hydra vs Blaze (4/5) OR Aegis (3/5)",
+                  "values": [
+                    4,
+                    0,
+                    68,
+                    25
+                  ]
+                }
+              ],
+              "path": "0.4.0",
+              "tags": [
+                "2",
+                "ceiling_14",
+                "confidence_51",
+                "floor_14"
+              ],
+              "text": "Jade rating 2",
+              "values": [
+                2,
+                0,
+                51,
+                20
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.4.1.0.0.0",
+                          "tags": [
+                            "4",
+                            "ceiling_4",
+                            "confidence_75",
+                            "floor_4"
+                          ],
+                          "text": "Aegis vs Ion (4/5) OR Ion (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            40
+                          ]
+                        }
+                      ],
+                      "path": "0.4.1.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Blaze rating 2",
+                      "values": [
+                        2,
+                        0,
+                        55,
+                        20
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.4.1.0.1.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Blaze vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.4.1.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling_7",
+                        "confidence_65",
+                        "floor_7"
+                      ],
+                      "text": "Aegis rating 4",
+                      "values": [
+                        4,
+                        0,
+                        65,
+                        40
+                      ]
+                    }
+                  ],
+                  "path": "0.4.1.0",
+                  "tags": [
+                    "4",
+                    "ceiling_11",
+                    "confidence_67",
+                    "floor_11"
+                  ],
+                  "text": "Jade vs Blaze (2/5) OR Aegis (4/5)",
+                  "values": [
+                    4,
+                    0,
+                    67,
+                    10
+                  ]
+                }
+              ],
+              "path": "0.4.1",
+              "tags": [
+                "4",
+                "ceiling_15",
+                "confidence_71",
+                "floor_15"
+              ],
+              "text": "Hydra rating 4",
+              "values": [
+                4,
+                0,
+                71,
+                40
+              ]
+            }
+          ],
+          "path": "0.4",
+          "tags": [
+            "4",
+            "ceiling_19",
+            "confidence_67",
+            "floor_19"
+          ],
+          "text": "Cipher vs Hydra (4/5) OR Jade (2/5)",
+          "values": [
+            4,
+            0,
+            67,
+            10
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.5.0.0.0.0",
+                          "tags": [
+                            "4",
+                            "ceiling_4",
+                            "confidence_75",
+                            "floor_4"
+                          ],
+                          "text": "Aegis vs Ion (4/5) OR Ion (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            40
+                          ]
+                        }
+                      ],
+                      "path": "0.5.0.0.0",
+                      "tags": [
+                        "3",
+                        "ceiling_7",
+                        "confidence_65",
+                        "floor_7"
+                      ],
+                      "text": "Cipher rating 3",
+                      "values": [
+                        3,
+                        0,
+                        65,
+                        30
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.5.0.0.1.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Cipher vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.5.0.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling_7",
+                        "confidence_65",
+                        "floor_7"
+                      ],
+                      "text": "Aegis rating 4",
+                      "values": [
+                        4,
+                        0,
+                        65,
+                        40
+                      ]
+                    }
+                  ],
+                  "path": "0.5.0.0",
+                  "tags": [
+                    "4",
+                    "ceiling_11",
+                    "confidence_70",
+                    "floor_11"
+                  ],
+                  "text": "Jade vs Cipher (3/5) OR Aegis (4/5)",
+                  "values": [
+                    4,
+                    0,
+                    70,
+                    25
+                  ]
+                }
+              ],
+              "path": "0.5.0",
+              "tags": [
+                "2",
+                "ceiling_13",
+                "confidence_52",
+                "floor_13"
+              ],
+              "text": "Hydra rating 2",
+              "values": [
+                2,
+                0,
+                52,
+                20
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.5.1.0.0.0",
+                          "tags": [
+                            "4",
+                            "ceiling_4",
+                            "confidence_75",
+                            "floor_4"
+                          ],
+                          "text": "Aegis vs Ion (4/5) OR Ion (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            40
+                          ]
+                        }
+                      ],
+                      "path": "0.5.1.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Cipher rating 2",
+                      "values": [
+                        2,
+                        0,
+                        55,
+                        20
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.5.1.0.1.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Cipher vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.5.1.0.1",
+                      "tags": [
+                        "3",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Aegis rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        30
+                      ]
+                    }
+                  ],
+                  "path": "0.5.1.0",
+                  "tags": [
+                    "3",
+                    "ceiling_9",
+                    "confidence_55",
+                    "floor_9"
+                  ],
+                  "text": "Hydra vs Cipher (2/5) OR Aegis (3/5)",
+                  "values": [
+                    3,
+                    0,
+                    55,
+                    15
+                  ]
+                }
+              ],
+              "path": "0.5.1",
+              "tags": [
+                "4",
+                "ceiling_13",
+                "confidence_65",
+                "floor_13"
+              ],
+              "text": "Jade rating 4",
+              "values": [
+                4,
+                0,
+                65,
+                40
+              ]
+            }
+          ],
+          "path": "0.5",
+          "tags": [
+            "4",
+            "ceiling_17",
+            "confidence_66",
+            "floor_17"
+          ],
+          "text": "Blaze vs Hydra (2/5) OR Jade (4/5)",
+          "values": [
+            4,
+            0,
+            66,
+            10
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.6.0.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Cipher vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.6.0.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling_5",
+                        "confidence_45",
+                        "floor_5"
+                      ],
+                      "text": "Blaze rating 2",
+                      "values": [
+                        2,
+                        0,
+                        45,
+                        20
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.6.0.0.1.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Blaze vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.6.0.0.1",
+                      "tags": [
+                        "3",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Cipher rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        30
+                      ]
+                    }
+                  ],
+                  "path": "0.6.0.0",
+                  "tags": [
+                    "3",
+                    "ceiling_9",
+                    "confidence_52",
+                    "floor_9"
+                  ],
+                  "text": "Jade vs Blaze (2/5) OR Cipher (3/5)",
+                  "values": [
+                    3,
+                    0,
+                    52,
+                    15
+                  ]
+                }
+              ],
+              "path": "0.6.0",
+              "tags": [
+                "3",
+                "ceiling_12",
+                "confidence_53",
+                "floor_12"
+              ],
+              "text": "Hydra rating 3",
+              "values": [
+                3,
+                0,
+                53,
+                30
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.6.1.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Blaze vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.6.1.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling_5",
+                        "confidence_45",
+                        "floor_5"
+                      ],
+                      "text": "Cipher rating 2",
+                      "values": [
+                        2,
+                        0,
+                        45,
+                        20
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.6.1.0.1.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Cipher vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.6.1.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling_7",
+                        "confidence_65",
+                        "floor_7"
+                      ],
+                      "text": "Blaze rating 4",
+                      "values": [
+                        4,
+                        0,
+                        65,
+                        40
+                      ]
+                    }
+                  ],
+                  "path": "0.6.1.0",
+                  "tags": [
+                    "4",
+                    "ceiling_11",
+                    "confidence_63",
+                    "floor_11"
+                  ],
+                  "text": "Hydra vs Blaze (4/5) OR Cipher (2/5)",
+                  "values": [
+                    4,
+                    0,
+                    63,
+                    10
+                  ]
+                }
+              ],
+              "path": "0.6.1",
+              "tags": [
+                "3",
+                "ceiling_14",
+                "confidence_59",
+                "floor_14"
+              ],
+              "text": "Jade rating 3",
+              "values": [
+                3,
+                0,
+                59,
+                30
+              ]
+            }
+          ],
+          "path": "0.6",
+          "tags": [
+            "3",
+            "ceiling_17",
+            "confidence_54",
+            "floor_17"
+          ],
+          "text": "Aegis vs Hydra (3/5) OR Jade (3/5)",
+          "values": [
+            3,
+            0,
+            54,
+            30
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.7.0.0.0.0",
+                          "tags": [
+                            "2",
+                            "ceiling_2",
+                            "confidence_35",
+                            "floor_2"
+                          ],
+                          "text": "Blaze vs Hydra (2/5) OR Hydra (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            20
+                          ]
+                        }
+                      ],
+                      "path": "0.7.0.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling_4",
+                        "confidence_35",
+                        "floor_4"
+                      ],
+                      "text": "Aegis rating 2",
+                      "values": [
+                        2,
+                        0,
+                        35,
+                        20
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.7.0.0.1.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Aegis vs Hydra (3/5) OR Hydra (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.7.0.0.1",
+                      "tags": [
+                        "3",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Blaze rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        30
+                      ]
+                    }
+                  ],
+                  "path": "0.7.0.0",
+                  "tags": [
+                    "3",
+                    "ceiling_9",
+                    "confidence_48",
+                    "floor_9"
+                  ],
+                  "text": "Ion vs Blaze (3/5) OR Aegis (2/5)",
+                  "values": [
+                    3,
+                    0,
+                    48,
+                    15
+                  ]
+                }
+              ],
+              "path": "0.7.0",
+              "tags": [
+                "2",
+                "ceiling_11",
+                "confidence_41",
+                "floor_11"
+              ],
+              "text": "Jade rating 2",
+              "values": [
+                2,
+                0,
+                41,
+                20
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.7.1.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Aegis vs Hydra (3/5) OR Hydra (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.7.1.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling_5",
+                        "confidence_45",
+                        "floor_5"
+                      ],
+                      "text": "Blaze rating 2",
+                      "values": [
+                        2,
+                        0,
+                        45,
+                        20
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.7.1.0.1.0",
+                          "tags": [
+                            "2",
+                            "ceiling_2",
+                            "confidence_35",
+                            "floor_2"
+                          ],
+                          "text": "Blaze vs Hydra (2/5) OR Hydra (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            20
+                          ]
+                        }
+                      ],
+                      "path": "0.7.1.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling_6",
+                        "confidence_55",
+                        "floor_6"
+                      ],
+                      "text": "Aegis rating 4",
+                      "values": [
+                        4,
+                        0,
+                        55,
+                        40
+                      ]
+                    }
+                  ],
+                  "path": "0.7.1.0",
+                  "tags": [
+                    "4",
+                    "ceiling_10",
+                    "confidence_62",
+                    "floor_10"
+                  ],
+                  "text": "Jade vs Blaze (2/5) OR Aegis (4/5)",
+                  "values": [
+                    4,
+                    0,
+                    62,
+                    10
+                  ]
+                }
+              ],
+              "path": "0.7.1",
+              "tags": [
+                "3",
+                "ceiling_13",
+                "confidence_58",
+                "floor_13"
+              ],
+              "text": "Ion rating 3",
+              "values": [
+                3,
+                0,
+                58,
+                30
+              ]
+            }
+          ],
+          "path": "0.7",
+          "tags": [
+            "3",
+            "ceiling_16",
+            "confidence_51",
+            "floor_16"
+          ],
+          "text": "Cipher vs Ion (3/5) OR Jade (2/5)",
+          "values": [
+            3,
+            0,
+            51,
+            15
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.8.0.0.0.0",
+                          "tags": [
+                            "2",
+                            "ceiling_2",
+                            "confidence_35",
+                            "floor_2"
+                          ],
+                          "text": "Cipher vs Jade (2/5) OR Jade (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            20
+                          ]
+                        }
+                      ],
+                      "path": "0.8.0.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling_4",
+                        "confidence_35",
+                        "floor_4"
+                      ],
+                      "text": "Aegis rating 2",
+                      "values": [
+                        2,
+                        0,
+                        35,
+                        20
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.8.0.0.1.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Aegis vs Jade (3/5) OR Jade (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.8.0.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling_7",
+                        "confidence_65",
+                        "floor_7"
+                      ],
+                      "text": "Cipher rating 4",
+                      "values": [
+                        4,
+                        0,
+                        65,
+                        40
+                      ]
+                    }
+                  ],
+                  "path": "0.8.0.0",
+                  "tags": [
+                    "4",
+                    "ceiling_11",
+                    "confidence_59",
+                    "floor_11"
+                  ],
+                  "text": "Ion vs Cipher (4/5) OR Aegis (2/5)",
+                  "values": [
+                    4,
+                    0,
+                    59,
+                    10
+                  ]
+                }
+              ],
+              "path": "0.8.0",
+              "tags": [
+                "2",
+                "ceiling_13",
+                "confidence_47",
+                "floor_13"
+              ],
+              "text": "Hydra rating 2",
+              "values": [
+                2,
+                0,
+                47,
+                20
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.8.1.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling_3",
+                            "confidence_55",
+                            "floor_3"
+                          ],
+                          "text": "Aegis vs Jade (3/5) OR Jade (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            30
+                          ]
+                        }
+                      ],
+                      "path": "0.8.1.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling_5",
+                        "confidence_45",
+                        "floor_5"
+                      ],
+                      "text": "Cipher rating 2",
+                      "values": [
+                        2,
+                        0,
+                        45,
+                        20
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.8.1.0.1.0",
+                          "tags": [
+                            "2",
+                            "ceiling_2",
+                            "confidence_35",
+                            "floor_2"
+                          ],
+                          "text": "Cipher vs Jade (2/5) OR Jade (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            20
+                          ]
+                        }
+                      ],
+                      "path": "0.8.1.0.1",
+                      "tags": [
+                        "3",
+                        "ceiling_5",
+                        "confidence_45",
+                        "floor_5"
+                      ],
+                      "text": "Aegis rating 3",
+                      "values": [
+                        3,
+                        0,
+                        45,
+                        30
+                      ]
+                    }
+                  ],
+                  "path": "0.8.1.0",
+                  "tags": [
+                    "3",
+                    "ceiling_8",
+                    "confidence_50",
+                    "floor_8"
+                  ],
+                  "text": "Hydra vs Cipher (2/5) OR Aegis (3/5)",
+                  "values": [
+                    3,
+                    0,
+                    50,
+                    15
+                  ]
+                }
+              ],
+              "path": "0.8.1",
+              "tags": [
+                "3",
+                "ceiling_11",
+                "confidence_52",
+                "floor_11"
+              ],
+              "text": "Ion rating 3",
+              "values": [
+                3,
+                0,
+                52,
+                30
+              ]
+            }
+          ],
+          "path": "0.8",
+          "tags": [
+            "3",
+            "ceiling_16",
+            "confidence_51",
+            "floor_16"
+          ],
+          "text": "Blaze vs Hydra (2/5) OR Ion (3/5)",
+          "values": [
+            3,
+            0,
+            51,
+            15
+          ]
+        }
+      ],
+      "path": "0",
+      "tags": [
+        "ceiling_19",
+        "confidence_37",
+        "floor_19"
+      ],
+      "text": "Pairings",
+      "values": []
+    }
+  ]
+}

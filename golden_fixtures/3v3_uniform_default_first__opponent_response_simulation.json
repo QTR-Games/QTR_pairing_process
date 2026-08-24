@@ -1,0 +1,1871 @@
+{
+  "digest": "d560be047252667e76fb7b11e67569a8e5de0bba964cf89a4e98ba86767cd0cf",
+  "fidelity": "full",
+  "metadata": {
+    "description": "3v3 near-uniform 1-5 ratings with our team choosing first.",
+    "opponent_players": [
+      "Hydra",
+      "Ion",
+      "Jade"
+    ],
+    "our_players": [
+      "Aegis",
+      "Blaze",
+      "Cipher"
+    ],
+    "our_team_first": true,
+    "rating_system": "1-5",
+    "scenario": "3v3_uniform_default_first",
+    "schema_version": 1,
+    "sort_mode": "opponent_response_simulation"
+  },
+  "node_count": 118,
+  "tree": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.0.0.0.0.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Cipher vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.0.0.0.0",
+                      "tags": [
+                        "4",
+                        "resistance_64"
+                      ],
+                      "text": "Blaze rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        64
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.0.0.0.1.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Blaze vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.0.0.0.1",
+                      "tags": [
+                        "2",
+                        "resistance_64"
+                      ],
+                      "text": "Cipher rating 2",
+                      "values": [
+                        2,
+                        0,
+                        35,
+                        64
+                      ]
+                    }
+                  ],
+                  "path": "0.0.0.0",
+                  "tags": [
+                    "4",
+                    "resistance_56"
+                  ],
+                  "text": "Hydra vs Blaze (4/5) OR Cipher (2/5)",
+                  "values": [
+                    4,
+                    0,
+                    75,
+                    56
+                  ]
+                }
+              ],
+              "path": "0.0.0",
+              "tags": [
+                "3",
+                "resistance_63"
+              ],
+              "text": "Jade rating 3",
+              "values": [
+                3,
+                0,
+                55,
+                63
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.0.1.0.0.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Cipher vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.0.1.0.0",
+                      "tags": [
+                        "2",
+                        "resistance_64"
+                      ],
+                      "text": "Blaze rating 2",
+                      "values": [
+                        2,
+                        0,
+                        35,
+                        64
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.0.1.0.1.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Blaze vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.0.1.0.1",
+                      "tags": [
+                        "3",
+                        "resistance_76"
+                      ],
+                      "text": "Cipher rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        76
+                      ]
+                    }
+                  ],
+                  "path": "0.0.1.0",
+                  "tags": [
+                    "3",
+                    "resistance_72"
+                  ],
+                  "text": "Jade vs Blaze (2/5) OR Cipher (3/5)",
+                  "values": [
+                    3,
+                    0,
+                    55,
+                    72
+                  ]
+                }
+              ],
+              "path": "0.0.1",
+              "tags": [
+                "3",
+                "resistance_70"
+              ],
+              "text": "Hydra rating 3",
+              "values": [
+                3,
+                0,
+                55,
+                70
+              ]
+            }
+          ],
+          "path": "0.0",
+          "tags": [
+            "3",
+            "resistance_70"
+          ],
+          "text": "Aegis vs Hydra (3/5) OR Jade (3/5)",
+          "values": [
+            3,
+            0,
+            55,
+            70
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.1.0.0.0.0",
+                          "tags": [
+                            "2",
+                            "resistance_76"
+                          ],
+                          "text": "Cipher vs Jade (2/5) OR Jade (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.1.0.0.0",
+                      "tags": [
+                        "2",
+                        "resistance_60"
+                      ],
+                      "text": "Aegis rating 2",
+                      "values": [
+                        2,
+                        0,
+                        35,
+                        60
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.1.0.0.1.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Aegis vs Jade (3/5) OR Jade (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.1.0.0.1",
+                      "tags": [
+                        "4",
+                        "resistance_64"
+                      ],
+                      "text": "Cipher rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        64
+                      ]
+                    }
+                  ],
+                  "path": "0.1.0.0",
+                  "tags": [
+                    "4",
+                    "resistance_56"
+                  ],
+                  "text": "Ion vs Cipher (4/5) OR Aegis (2/5)",
+                  "values": [
+                    4,
+                    0,
+                    75,
+                    56
+                  ]
+                }
+              ],
+              "path": "0.1.0",
+              "tags": [
+                "2",
+                "resistance_52"
+              ],
+              "text": "Hydra rating 2",
+              "values": [
+                2,
+                0,
+                35,
+                52
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.1.1.0.0.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Aegis vs Jade (3/5) OR Jade (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.1.1.0.0",
+                      "tags": [
+                        "2",
+                        "resistance_64"
+                      ],
+                      "text": "Cipher rating 2",
+                      "values": [
+                        2,
+                        0,
+                        35,
+                        64
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.1.1.0.1.0",
+                          "tags": [
+                            "2",
+                            "resistance_76"
+                          ],
+                          "text": "Cipher vs Jade (2/5) OR Jade (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.1.1.0.1",
+                      "tags": [
+                        "3",
+                        "resistance_72"
+                      ],
+                      "text": "Aegis rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        72
+                      ]
+                    }
+                  ],
+                  "path": "0.1.1.0",
+                  "tags": [
+                    "3",
+                    "resistance_70"
+                  ],
+                  "text": "Hydra vs Cipher (2/5) OR Aegis (3/5)",
+                  "values": [
+                    3,
+                    0,
+                    55,
+                    70
+                  ]
+                }
+              ],
+              "path": "0.1.1",
+              "tags": [
+                "3",
+                "resistance_70"
+              ],
+              "text": "Ion rating 3",
+              "values": [
+                3,
+                0,
+                55,
+                70
+              ]
+            }
+          ],
+          "path": "0.1",
+          "tags": [
+            "3",
+            "resistance_69"
+          ],
+          "text": "Blaze vs Hydra (2/5) OR Ion (3/5)",
+          "values": [
+            3,
+            0,
+            55,
+            69
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.2.0.0.0.0",
+                          "tags": [
+                            "2",
+                            "resistance_76"
+                          ],
+                          "text": "Blaze vs Hydra (2/5) OR Hydra (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.2.0.0.0",
+                      "tags": [
+                        "2",
+                        "resistance_60"
+                      ],
+                      "text": "Aegis rating 2",
+                      "values": [
+                        2,
+                        0,
+                        35,
+                        60
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.2.0.0.1.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Aegis vs Hydra (3/5) OR Hydra (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.2.0.0.1",
+                      "tags": [
+                        "3",
+                        "resistance_76"
+                      ],
+                      "text": "Blaze rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        76
+                      ]
+                    }
+                  ],
+                  "path": "0.2.0.0",
+                  "tags": [
+                    "3",
+                    "resistance_72"
+                  ],
+                  "text": "Ion vs Blaze (3/5) OR Aegis (2/5)",
+                  "values": [
+                    3,
+                    0,
+                    55,
+                    72
+                  ]
+                }
+              ],
+              "path": "0.2.0",
+              "tags": [
+                "2",
+                "resistance_59"
+              ],
+              "text": "Jade rating 2",
+              "values": [
+                2,
+                0,
+                35,
+                59
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.2.1.0.0.0",
+                          "tags": [
+                            "2",
+                            "resistance_76"
+                          ],
+                          "text": "Blaze vs Hydra (2/5) OR Hydra (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.2.1.0.0",
+                      "tags": [
+                        "4",
+                        "resistance_60"
+                      ],
+                      "text": "Aegis rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        60
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.2.1.0.1.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Aegis vs Hydra (3/5) OR Hydra (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.2.1.0.1",
+                      "tags": [
+                        "2",
+                        "resistance_64"
+                      ],
+                      "text": "Blaze rating 2",
+                      "values": [
+                        2,
+                        0,
+                        35,
+                        64
+                      ]
+                    }
+                  ],
+                  "path": "0.2.1.0",
+                  "tags": [
+                    "4",
+                    "resistance_56"
+                  ],
+                  "text": "Jade vs Blaze (2/5) OR Aegis (4/5)",
+                  "values": [
+                    4,
+                    0,
+                    75,
+                    56
+                  ]
+                }
+              ],
+              "path": "0.2.1",
+              "tags": [
+                "3",
+                "resistance_63"
+              ],
+              "text": "Ion rating 3",
+              "values": [
+                3,
+                0,
+                55,
+                63
+              ]
+            }
+          ],
+          "path": "0.2",
+          "tags": [
+            "3",
+            "resistance_66"
+          ],
+          "text": "Cipher vs Ion (3/5) OR Jade (2/5)",
+          "values": [
+            3,
+            0,
+            55,
+            66
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.3.0.0.0.0",
+                          "tags": [
+                            "2",
+                            "resistance_76"
+                          ],
+                          "text": "Cipher vs Jade (2/5) OR Jade (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.3.0.0.0",
+                      "tags": [
+                        "4",
+                        "resistance_60"
+                      ],
+                      "text": "Blaze rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        60
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.3.0.0.1.0",
+                          "tags": [
+                            "4",
+                            "resistance_76"
+                          ],
+                          "text": "Blaze vs Jade (4/5) OR Jade (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.3.0.0.1",
+                      "tags": [
+                        "2",
+                        "resistance_60"
+                      ],
+                      "text": "Cipher rating 2",
+                      "values": [
+                        2,
+                        0,
+                        35,
+                        60
+                      ]
+                    }
+                  ],
+                  "path": "0.3.0.0",
+                  "tags": [
+                    "4",
+                    "resistance_54"
+                  ],
+                  "text": "Hydra vs Blaze (4/5) OR Cipher (2/5)",
+                  "values": [
+                    4,
+                    0,
+                    75,
+                    54
+                  ]
+                }
+              ],
+              "path": "0.3.0",
+              "tags": [
+                "4",
+                "resistance_52"
+              ],
+              "text": "Ion rating 4",
+              "values": [
+                4,
+                0,
+                75,
+                52
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.3.1.0.0.0",
+                          "tags": [
+                            "4",
+                            "resistance_76"
+                          ],
+                          "text": "Blaze vs Jade (4/5) OR Jade (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.3.1.0.0",
+                      "tags": [
+                        "4",
+                        "resistance_60"
+                      ],
+                      "text": "Cipher rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        60
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.3.1.0.1.0",
+                          "tags": [
+                            "2",
+                            "resistance_76"
+                          ],
+                          "text": "Cipher vs Jade (2/5) OR Jade (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.3.1.0.1",
+                      "tags": [
+                        "3",
+                        "resistance_72"
+                      ],
+                      "text": "Blaze rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        72
+                      ]
+                    }
+                  ],
+                  "path": "0.3.1.0",
+                  "tags": [
+                    "4",
+                    "resistance_59"
+                  ],
+                  "text": "Ion vs Blaze (3/5) OR Cipher (4/5)",
+                  "values": [
+                    4,
+                    0,
+                    75,
+                    59
+                  ]
+                }
+              ],
+              "path": "0.3.1",
+              "tags": [
+                "3",
+                "resistance_64"
+              ],
+              "text": "Hydra rating 3",
+              "values": [
+                3,
+                0,
+                55,
+                64
+              ]
+            }
+          ],
+          "path": "0.3",
+          "tags": [
+            "4",
+            "resistance_56"
+          ],
+          "text": "Aegis vs Hydra (3/5) OR Ion (4/5)",
+          "values": [
+            4,
+            0,
+            75,
+            56
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.4.0.0.0.0",
+                          "tags": [
+                            "4",
+                            "resistance_76"
+                          ],
+                          "text": "Cipher vs Hydra (4/5) OR Hydra (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.4.0.0.0",
+                      "tags": [
+                        "2",
+                        "resistance_60"
+                      ],
+                      "text": "Blaze rating 2",
+                      "values": [
+                        2,
+                        0,
+                        35,
+                        60
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.4.0.0.1.0",
+                          "tags": [
+                            "2",
+                            "resistance_76"
+                          ],
+                          "text": "Blaze vs Hydra (2/5) OR Hydra (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.4.0.0.1",
+                      "tags": [
+                        "3",
+                        "resistance_72"
+                      ],
+                      "text": "Cipher rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        72
+                      ]
+                    }
+                  ],
+                  "path": "0.4.0.0",
+                  "tags": [
+                    "3",
+                    "resistance_70"
+                  ],
+                  "text": "Jade vs Blaze (2/5) OR Cipher (3/5)",
+                  "values": [
+                    3,
+                    0,
+                    55,
+                    70
+                  ]
+                }
+              ],
+              "path": "0.4.0",
+              "tags": [
+                "4",
+                "resistance_58"
+              ],
+              "text": "Ion rating 4",
+              "values": [
+                4,
+                0,
+                75,
+                58
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.4.1.0.0.0",
+                          "tags": [
+                            "2",
+                            "resistance_76"
+                          ],
+                          "text": "Blaze vs Hydra (2/5) OR Hydra (2/5)",
+                          "values": [
+                            2,
+                            0,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.4.1.0.0",
+                      "tags": [
+                        "4",
+                        "resistance_60"
+                      ],
+                      "text": "Cipher rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        60
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.4.1.0.1.0",
+                          "tags": [
+                            "4",
+                            "resistance_76"
+                          ],
+                          "text": "Cipher vs Hydra (4/5) OR Hydra (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.4.1.0.1",
+                      "tags": [
+                        "3",
+                        "resistance_72"
+                      ],
+                      "text": "Blaze rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        72
+                      ]
+                    }
+                  ],
+                  "path": "0.4.1.0",
+                  "tags": [
+                    "4",
+                    "resistance_59"
+                  ],
+                  "text": "Ion vs Blaze (3/5) OR Cipher (4/5)",
+                  "values": [
+                    4,
+                    0,
+                    75,
+                    59
+                  ]
+                }
+              ],
+              "path": "0.4.1",
+              "tags": [
+                "3",
+                "resistance_64"
+              ],
+              "text": "Jade rating 3",
+              "values": [
+                3,
+                0,
+                55,
+                64
+              ]
+            }
+          ],
+          "path": "0.4",
+          "tags": [
+            "4",
+            "resistance_56"
+          ],
+          "text": "Aegis vs Ion (4/5) OR Jade (3/5)",
+          "values": [
+            4,
+            0,
+            75,
+            56
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.5.0.0.0.0",
+                          "tags": [
+                            "4",
+                            "resistance_76"
+                          ],
+                          "text": "Blaze vs Jade (4/5) OR Jade (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.5.0.0.0",
+                      "tags": [
+                        "2",
+                        "resistance_60"
+                      ],
+                      "text": "Aegis rating 2",
+                      "values": [
+                        2,
+                        0,
+                        35,
+                        60
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.5.0.0.1.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Aegis vs Jade (3/5) OR Jade (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.5.0.0.1",
+                      "tags": [
+                        "3",
+                        "resistance_76"
+                      ],
+                      "text": "Blaze rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        76
+                      ]
+                    }
+                  ],
+                  "path": "0.5.0.0",
+                  "tags": [
+                    "3",
+                    "resistance_72"
+                  ],
+                  "text": "Ion vs Blaze (3/5) OR Aegis (2/5)",
+                  "values": [
+                    3,
+                    0,
+                    55,
+                    72
+                  ]
+                }
+              ],
+              "path": "0.5.0",
+              "tags": [
+                "4",
+                "resistance_59"
+              ],
+              "text": "Hydra rating 4",
+              "values": [
+                4,
+                0,
+                75,
+                59
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.5.1.0.0.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Aegis vs Jade (3/5) OR Jade (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.5.1.0.0",
+                      "tags": [
+                        "4",
+                        "resistance_64"
+                      ],
+                      "text": "Blaze rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        64
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.5.1.0.1.0",
+                          "tags": [
+                            "4",
+                            "resistance_76"
+                          ],
+                          "text": "Blaze vs Jade (4/5) OR Jade (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.5.1.0.1",
+                      "tags": [
+                        "3",
+                        "resistance_72"
+                      ],
+                      "text": "Aegis rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        72
+                      ]
+                    }
+                  ],
+                  "path": "0.5.1.0",
+                  "tags": [
+                    "4",
+                    "resistance_59"
+                  ],
+                  "text": "Hydra vs Blaze (4/5) OR Aegis (3/5)",
+                  "values": [
+                    4,
+                    0,
+                    75,
+                    59
+                  ]
+                }
+              ],
+              "path": "0.5.1",
+              "tags": [
+                "3",
+                "resistance_64"
+              ],
+              "text": "Ion rating 3",
+              "values": [
+                3,
+                0,
+                55,
+                64
+              ]
+            }
+          ],
+          "path": "0.5",
+          "tags": [
+            "4",
+            "resistance_56"
+          ],
+          "text": "Cipher vs Hydra (4/5) OR Ion (3/5)",
+          "values": [
+            4,
+            0,
+            75,
+            56
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.6.0.0.0.0",
+                          "tags": [
+                            "4",
+                            "resistance_76"
+                          ],
+                          "text": "Cipher vs Hydra (4/5) OR Hydra (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.6.0.0.0",
+                      "tags": [
+                        "2",
+                        "resistance_60"
+                      ],
+                      "text": "Aegis rating 2",
+                      "values": [
+                        2,
+                        0,
+                        35,
+                        60
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.6.0.0.1.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Aegis vs Hydra (3/5) OR Hydra (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.6.0.0.1",
+                      "tags": [
+                        "4",
+                        "resistance_64"
+                      ],
+                      "text": "Cipher rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        64
+                      ]
+                    }
+                  ],
+                  "path": "0.6.0.0",
+                  "tags": [
+                    "4",
+                    "resistance_56"
+                  ],
+                  "text": "Ion vs Cipher (4/5) OR Aegis (2/5)",
+                  "values": [
+                    4,
+                    0,
+                    75,
+                    56
+                  ]
+                }
+              ],
+              "path": "0.6.0",
+              "tags": [
+                "4",
+                "resistance_52"
+              ],
+              "text": "Jade rating 4",
+              "values": [
+                4,
+                0,
+                75,
+                52
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.6.1.0.0.0",
+                          "tags": [
+                            "4",
+                            "resistance_76"
+                          ],
+                          "text": "Cipher vs Hydra (4/5) OR Hydra (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.6.1.0.0",
+                      "tags": [
+                        "4",
+                        "resistance_60"
+                      ],
+                      "text": "Aegis rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        60
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.6.1.0.1.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Aegis vs Hydra (3/5) OR Hydra (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.6.1.0.1",
+                      "tags": [
+                        "3",
+                        "resistance_76"
+                      ],
+                      "text": "Cipher rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        76
+                      ]
+                    }
+                  ],
+                  "path": "0.6.1.0",
+                  "tags": [
+                    "4",
+                    "resistance_61"
+                  ],
+                  "text": "Jade vs Cipher (3/5) OR Aegis (4/5)",
+                  "values": [
+                    4,
+                    0,
+                    75,
+                    61
+                  ]
+                }
+              ],
+              "path": "0.6.1",
+              "tags": [
+                "3",
+                "resistance_65"
+              ],
+              "text": "Ion rating 3",
+              "values": [
+                3,
+                0,
+                55,
+                65
+              ]
+            }
+          ],
+          "path": "0.6",
+          "tags": [
+            "4",
+            "resistance_56"
+          ],
+          "text": "Blaze vs Ion (3/5) OR Jade (4/5)",
+          "values": [
+            4,
+            0,
+            75,
+            56
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.7.0.0.0.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Cipher vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.7.0.0.0",
+                      "tags": [
+                        "4",
+                        "resistance_64"
+                      ],
+                      "text": "Aegis rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        64
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.7.0.0.1.0",
+                          "tags": [
+                            "4",
+                            "resistance_76"
+                          ],
+                          "text": "Aegis vs Ion (4/5) OR Ion (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.7.0.0.1",
+                      "tags": [
+                        "3",
+                        "resistance_72"
+                      ],
+                      "text": "Cipher rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        72
+                      ]
+                    }
+                  ],
+                  "path": "0.7.0.0",
+                  "tags": [
+                    "4",
+                    "resistance_59"
+                  ],
+                  "text": "Jade vs Cipher (3/5) OR Aegis (4/5)",
+                  "values": [
+                    4,
+                    0,
+                    75,
+                    59
+                  ]
+                }
+              ],
+              "path": "0.7.0",
+              "tags": [
+                "2",
+                "resistance_54"
+              ],
+              "text": "Hydra rating 2",
+              "values": [
+                2,
+                0,
+                35,
+                54
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.7.1.0.0.0",
+                          "tags": [
+                            "4",
+                            "resistance_76"
+                          ],
+                          "text": "Aegis vs Ion (4/5) OR Ion (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.7.1.0.0",
+                      "tags": [
+                        "2",
+                        "resistance_60"
+                      ],
+                      "text": "Cipher rating 2",
+                      "values": [
+                        2,
+                        0,
+                        35,
+                        60
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.7.1.0.1.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Cipher vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.7.1.0.1",
+                      "tags": [
+                        "3",
+                        "resistance_76"
+                      ],
+                      "text": "Aegis rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        76
+                      ]
+                    }
+                  ],
+                  "path": "0.7.1.0",
+                  "tags": [
+                    "3",
+                    "resistance_72"
+                  ],
+                  "text": "Hydra vs Cipher (2/5) OR Aegis (3/5)",
+                  "values": [
+                    3,
+                    0,
+                    55,
+                    72
+                  ]
+                }
+              ],
+              "path": "0.7.1",
+              "tags": [
+                "4",
+                "resistance_59"
+              ],
+              "text": "Jade rating 4",
+              "values": [
+                4,
+                0,
+                75,
+                59
+              ]
+            }
+          ],
+          "path": "0.7",
+          "tags": [
+            "4",
+            "resistance_54"
+          ],
+          "text": "Blaze vs Hydra (2/5) OR Jade (4/5)",
+          "values": [
+            4,
+            0,
+            75,
+            54
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.8.0.0.0.0",
+                          "tags": [
+                            "4",
+                            "resistance_76"
+                          ],
+                          "text": "Aegis vs Ion (4/5) OR Ion (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.8.0.0.0",
+                      "tags": [
+                        "2",
+                        "resistance_60"
+                      ],
+                      "text": "Blaze rating 2",
+                      "values": [
+                        2,
+                        0,
+                        35,
+                        60
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.8.0.0.1.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Blaze vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.8.0.0.1",
+                      "tags": [
+                        "4",
+                        "resistance_64"
+                      ],
+                      "text": "Aegis rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        64
+                      ]
+                    }
+                  ],
+                  "path": "0.8.0.0",
+                  "tags": [
+                    "4",
+                    "resistance_56"
+                  ],
+                  "text": "Jade vs Blaze (2/5) OR Aegis (4/5)",
+                  "values": [
+                    4,
+                    0,
+                    75,
+                    56
+                  ]
+                }
+              ],
+              "path": "0.8.0",
+              "tags": [
+                "4",
+                "resistance_52"
+              ],
+              "text": "Hydra rating 4",
+              "values": [
+                4,
+                0,
+                75,
+                52
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.8.1.0.0.0",
+                          "tags": [
+                            "4",
+                            "resistance_76"
+                          ],
+                          "text": "Aegis vs Ion (4/5) OR Ion (4/5)",
+                          "values": [
+                            4,
+                            0,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.8.1.0.0",
+                      "tags": [
+                        "4",
+                        "resistance_60"
+                      ],
+                      "text": "Blaze rating 4",
+                      "values": [
+                        4,
+                        0,
+                        75,
+                        60
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.8.1.0.1.0",
+                          "tags": [
+                            "3",
+                            "resistance_85"
+                          ],
+                          "text": "Blaze vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            0,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.8.1.0.1",
+                      "tags": [
+                        "3",
+                        "resistance_76"
+                      ],
+                      "text": "Aegis rating 3",
+                      "values": [
+                        3,
+                        0,
+                        55,
+                        76
+                      ]
+                    }
+                  ],
+                  "path": "0.8.1.0",
+                  "tags": [
+                    "4",
+                    "resistance_61"
+                  ],
+                  "text": "Hydra vs Blaze (4/5) OR Aegis (3/5)",
+                  "values": [
+                    4,
+                    0,
+                    75,
+                    61
+                  ]
+                }
+              ],
+              "path": "0.8.1",
+              "tags": [
+                "2",
+                "resistance_54"
+              ],
+              "text": "Jade rating 2",
+              "values": [
+                2,
+                0,
+                35,
+                54
+              ]
+            }
+          ],
+          "path": "0.8",
+          "tags": [
+            "4",
+            "resistance_52"
+          ],
+          "text": "Cipher vs Hydra (4/5) OR Jade (2/5)",
+          "values": [
+            4,
+            0,
+            75,
+            52
+          ]
+        }
+      ],
+      "path": "0",
+      "tags": [
+        "resistance_42"
+      ],
+      "text": "Pairings",
+      "values": []
+    }
+  ]
+}

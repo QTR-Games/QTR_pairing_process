@@ -1,0 +1,2697 @@
+{
+  "digest": "d892f00ca8467e661337e00312c4dc17ba9e710cd355e29d6ebda3d0c6decdb6",
+  "fidelity": "full",
+  "metadata": {
+    "description": "3v3 near-uniform 1-5 ratings with our team choosing first.",
+    "opponent_players": [
+      "Hydra",
+      "Ion",
+      "Jade"
+    ],
+    "our_players": [
+      "Aegis",
+      "Blaze",
+      "Cipher"
+    ],
+    "our_team_first": true,
+    "rating_system": "1-5",
+    "scenario": "3v3_uniform_default_first",
+    "schema_version": 1,
+    "sort_mode": "enhanced_v3_scores"
+  },
+  "node_count": 118,
+  "tree": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.0.0.0.0.0",
+                          "tags": [
+                            "2",
+                            "ceiling2_35",
+                            "confidence2_35",
+                            "cumulative2_2",
+                            "floor2_35",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-45",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Cipher vs Jade (2/5) OR Jade (2/5)",
+                          "values": [
+                            2,
+                            -45,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.0.0.0.0",
+                      "tags": [
+                        "3",
+                        "ceiling2_35",
+                        "confidence2_42",
+                        "cumulative2_5",
+                        "floor2_35",
+                        "regret2_0",
+                        "resistance2_87",
+                        "strategic3_-74",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Blaze rating 3",
+                      "values": [
+                        3,
+                        -74,
+                        42,
+                        87
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.0.0.0.1.0",
+                          "tags": [
+                            "4",
+                            "ceiling2_75",
+                            "confidence2_75",
+                            "cumulative2_4",
+                            "floor2_75",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-9",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Blaze vs Jade (4/5) OR Jade (4/5)",
+                          "values": [
+                            4,
+                            -9,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.0.0.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling2_75",
+                        "confidence2_70",
+                        "cumulative2_8",
+                        "floor2_75",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-9",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Cipher rating 4",
+                      "values": [
+                        4,
+                        -9,
+                        70,
+                        78
+                      ]
+                    }
+                  ],
+                  "path": "0.0.0.0",
+                  "tags": [
+                    "4",
+                    "ceiling2_70",
+                    "confidence2_59",
+                    "cumulative2_9",
+                    "floor2_42",
+                    "regret2_28",
+                    "resistance2_71",
+                    "strategic3_-88",
+                    "strategic3_exploit_65"
+                  ],
+                  "text": "Ion vs Blaze (3/5) OR Cipher (4/5)",
+                  "values": [
+                    4,
+                    -88,
+                    59,
+                    71
+                  ]
+                }
+              ],
+              "path": "0.0.0",
+              "tags": [
+                "3",
+                "ceiling2_59",
+                "confidence2_52",
+                "cumulative2_12",
+                "floor2_59",
+                "regret2_0",
+                "resistance2_91",
+                "strategic3_-90",
+                "strategic3_exploit_0"
+              ],
+              "text": "Hydra rating 3",
+              "values": [
+                3,
+                -90,
+                52,
+                91
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.0.1.0.0.0",
+                          "tags": [
+                            "2",
+                            "ceiling2_35",
+                            "confidence2_35",
+                            "cumulative2_2",
+                            "floor2_35",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-45",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Cipher vs Jade (2/5) OR Jade (2/5)",
+                          "values": [
+                            2,
+                            -45,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.0.1.0.0",
+                      "tags": [
+                        "4",
+                        "ceiling2_35",
+                        "confidence2_54",
+                        "cumulative2_6",
+                        "floor2_35",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-63",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Blaze rating 4",
+                      "values": [
+                        4,
+                        -63,
+                        54,
+                        78
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.0.1.0.1.0",
+                          "tags": [
+                            "4",
+                            "ceiling2_75",
+                            "confidence2_75",
+                            "cumulative2_4",
+                            "floor2_75",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-9",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Blaze vs Jade (4/5) OR Jade (4/5)",
+                          "values": [
+                            4,
+                            -9,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.0.1.0.1",
+                      "tags": [
+                        "2",
+                        "ceiling2_75",
+                        "confidence2_46",
+                        "cumulative2_6",
+                        "floor2_75",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-33",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Cipher rating 2",
+                      "values": [
+                        2,
+                        -33,
+                        46,
+                        78
+                      ]
+                    }
+                  ],
+                  "path": "0.0.1.0",
+                  "tags": [
+                    "4",
+                    "ceiling2_54",
+                    "confidence2_60",
+                    "cumulative2_10",
+                    "floor2_46",
+                    "regret2_8",
+                    "resistance2_80",
+                    "strategic3_-66",
+                    "strategic3_exploit_30"
+                  ],
+                  "text": "Hydra vs Blaze (4/5) OR Cipher (2/5)",
+                  "values": [
+                    4,
+                    -66,
+                    60,
+                    80
+                  ]
+                }
+              ],
+              "path": "0.0.1",
+              "tags": [
+                "4",
+                "ceiling2_60",
+                "confidence2_64",
+                "cumulative2_14",
+                "floor2_60",
+                "regret2_0",
+                "resistance2_82",
+                "strategic3_-51",
+                "strategic3_exploit_0"
+              ],
+              "text": "Ion rating 4",
+              "values": [
+                4,
+                -51,
+                64,
+                82
+              ]
+            }
+          ],
+          "path": "0.0",
+          "tags": [
+            "4",
+            "ceiling2_64",
+            "confidence2_63",
+            "cumulative2_16",
+            "floor2_52",
+            "regret2_12",
+            "resistance2_75",
+            "strategic3_-79",
+            "strategic3_exploit_39"
+          ],
+          "text": "Aegis vs Hydra (3/5) OR Ion (4/5)",
+          "values": [
+            4,
+            -79,
+            63,
+            75
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.1.0.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Cipher vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.1.0.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling2_55",
+                        "confidence2_38",
+                        "cumulative2_5",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-59",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Blaze rating 2",
+                      "values": [
+                        2,
+                        -59,
+                        38,
+                        78
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.1.0.0.1.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Blaze vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.1.0.0.1",
+                      "tags": [
+                        "3",
+                        "ceiling2_55",
+                        "confidence2_50",
+                        "cumulative2_6",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_87",
+                        "strategic3_-46",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Cipher rating 3",
+                      "values": [
+                        3,
+                        -46,
+                        50,
+                        87
+                      ]
+                    }
+                  ],
+                  "path": "0.1.0.0",
+                  "tags": [
+                    "3",
+                    "ceiling2_50",
+                    "confidence2_45",
+                    "cumulative2_8",
+                    "floor2_38",
+                    "regret2_12",
+                    "resistance2_80",
+                    "strategic3_-81",
+                    "strategic3_exploit_13"
+                  ],
+                  "text": "Jade vs Blaze (2/5) OR Cipher (3/5)",
+                  "values": [
+                    3,
+                    -81,
+                    45,
+                    80
+                  ]
+                }
+              ],
+              "path": "0.1.0",
+              "tags": [
+                "3",
+                "ceiling2_45",
+                "confidence2_46",
+                "cumulative2_11",
+                "floor2_45",
+                "regret2_0",
+                "resistance2_91",
+                "strategic3_-93",
+                "strategic3_exploit_0"
+              ],
+              "text": "Hydra rating 3",
+              "values": [
+                3,
+                -93,
+                46,
+                91
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.1.1.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Cipher vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.1.1.0.0",
+                      "tags": [
+                        "4",
+                        "ceiling2_55",
+                        "confidence2_62",
+                        "cumulative2_7",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-35",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Blaze rating 4",
+                      "values": [
+                        4,
+                        -35,
+                        62,
+                        78
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.1.1.0.1.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Blaze vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.1.1.0.1",
+                      "tags": [
+                        "2",
+                        "ceiling2_55",
+                        "confidence2_38",
+                        "cumulative2_5",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-59",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Cipher rating 2",
+                      "values": [
+                        2,
+                        -59,
+                        38,
+                        78
+                      ]
+                    }
+                  ],
+                  "path": "0.1.1.0",
+                  "tags": [
+                    "4",
+                    "ceiling2_62",
+                    "confidence2_58",
+                    "cumulative2_9",
+                    "floor2_38",
+                    "regret2_24",
+                    "resistance2_80",
+                    "strategic3_-71",
+                    "strategic3_exploit_24"
+                  ],
+                  "text": "Hydra vs Blaze (4/5) OR Cipher (2/5)",
+                  "values": [
+                    4,
+                    -71,
+                    58,
+                    80
+                  ]
+                }
+              ],
+              "path": "0.1.1",
+              "tags": [
+                "3",
+                "ceiling2_58",
+                "confidence2_51",
+                "cumulative2_12",
+                "floor2_58",
+                "regret2_0",
+                "resistance2_91",
+                "strategic3_-75",
+                "strategic3_exploit_0"
+              ],
+              "text": "Jade rating 3",
+              "values": [
+                3,
+                -75,
+                51,
+                91
+              ]
+            }
+          ],
+          "path": "0.1",
+          "tags": [
+            "3",
+            "ceiling2_51",
+            "confidence2_48",
+            "cumulative2_14",
+            "floor2_46",
+            "regret2_5",
+            "resistance2_93",
+            "strategic3_-101",
+            "strategic3_exploit_18"
+          ],
+          "text": "Aegis vs Hydra (3/5) OR Jade (3/5)",
+          "values": [
+            3,
+            -101,
+            48,
+            93
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.2.0.0.0.0",
+                          "tags": [
+                            "4",
+                            "ceiling2_75",
+                            "confidence2_75",
+                            "cumulative2_4",
+                            "floor2_75",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-9",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Cipher vs Hydra (4/5) OR Hydra (4/5)",
+                          "values": [
+                            4,
+                            -9,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.2.0.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling2_75",
+                        "confidence2_46",
+                        "cumulative2_6",
+                        "floor2_75",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-33",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Blaze rating 2",
+                      "values": [
+                        2,
+                        -33,
+                        46,
+                        78
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.2.0.0.1.0",
+                          "tags": [
+                            "2",
+                            "ceiling2_35",
+                            "confidence2_35",
+                            "cumulative2_2",
+                            "floor2_35",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-45",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Blaze vs Hydra (2/5) OR Hydra (2/5)",
+                          "values": [
+                            2,
+                            -45,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.2.0.0.1",
+                      "tags": [
+                        "3",
+                        "ceiling2_35",
+                        "confidence2_42",
+                        "cumulative2_5",
+                        "floor2_35",
+                        "regret2_0",
+                        "resistance2_87",
+                        "strategic3_-74",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Cipher rating 3",
+                      "values": [
+                        3,
+                        -74,
+                        42,
+                        87
+                      ]
+                    }
+                  ],
+                  "path": "0.2.0.0",
+                  "tags": [
+                    "3",
+                    "ceiling2_46",
+                    "confidence2_47",
+                    "cumulative2_8",
+                    "floor2_42",
+                    "regret2_4",
+                    "resistance2_80",
+                    "strategic3_-92",
+                    "strategic3_exploit_41"
+                  ],
+                  "text": "Jade vs Blaze (2/5) OR Cipher (3/5)",
+                  "values": [
+                    3,
+                    -92,
+                    47,
+                    80
+                  ]
+                }
+              ],
+              "path": "0.2.0",
+              "tags": [
+                "4",
+                "ceiling2_47",
+                "confidence2_59",
+                "cumulative2_12",
+                "floor2_47",
+                "regret2_0",
+                "resistance2_82",
+                "strategic3_-87",
+                "strategic3_exploit_0"
+              ],
+              "text": "Ion rating 4",
+              "values": [
+                4,
+                -87,
+                59,
+                82
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.2.1.0.0.0",
+                          "tags": [
+                            "4",
+                            "ceiling2_75",
+                            "confidence2_75",
+                            "cumulative2_4",
+                            "floor2_75",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-9",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Cipher vs Hydra (4/5) OR Hydra (4/5)",
+                          "values": [
+                            4,
+                            -9,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.2.1.0.0",
+                      "tags": [
+                        "3",
+                        "ceiling2_75",
+                        "confidence2_58",
+                        "cumulative2_7",
+                        "floor2_75",
+                        "regret2_0",
+                        "resistance2_87",
+                        "strategic3_-20",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Blaze rating 3",
+                      "values": [
+                        3,
+                        -20,
+                        58,
+                        87
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.2.1.0.1.0",
+                          "tags": [
+                            "2",
+                            "ceiling2_35",
+                            "confidence2_35",
+                            "cumulative2_2",
+                            "floor2_35",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-45",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Blaze vs Hydra (2/5) OR Hydra (2/5)",
+                          "values": [
+                            2,
+                            -45,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.2.1.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling2_35",
+                        "confidence2_54",
+                        "cumulative2_6",
+                        "floor2_35",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-63",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Cipher rating 4",
+                      "values": [
+                        4,
+                        -63,
+                        54,
+                        78
+                      ]
+                    }
+                  ],
+                  "path": "0.2.1.0",
+                  "tags": [
+                    "4",
+                    "ceiling2_58",
+                    "confidence2_63",
+                    "cumulative2_10",
+                    "floor2_54",
+                    "regret2_4",
+                    "resistance2_71",
+                    "strategic3_-64",
+                    "strategic3_exploit_43"
+                  ],
+                  "text": "Ion vs Blaze (3/5) OR Cipher (4/5)",
+                  "values": [
+                    4,
+                    -64,
+                    63,
+                    71
+                  ]
+                }
+              ],
+              "path": "0.2.1",
+              "tags": [
+                "3",
+                "ceiling2_63",
+                "confidence2_53",
+                "cumulative2_13",
+                "floor2_63",
+                "regret2_0",
+                "resistance2_91",
+                "strategic3_-64",
+                "strategic3_exploit_0"
+              ],
+              "text": "Jade rating 3",
+              "values": [
+                3,
+                -64,
+                53,
+                91
+              ]
+            }
+          ],
+          "path": "0.2",
+          "tags": [
+            "4",
+            "ceiling2_59",
+            "confidence2_63",
+            "cumulative2_16",
+            "floor2_53",
+            "regret2_6",
+            "resistance2_75",
+            "strategic3_-75",
+            "strategic3_exploit_23"
+          ],
+          "text": "Aegis vs Ion (4/5) OR Jade (3/5)",
+          "values": [
+            4,
+            -75,
+            63,
+            75
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.3.0.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Aegis vs Jade (3/5) OR Jade (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.3.0.0.0",
+                      "tags": [
+                        "3",
+                        "ceiling2_55",
+                        "confidence2_50",
+                        "cumulative2_6",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_87",
+                        "strategic3_-46",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Blaze rating 3",
+                      "values": [
+                        3,
+                        -46,
+                        50,
+                        87
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.3.0.0.1.0",
+                          "tags": [
+                            "4",
+                            "ceiling2_75",
+                            "confidence2_75",
+                            "cumulative2_4",
+                            "floor2_75",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-9",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Blaze vs Jade (4/5) OR Jade (4/5)",
+                          "values": [
+                            4,
+                            -9,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.3.0.0.1",
+                      "tags": [
+                        "2",
+                        "ceiling2_75",
+                        "confidence2_46",
+                        "cumulative2_6",
+                        "floor2_75",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-33",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Aegis rating 2",
+                      "values": [
+                        2,
+                        -33,
+                        46,
+                        78
+                      ]
+                    }
+                  ],
+                  "path": "0.3.0.0",
+                  "tags": [
+                    "3",
+                    "ceiling2_50",
+                    "confidence2_48",
+                    "cumulative2_9",
+                    "floor2_46",
+                    "regret2_4",
+                    "resistance2_80",
+                    "strategic3_-60",
+                    "strategic3_exploit_13"
+                  ],
+                  "text": "Ion vs Blaze (3/5) OR Aegis (2/5)",
+                  "values": [
+                    3,
+                    -60,
+                    48,
+                    80
+                  ]
+                }
+              ],
+              "path": "0.3.0",
+              "tags": [
+                "4",
+                "ceiling2_48",
+                "confidence2_59",
+                "cumulative2_13",
+                "floor2_48",
+                "regret2_0",
+                "resistance2_82",
+                "strategic3_-53",
+                "strategic3_exploit_0"
+              ],
+              "text": "Hydra rating 4",
+              "values": [
+                4,
+                -53,
+                59,
+                82
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.3.1.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Aegis vs Jade (3/5) OR Jade (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.3.1.0.0",
+                      "tags": [
+                        "4",
+                        "ceiling2_55",
+                        "confidence2_62",
+                        "cumulative2_7",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-35",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Blaze rating 4",
+                      "values": [
+                        4,
+                        -35,
+                        62,
+                        78
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.3.1.0.1.0",
+                          "tags": [
+                            "4",
+                            "ceiling2_75",
+                            "confidence2_75",
+                            "cumulative2_4",
+                            "floor2_75",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-9",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Blaze vs Jade (4/5) OR Jade (4/5)",
+                          "values": [
+                            4,
+                            -9,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.3.1.0.1",
+                      "tags": [
+                        "3",
+                        "ceiling2_75",
+                        "confidence2_58",
+                        "cumulative2_7",
+                        "floor2_75",
+                        "regret2_0",
+                        "resistance2_87",
+                        "strategic3_-20",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Aegis rating 3",
+                      "values": [
+                        3,
+                        -20,
+                        58,
+                        87
+                      ]
+                    }
+                  ],
+                  "path": "0.3.1.0",
+                  "tags": [
+                    "4",
+                    "ceiling2_62",
+                    "confidence2_65",
+                    "cumulative2_11",
+                    "floor2_58",
+                    "regret2_4",
+                    "resistance2_71",
+                    "strategic3_-31",
+                    "strategic3_exploit_15"
+                  ],
+                  "text": "Hydra vs Blaze (4/5) OR Aegis (3/5)",
+                  "values": [
+                    4,
+                    -31,
+                    65,
+                    71
+                  ]
+                }
+              ],
+              "path": "0.3.1",
+              "tags": [
+                "3",
+                "ceiling2_65",
+                "confidence2_54",
+                "cumulative2_14",
+                "floor2_65",
+                "regret2_0",
+                "resistance2_91",
+                "strategic3_-29",
+                "strategic3_exploit_0"
+              ],
+              "text": "Ion rating 3",
+              "values": [
+                3,
+                -29,
+                54,
+                91
+              ]
+            }
+          ],
+          "path": "0.3",
+          "tags": [
+            "4",
+            "ceiling2_59",
+            "confidence2_63",
+            "cumulative2_17",
+            "floor2_54",
+            "regret2_5",
+            "resistance2_75",
+            "strategic3_-40",
+            "strategic3_exploit_24"
+          ],
+          "text": "Cipher vs Hydra (4/5) OR Ion (3/5)",
+          "values": [
+            4,
+            -40,
+            63,
+            75
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.4.0.0.0.0",
+                          "tags": [
+                            "4",
+                            "ceiling2_75",
+                            "confidence2_75",
+                            "cumulative2_4",
+                            "floor2_75",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-9",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Aegis vs Ion (4/5) OR Ion (4/5)",
+                          "values": [
+                            4,
+                            -9,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.4.0.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling2_75",
+                        "confidence2_46",
+                        "cumulative2_6",
+                        "floor2_75",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-33",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Blaze rating 2",
+                      "values": [
+                        2,
+                        -33,
+                        46,
+                        78
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.4.0.0.1.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Blaze vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.4.0.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling2_55",
+                        "confidence2_62",
+                        "cumulative2_7",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-35",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Aegis rating 4",
+                      "values": [
+                        4,
+                        -35,
+                        62,
+                        78
+                      ]
+                    }
+                  ],
+                  "path": "0.4.0.0",
+                  "tags": [
+                    "4",
+                    "ceiling2_62",
+                    "confidence2_60",
+                    "cumulative2_10",
+                    "floor2_46",
+                    "regret2_16",
+                    "resistance2_80",
+                    "strategic3_-40",
+                    "strategic3_exploit_2"
+                  ],
+                  "text": "Jade vs Blaze (2/5) OR Aegis (4/5)",
+                  "values": [
+                    4,
+                    -40,
+                    60,
+                    80
+                  ]
+                }
+              ],
+              "path": "0.4.0",
+              "tags": [
+                "4",
+                "ceiling2_60",
+                "confidence2_64",
+                "cumulative2_14",
+                "floor2_60",
+                "regret2_0",
+                "resistance2_82",
+                "strategic3_-25",
+                "strategic3_exploit_0"
+              ],
+              "text": "Hydra rating 4",
+              "values": [
+                4,
+                -25,
+                64,
+                82
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.4.1.0.0.0",
+                          "tags": [
+                            "4",
+                            "ceiling2_75",
+                            "confidence2_75",
+                            "cumulative2_4",
+                            "floor2_75",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-9",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Aegis vs Ion (4/5) OR Ion (4/5)",
+                          "values": [
+                            4,
+                            -9,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.4.1.0.0",
+                      "tags": [
+                        "4",
+                        "ceiling2_75",
+                        "confidence2_70",
+                        "cumulative2_8",
+                        "floor2_75",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-9",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Blaze rating 4",
+                      "values": [
+                        4,
+                        -9,
+                        70,
+                        78
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.4.1.0.1.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Blaze vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.4.1.0.1",
+                      "tags": [
+                        "3",
+                        "ceiling2_55",
+                        "confidence2_50",
+                        "cumulative2_6",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_87",
+                        "strategic3_-46",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Aegis rating 3",
+                      "values": [
+                        3,
+                        -46,
+                        50,
+                        87
+                      ]
+                    }
+                  ],
+                  "path": "0.4.1.0",
+                  "tags": [
+                    "4",
+                    "ceiling2_70",
+                    "confidence2_62",
+                    "cumulative2_10",
+                    "floor2_50",
+                    "regret2_20",
+                    "resistance2_71",
+                    "strategic3_-52",
+                    "strategic3_exploit_37"
+                  ],
+                  "text": "Hydra vs Blaze (4/5) OR Aegis (3/5)",
+                  "values": [
+                    4,
+                    -52,
+                    62,
+                    71
+                  ]
+                }
+              ],
+              "path": "0.4.1",
+              "tags": [
+                "2",
+                "ceiling2_62",
+                "confidence2_41",
+                "cumulative2_12",
+                "floor2_62",
+                "regret2_0",
+                "resistance2_82",
+                "strategic3_-71",
+                "strategic3_exploit_0"
+              ],
+              "text": "Jade rating 2",
+              "values": [
+                2,
+                -71,
+                41,
+                82
+              ]
+            }
+          ],
+          "path": "0.4",
+          "tags": [
+            "4",
+            "ceiling2_64",
+            "confidence2_59",
+            "cumulative2_16",
+            "floor2_41",
+            "regret2_23",
+            "resistance2_84",
+            "strategic3_-69",
+            "strategic3_exploit_46"
+          ],
+          "text": "Cipher vs Hydra (4/5) OR Jade (2/5)",
+          "values": [
+            4,
+            -69,
+            59,
+            84
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.5.0.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Aegis vs Hydra (3/5) OR Hydra (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.5.0.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling2_55",
+                        "confidence2_38",
+                        "cumulative2_5",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-59",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Blaze rating 2",
+                      "values": [
+                        2,
+                        -59,
+                        38,
+                        78
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.5.0.0.1.0",
+                          "tags": [
+                            "2",
+                            "ceiling2_35",
+                            "confidence2_35",
+                            "cumulative2_2",
+                            "floor2_35",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-45",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Blaze vs Hydra (2/5) OR Hydra (2/5)",
+                          "values": [
+                            2,
+                            -45,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.5.0.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling2_35",
+                        "confidence2_54",
+                        "cumulative2_6",
+                        "floor2_35",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-63",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Aegis rating 4",
+                      "values": [
+                        4,
+                        -63,
+                        54,
+                        78
+                      ]
+                    }
+                  ],
+                  "path": "0.5.0.0",
+                  "tags": [
+                    "4",
+                    "ceiling2_54",
+                    "confidence2_57",
+                    "cumulative2_9",
+                    "floor2_38",
+                    "regret2_16",
+                    "resistance2_80",
+                    "strategic3_-74",
+                    "strategic3_exploit_4"
+                  ],
+                  "text": "Jade vs Blaze (2/5) OR Aegis (4/5)",
+                  "values": [
+                    4,
+                    -74,
+                    57,
+                    80
+                  ]
+                }
+              ],
+              "path": "0.5.0",
+              "tags": [
+                "3",
+                "ceiling2_57",
+                "confidence2_51",
+                "cumulative2_12",
+                "floor2_57",
+                "regret2_0",
+                "resistance2_91",
+                "strategic3_-78",
+                "strategic3_exploit_0"
+              ],
+              "text": "Ion rating 3",
+              "values": [
+                3,
+                -78,
+                51,
+                91
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.5.1.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Aegis vs Hydra (3/5) OR Hydra (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.5.1.0.0",
+                      "tags": [
+                        "3",
+                        "ceiling2_55",
+                        "confidence2_50",
+                        "cumulative2_6",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_87",
+                        "strategic3_-46",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Blaze rating 3",
+                      "values": [
+                        3,
+                        -46,
+                        50,
+                        87
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.5.1.0.1.0",
+                          "tags": [
+                            "2",
+                            "ceiling2_35",
+                            "confidence2_35",
+                            "cumulative2_2",
+                            "floor2_35",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-45",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Blaze vs Hydra (2/5) OR Hydra (2/5)",
+                          "values": [
+                            2,
+                            -45,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.5.1.0.1",
+                      "tags": [
+                        "2",
+                        "ceiling2_35",
+                        "confidence2_30",
+                        "cumulative2_4",
+                        "floor2_35",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-87",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Aegis rating 2",
+                      "values": [
+                        2,
+                        -87,
+                        30,
+                        78
+                      ]
+                    }
+                  ],
+                  "path": "0.5.1.0",
+                  "tags": [
+                    "3",
+                    "ceiling2_50",
+                    "confidence2_42",
+                    "cumulative2_7",
+                    "floor2_30",
+                    "regret2_20",
+                    "resistance2_80",
+                    "strategic3_-116",
+                    "strategic3_exploit_41"
+                  ],
+                  "text": "Ion vs Blaze (3/5) OR Aegis (2/5)",
+                  "values": [
+                    3,
+                    -116,
+                    42,
+                    80
+                  ]
+                }
+              ],
+              "path": "0.5.1",
+              "tags": [
+                "2",
+                "ceiling2_42",
+                "confidence2_33",
+                "cumulative2_9",
+                "floor2_42",
+                "regret2_0",
+                "resistance2_82",
+                "strategic3_-149",
+                "strategic3_exploit_0"
+              ],
+              "text": "Jade rating 2",
+              "values": [
+                2,
+                -149,
+                33,
+                82
+              ]
+            }
+          ],
+          "path": "0.5",
+          "tags": [
+            "3",
+            "ceiling2_51",
+            "confidence2_43",
+            "cumulative2_12",
+            "floor2_33",
+            "regret2_18",
+            "resistance2_84",
+            "strategic3_-171",
+            "strategic3_exploit_71"
+          ],
+          "text": "Cipher vs Ion (3/5) OR Jade (2/5)",
+          "values": [
+            3,
+            -171,
+            43,
+            84
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.6.0.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Aegis vs Jade (3/5) OR Jade (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.6.0.0.0",
+                      "tags": [
+                        "4",
+                        "ceiling2_55",
+                        "confidence2_62",
+                        "cumulative2_7",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-35",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Cipher rating 4",
+                      "values": [
+                        4,
+                        -35,
+                        62,
+                        78
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.6.0.0.1.0",
+                          "tags": [
+                            "2",
+                            "ceiling2_35",
+                            "confidence2_35",
+                            "cumulative2_2",
+                            "floor2_35",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-45",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Cipher vs Jade (2/5) OR Jade (2/5)",
+                          "values": [
+                            2,
+                            -45,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.6.0.0.1",
+                      "tags": [
+                        "2",
+                        "ceiling2_35",
+                        "confidence2_30",
+                        "cumulative2_4",
+                        "floor2_35",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-87",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Aegis rating 2",
+                      "values": [
+                        2,
+                        -87,
+                        30,
+                        78
+                      ]
+                    }
+                  ],
+                  "path": "0.6.0.0",
+                  "tags": [
+                    "4",
+                    "ceiling2_62",
+                    "confidence2_55",
+                    "cumulative2_8",
+                    "floor2_30",
+                    "regret2_32",
+                    "resistance2_80",
+                    "strategic3_-107",
+                    "strategic3_exploit_52"
+                  ],
+                  "text": "Ion vs Cipher (4/5) OR Aegis (2/5)",
+                  "values": [
+                    4,
+                    -107,
+                    55,
+                    80
+                  ]
+                }
+              ],
+              "path": "0.6.0",
+              "tags": [
+                "2",
+                "ceiling2_55",
+                "confidence2_38",
+                "cumulative2_10",
+                "floor2_55",
+                "regret2_0",
+                "resistance2_82",
+                "strategic3_-132",
+                "strategic3_exploit_0"
+              ],
+              "text": "Hydra rating 2",
+              "values": [
+                2,
+                -132,
+                38,
+                82
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.6.1.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Aegis vs Jade (3/5) OR Jade (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.6.1.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling2_55",
+                        "confidence2_38",
+                        "cumulative2_5",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-59",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Cipher rating 2",
+                      "values": [
+                        2,
+                        -59,
+                        38,
+                        78
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.6.1.0.1.0",
+                          "tags": [
+                            "2",
+                            "ceiling2_35",
+                            "confidence2_35",
+                            "cumulative2_2",
+                            "floor2_35",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-45",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Cipher vs Jade (2/5) OR Jade (2/5)",
+                          "values": [
+                            2,
+                            -45,
+                            35,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.6.1.0.1",
+                      "tags": [
+                        "3",
+                        "ceiling2_35",
+                        "confidence2_42",
+                        "cumulative2_5",
+                        "floor2_35",
+                        "regret2_0",
+                        "resistance2_87",
+                        "strategic3_-74",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Aegis rating 3",
+                      "values": [
+                        3,
+                        -74,
+                        42,
+                        87
+                      ]
+                    }
+                  ],
+                  "path": "0.6.1.0",
+                  "tags": [
+                    "3",
+                    "ceiling2_42",
+                    "confidence2_45",
+                    "cumulative2_8",
+                    "floor2_38",
+                    "regret2_4",
+                    "resistance2_80",
+                    "strategic3_-93",
+                    "strategic3_exploit_15"
+                  ],
+                  "text": "Hydra vs Cipher (2/5) OR Aegis (3/5)",
+                  "values": [
+                    3,
+                    -93,
+                    45,
+                    80
+                  ]
+                }
+              ],
+              "path": "0.6.1",
+              "tags": [
+                "3",
+                "ceiling2_45",
+                "confidence2_46",
+                "cumulative2_11",
+                "floor2_45",
+                "regret2_0",
+                "resistance2_91",
+                "strategic3_-105",
+                "strategic3_exploit_0"
+              ],
+              "text": "Ion rating 3",
+              "values": [
+                3,
+                -105,
+                46,
+                91
+              ]
+            }
+          ],
+          "path": "0.6",
+          "tags": [
+            "3",
+            "ceiling2_46",
+            "confidence2_45",
+            "cumulative2_13",
+            "floor2_38",
+            "regret2_8",
+            "resistance2_84",
+            "strategic3_-147",
+            "strategic3_exploit_27"
+          ],
+          "text": "Blaze vs Hydra (2/5) OR Ion (3/5)",
+          "values": [
+            3,
+            -147,
+            45,
+            84
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.7.0.0.0.0",
+                          "tags": [
+                            "4",
+                            "ceiling2_75",
+                            "confidence2_75",
+                            "cumulative2_4",
+                            "floor2_75",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-9",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Aegis vs Ion (4/5) OR Ion (4/5)",
+                          "values": [
+                            4,
+                            -9,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.7.0.0.0",
+                      "tags": [
+                        "3",
+                        "ceiling2_75",
+                        "confidence2_58",
+                        "cumulative2_7",
+                        "floor2_75",
+                        "regret2_0",
+                        "resistance2_87",
+                        "strategic3_-20",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Cipher rating 3",
+                      "values": [
+                        3,
+                        -20,
+                        58,
+                        87
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.7.0.0.1.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Cipher vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.7.0.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling2_55",
+                        "confidence2_62",
+                        "cumulative2_7",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-35",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Aegis rating 4",
+                      "values": [
+                        4,
+                        -35,
+                        62,
+                        78
+                      ]
+                    }
+                  ],
+                  "path": "0.7.0.0",
+                  "tags": [
+                    "4",
+                    "ceiling2_62",
+                    "confidence2_65",
+                    "cumulative2_11",
+                    "floor2_58",
+                    "regret2_4",
+                    "resistance2_71",
+                    "strategic3_-31",
+                    "strategic3_exploit_15"
+                  ],
+                  "text": "Jade vs Cipher (3/5) OR Aegis (4/5)",
+                  "values": [
+                    4,
+                    -31,
+                    65,
+                    71
+                  ]
+                }
+              ],
+              "path": "0.7.0",
+              "tags": [
+                "2",
+                "ceiling2_65",
+                "confidence2_42",
+                "cumulative2_13",
+                "floor2_65",
+                "regret2_0",
+                "resistance2_82",
+                "strategic3_-48",
+                "strategic3_exploit_0"
+              ],
+              "text": "Hydra rating 2",
+              "values": [
+                2,
+                -48,
+                42,
+                82
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.7.1.0.0.0",
+                          "tags": [
+                            "4",
+                            "ceiling2_75",
+                            "confidence2_75",
+                            "cumulative2_4",
+                            "floor2_75",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-9",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Aegis vs Ion (4/5) OR Ion (4/5)",
+                          "values": [
+                            4,
+                            -9,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.7.1.0.0",
+                      "tags": [
+                        "2",
+                        "ceiling2_75",
+                        "confidence2_46",
+                        "cumulative2_6",
+                        "floor2_75",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-33",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Cipher rating 2",
+                      "values": [
+                        2,
+                        -33,
+                        46,
+                        78
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.7.1.0.1.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Cipher vs Ion (3/5) OR Ion (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.7.1.0.1",
+                      "tags": [
+                        "3",
+                        "ceiling2_55",
+                        "confidence2_50",
+                        "cumulative2_6",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_87",
+                        "strategic3_-46",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Aegis rating 3",
+                      "values": [
+                        3,
+                        -46,
+                        50,
+                        87
+                      ]
+                    }
+                  ],
+                  "path": "0.7.1.0",
+                  "tags": [
+                    "3",
+                    "ceiling2_50",
+                    "confidence2_48",
+                    "cumulative2_9",
+                    "floor2_46",
+                    "regret2_4",
+                    "resistance2_80",
+                    "strategic3_-60",
+                    "strategic3_exploit_13"
+                  ],
+                  "text": "Hydra vs Cipher (2/5) OR Aegis (3/5)",
+                  "values": [
+                    3,
+                    -60,
+                    48,
+                    80
+                  ]
+                }
+              ],
+              "path": "0.7.1",
+              "tags": [
+                "4",
+                "ceiling2_48",
+                "confidence2_59",
+                "cumulative2_13",
+                "floor2_48",
+                "regret2_0",
+                "resistance2_82",
+                "strategic3_-53",
+                "strategic3_exploit_0"
+              ],
+              "text": "Jade rating 4",
+              "values": [
+                4,
+                -53,
+                59,
+                82
+              ]
+            }
+          ],
+          "path": "0.7",
+          "tags": [
+            "4",
+            "ceiling2_59",
+            "confidence2_59",
+            "cumulative2_17",
+            "floor2_42",
+            "regret2_17",
+            "resistance2_84",
+            "strategic3_-48",
+            "strategic3_exploit_5"
+          ],
+          "text": "Blaze vs Hydra (2/5) OR Jade (4/5)",
+          "values": [
+            4,
+            -48,
+            59,
+            84
+          ]
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.8.0.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Aegis vs Hydra (3/5) OR Hydra (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.8.0.0.0",
+                      "tags": [
+                        "3",
+                        "ceiling2_55",
+                        "confidence2_50",
+                        "cumulative2_6",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_87",
+                        "strategic3_-46",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Cipher rating 3",
+                      "values": [
+                        3,
+                        -46,
+                        50,
+                        87
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.8.0.0.1.0",
+                          "tags": [
+                            "4",
+                            "ceiling2_75",
+                            "confidence2_75",
+                            "cumulative2_4",
+                            "floor2_75",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-9",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Cipher vs Hydra (4/5) OR Hydra (4/5)",
+                          "values": [
+                            4,
+                            -9,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.8.0.0.1",
+                      "tags": [
+                        "4",
+                        "ceiling2_75",
+                        "confidence2_70",
+                        "cumulative2_8",
+                        "floor2_75",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-9",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Aegis rating 4",
+                      "values": [
+                        4,
+                        -9,
+                        70,
+                        78
+                      ]
+                    }
+                  ],
+                  "path": "0.8.0.0",
+                  "tags": [
+                    "4",
+                    "ceiling2_70",
+                    "confidence2_62",
+                    "cumulative2_10",
+                    "floor2_50",
+                    "regret2_20",
+                    "resistance2_71",
+                    "strategic3_-52",
+                    "strategic3_exploit_37"
+                  ],
+                  "text": "Jade vs Cipher (3/5) OR Aegis (4/5)",
+                  "values": [
+                    4,
+                    -52,
+                    62,
+                    71
+                  ]
+                }
+              ],
+              "path": "0.8.0",
+              "tags": [
+                "3",
+                "ceiling2_62",
+                "confidence2_53",
+                "cumulative2_13",
+                "floor2_62",
+                "regret2_0",
+                "resistance2_91",
+                "strategic3_-52",
+                "strategic3_exploit_0"
+              ],
+              "text": "Ion rating 3",
+              "values": [
+                3,
+                -52,
+                53,
+                91
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.8.1.0.0.0",
+                          "tags": [
+                            "3",
+                            "ceiling2_55",
+                            "confidence2_55",
+                            "cumulative2_3",
+                            "floor2_55",
+                            "regret2_0",
+                            "resistance2_85",
+                            "strategic3_-26",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Aegis vs Hydra (3/5) OR Hydra (3/5)",
+                          "values": [
+                            3,
+                            -26,
+                            55,
+                            85
+                          ]
+                        }
+                      ],
+                      "path": "0.8.1.0.0",
+                      "tags": [
+                        "4",
+                        "ceiling2_55",
+                        "confidence2_62",
+                        "cumulative2_7",
+                        "floor2_55",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-35",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Cipher rating 4",
+                      "values": [
+                        4,
+                        -35,
+                        62,
+                        78
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "path": "0.8.1.0.1.0",
+                          "tags": [
+                            "4",
+                            "ceiling2_75",
+                            "confidence2_75",
+                            "cumulative2_4",
+                            "floor2_75",
+                            "regret2_0",
+                            "resistance2_76",
+                            "strategic3_-9",
+                            "strategic3_exploit_0"
+                          ],
+                          "text": "Cipher vs Hydra (4/5) OR Hydra (4/5)",
+                          "values": [
+                            4,
+                            -9,
+                            75,
+                            76
+                          ]
+                        }
+                      ],
+                      "path": "0.8.1.0.1",
+                      "tags": [
+                        "2",
+                        "ceiling2_75",
+                        "confidence2_46",
+                        "cumulative2_6",
+                        "floor2_75",
+                        "regret2_0",
+                        "resistance2_78",
+                        "strategic3_-33",
+                        "strategic3_exploit_0"
+                      ],
+                      "text": "Aegis rating 2",
+                      "values": [
+                        2,
+                        -33,
+                        46,
+                        78
+                      ]
+                    }
+                  ],
+                  "path": "0.8.1.0",
+                  "tags": [
+                    "4",
+                    "ceiling2_62",
+                    "confidence2_60",
+                    "cumulative2_10",
+                    "floor2_46",
+                    "regret2_16",
+                    "resistance2_80",
+                    "strategic3_-40",
+                    "strategic3_exploit_2"
+                  ],
+                  "text": "Ion vs Cipher (4/5) OR Aegis (2/5)",
+                  "values": [
+                    4,
+                    -40,
+                    60,
+                    80
+                  ]
+                }
+              ],
+              "path": "0.8.1",
+              "tags": [
+                "4",
+                "ceiling2_60",
+                "confidence2_64",
+                "cumulative2_14",
+                "floor2_60",
+                "regret2_0",
+                "resistance2_82",
+                "strategic3_-25",
+                "strategic3_exploit_0"
+              ],
+              "text": "Jade rating 4",
+              "values": [
+                4,
+                -25,
+                64,
+                82
+              ]
+            }
+          ],
+          "path": "0.8",
+          "tags": [
+            "4",
+            "ceiling2_64",
+            "confidence2_63",
+            "cumulative2_17",
+            "floor2_53",
+            "regret2_11",
+            "resistance2_75",
+            "strategic3_-41",
+            "strategic3_exploit_27"
+          ],
+          "text": "Blaze vs Ion (3/5) OR Jade (4/5)",
+          "values": [
+            4,
+            -41,
+            63,
+            75
+          ]
+        }
+      ],
+      "path": "0",
+      "tags": [
+        "ceiling2_63",
+        "confidence2_27",
+        "cumulative2_17",
+        "floor2_43",
+        "regret2_20",
+        "resistance2_42",
+        "strategic3_-87",
+        "strategic3_exploit_131"
+      ],
+      "text": "Pairings",
+      "values": []
+    }
+  ]
+}
