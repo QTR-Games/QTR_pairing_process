@@ -197,3 +197,38 @@ def test_a_weaker_opponent_is_never_worse_for_us():
         scorer = DistributionScorer(threshold=15.0, lam=lam, objective="expected")
         opener_a_expected.append(scorer.outcome_for(root.children[0]).expected)
     assert opener_a_expected == sorted(opener_a_expected, reverse=True)
+
+
+# --------------------------------------------------------------------------
+# opener report
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("objective", ["win_probability", "expected", "floor"])
+def test_opener_report_ranks_every_objective_without_error(objective):
+    """Regression: ``opener_report`` dropped the ``need`` argument.
+
+    When win probability stopped being shift-invariant, ``_rank`` gained a
+    required ``need`` parameter, but this call site still passed only the
+    distribution. Nothing exercised it, so it raised ``TypeError`` the first
+    time it was used from the UI rather than from a test.
+    """
+    root = _two_choice_tree()
+    scorer = DistributionScorer(threshold=15.0, lam=1.0, objective=objective)
+
+    report = scorer.opener_report(root)
+
+    assert len(report) == 2
+    assert {text for text, _ in report} == {str(c.text) for c in root.children}
+    assert all(isinstance(outcome, Outcome) for _, outcome in report)
+
+
+def test_opener_report_is_sorted_best_first_for_the_active_objective():
+    """Against a sharp opponent, B (floor 4) must outrank A (floor 2)."""
+    root = _two_choice_tree()
+    scorer = DistributionScorer(threshold=15.0, lam=1000.0, objective="expected")
+
+    report = scorer.opener_report(root)
+
+    assert report[0][0].startswith("B vs")
+    ranked = [outcome.expected for _, outcome in report]
+    assert ranked == sorted(ranked, reverse=True)

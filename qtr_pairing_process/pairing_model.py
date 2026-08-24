@@ -37,12 +37,25 @@ class PairingNode:
     state_our_pool: frozenset[str] = field(default_factory=frozenset)
     state_opponent_pool: frozenset[str] = field(default_factory=frozenset)
     state_choice_pool: frozenset[str] = field(default_factory=frozenset)
+    # Risk summary, populated only when QTR_RISK is enabled. -1.0 means "not
+    # computed" so the projection can tell an unscored node from a genuine 0%.
+    risk_win_prob: float = -1.0
+    risk_floor: int = 0
+    risk_p10: int = 0
+    risk_std: float = -1.0
 
 
 class TreeProjector:
     """Project a PairingNode tree into a ttk.Treeview and map ids back."""
 
     LAZY_PLACEHOLDER_TAG = "__qtr_lazy_placeholder__"
+
+    #: Append the risk columns to every projected row. Off by default so the
+    #: golden-master digests -- which hash the projected ``values`` tuple --
+    #: stay byte-identical unless risk reporting is explicitly requested.
+    RISK_COLUMNS_ENABLED = False
+
+    RISK_COLUMNS = ("P(win)", "Floor", "P10", "Sigma")
 
     _TAG_ORDER = (
         "cumulative_",
@@ -292,11 +305,31 @@ class TreeProjector:
     def values_for(cls, node: PairingNode) -> tuple[int, ...]:
         if node.parent is None and node.depth == 0:
             return ()
-        return (
+        values: tuple = (
             int(node.base),
             int(node.sort_value),
             int(node.display_confidence),
             int(node.display_resistance),
+        )
+        if cls.RISK_COLUMNS_ENABLED:
+            values = values + cls.risk_values_for(node)
+        return values
+
+    @classmethod
+    def risk_values_for(cls, node: PairingNode) -> tuple[str, ...]:
+        """Human-readable risk cells.
+
+        Rendered as strings because these are the numbers a user is meant to
+        read directly -- a probability in percent and totals in points -- not
+        packed integers to be parsed back out again.
+        """
+        if node.risk_win_prob < 0.0:
+            return ("", "", "", "")
+        return (
+            f"{node.risk_win_prob * 100.0:.1f}%",
+            str(int(node.risk_floor)),
+            str(int(node.risk_p10)),
+            f"{node.risk_std:.1f}",
         )
 
     def _tags_for(self, node: PairingNode) -> tuple[str, ...]:

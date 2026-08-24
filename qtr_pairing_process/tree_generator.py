@@ -10,6 +10,25 @@ import json
 import qtr_pairing_process.utility_funcs as uf
 from qtr_pairing_process.constants import RATING_SYSTEMS, DEFAULT_RATING_SYSTEM
 from qtr_pairing_process.pairing_model import PairingNode, TreeProjector
+from qtr_pairing_process.distribution_scoring import (
+    DistributionScorer,
+    annotate_risk,
+    win_threshold,
+)
+
+
+def risk_columns_requested():
+    """Whether the opt-in risk columns should be shown.
+
+    Lives at module scope because the treeview is constructed before the
+    TreeGenerator that owns the flag, and both must agree on the column
+    layout or the values tuple will not line up with the headings.
+    """
+    enabled = os.environ.get("QTR_RISK", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    engine = os.environ.get("QTR_ENGINE", "widget").strip().lower()
+    return enabled and engine == "model"
 
 class TreeGenerator:
     def __init__(
@@ -83,9 +102,20 @@ class TreeGenerator:
             self.render_mode = "eager"
         if self.render_mode == "lazy" and self.engine != "model":
             self.render_mode = "eager"
+        # Risk reporting reads the Tk-free model tree, so like lazy rendering it
+        # is only available on the model engine and silently stays off otherwise.
+        self.risk_enabled = os.environ.get("QTR_RISK", "").strip().lower() in {
+            "1", "true", "yes", "on",
+        }
+        if self.risk_enabled and self.engine != "model":
+            self.risk_enabled = False
+        self.risk_lambda = float(os.environ.get("QTR_RISK_LAMBDA", "1.0") or 1.0)
         self.model_root = None
         self._model_team_size = 0
         self.projector = TreeProjector()
+        # Assigned unconditionally (not just when enabled) so the flag cannot
+        # latch on for the rest of the process and leak into other scenarios.
+        TreeProjector.RISK_COLUMNS_ENABLED = self.risk_enabled
         if self.render_mode == "lazy":
             self._bind_lazy_tree_open_handler()
         self._model_original_order = {}
@@ -321,7 +351,27 @@ class TreeGenerator:
             )
             fNames_sorted[:] = uf.cycle_list(fNames_sorted)
 
+        self._annotate_risk_model()
         self._project_model()
+
+    def _annotate_risk_model(self):
+        """Attach win probability and downside figures to the model tree.
+
+        Deliberately additive: this never touches ``sort_value`` or any
+        existing score, so rankings are exactly what they were before.
+        """
+        if not self.risk_enabled or self.model_root is None:
+            return
+        games = self._model_team_size or 0
+        if games <= 0:
+            return
+        threshold = win_threshold((self.rating_min, self.rating_max), games)
+        scorer = DistributionScorer(
+            threshold=threshold,
+            lam=self.risk_lambda,
+            objective="win_probability",
+        )
+        annotate_risk(self.model_root, scorer)
 
     def _generate_nested_combinations_model(
         self,

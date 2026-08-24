@@ -32,7 +32,7 @@ from qtr_pairing_process.settings_manager import SettingsManager
 from qtr_pairing_process.rating_system_dialog import RatingSystemDialog
 from qtr_pairing_process.data_validator import DataValidator
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
-from qtr_pairing_process.tree_generator import TreeGenerator
+from qtr_pairing_process.tree_generator import TreeGenerator, risk_columns_requested
 from qtr_pairing_process.db_load_ui import DbLoadUi
 from qtr_pairing_process.database_preferences import DatabasePreferences
 from qtr_pairing_process.welcome_dialog import WelcomeDialog
@@ -526,7 +526,27 @@ class UiManager:
 
         # create treeview and tree generator
         with self.perf.span("startup.setup_treeview"):
-            self.treeview = LazyTreeView(master=self.tree_view_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
+            self._risk_columns = risk_columns_requested()
+            if self._risk_columns:
+                # Confidence/Resistance are named but hidden: the projected
+                # values tuple has always carried them at positions 3-4, so the
+                # risk cells only line up with their headings if every earlier
+                # value owns a column.
+                tree_columns = (
+                    "Rating", "Sort Value", "Confidence", "Resistance",
+                    "P(win)", "Floor", "P10", "Sigma",
+                )
+                display_columns = (
+                    "Rating", "Sort Value", "P(win)", "Floor", "P10", "Sigma",
+                )
+                self.treeview = LazyTreeView(
+                    master=self.tree_view_frame,
+                    print_output=self.print_output,
+                    columns=tree_columns,
+                    displaycolumns=display_columns,
+                )
+            else:
+                self.treeview = LazyTreeView(master=self.tree_view_frame, print_output=self.print_output, columns=("Rating", "Sort Value"))
         with self.perf.span("startup.setup_tree_generator"):
             self.tree_generator = TreeGenerator(
                 treeview=self.treeview,
@@ -737,6 +757,21 @@ class UiManager:
         # Configure column widths
         self.treeview.tree.column("Rating", width=80, minwidth=50)
         self.treeview.tree.column("Sort Value", width=100, minwidth=80)
+        if getattr(self, "_risk_columns", False):
+            risk_headings = (
+                ("P(win)", "P(win)", 70),
+                ("Floor", "Floor", 55),
+                ("P10", "P10", 55),
+                # ASCII on purpose: Windows consoles default to cp1252 and this
+                # app logs to a file and to stdout, so a sigma glyph anywhere in
+                # a heading round-trip is a latent UnicodeEncodeError.
+                ("Sigma", "Std Dev", 65),
+            )
+            for column_id, label, width in risk_headings:
+                self.treeview.tree.heading(column_id, text=label)
+                self.treeview.tree.column(
+                    column_id, width=width, minwidth=45, anchor="e"
+                )
         self._configure_tree_rating_tags()
         self.treeview.tree.bind("<<TreeviewSelect>>", self._on_tree_selection_changed, add='+')
         self.treeview.tree.bind("<<TreeviewOpen>>", self._on_tree_node_opened, add='+')

@@ -455,6 +455,30 @@ Given §7, the honest value of this rework is **not** better picks. It is:
 
 ---
 
+## 9.1 Using it
+
+The engine is additive and **off by default**. It never writes `sort_value`, so
+rankings are exactly what they were:
+
+```powershell
+$env:QTR_ENGINE = "model"   # required: the engine reads the Tk-free model tree
+$env:QTR_RISK   = "1"       # adds P(win), Floor, P10 and sigma columns
+$env:QTR_RISK_LAMBDA = "1.0"  # optional opponent rationality
+python main.py
+```
+
+`QTR_RISK` silently stays off on the widget engine, mirroring how `QTR_RENDER=lazy`
+already downgrades. With the flag off the projected values tuple is unchanged,
+which is what keeps the golden-master digests byte-identical.
+
+**Every figure is a round total, not a subtree total.** A node six games deep has
+those games already banked, so its raw subtree distribution would report a floor
+of 2 for a round that cannot finish below 14. Each node's distribution is shifted
+by the points banked above it before display. Sigma needs no such correction --
+it is shift-invariant.
+
+---
+
 ## 10. Open questions
 
 1. **Can \(\lambda\) be fitted from data?** Every completed round is an

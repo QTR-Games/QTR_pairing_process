@@ -370,7 +370,61 @@ class DistributionScorer:
         return Outcome(self.distribution_for(node), self.threshold)
 
     def opener_report(self, root) -> list[tuple[str, Outcome]]:
-        """Rank the top-level choices -- the decision the user actually makes."""
+        """Rank the top-level choices -- the decision the user actually makes.
+
+        The root itself banks no points (see ``distribution_for``), so an
+        opener's own subtree total is the whole round total and the ranking
+        threshold is simply ``win_need``. Passing it explicitly matters: the
+        win-probability objective is not shift-invariant, so ``_rank`` cannot
+        be called without a threshold.
+        """
         report = [(str(child.text), self.outcome_for(child)) for child in root.children]
-        report.sort(key=lambda pair: -self._rank(pair[1].dist))
+        report.sort(key=lambda pair: -self._rank(pair[1].dist, self.win_need))
         return report
+
+
+def annotate_risk(root, scorer: DistributionScorer) -> int:
+    """Write per-node risk figures onto an existing model tree.
+
+    Returns the number of annotated nodes.
+
+    Reported in ROUND totals, not subtree totals
+    -------------------------------------------
+    ``distribution_for`` returns the distribution of the total accumulated
+    *from this node downward*. Displaying that raw would be misleading: a node
+    six games deep would show a floor of 2 even though six games are already
+    banked above it.
+
+    So each node's distribution is shifted by the points banked on the way to
+    it (``win_need - need``), turning it into a distribution over final round
+    totals. Every figure is then directly comparable across depths and reads
+    as "if play reaches here, this is how the round ends".
+
+    Standard deviation needs no adjustment -- it is shift-invariant.
+    """
+    if root is None:
+        return 0
+
+    annotated = 0
+    stack = [(root, scorer.win_need)]
+    while stack:
+        node, need = stack.pop()
+
+        if node.parent is not None:
+            dist = scorer.distribution_for(node, need)
+            banked = scorer.win_need - need
+            outcome = Outcome(shift(dist, banked), scorer.threshold)
+            node.risk_win_prob = outcome.win_probability
+            node.risk_floor = outcome.floor
+            node.risk_p10 = outcome.quantile(0.10)
+            node.risk_std = outcome.std
+            annotated += 1
+
+        own = 0
+        if node.parent is not None and contributes_to_total(node):
+            own = int(node.base)
+        child_need = need - own
+        for child in node.children:
+            stack.append((child, child_need))
+
+    return annotated
