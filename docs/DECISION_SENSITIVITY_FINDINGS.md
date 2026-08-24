@@ -2,6 +2,25 @@
 
 Status: analysis complete, validated on real data. Informs p4.
 
+> ## ⚠️ Correction (superseded in part)
+>
+> **The "flat" conclusion below is a scale artifact and should not be read on
+> its own.** It is correct that the spread across openers is roughly 1 point out
+> of 17 *when measured in points*. It is misleading as a statement about how
+> much the decision matters.
+>
+> Measured as **win probability**, the same decisions on the same rosters span
+> roughly **60 percentage points** — e.g. USA Bison ranges from 7.6% to 70.6%.
+> Openers that look nearly identical on a points scale are not remotely
+> equivalent in how often they win the round.
+>
+> The flatness is a property of the *units*, not of the decision. This is
+> precisely the argument for reporting probabilities rather than unitless
+> scores, and it is developed in `SCORING_MATHEMATICS.md` §7.1.
+>
+> Everything below is left unedited so the original reasoning and its
+> correction are both on the record.
+
 The earlier analysis in `REFACTOR_ANALYSIS.md` used **synthetic** rating
 matrices drawn uniformly from 1–5. That was the right tool for asking "does
 sensitivity vary at all?", but it is the wrong tool for asking "what will my
