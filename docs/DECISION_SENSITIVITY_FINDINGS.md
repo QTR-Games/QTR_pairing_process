@@ -117,3 +117,116 @@ The two-axis calculation needs expected value alongside minimax. Both come
 from the same traversal, so p4 should land **after** p3b (alpha-beta), and
 the expected-value pass must not be pruned — pruning is only valid for the
 minimax axis. That is an easy and quiet way to get wrong numbers.
+
+---
+
+# ⚠️ Finding 5 — supersedes Recommendation item 1
+
+> **The caveat above has now been discharged.** Re-checked against
+> `teamIrving2024_FinalDB.db`: a complete real WTC event, Team Irving vs
+> **31 opponent teams**, all 5v5, 7 scenarios each = 217 real decision
+> problems. The compression mechanism is confirmed and much stronger than the
+> three-matchup sample suggested.
+
+## 5.1 — The rating grid really is one colour
+
+5,425 real ratings from the event above:
+
+| rating | count | share |
+| --- | --- | --- |
+| 1 | 161 | 3.0% |
+| 2 | 840 | 15.5% |
+| **3** | **4,018** | **74.1%** |
+| 4 | 406 | 7.5% |
+| 5 | 0 | 0.0% |
+
+`SWINETASTIC.db` is the same shape (3 and 4 together = 83.4%). Three quarters
+of every matchup ever rated sits on a single value, and the top of the scale is
+never used at all.
+
+**Consequence:** rating *differences* carry almost no information. The observed
+"3–4 of 5 openers tie exactly" was never a defect in smart sort — it is a direct
+arithmetic consequence of the input distribution. No ranking function can
+extract separation from a grid that is 74% one number. Signal must come from
+**structure** (who holds leverage, and when), not from magnitude.
+
+## 5.2 — The threshold is the hidden variable, and it was wrong
+
+Win probability is defined against a threshold (`Outcome.win_probability`,
+`distribution_scoring.py:194-201`): P(total > threshold). Every previous
+measurement fixed that threshold at the naive midline, 15 — five games on a 1–5
+scale gives totals in 5..25, so 15 is "dead even".
+
+Against **Australia Spangled**, at need > 15, all 50 depth-1 lines return
+P = 0.0000. Distinct win-probability values: **1**. The app collapses that to
+"all choices identical", which presents to the user as *coin flip, doesn't
+matter*.
+
+That reading is wrong. The correct reading is **15 is not reachable against
+this opponent**. The bar was set outside the achievable range, so naturally
+nothing separated. Sweeping the threshold on the same tree:
+
+| need > | min P | max P | spread | interpretation |
+| --- | --- | --- | --- | --- |
+| 10 | 1.0000 | 1.0000 | 0.0000 | already won — free choice |
+| 11 | 0.7086 | 1.0000 | 0.2914 | decision matters |
+| 12 | 0.3417 | 1.0000 | 0.6583 | decision matters |
+| **13** | **0.0802** | **1.0000** | **0.9198** | **8% vs certainty** |
+| 14 | 0.0000 | 0.2734 | 0.2734 | decision matters |
+| 15+ | 0.0000 | 0.0000 | 0.0000 | unreachable |
+
+There was no coin flip. There was a **0.92 probability swing** sitting one
+threshold below where the app was looking.
+
+## 5.3 — The reachable band is opponent-specific
+
+Same sweep against **Canada Goose** on the same scenario:
+
+| need > | spread | interpretation |
+| --- | --- | --- |
+| 10 | 0.0000 | already won |
+| 11 | 0.4196 | decision matters |
+| 12 | 0.8103 | decision matters |
+| 13 | 0.9434 | decision matters |
+| 14 | 0.3993 | decision matters |
+| 15 | 0.0312 | decision matters (barely) |
+| 16+ | 0.0000 | unreachable |
+
+Canada Goose's decision band extends to 15; Australia Spangled's stops at 14.
+**How much your choice matters, and the target it should be aimed at, are
+properties of the opponent — and the app currently exposes neither.**
+
+## 5.4 — What this supersedes
+
+Recommendation item 1 above ("say when a decision does not matter") is
+**withdrawn**. It was derived from measurements taken at a single, and usually
+unreachable, threshold. Reporting "these are tied" in that situation is not
+honesty — it is the tool failing to notice it was asked the wrong question.
+
+The replacement framing:
+
+1. **Find the reachable band first.** Compute the range of thresholds where
+   `0 < P < 1` for at least one line. Below it the match is already won; above
+   it, already lost. Optimising outside the band is wasted effort.
+2. **Report leverage per threshold.** `spread = max P − min P` across the
+   available choices *is* the "does this decision matter" number, and it peaks
+   somewhere inside the band (0.92 at need > 13 above).
+3. **Aim at the target the situation demands.** A team that must win reads the
+   top of the band and plays to its outs; a team that must not lose reads the
+   bottom. Same tree, different column, genuinely different move.
+
+## 5.5 — Reproduction
+
+Session artifacts (not committed), under the session `files/` directory:
+
+- `inspect_real_dbs.py` — schema plus rating histograms for every supplied `.db`
+- `probe_db_shape.py` — scenario/team/pair coverage of the event database
+- `probe_real_signal.py` — distinct-value counts per objective, per opponent
+- `probe_leverage.py` — the threshold sweeps reproduced in 5.2 and 5.3
+
+Opponent ratings are reconstructed with the app's own convention,
+`opponent view = 6 − our rating` (`ui_manager_v2.py:8219-8226`), so the model is
+strictly zero-sum. Model-engine runs must pass
+`golden_master_environment({"QTR_ENGINE": "model", "QTR_RENDER": "lazy"})`;
+the harness otherwise pins `QTR_ENGINE=widget` and `model_root` is `None`.
+
