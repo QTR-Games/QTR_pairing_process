@@ -297,16 +297,83 @@ passes it while the two obvious alternatives fail it in opposite directions.
 
 Concretely:
 
-1. **The `cumulative` metric overstates by about 1.7 points on real data.** That
-   is the number in the sort column today. Knowing the size matters: it is big
-   enough to reorder close openers, and it always flatters.
-2. **"Assume the worst" is not the safe default it looks like.** If you have
+1. **"Assume the worst" is not the safe default it looks like.** If you have
    ever felt the tool was too pessimistic about a line, this is why that instinct
-   was worth listening to.
-3. **This does not decide anything on its own.** Changing the `cumulative`
-   metric changes displayed scores and will fail the golden master by design.
-   That is a re-baseline, and it belongs in the hand-walk you asked to do when
-   you can concentrate on it — not in a quiet commit.
+   was worth listening to. Minimax feels conservative and is measurably no more
+   honest than optimism.
+2. **The bias is a property of the rule, not of your data.** Optimism never
+   underestimated on any matchup tested; minimax never overestimated on any.
+3. **This does not decide anything on its own.** Changing a propagation rule
+   changes displayed scores and will fail the golden master by design. That is a
+   re-baseline, and it belongs in the hand-walk you asked to do when you can
+   concentrate on it — not in a quiet commit.
+
+## 6.3a — Correction: which code path you actually see
+
+**I got this wrong the first time and told you so out loud, so it is recorded
+here too.** I originally reported that the `cumulative` column in the sort UI
+carried the +1.667 optimism. It does not.
+
+The v2 UI's `cumulative` sort mode routes to a *different* function:
+
+```
+ui_manager_v2.py:5477
+    run_metric("cumulative", ..., self.tree_generator.calculate_all_path_values_enhanced)
+```
+
+`calculate_all_path_values_enhanced` is the `cumulative2` rule. The pure-`max`
+function that measured +1.667 is `calculate_all_path_values`, and it is
+reachable from only two places, neither of which is the shipping v2 UI:
+
+- `ui_manager_v1_original.py:1095` — the original UI, your stable fallback
+- `golden_master_harness.py:33` — the test harness
+
+So the optimism is real, but it lives in the v1 path and in a test fixture. It
+was never the number in your v2 sort column.
+
+## 6.3b — What your sort column *actually* does
+
+`cumulative2` aggregates opponent levels as `α·min + (1−α)·mean`, with `α`
+defaulting to `0.80` (`tree_generator.py:736-741`). `α=1.0` is pure minimax;
+`α=0.0` is "the opponent picks at random". So it is a dial between the two
+failure modes measured above — and the conservation law can locate the honest
+setting on it.
+
+Sweeping `α` across the same six real opponents:
+
+| α | mean excess | reading |
+|---|---|---|
+| 0.00 | +0.554 | opponent picks at random |
+| **0.20** | **+0.043** | **least biased on this data** |
+| 0.40 | −0.455 | |
+| 0.60 | −0.934 | |
+| **0.80** | **−1.397** | **shipped default** |
+| 1.00 | −1.833 | pure minimax |
+
+So the correction cuts both ways. Your sort column is **not** flattering you by
++1.7 as I said. It is doing the opposite: at the shipped `α=0.80` it is
+**pessimistic by −1.40**, which is most of the way to full minimax — the very
+rule Finding 6 shows is no more honest than optimism.
+
+Two things follow, and the second is the useful one:
+
+1. **The direction of my earlier claim was backwards.** The column understates,
+   it does not overstate.
+2. **`α` is not a hand-tuned constant any more.** It is already a user
+   preference (`database_preferences.py:149`), and conservation now gives it a
+   *measurable* correct value rather than a guessed one. Moving `0.80 → ~0.20`
+   takes the metric from −1.40 to +0.04 without touching a single line of
+   scoring logic.
+
+That `α≈0.2` also lands near the quantal engine's −0.181 is corroborating: two
+independently-derived rules agreeing near zero is more convincing than either
+alone.
+
+**Caveat I will not paper over:** conservation is a *necessary* condition, not a
+sufficient one. `α=0.20` makes the model stop contradicting itself; it does not
+prove it predicts real opponents. It is a far better grounded default than a
+value that is provably self-inconsistent by 1.4 points, and that is the whole
+claim.
 
 ## 6.4 — What it does *not* answer
 

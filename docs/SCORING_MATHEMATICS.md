@@ -275,11 +275,12 @@ Measured on real event data (Team Irving 2024, six opponents, scenario 0,
 Two conclusions, and the second is the surprising one.
 
 1. **The optimistic rule is provably biased.** It is what
-   `tree_generator.calculate_all_path_values` — the `cumulative` metric — does:
-   `max()` over all children regardless of whose turn it is. Against England
-   Dragons both sides conclude they will score 17 of a possible 30. On the
-   synthetic 4v4 fixture the effect is starker still: both seats claim 16 points
-   out of a possible 24, an excess of **+8.0**.
+   `tree_generator.calculate_all_path_values` does: `max()` over all children
+   regardless of whose turn it is. Against England Dragons both sides conclude
+   they will score 17 of a possible 30. On the synthetic 4v4 fixture the effect
+   is starker still: both seats claim 16 points out of a possible 24, an excess
+   of **+8.0**. (This function is *not* what the v2 sort column calls — see
+   §3.4.1 below, which corrects an earlier claim in this document.)
 
 2. **"Just flip `max` to `min`" is not the fix.** Pure minimax is wrong by
    about as much as pure optimism, in the opposite direction: both sides
@@ -298,6 +299,66 @@ This does **not** close the wider p3c question. It establishes which rule is
 self-consistent; whether the sort path should adopt it is a separate decision
 that changes displayed scores and requires a reviewed re-baseline of the golden
 master.
+
+### 3.4.1 Correction — which rule the shipping sort column uses
+
+An earlier revision of this document implied the `+1.667` optimism was the
+number displayed in the v2 `cumulative` sort column. **That was wrong.**
+
+`ui_manager_v2.py:5477` routes the `cumulative` sort mode to
+`calculate_all_path_values_enhanced` — the `cumulative2` rule — not to
+`calculate_all_path_values`. The pure-`max` function measured above is reachable
+only from `ui_manager_v1_original.py:1095` and `golden_master_harness.py:33`.
+
+`cumulative2` aggregates opponent levels with a blend
+(`tree_generator.py:736-741`):
+
+\[
+V(s) \;=\; \text{base}(s) \;+\;
+\begin{cases}
+\alpha \cdot \min_{c} V(c) \;+\; (1-\alpha)\cdot \operatorname{mean}_{c} V(c) & \text{opponent chooses} \\[4pt]
+\max_{c} V(c) & \text{we choose}
+\end{cases}
+\]
+
+with \(\alpha = 0.80\) by default (`tree_generator.py:53`, preference key
+`("cumulative2","alpha")`). Since \(\alpha=1\) is pure minimax and \(\alpha=0\)
+is "the opponent moves at random", \(\alpha\) is a dial *between* the two biased
+extremes — and conservation can locate the honest setting on it.
+
+Sweeping \(\alpha\) over the same six real opponents (conserved total 30):
+
+| \(\alpha\) | mean excess | min | max | reading |
+|---|---|---|---|---|
+| 0.00 | +0.554 | −0.640 | +1.813 | opponent moves at random |
+| **0.20** | **+0.043** | −0.950 | +1.134 | **least biased on this data** |
+| 0.40 | −0.455 | −1.242 | +0.818 | |
+| 0.60 | −0.934 | −1.848 | +0.540 | |
+| **0.80** | **−1.397** | −2.462 | +0.267 | **shipped default** |
+| 1.00 | −1.833 | −3.000 | 0.000 | pure minimax |
+
+Two consequences:
+
+1. **The shipped sort column is pessimistically biased, not optimistically.** At
+   \(\alpha=0.80\) its excess is **−1.397** — roughly three-quarters of the way
+   to full minimax, the rule §3.4 shows is no more honest than optimism.
+2. **\(\alpha\) is measurable, not hand-tuned.** Conservation supplies an
+   empirical target of \(\alpha \approx 0.2\), moving the metric from −1.40 to
+   +0.04 with no change to scoring logic — only to a preference already exposed
+   at `database_preferences.py:149`. That this lands near the quantal engine's
+   −0.181 is corroborating: two independently-derived rules agreeing near zero.
+
+**Two caveats.** First, conservation is *necessary*, not *sufficient*: \(\alpha
+= 0.2\) stops the model contradicting itself but does not prove it predicts real
+opponents. Second, the shipped `cumulative2` accumulates `base` at every node
+with no `contributes_to_total` filter, which is a separate known defect; the
+sweep deliberately holds accumulation fixed so that only the propagation rule
+varies, otherwise double-counting swamps the signal.
+
+Reproduce with the α-sweep probe at
+`C:\Users\Daniel.Raven\.copilot\session-state\b5a9a476-5975-467d-b251-0bbfeb2736b6\files\probe_cumulative2_bias.py`
+(run from the repo root). The propagation-bias result it builds on is pinned
+hermetically in-repo by `test_zero_sum_conservation.py`.
 
 ---
 
