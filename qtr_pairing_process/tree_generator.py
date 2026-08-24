@@ -53,14 +53,19 @@ class TreeGenerator:
         self._memo_state_token = None
         self._strategic_memo_context = None
         self._strategic_memo = {}
+        self._metric_memo_contexts = {}
+        self._metric_memos = {}
+        self._metric_memo_hits = {}
+        self._metric_memo_misses = {}
+        self._strategic_path_keys_seen = set()
         self._strategic_memo_hits = 0
         self._strategic_memo_misses = 0
         self._memo_clear_count = 0
         self._memo_last_clear_reason = ""
         self._memo_last_clear_bucket = ""
         self._memo_last_cleared_entries = 0
-        self._memo_key_mode = "structural_path_text_base_rating"
-        self._memo_schema_version = 1
+        self._memo_key_mode = "canonical_state"
+        self._memo_schema_version = 2
         self.persistent_memo_enabled = bool(
             self._read_raw_pref(("strategic3", "persistent_memo_enabled"), True)
         )
@@ -79,6 +84,7 @@ class TreeGenerator:
         if self.render_mode == "lazy" and self.engine != "model":
             self.render_mode = "eager"
         self.model_root = None
+        self._model_team_size = 0
         self.projector = TreeProjector()
         if self.render_mode == "lazy":
             self._bind_lazy_tree_open_handler()
@@ -285,11 +291,15 @@ class TreeGenerator:
         self.projector.reset_state()
         self._model_original_order = {}
         self.original_order_saved = False
+        self._model_team_size = max(len(fNames), len(oNames))
         self.model_root = PairingNode(
             text="Pairings",
             base=0,
             depth=0,
             is_opponent_choice=self._resolve_opponent_choice_level(0),
+            state_choosing_side="root",
+            state_our_pool=frozenset(str(name) for name in fNames),
+            state_opponent_pool=frozenset(str(name) for name in oNames),
         )
 
         fNames_sorted = list(fNames)
@@ -307,12 +317,22 @@ class TreeGenerator:
                 fRatings,
                 oRatings,
                 self.model_root,
+                "our",
             )
             fNames_sorted[:] = uf.cycle_list(fNames_sorted)
 
         self._project_model()
 
-    def _generate_nested_combinations_model(self, first_fName, fNames, oNames, fRatings, oRatings, parent):
+    def _generate_nested_combinations_model(
+        self,
+        first_fName,
+        fNames,
+        oNames,
+        fRatings,
+        oRatings,
+        parent,
+        attacker_side="our",
+    ):
         combs = list(combinations(oNames, 2))
         if oNames and not combs:
             first_oName = oNames[0]
@@ -325,6 +345,7 @@ class TreeGenerator:
             base_rating = max(rating_0, rating_1)
             confidence_score = self.calculate_confidence_for_rating(base_rating)
             resistance_score = self.calculate_resistance_for_rating(base_rating, rating_0, rating_1)
+            node_is_opponent_choice = self._resolve_opponent_choice_level(depth)
             node = PairingNode(
                 text=(
                     f"{first_fName} vs {comb[0]} ({rating_0}/{self.rating_display_max}) "
@@ -332,10 +353,24 @@ class TreeGenerator:
                 ),
                 base=self._to_int_rating(base_rating),
                 depth=depth,
-                is_opponent_choice=self._resolve_opponent_choice_level(depth),
+                is_opponent_choice=node_is_opponent_choice,
                 parent=parent,
                 confidence=confidence_score,
                 resistance=resistance_score,
+                state_attacker=str(first_fName),
+                state_attacker_side=attacker_side,
+                state_choosing_side=("opponent" if node_is_opponent_choice else "our"),
+                state_our_pool=(
+                    frozenset(str(name) for name in (first_fName, *fNames))
+                    if attacker_side == "our"
+                    else frozenset(str(name) for name in oNames)
+                ),
+                state_opponent_pool=(
+                    frozenset(str(name) for name in oNames)
+                    if attacker_side == "our"
+                    else frozenset(str(name) for name in (first_fName, *fNames))
+                ),
+                state_choice_pool=frozenset(str(name) for name in comb),
             )
             parent.children.append(node)
             self.projector.initialize_node(
@@ -359,14 +394,29 @@ class TreeGenerator:
                         child_rating,
                     )
                     child_depth = node.depth + 1
+                    next_attacker_side = "opponent" if attacker_side == "our" else "our"
+                    child_is_opponent_choice = self._resolve_opponent_choice_level(child_depth)
                     child = PairingNode(
                         text=f"{opponent} rating {child_rating}",
                         base=self._to_int_rating(child_rating),
                         depth=child_depth,
-                        is_opponent_choice=self._resolve_opponent_choice_level(child_depth),
+                        is_opponent_choice=child_is_opponent_choice,
                         parent=node,
                         confidence=child_confidence,
                         resistance=child_resistance,
+                        state_attacker=str(next_fName),
+                        state_attacker_side=next_attacker_side,
+                        state_choosing_side=("opponent" if child_is_opponent_choice else "our"),
+                        state_our_pool=(
+                            frozenset(str(name) for name in (next_fName, *nested_oNames))
+                            if next_attacker_side == "our"
+                            else frozenset(str(name) for name in fNames)
+                        ),
+                        state_opponent_pool=(
+                            frozenset(str(name) for name in fNames)
+                            if next_attacker_side == "our"
+                            else frozenset(str(name) for name in (next_fName, *nested_oNames))
+                        ),
                     )
                     node.children.append(child)
                     self.projector.initialize_node(
@@ -382,6 +432,7 @@ class TreeGenerator:
                         oRatings,
                         fRatings,
                         child,
+                        next_attacker_side,
                     )
 
     def _project_model(self):
@@ -565,13 +616,23 @@ class TreeGenerator:
 
     def _calculate_all_path_values_enhanced_model(self, model_node, alpha=None):
         alpha = self.cumulative2_alpha if alpha is None else alpha
+        context = self._metric_memo_context("cumulative2", round(float(alpha), 6))
+        memo = self._metric_memo_for("cumulative2", context) if self._metric_memo_enabled_model() else None
         children = self._model_children_for_arg(model_node)
         current = self._model_node_from_arg(model_node)
+        if current is not None and memo is not None:
+            memo_key = self._build_structural_memo_key_model(current)
+            memo_value = memo.get(memo_key)
+            if memo_value is not None:
+                self._record_metric_memo_hit("cumulative2")
+                return self._apply_cumulative2_memo_model(current, memo_value)
+            self._record_metric_memo_miss("cumulative2")
         if not children:
             if current is not None:
                 leaf_value = current.base
-                self._set_model_metric(current, "cumulative2_", leaf_value)
-                self.projector.set_sort_value(current, leaf_value)
+                self._apply_cumulative2_memo_model(current, leaf_value)
+                if memo is not None:
+                    memo[memo_key] = int(leaf_value)
                 return leaf_value
             return 0
 
@@ -587,8 +648,9 @@ class TreeGenerator:
             else:
                 child_component = max(child_scores)
             total_value = int(round(current.base + child_component))
-            self._set_model_metric(current, "cumulative2_", total_value)
-            self.projector.set_sort_value(current, total_value)
+            self._apply_cumulative2_memo_model(current, total_value)
+            if memo is not None:
+                memo[memo_key] = int(total_value)
             return total_value
         return max(child_scores) if child_scores else 0
 
@@ -596,8 +658,22 @@ class TreeGenerator:
         k = self.confidence2_k if k is None else k
         u = self.confidence2_u if u is None else u
         write_aux_tags = bool(getattr(self, "_confidence_aux_tags_enabled", True))
+        context = self._metric_memo_context(
+            "confidence2",
+            round(float(k), 6),
+            round(float(u), 6),
+            write_aux_tags,
+        )
+        memo = self._metric_memo_for("confidence2", context) if self._metric_memo_enabled_model() else None
         children = self._model_children_for_arg(model_node)
         current = self._model_node_from_arg(model_node)
+        if current is not None and memo is not None:
+            memo_key = self._build_structural_memo_key_model(current)
+            memo_value = memo.get(memo_key)
+            if memo_value is not None:
+                self._record_metric_memo_hit("confidence2")
+                return self._apply_confidence2_memo_model(current, memo_value)
+            self._record_metric_memo_miss("confidence2")
         if not children:
             if current is not None:
                 base_conf = self.calculate_rating_confidence(current.base)
@@ -608,6 +684,8 @@ class TreeGenerator:
                     prefix_values["ceiling2_"] = score
                 self._set_model_metrics(current, prefix_values)
                 self.projector.set_confidence_value(current, score)
+                if memo is not None:
+                    memo[memo_key] = (score, score, score, 0, write_aux_tags)
                 return score, score, score
             return 0, 0, 0
 
@@ -636,20 +714,36 @@ class TreeGenerator:
                 prefix_values["ceiling2_"] = ceiling2
             self._set_model_metrics(current, prefix_values)
             self.projector.set_confidence_value(current, score)
+            if memo is not None:
+                memo[memo_key] = (floor2, ceiling2, score, regret2, write_aux_tags)
             return floor2, ceiling2, score
         return 0, 0, int(round(self._clamp(conservative, 0, 100)))
 
     def _calculate_counter_resistance_scores_enhanced_model(self, model_node, beta=None, gamma=None, _depth=0):
         beta = self.resistance2_beta if beta is None else beta
         gamma = self.resistance2_gamma if gamma is None else gamma
+        context = self._metric_memo_context(
+            "resistance2",
+            round(float(beta), 6),
+            round(float(gamma), 6),
+        )
+        memo = self._metric_memo_for("resistance2", context) if self._metric_memo_enabled_model() else None
         children = self._model_children_for_arg(model_node)
         current = self._model_node_from_arg(model_node)
+        if current is not None and memo is not None:
+            memo_key = self._build_structural_memo_key_model(current)
+            memo_value = memo.get(memo_key)
+            if memo_value is not None:
+                self._record_metric_memo_hit("resistance2")
+                return self._apply_resistance2_memo_model(current, memo_value)
+            self._record_metric_memo_miss("resistance2")
         if not children:
             if current is not None:
                 base = self.calculate_counter_resistance(current.base)
                 score = int(round(self._clamp(base, 0, 100)))
-                self._set_model_metric(current, "resistance2_", score)
-                self.projector.set_resistance_value(current, score)
+                self._apply_resistance2_memo_model(current, score)
+                if memo is not None:
+                    memo[memo_key] = int(score)
                 return score
             return 0
 
@@ -671,12 +765,35 @@ class TreeGenerator:
             depth_buffer = max(0.0, 6.0 - float(_depth))
             score = base_stability - (beta * regret) + (gamma * depth_buffer)
             score = int(round(self._clamp(score, 0, 100)))
-            self._set_model_metric(current, "resistance2_", score)
-            self.projector.set_resistance_value(current, score)
+            self._apply_resistance2_memo_model(current, score)
+            if memo is not None:
+                memo[memo_key] = int(score)
             return score
         return max(child_scores) if child_scores else 0
 
-    def _build_structural_memo_key_model(self, node):
+    def _effective_memo_key_mode(self):
+        if (
+            self._memo_key_mode == "canonical_state"
+            and self._use_model_engine()
+            and self._model_team_size >= 5
+        ):
+            return "canonical_state"
+        return "structural_path_text_base_rating"
+
+    def _build_canonical_memo_key_model(self, node):
+        return (
+            "canonical_state",
+            node.state_attacker,
+            node.state_attacker_side,
+            node.state_choosing_side,
+            node.state_our_pool,
+            node.state_opponent_pool,
+            node.state_choice_pool,
+            str(node.text),
+            int(node.base),
+        )
+
+    def _build_structural_path_memo_key_model(self, node):
         lineage = []
         current = node
         while current is not None:
@@ -686,6 +803,128 @@ class TreeGenerator:
         lineage.reverse()
         return tuple(lineage)
 
+    def _build_structural_memo_key_model(self, node):
+        if self._effective_memo_key_mode() == "canonical_state":
+            return self._build_canonical_memo_key_model(node)
+        return self._build_structural_path_memo_key_model(node)
+
+    def _metric_memo_context(self, metric_name, *params):
+        return (
+            metric_name,
+            tuple(params),
+            self._memo_state_token,
+            self._effective_memo_key_mode(),
+        )
+
+    def _metric_memo_for(self, metric_name, context):
+        if self._metric_memo_contexts.get(metric_name) != context:
+            self._metric_memo_contexts[metric_name] = context
+            self._metric_memos[metric_name] = {}
+            self._metric_memo_hits[metric_name] = 0
+            self._metric_memo_misses[metric_name] = 0
+        return self._metric_memos[metric_name]
+
+    def _record_metric_memo_hit(self, metric_name):
+        self._metric_memo_hits[metric_name] = self._metric_memo_hits.get(metric_name, 0) + 1
+
+    def _record_metric_memo_miss(self, metric_name):
+        self._metric_memo_misses[metric_name] = self._metric_memo_misses.get(metric_name, 0) + 1
+
+    def _apply_cumulative2_memo_model(self, node, value):
+        value = int(value)
+        self._set_model_metric(node, "cumulative2_", value)
+        self.projector.set_sort_value(node, value)
+        return value
+
+    def _apply_confidence2_memo_model(self, node, payload):
+        floor2, ceiling2, score, regret2, wrote_aux = payload
+        prefix_values = {"confidence2_": int(score), "regret2_": int(regret2)}
+        if wrote_aux:
+            prefix_values["floor2_"] = int(floor2)
+            prefix_values["ceiling2_"] = int(ceiling2)
+        self._set_model_metrics(node, prefix_values)
+        self.projector.set_confidence_value(node, int(score))
+        return int(floor2), int(ceiling2), int(score)
+
+    def _apply_resistance2_memo_model(self, node, value):
+        value = int(value)
+        self._set_model_metric(node, "resistance2_", value)
+        self.projector.set_resistance_value(node, value)
+        return value
+
+    def _materialize_metric_descendants_from_memo_model(self, node, metric_name, context):
+        memo = self._metric_memo_for(metric_name, context)
+        for child in node.children:
+            child_key = self._build_structural_memo_key_model(child)
+            payload = memo.get(child_key)
+            if payload is None:
+                if metric_name == "cumulative2":
+                    self._calculate_all_path_values_enhanced_model(child, alpha=context[1][0])
+                elif metric_name == "confidence2":
+                    self._calculate_confidence_scores_enhanced_model(child, k=context[1][0], u=context[1][1])
+                elif metric_name == "resistance2":
+                    self._calculate_counter_resistance_scores_enhanced_model(
+                        child,
+                        beta=context[1][0],
+                        gamma=context[1][1],
+                        _depth=child.depth,
+                    )
+                continue
+            self._record_metric_memo_hit(metric_name)
+            if metric_name == "cumulative2":
+                self._apply_cumulative2_memo_model(child, payload)
+            elif metric_name == "confidence2":
+                self._apply_confidence2_memo_model(child, payload)
+            elif metric_name == "resistance2":
+                self._apply_resistance2_memo_model(child, payload)
+            self._materialize_metric_descendants_from_memo_model(child, metric_name, context)
+
+    def _metric_memo_enabled_model(self):
+        return self._effective_memo_key_mode() == "canonical_state"
+
+    def _materialize_all_metric_from_memo_model(self, metric_name, context):
+        if not self._metric_memo_enabled_model():
+            return
+        memo = self._metric_memo_for(metric_name, context)
+        for node in self._walk_model_nodes(None):
+            key = self._build_structural_memo_key_model(node)
+            payload = memo.get(key)
+            if payload is None:
+                if metric_name == "cumulative2":
+                    self._calculate_all_path_values_enhanced_model(node, alpha=context[1][0])
+                elif metric_name == "confidence2":
+                    self._calculate_confidence_scores_enhanced_model(node, k=context[1][0], u=context[1][1])
+                elif metric_name == "resistance2":
+                    self._calculate_counter_resistance_scores_enhanced_model(
+                        node,
+                        beta=context[1][0],
+                        gamma=context[1][1],
+                        _depth=node.depth,
+                    )
+                continue
+            if metric_name == "cumulative2":
+                self._apply_cumulative2_memo_model(node, payload)
+            elif metric_name == "confidence2":
+                self._apply_confidence2_memo_model(node, payload)
+            elif metric_name == "resistance2":
+                self._apply_resistance2_memo_model(node, payload)
+
+    def _materialize_all_strategic_from_memo_model(self):
+        if not bool(getattr(self, "_materialize_strategic_tags_on_memo_hit", True)):
+            return
+        for node in self._walk_model_nodes(None):
+            if self.projector.has_metric(node, "strategic3_"):
+                continue
+            memo_value = self._strategic_memo.get(self._build_structural_memo_key_model(node))
+            if memo_value is None:
+                self._calculate_strategic3_scores_model(node)
+                continue
+            strategic_value, exploitability = self._strategic_memo_fields(memo_value)
+            self._strategic_profile_stats["memo_materialized"] += 1
+            self._strategic_profile_stats["tag_writes"] += 1
+            self._materialize_strategic_memo_hit_model(node, strategic_value, exploitability)
+            self.projector.set_sort_value(node, strategic_value)
+
     def _calculate_strategic3_scores_model(self, model_node, weights=None, rho=None, lam=None):
         weights = self.strategic3_weights if weights is None else weights
         rho = self.strategic3_rho if rho is None else rho
@@ -694,9 +933,10 @@ class TreeGenerator:
 
         if model_node == "":
             self.reset_strategic_profile_stats()
+            self._strategic_path_keys_seen = set()
             memo_context = self._build_strategic_memo_context()
             if memo_context != self._strategic_memo_context:
-                self.clear_memoization(reason="memo_context_change")
+                self._clear_strategic_memoization(reason="memo_context_change")
                 self._strategic_memo_context = memo_context
             all_nodes = list(self._walk_model_nodes(None))
             self._strategic_profile_stats["range_nodes"] = len(all_nodes)
@@ -723,13 +963,19 @@ class TreeGenerator:
             if memo_key in self._strategic_memo:
                 self._strategic_memo_hits += 1
                 self._strategic_profile_stats["memo_hits"] += 1
-                strategic_value = int(self._strategic_memo[memo_key])
+                strategic_value, exploitability = self._strategic_memo_fields(
+                    self._strategic_memo[memo_key]
+                )
                 materialize_on_hit = bool(getattr(self, "_materialize_strategic_tags_on_memo_hit", True))
-                if materialize_on_hit and not self.projector.has_metric(current, "strategic3_"):
-                    self._set_model_metric(current, "strategic3_", strategic_value)
+                if materialize_on_hit:
+                    self._materialize_strategic_memo_hit_model(
+                        current,
+                        strategic_value,
+                        exploitability,
+                    )
                     self._strategic_profile_stats["tag_writes"] += 1
                 self.projector.set_sort_value(current, strategic_value)
-                if materialize_on_hit:
+                if materialize_on_hit and not self._metric_memo_enabled_model():
                     self._materialize_strategic_descendants_from_memo_model(
                         current,
                         weights=weights,
@@ -787,14 +1033,30 @@ class TreeGenerator:
             )
             self._strategic_profile_stats["tag_writes"] += 1
             self.projector.set_sort_value(current, strategic_value)
-            self._strategic_memo[memo_key] = strategic_value
+            self._strategic_memo[memo_key] = {
+                "strategic3": strategic_value,
+                "strategic3_exploit": int(round(exploitability)),
+            }
+            self._strategic_path_keys_seen.add(self._build_structural_path_memo_key_model(current))
             return strategic_value
         return max(child_scores) if child_scores else 0
 
+    def _materialize_strategic_memo_hit_model(self, node, strategic_value, exploitability):
+        path_key = self._build_structural_path_memo_key_model(node)
+        if self._effective_memo_key_mode() == "canonical_state" and path_key not in self._strategic_path_keys_seen:
+            self._set_model_metrics(
+                node,
+                {
+                    "strategic3_": strategic_value,
+                    "strategic3_exploit_": exploitability,
+                },
+            )
+        else:
+            self._set_model_metric(node, "strategic3_", strategic_value)
+        self._strategic_path_keys_seen.add(path_key)
+
     def _materialize_strategic_descendants_from_memo_model(self, node, weights, rho, lam):
         for child in node.children:
-            if self.projector.has_metric(child, "strategic3_"):
-                continue
             self._strategic_profile_stats["nodes_visited"] += 1
             child_key = self._build_structural_memo_key_model(child)
             memo_value = self._strategic_memo.get(child_key)
@@ -804,10 +1066,11 @@ class TreeGenerator:
                 continue
             self._strategic_memo_hits += 1
             self._strategic_profile_stats["memo_hits"] += 1
-            self._set_model_metric(child, "strategic3_", int(memo_value))
+            strategic_value, exploitability = self._strategic_memo_fields(memo_value)
+            self._materialize_strategic_memo_hit_model(child, strategic_value, exploitability)
             self._strategic_profile_stats["tag_writes"] += 1
             self._strategic_profile_stats["memo_materialized"] += 1
-            self.projector.set_sort_value(child, int(memo_value))
+            self.projector.set_sort_value(child, strategic_value)
             self._materialize_strategic_descendants_from_memo_model(child, weights=weights, rho=rho, lam=lam)
 
     def _calculate_strategic_optimal_scores_model(self, model_node):
@@ -1430,6 +1693,18 @@ class TreeGenerator:
     def get_strategic_profile_stats(self):
         return dict(getattr(self, "_strategic_profile_stats", {}))
 
+    def _strategic_memo_fields(self, memo_value):
+        if isinstance(memo_value, dict):
+            return (
+                int(memo_value.get("strategic3", 0)),
+                int(memo_value.get("strategic3_exploit", 0)),
+            )
+        if isinstance(memo_value, (list, tuple)) and memo_value:
+            strategic = int(memo_value[0])
+            exploit = int(memo_value[1]) if len(memo_value) > 1 else 0
+            return strategic, exploit
+        return int(memo_value), 0
+
     def _materialize_strategic_descendants_from_memo(self, node, weights, rho, lam):
         """Populate missing descendant strategic tags from memo before falling back to recompute."""
         for child in self.treeview.tree.get_children(node):
@@ -1446,10 +1721,20 @@ class TreeGenerator:
 
             self._strategic_memo_hits += 1
             self._strategic_profile_stats["memo_hits"] += 1
-            self._replace_prefixed_tags(child, {'strategic3_': int(memo_value)})
+            strategic_value, exploitability = self._strategic_memo_fields(memo_value)
+            if self._effective_memo_key_mode() == "canonical_state":
+                self._replace_prefixed_tags(
+                    child,
+                    {
+                        'strategic3_': strategic_value,
+                        'strategic3_exploit_': exploitability,
+                    },
+                )
+            else:
+                self._replace_prefixed_tags(child, {'strategic3_': strategic_value})
             self._strategic_profile_stats["tag_writes"] += 1
             self._strategic_profile_stats["memo_materialized"] += 1
-            self.update_node_strategic_display(child, int(memo_value))
+            self.update_node_strategic_display(child, strategic_value)
             self._materialize_strategic_descendants_from_memo(child, weights=weights, rho=rho, lam=lam)
 
     def _clamp(self, value, min_value, max_value):
@@ -1457,6 +1742,14 @@ class TreeGenerator:
 
     def clear_memoization(self, reason=""):
         """Clear strategic memoization cache. Optional reason for diagnostics."""
+        self._clear_strategic_memoization(reason=reason)
+        self._metric_memo_contexts = {}
+        self._metric_memos = {}
+        self._metric_memo_hits = {}
+        self._metric_memo_misses = {}
+        self._strategic_path_keys_seen = set()
+
+    def _clear_strategic_memoization(self, reason=""):
         cleared_entries = len(self._strategic_memo)
         normalized_reason = str(reason or "unspecified")
         self._memo_clear_count += 1
@@ -1501,17 +1794,29 @@ class TreeGenerator:
         hit_rate = (self._strategic_memo_hits / total) if total else 0.0
         context_repr = repr(self._strategic_memo_context)
         context_hash = hashlib.sha1(context_repr.encode("utf-8")).hexdigest()[:12]
+        metric_stats = {}
+        for metric_name, memo in self._metric_memos.items():
+            hits = self._metric_memo_hits.get(metric_name, 0)
+            misses = self._metric_memo_misses.get(metric_name, 0)
+            metric_total = hits + misses
+            metric_stats[metric_name] = {
+                "hits": hits,
+                "misses": misses,
+                "hit_rate": (hits / metric_total) if metric_total else 0.0,
+                "entries": len(memo),
+            }
         return {
             "hits": self._strategic_memo_hits,
             "misses": self._strategic_memo_misses,
             "hit_rate": hit_rate,
             "entries": len(self._strategic_memo),
+            "metric_memos": metric_stats,
             "clear_count": self._memo_clear_count,
             "last_clear_reason": self._memo_last_clear_reason,
             "last_clear_bucket": self._memo_last_clear_bucket,
             "last_cleared_entries": self._memo_last_cleared_entries,
             "memo_context_hash": context_hash,
-            "memo_key_mode": self._memo_key_mode,
+            "memo_key_mode": self._effective_memo_key_mode(),
             "memo_clear_reason": self._memo_last_clear_reason,
             "memo_clear_bucket": self._memo_last_clear_bucket,
             "memo_cleared_entries": self._memo_last_cleared_entries,
@@ -1539,7 +1844,12 @@ class TreeGenerator:
         }.get(self._get_guardrail_strength(), 0.14)
 
     def _build_strategic_memo_context(self):
-        return ("strategic3", self._compute_parameter_signature(), self._memo_state_token)
+        return (
+            "strategic3",
+            self._compute_parameter_signature(),
+            self._memo_state_token,
+            self._effective_memo_key_mode(),
+        )
 
     def _build_structural_memo_key(self, node):
         """Build a stable node signature from root-to-node text/value path."""
@@ -1570,7 +1880,7 @@ class TreeGenerator:
             "schema_version": self.get_memo_schema_version(),
             "parameter_signature": self._compute_parameter_signature(),
             "memo_state_token": self.get_memo_state_token(),
-            "memo_key_mode": self._memo_key_mode,
+            "memo_key_mode": self._effective_memo_key_mode(),
         }
 
     def export_memoization_snapshot(self, max_entries=None):
@@ -1587,20 +1897,35 @@ class TreeGenerator:
             if idx >= entry_cap:
                 break
             entries.append([
-                json.loads(json.dumps(memo_key, ensure_ascii=False, default=str)),
-                int(score),
+                self._memo_json_safe(memo_key),
+                self._memo_json_safe(score),
             ])
 
         return {
             "schema_version": self.get_memo_schema_version(),
-            "memo_key_mode": self._memo_key_mode,
-            "memo_context": json.loads(json.dumps(self._strategic_memo_context, ensure_ascii=False, default=str)),
+            "memo_key_mode": self._effective_memo_key_mode(),
+            "memo_context": self._memo_json_safe(self._strategic_memo_context),
             "memo_state_token": self.get_memo_state_token(),
-            "parameter_signature": json.loads(json.dumps(self._compute_parameter_signature(), ensure_ascii=False, default=str)),
+            "parameter_signature": self._memo_json_safe(self._compute_parameter_signature()),
             "entries": entries,
         }
 
+    def _memo_json_safe(self, value):
+        if isinstance(value, frozenset):
+            return {"__frozenset__": sorted(value)}
+        if isinstance(value, tuple):
+            return [self._memo_json_safe(item) for item in value]
+        if isinstance(value, list):
+            return [self._memo_json_safe(item) for item in value]
+        if isinstance(value, dict):
+            return {str(key): self._memo_json_safe(item) for key, item in value.items()}
+        return value
+
     def _tupleize_nested(self, value):
+        if isinstance(value, dict):
+            if set(value.keys()) == {"__frozenset__"}:
+                return frozenset(str(item) for item in value["__frozenset__"])
+            return {key: self._tupleize_nested(item) for key, item in value.items()}
         if isinstance(value, list):
             return tuple(self._tupleize_nested(item) for item in value)
         return value
@@ -1614,7 +1939,7 @@ class TreeGenerator:
         schema_version = int(payload.get("schema_version", 0) or 0)
         if schema_version != self.get_memo_schema_version():
             return False
-        if payload.get("memo_key_mode") != self._memo_key_mode:
+        if payload.get("memo_key_mode") != self._effective_memo_key_mode():
             return False
 
         state_token = payload.get("memo_state_token")
@@ -1636,14 +1961,20 @@ class TreeGenerator:
             key_raw, score_raw = item
             key_tuple = self._tupleize_nested(key_raw)
             try:
-                restored[key_tuple] = int(score_raw)
+                strategic_value, exploitability = self._strategic_memo_fields(
+                    self._tupleize_nested(score_raw)
+                )
+                restored[key_tuple] = {
+                    "strategic3": strategic_value,
+                    "strategic3_exploit": exploitability,
+                }
             except (TypeError, ValueError):
                 continue
 
         if not restored:
             return False
 
-        if all(v == 0 for v in restored.values()):
+        if all(self._strategic_memo_fields(v)[0] == 0 for v in restored.values()):
             return False
 
         self._strategic_memo_context = persisted_context
@@ -1654,6 +1985,9 @@ class TreeGenerator:
         """Enhanced cumulative scoring that is optimistic for us and adversarial for opponent turns."""
         if self._use_model_engine():
             result = self._calculate_all_path_values_enhanced_model(node, alpha=alpha)
+            effective_alpha = self.cumulative2_alpha if alpha is None else alpha
+            context = self._metric_memo_context("cumulative2", round(float(effective_alpha), 6))
+            self._materialize_all_metric_from_memo_model("cumulative2", context)
             self._project_model()
             return result
         alpha = self.cumulative2_alpha if alpha is None else alpha
@@ -1706,6 +2040,15 @@ class TreeGenerator:
         """Enhanced confidence with volatility and sample-size penalties."""
         if self._use_model_engine():
             result = self._calculate_confidence_scores_enhanced_model(node, k=k, u=u)
+            effective_k = self.confidence2_k if k is None else k
+            effective_u = self.confidence2_u if u is None else u
+            context = self._metric_memo_context(
+                "confidence2",
+                round(float(effective_k), 6),
+                round(float(effective_u), 6),
+                bool(getattr(self, "_confidence_aux_tags_enabled", True)),
+            )
+            self._materialize_all_metric_from_memo_model("confidence2", context)
             self._project_model()
             return result
         k = self.confidence2_k if k is None else k
@@ -1788,6 +2131,14 @@ class TreeGenerator:
                 gamma=gamma,
                 _depth=_depth,
             )
+            effective_beta = self.resistance2_beta if beta is None else beta
+            effective_gamma = self.resistance2_gamma if gamma is None else gamma
+            context = self._metric_memo_context(
+                "resistance2",
+                round(float(effective_beta), 6),
+                round(float(effective_gamma), 6),
+            )
+            self._materialize_all_metric_from_memo_model("resistance2", context)
             self._project_model()
             return result
         beta = self.resistance2_beta if beta is None else beta
@@ -1845,6 +2196,7 @@ class TreeGenerator:
         """Strategic fusion score built from enhanced cumulative/confidence/resistance metrics."""
         if self._use_model_engine():
             result = self._calculate_strategic3_scores_model(node, weights=weights, rho=rho, lam=lam)
+            self._materialize_all_strategic_from_memo_model()
             self._project_model()
             return result
         weights = self.strategic3_weights if weights is None else weights
@@ -1898,10 +2250,19 @@ class TreeGenerator:
             if memo_key in self._strategic_memo:
                 self._strategic_memo_hits += 1
                 self._strategic_profile_stats["memo_hits"] += 1
-                strategic_value = int(self._strategic_memo[memo_key])
+                strategic_value, exploitability = self._strategic_memo_fields(self._strategic_memo[memo_key])
                 materialize_on_hit = bool(getattr(self, "_materialize_strategic_tags_on_memo_hit", True))
-                if materialize_on_hit and not self._has_prefixed_tag(node, 'strategic3_'):
-                    self._replace_prefixed_tags(node, {'strategic3_': strategic_value})
+                if materialize_on_hit:
+                    if self._effective_memo_key_mode() == "canonical_state":
+                        self._replace_prefixed_tags(
+                            node,
+                            {
+                                'strategic3_': strategic_value,
+                                'strategic3_exploit_': exploitability,
+                            },
+                        )
+                    elif not self._has_prefixed_tag(node, 'strategic3_'):
+                        self._replace_prefixed_tags(node, {'strategic3_': strategic_value})
                     self._strategic_profile_stats["tag_writes"] += 1
                 self.update_node_strategic_display(node, strategic_value)
 
@@ -1965,7 +2326,10 @@ class TreeGenerator:
             )
             self._strategic_profile_stats["tag_writes"] += 1
             self.update_node_strategic_display(node, strategic_value)
-            self._strategic_memo[memo_key] = strategic_value
+            self._strategic_memo[memo_key] = {
+                "strategic3": strategic_value,
+                "strategic3_exploit": int(round(exploitability)),
+            }
             return strategic_value
 
         return max(child_scores) if child_scores else 0
@@ -1983,7 +2347,8 @@ class TreeGenerator:
                 memo_value = self._strategic_memo.get(memo_key)
                 if memo_value is not None:
                     self._strategic_profile_stats["memo_fastpath_reads"] += 1
-                    return int(memo_value)
+                    strategic_value, _ = self._strategic_memo_fields(memo_value)
+                    return strategic_value
             except Exception:
                 pass
             return 0
@@ -1994,7 +2359,8 @@ class TreeGenerator:
             memo_value = self._strategic_memo.get(memo_key)
             if memo_value is not None:
                 self._strategic_profile_stats["memo_fastpath_reads"] += 1
-                return int(memo_value)
+                strategic_value, _ = self._strategic_memo_fields(memo_value)
+                return strategic_value
         except Exception:
             pass
         return 0

@@ -31,6 +31,12 @@ class PairingNode:
     sort_value: int = 0
     display_confidence: int = 0
     display_resistance: int = 0
+    state_attacker: str | None = None
+    state_attacker_side: str = ""
+    state_choosing_side: str = ""
+    state_our_pool: frozenset[str] = field(default_factory=frozenset)
+    state_opponent_pool: frozenset[str] = field(default_factory=frozenset)
+    state_choice_pool: frozenset[str] = field(default_factory=frozenset)
 
 
 class TreeProjector:
