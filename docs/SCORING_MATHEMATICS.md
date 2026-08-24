@@ -290,14 +290,36 @@ scenarios and all three objectives, every affected parent state yields an
 identical **objective value** (max gap \(0\)) — the quantity that drives ranking
 and sorting is preserved exactly, which is what the memo needs.
 
-The full distributions are *not* always identical. On 4v4 they differ by up to
-0.26 (floor) and 0.73 (win probability); on 5v5 they happen to agree exactly.
-The cause is tie-breaking: when two children tie on the objective,
+The full distributions were *not* always identical. On 4v4 they differed by up to
+0.26 (floor) and 0.73 (win probability); on 5v5 they happened to agree exactly.
+The cause was tie-breaking: when two children tie on the objective,
 `max(child_dists, key=...)` keeps the first in list order, so which
-equally-good subtree survives depends on presentation order. The score is
-unaffected by construction — tied means equal — but the displayed *spread* can
-shift. Anything that reads the distribution itself rather than its objective
-value should not assume order-independence.
+equally-good subtree survived depended on presentation order. The score was
+unaffected by construction — tied means equal — but the displayed *spread*
+shifted with the order an offer happened to be listed in.
+
+**This is now fixed.** The comparison key is a pair,
+
+$$\text{key}(d) = \bigl(\text{rank}(d),\; \text{pref}(d)\bigr), \qquad
+\text{pref}(d) = \bigl(\max \operatorname{supp} d,\; \min \operatorname{supp} d,\;
+\text{canonical}(d)\bigr)$$
+
+so ties on \(\text{rank}\) are broken by a pure function of the distribution
+rather than by sibling order. Among equally-ranked options the engine reports
+the one with the **wider upside** first, then the **safer floor**, then a
+canonical serialisation as a total-order backstop. Two consequences worth
+stating plainly:
+
+- The objective value is unchanged — the tie-break only runs when
+  \(\text{rank}\) is already equal, so it can never override a ranking decision.
+- The reported ceiling, floor and regret are now functions of the *decision*,
+  not of the presentation. `test_distribution_tie_break_order.py` pins this by
+  scoring the same tree with the children supplied in both orders; before the
+  fix, one ordering reported a ceiling of 3 where the other reported 4.
+
+Preferring upside on a tie is deliberate rather than arbitrary: when two lines
+are genuinely equal on the objective, the one that keeps a better best case
+alive is the one that preserves outs.
 
 **5,332 is the true distinct-state count; 5,392 counts each order-variant twice.**
 

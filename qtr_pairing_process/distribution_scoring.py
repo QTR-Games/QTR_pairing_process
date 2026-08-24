@@ -156,6 +156,22 @@ def softmax(values: list[float], lam: float) -> list[float]:
     return [e / total for e in exps]
 
 
+def _preference_key(dist: Distribution) -> tuple:
+    """Order-independent tie-break among equally-ranked children.
+
+    ``max`` returns the *first* maximal element, so when two children rank
+    identically the winner was decided by sibling order -- which the UI
+    controls. The same decision could therefore display a different spread
+    depending on how the offer happened to be presented.
+
+    Ranking is unchanged; this only decides which of several equally-good
+    distributions gets reported, using the distribution itself rather than its
+    position. Preference is wider upside first, then a safer floor, then a
+    canonical serialisation so the ordering is total.
+    """
+    return (max(dist), min(dist), tuple(sorted(dist.items())))
+
+
 @dataclass(frozen=True)
 class Outcome:
     """Summary statistics of a distribution over final totals.
@@ -375,7 +391,10 @@ class DistributionScorer:
             else:
                 # We move next, and we get to actually choose. No blending:
                 # we take the child we would really pick.
-                best = max(child_dists, key=lambda d: self._rank(d, child_need))
+                best = max(
+                    child_dists,
+                    key=lambda d: (self._rank(d, child_need), _preference_key(d)),
+                )
                 combined = dict(best)
 
             self._memo[current_key] = shift(combined, own)

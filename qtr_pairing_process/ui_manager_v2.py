@@ -1879,7 +1879,21 @@ class UiManager:
         rating_system = self.current_rating_system
         team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
         ratings_signature = json.dumps(self._get_grid_ratings_signature(), ensure_ascii=False)
-        return (team_1, team_2, scenario_id, rating_system, team_first, ratings_signature)
+        # The snapshot is persisted, so the key must cover anything that changes
+        # the shape of the projected values tuple. Risk reporting adds four
+        # columns and the engine decides whether the model tree exists at all;
+        # omitting them let a risk-on snapshot be restored into a risk-off run.
+        engine = os.environ.get("QTR_ENGINE", "widget").strip().lower()
+        return (
+            team_1,
+            team_2,
+            scenario_id,
+            rating_system,
+            team_first,
+            ratings_signature,
+            engine,
+            risk_columns_requested(),
+        )
 
     def _next_tree_generation_id(self) -> int:
         self._tree_generation_id += 1
@@ -5658,8 +5672,17 @@ class UiManager:
             if not decision_node:
                 decision_node = children[0]
             else:
+                # The model path (see sort_children below) identifies the
+                # synthetic root structurally. Match that here instead of
+                # relying only on the node's title: the synthetic root is the
+                # sole top-level item, so an empty parent is the same test.
+                # The text check is retained as a defensive fallback.
                 node_text = (self.treeview.tree.item(decision_node, 'text') or "").strip().lower()
-                if node_text == "pairings":
+                try:
+                    is_top_level = not self.treeview.tree.parent(decision_node)
+                except Exception:
+                    is_top_level = False
+                if is_top_level or node_text == "pairings":
                     decision_node = children[0]
             primary_reverse = not self.tree_generator._is_opponent_choice_level(decision_node)
 
