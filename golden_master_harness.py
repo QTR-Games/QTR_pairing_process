@@ -2,24 +2,31 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
-from contextlib import contextmanager
 import hashlib
 import json
-from pathlib import Path
+import os
 import tkinter as tk
+from collections.abc import Callable, Iterable, Mapping
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Final
 
+from golden_master_scenarios import GoldenScenario
 from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.pairing_model import PairingNode, TreeProjector
 from qtr_pairing_process.tree_generator import TreeGenerator
-
-from golden_master_scenarios import GoldenScenario
-
 
 SNAPSHOT_SCHEMA_VERSION = 1
 SNAPSHOT_DIR = Path(__file__).resolve().parent / "golden_fixtures"
 FULL_FIDELITY_NODE_THRESHOLD = 5000
 RECORD_SEPARATOR = "\x1e"
+_UNSET: Final = object()
+DEFAULT_SCORING_ENVIRONMENT: Final[dict[str, str | None]] = {
+    "QTR_ENGINE": "widget",
+    "QTR_RENDER": "eager",
+    "QTR_RISK": None,
+    "QTR_RISK_LAMBDA": None,
+}
 
 
 def _run_cumulative(generator: TreeGenerator) -> None:
@@ -72,11 +79,35 @@ def tk_treeview():
         root.destroy()
 
 
+@contextmanager
+def golden_master_environment(overrides: Mapping[str, str | None] | None = None):
+    environment = dict(DEFAULT_SCORING_ENVIRONMENT)
+    if overrides:
+        environment.update(overrides)
+    previous = {
+        name: os.environ[name] if name in os.environ else _UNSET
+        for name in environment
+    }
+    try:
+        for name, value in environment.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is _UNSET:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
 def generate_snapshot(scenario: GoldenScenario, sort_mode: str) -> dict:
     if sort_mode not in SORT_MODES:
         raise KeyError(f"unknown sort mode: {sort_mode}")
 
-    with tk_treeview() as treeview:
+    with golden_master_environment(), tk_treeview() as treeview:
         generator = TreeGenerator(
             treeview=treeview,
             sort_alpha=False,
@@ -115,7 +146,7 @@ def generate_model_snapshot(scenario: GoldenScenario, sort_mode: str) -> dict:
     if sort_mode not in SORT_MODES:
         raise KeyError(f"unknown sort mode: {sort_mode}")
 
-    with tk_treeview() as treeview:
+    with golden_master_environment({"QTR_ENGINE": "model"}), tk_treeview() as treeview:
         generator = TreeGenerator(
             treeview=treeview,
             sort_alpha=False,
