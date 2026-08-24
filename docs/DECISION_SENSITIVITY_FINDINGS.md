@@ -230,3 +230,105 @@ strictly zero-sum. Model-engine runs must pass
 `golden_master_environment({"QTR_ENGINE": "model", "QTR_RENDER": "lazy"})`;
 the harness otherwise pins `QTR_ENGINE=widget` and `model_root` is `None`.
 
+---
+
+# Finding 6 — the engine's optimism, measured in points
+
+You asked, of separating your choice from their response: *"how do we actually
+measure or address this scientifically?"* This is the answer to the first half
+of it. It turns a judgement call — "does the engine assume the opponent
+cooperates?" — into a number with units.
+
+## 6.1 — The test
+
+The same convention that makes the app work also makes it falsifiable. If your
+read of a matchup is a 5, theirs is a 1; across five games the two teams' round
+totals must sum to exactly 30. That is arithmetic, not modelling.
+
+So solve the same tournament twice: once from your seat, once from theirs, with
+the players swapped, every rating flipped to `6 − r`, and the who-picks-first
+flag inverted. Then measure
+
+```
+excess = (what we think we score) + (what they think they score) − 30
+```
+
+If the scoring rule is fair, that is zero. If it quietly lets each side assume
+the other will be helpful, **both** sides come out ahead of reality and the
+excess is positive. It is denominated in tournament points, so the size of the
+error is directly readable.
+
+Before trusting any of it, the harness checks the mirror is real: under a purely
+optimistic rule the two seats must value the game *identically*. They did, on
+all six matchups — 15/15, 15/15, 16/16, 16/16, 16/16, 17/17. A construction bug
+would almost certainly have broken that symmetry.
+
+## 6.2 — The result
+
+Team Irving 2024, six opponents, scenario 0. Conserved total 30.
+
+| rule | mean excess | min | max |
+|---|---|---|---|
+| optimistic — `max()` everywhere (today's `cumulative` metric) | **+1.667** | 0.000 | +4.000 |
+| minimax — `min()` at their levels | **−1.833** | −3.000 | 0.000 |
+| quantal — what the scoring engine actually ships | **−0.181** | −1.040 | +1.089 |
+
+Two things fall out, and the second one I did not expect.
+
+**The optimism is real and it is large.** Against England Dragons, both teams
+conclude they will take 17 points out of 30. Somebody is wrong by 4 points —
+which, on your scale, is most of a game. The rule never underestimates on any
+matchup tested, which is the signature of a bias rather than noise.
+
+**But flipping `max` to `min` is not the fix.** This is the part worth sitting
+with. Pure minimax — assume they always find your worst line — is wrong by
+almost exactly as much, just in the other direction. Both sides brace for their
+own worst case, and both cannot be right. It *feels* like the conservative,
+safe choice, and it is measurably no more honest than optimism.
+
+Only modelling the opponent as *good but fallible* lands near zero — and it does
+so about ten times more accurately than either extreme.
+
+## 6.3 — What this means for you
+
+Your axiom was that you must assume the opponent sees the same numbers you do,
+mirrored. That assumption now has a test attached, and the engine that ships
+passes it while the two obvious alternatives fail it in opposite directions.
+
+Concretely:
+
+1. **The `cumulative` metric overstates by about 1.7 points on real data.** That
+   is the number in the sort column today. Knowing the size matters: it is big
+   enough to reorder close openers, and it always flatters.
+2. **"Assume the worst" is not the safe default it looks like.** If you have
+   ever felt the tool was too pessimistic about a line, this is why that instinct
+   was worth listening to.
+3. **This does not decide anything on its own.** Changing the `cumulative`
+   metric changes displayed scores and will fail the golden master by design.
+   That is a re-baseline, and it belongs in the hand-walk you asked to do when
+   you can concentrate on it — not in a quiet commit.
+
+## 6.4 — What it does *not* answer
+
+It measures whether the engine is *biased*. It does not yet separate what you
+control from what they do to you. The 0.92 swing in Finding 5 is still measured
+across all 50 depth-1 nodes, which bundle your opening pick with their reply.
+That decomposition is the other half of your question and is still open.
+
+## 6.5 — Reproduction
+
+- `test_zero_sum_conservation.py` (repo root) — the permanent guard. Hermetic,
+  synthetic 4v4, no external database, 4 tests in ~1.6s. Includes the
+  mirror-fidelity check as a precondition, so the conservation numbers cannot be
+  trusted spuriously.
+- `probe_conservation.py` (session `files/`) — the real-data probe that produced
+  the table in 6.2.
+
+On the synthetic 4v4 grid the effect is starker than on real data: both seats
+claim 16 points out of a possible 24, an excess of **+8.0**. Real rosters are
+flat (Finding 1), which compresses the bias — it does not remove it.
+
+The mathematics is written up in `docs/SCORING_MATHEMATICS.md` §3.4, where it
+now stands as the fourth and only *external* validation check on the scoring
+engine.
+

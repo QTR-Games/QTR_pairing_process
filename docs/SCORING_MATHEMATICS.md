@@ -244,6 +244,61 @@ Check 1 is the important one. Exact convergence to a value computed by
 different code is strong evidence that the mixture, the shift and the
 accumulation rule are all correct simultaneously.
 
+### 3.4 The conservation test: measuring cooperation bias in points
+
+The three checks above are internal — they compare the engine against other
+things the engine believes. There is a stronger test available, because
+§1.3 established that ratings are strictly zero-sum: the opponent's view of a
+matchup is \(6 - r\), so across \(n\) games the two teams' round totals must
+sum to exactly \(6n\). That is forced by the convention, not assumed.
+
+So solve the **same game twice** — once from our seat, once from theirs, with
+players swapped, every rating replaced by \(6-r\), and the "who chooses first"
+flag inverted. Define
+
+$$\text{excess} = V_{\text{us}} + V_{\text{them}} - 6n$$
+
+A rule that neither flatters nor punishes us must give \(\text{excess}=0\).
+A rule that lets each side assume the other cooperates makes **both** sides
+overestimate, so the excess is positive — and it is denominated in tournament
+points, which makes it interpretable rather than merely detectable.
+
+Measured on real event data (Team Irving 2024, six opponents, scenario 0,
+\(n=5\), conserved total 30):
+
+| rule | mean excess | min | max | reading |
+|---|---|---|---|---|
+| optimistic — `max()` at every level | **+1.667** | 0.000 | +4.000 | never below 0 |
+| minimax — `min()` at their levels | **−1.833** | −3.000 | 0.000 | never above 0 |
+| quantal — what the engine ships | **−0.181** | −1.040 | +1.089 | straddles 0 |
+
+Two conclusions, and the second is the surprising one.
+
+1. **The optimistic rule is provably biased.** It is what
+   `tree_generator.calculate_all_path_values` — the `cumulative` metric — does:
+   `max()` over all children regardless of whose turn it is. Against England
+   Dragons both sides conclude they will score 17 of a possible 30. On the
+   synthetic 4v4 fixture the effect is starker still: both seats claim 16 points
+   out of a possible 24, an excess of **+8.0**.
+
+2. **"Just flip `max` to `min`" is not the fix.** Pure minimax is wrong by
+   about as much as pure optimism, in the opposite direction: both sides
+   assume they will be held to their worst case, and both cannot be. Only the
+   quantal rule straddles zero. This is the empirical justification for
+   modelling opponent fallibility with \(\lambda\) rather than by assuming
+   perfect adversarial play — and it was not obvious in advance.
+
+The bias is a property of the *rule*, not of the data: the optimistic excess is
+non-negative on every matchup tested, and the minimax excess non-positive on
+every one. `test_zero_sum_conservation.py` pins this hermetically on a
+synthetic grid, including a guard that the mirror construction is faithful
+before any conclusion is drawn from it.
+
+This does **not** close the wider p3c question. It establishes which rule is
+self-consistent; whether the sort path should adopt it is a separate decision
+that changes displayed scores and requires a reviewed re-baseline of the golden
+master.
+
 ---
 
 ## 4. Shift-invariance: which objective you can memoize
@@ -536,8 +591,20 @@ it is shift-invariant.
 
 1. **Can \(\lambda\) be fitted from data?** Every completed round is an
    observation of an opponent decision. With enough history, \(\lambda\) becomes
-   measured rather than assumed — and could be per-opponent.
+   measured rather than assumed — and could be per-opponent. §3.4 sharpens this:
+   the conservation excess gives an objective loss function to fit \(\lambda\)
+   against, since the true \(\lambda\) should drive the excess to zero.
 2. **Three matchups from one team** is a thin evidence base for §7. The
    conclusion that `strategic3` is near-optimal deserves a wider test before it
-   is treated as settled.
+   is treated as settled. (§3.4 now uses six matchups, but for a different
+   question.)
 3. **Branch-and-bound on the floor axis** is valid and unexploited.
+4. **Should the sort path adopt the conserving rule?** §3.4 measures the
+   `cumulative` metric's cooperation bias at +1.67 points on real data. What it
+   does *not* settle is whether to change it: doing so alters displayed scores
+   and requires a reviewed re-baseline of the golden master. The measurement is
+   done; the decision is deliberately not.
+5. **Separating "my choice" from "their response."** The 0.92 probability swing
+   in `DECISION_SENSITIVITY_FINDINGS.md` §5 is measured across all 50 depth-1
+   nodes, which bundle our opening choice with the opponent's reply. Attributing
+   it to the controllable half is the remaining measurement.
