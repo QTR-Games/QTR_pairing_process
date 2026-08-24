@@ -7,11 +7,13 @@ without a GUI.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from qtr_pairing_process.distribution_scoring import DistributionScorer, annotate_risk
 from qtr_pairing_process.pairing_model import PairingNode, TreeProjector
-from qtr_pairing_process.tree_generator import risk_columns_requested
+from qtr_pairing_process.tree_generator import TreeGenerator, risk_columns_requested
 
 
 @pytest.fixture
@@ -27,10 +29,21 @@ def risk_columns_off():
     TreeProjector.RISK_COLUMNS_ENABLED = previous
 
 
-def _node(text, base, depth, is_opponent_choice=False, parent=None):
+def _node(
+    text,
+    base,
+    depth,
+    is_opponent_choice=False,
+    parent=None,
+    *,
+    counts_toward_total=False,
+    base_for_our_team=None,
+):
     node = PairingNode(
         text=text, base=base, depth=depth,
         is_opponent_choice=is_opponent_choice, parent=parent,
+        counts_toward_total=counts_toward_total,
+        base_for_our_team=base if base_for_our_team is None else base_for_our_team,
     )
     if parent is not None:
         parent.children.append(node)
@@ -42,7 +55,13 @@ def _linear_tree(bases):
     root = _node("Pairings", 0, 0)
     current = root
     for index, base in enumerate(bases):
-        current = _node(f"P{index} rating {base}", base, index + 1, parent=current)
+        current = _node(
+            f"P{index} rating {base}",
+            base,
+            index + 1,
+            parent=current,
+            counts_toward_total=True,
+        )
     return root
 
 
@@ -100,6 +119,15 @@ def test_risk_columns_require_the_model_engine(monkeypatch):
 
     monkeypatch.delenv("QTR_RISK")
     assert risk_columns_requested() is False
+
+
+@pytest.mark.parametrize("raw_value", ["oops", "nan", "inf", "-inf"])
+def test_invalid_risk_lambda_falls_back_to_default(monkeypatch, raw_value):
+    monkeypatch.setenv("QTR_RISK_LAMBDA", raw_value)
+
+    generator = TreeGenerator(treeview=SimpleNamespace(tree=None), strategic_preferences={})
+
+    assert generator.risk_lambda == 1.0
 
 
 # --------------------------------------------------------------------------

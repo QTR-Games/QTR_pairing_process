@@ -25,10 +25,21 @@ from qtr_pairing_process.distribution_scoring import (
 from qtr_pairing_process.pairing_model import PairingNode
 
 
-def _node(text, base, depth, is_opponent_choice=False, parent=None):
+def _node(
+    text,
+    base,
+    depth,
+    is_opponent_choice=False,
+    parent=None,
+    *,
+    counts_toward_total=False,
+    base_for_our_team=None,
+):
     node = PairingNode(
         text=text, base=base, depth=depth,
         is_opponent_choice=is_opponent_choice, parent=parent,
+        counts_toward_total=counts_toward_total,
+        base_for_our_team=base if base_for_our_team is None else base_for_our_team,
     )
     if parent is not None:
         parent.children.append(node)
@@ -114,12 +125,38 @@ def test_only_resolutions_and_forced_finals_count_toward_the_total():
     Counting both double-counts every game, which inflated round totals from
     ~15 to ~28 and made every opener look like a guaranteed win.
     """
-    offer = _node("Dan vs JVM (3/5) OR Brandon (4/5)", 4, 1)
-    resolution = _node("JVM rating 3", 3, 2, parent=offer)
+    offer = _node("Dan vs JVM (3/5) OR Brandon (4/5)", 4, 1, counts_toward_total=False)
+    resolution = _node("JVM rating 3", 3, 2, parent=offer, counts_toward_total=True)
     assert not contributes_to_total(offer)
     assert contributes_to_total(resolution)
     # A leaf is a forced final pairing: it resolves itself.
-    assert contributes_to_total(_node("Jack vs Justin (4/5) OR Justin (4/5)", 4, 9))
+    assert contributes_to_total(
+        _node(
+            "Jack vs Justin (4/5) OR Justin (4/5)",
+            4,
+            9,
+            counts_toward_total=True,
+        )
+    )
+
+
+def test_explicit_total_flag_beats_display_text_parsing():
+    offer = _node(
+        "Chris rating Hunter vs Sam (3/5) OR Lee (4/5)",
+        4,
+        1,
+        counts_toward_total=False,
+    )
+    resolution = _node(
+        "Sam rating 3",
+        3,
+        2,
+        parent=offer,
+        counts_toward_total=True,
+    )
+
+    assert contributes_to_total(offer) is False
+    assert contributes_to_total(resolution) is True
 
 
 # --------------------------------------------------------------------------
@@ -162,10 +199,57 @@ def _two_choice_tree():
     """Root -> our choice of two openers, each with an opponent reply."""
     root = _node("root", 0, 0)
     for opener, (good, bad) in (("A", (6, 2)), ("B", (5, 4))):
-        offer = _node(f"{opener} vs X (1/5) OR Y (1/5)", 0, 1, parent=root)
-        _node(f"X rating {good}", good, 2, is_opponent_choice=True, parent=offer)
-        _node(f"Y rating {bad}", bad, 2, is_opponent_choice=True, parent=offer)
+        offer = _node(
+            f"{opener} vs X (1/5) OR Y (1/5)",
+            0,
+            1,
+            parent=root,
+            counts_toward_total=False,
+        )
+        _node(
+            f"X rating {good}",
+            good,
+            2,
+            is_opponent_choice=True,
+            parent=offer,
+            counts_toward_total=True,
+        )
+        _node(
+            f"Y rating {bad}",
+            bad,
+            2,
+            is_opponent_choice=True,
+            parent=offer,
+            counts_toward_total=True,
+        )
     return root
+
+
+def test_distribution_uses_our_perspective_for_opponent_side_contributions():
+    root = _node("root", 0, 0)
+    opener = _node("A vs X (5/5) OR Y (1/5)", 5, 1, parent=root, counts_toward_total=False)
+    _node(
+        "X rating 5",
+        5,
+        2,
+        is_opponent_choice=True,
+        parent=opener,
+        counts_toward_total=True,
+        base_for_our_team=5,
+    )
+    _node(
+        "Y rating 1",
+        1,
+        2,
+        is_opponent_choice=True,
+        parent=opener,
+        counts_toward_total=True,
+        base_for_our_team=5,
+    )
+
+    scorer = DistributionScorer(threshold=15.0, lam=0.0, objective="expected")
+
+    assert math.isclose(scorer.outcome_for(opener).expected, 5.0, abs_tol=1e-9)
 
 
 def test_large_lambda_converges_to_the_minimax_value():

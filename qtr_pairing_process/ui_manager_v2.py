@@ -1,63 +1,66 @@
 ﻿""" ┬⌐ Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 # native libraries
-from multiprocessing import Value
-import os
-import sys
 import csv
-import json
-import sqlite3
-import time
-import threading
 import hashlib
 import io
+import json
+import os
 import re
-import traceback
+import sqlite3
 import subprocess
-import zipfile
-from contextlib import contextmanager
-from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple, cast
-import tkinter.font as tkfont
+import sys
+import threading
+import time
 
 # installed libraries
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, simpledialog
-from urllib import error
-# repo libraries
-# from qtr_pairing_process import ui_db_funcs
-from qtr_pairing_process.db_management import db_manager
-from qtr_pairing_process.ui_db_funcs import UIDBFuncs
-from qtr_pairing_process.constants import DEFAULT_COLOR_MAP, SCENARIO_MAP, DIRECTORY, SCENARIO_RANGES, SCENARIO_TO_CSV_MAP, RATING_SYSTEMS, DEFAULT_RATING_SYSTEM
-from qtr_pairing_process.settings_manager import SettingsManager
-from qtr_pairing_process.rating_system_dialog import RatingSystemDialog
-from qtr_pairing_process.data_validator import DataValidator
-from qtr_pairing_process.lazy_tree_view import LazyTreeView
-from qtr_pairing_process.tree_generator import TreeGenerator, risk_columns_requested
-from qtr_pairing_process.db_load_ui import DbLoadUi
-from qtr_pairing_process.database_preferences import DatabasePreferences
-from qtr_pairing_process.welcome_dialog import WelcomeDialog
+import tkinter.font as tkfont
+import traceback
+import zipfile
+from contextlib import contextmanager
+from pathlib import Path
+from tkinter import filedialog, messagebox, simpledialog, ttk
+from typing import Any, cast
+
 from qtr_pairing_process.app_logger import get_logger
-from qtr_pairing_process.xlsx_load_ui import XlsxLoadUi
+from qtr_pairing_process.constants import (
+    DEFAULT_COLOR_MAP,
+    DEFAULT_RATING_SYSTEM,
+    RATING_SYSTEMS,
+    SCENARIO_MAP,
+    SCENARIO_RANGES,
+    SCENARIO_TO_CSV_MAP,
+)
+from qtr_pairing_process.create_team_dialog import CreateTeamDialog
+from qtr_pairing_process.data_validator import DataValidator
+from qtr_pairing_process.database_preferences import DatabasePreferences
+from qtr_pairing_process.db_load_ui import DbLoadUi
 from qtr_pairing_process.db_management.db_manager import DbManager
 from qtr_pairing_process.delete_team_dialog import DeleteTeamDialog
-from qtr_pairing_process.create_team_dialog import CreateTeamDialog
-from qtr_pairing_process.excel_management.excel_importer import ExcelImporter
-from qtr_pairing_process.excel_management.simple_excel_importer import SimpleExcelImporter
 from qtr_pairing_process.excel_management.simple_excel_exporter import SimpleExcelExporter
+from qtr_pairing_process.excel_management.simple_excel_importer import SimpleExcelImporter
 from qtr_pairing_process.grid_data_model import GridDataModel
+from qtr_pairing_process.lazy_tree_view import LazyTreeView
 from qtr_pairing_process.perf_timer import PerfTimer
+from qtr_pairing_process.rating_system_dialog import RatingSystemDialog
+from qtr_pairing_process.settings_manager import SettingsManager
+from qtr_pairing_process.tree_generator import TreeGenerator, risk_columns_requested
+
+# repo libraries
+# from qtr_pairing_process import ui_db_funcs
+from qtr_pairing_process.welcome_dialog import WelcomeDialog
 
 
 class UiManager:
     def __init__(
         self,
-        color_map: Dict[str, str],
-        scenario_map: Dict[int, str],
+        color_map: dict[str, str],
+        scenario_map: dict[int, str],
         directory: str,
-        scenario_ranges: Dict[int, tuple],
-        scenario_to_csv_map: Dict[int, str],
+        scenario_ranges: dict[int, tuple],
+        scenario_to_csv_map: dict[int, str],
         print_output: bool = False,
-        perf_enabled: Optional[bool] = None
+        perf_enabled: bool | None = None
     ):
         self.print_output = print_output
         self.directory = directory
@@ -66,16 +69,16 @@ class UiManager:
         self.scenario_to_csv_map = scenario_to_csv_map
         self.is_sorted = False  # State variable to track if the tree is sorted
         self.active_sort_mode = None  # Track which sort mode is currently active
-        
+
         # Check if running in debug mode early for FILL button visibility
         self.is_debugging = 'debugpy' in sys.modules or sys.gettrace() is not None
-        
+
         # Initialize settings manager
         self.settings_manager = SettingsManager()
-        
+
         # Initialize database preferences manager FIRST (before rating system)
         self.db_preferences = DatabasePreferences(print_output=print_output)
-        
+
         # Initialize rating system from unified config (KLIK_KLAK_KONFIG.json)
         # Check db_preferences first, fallback to old settings manager if not found
         config_rating_system = None
@@ -106,7 +109,7 @@ class UiManager:
         self.sort_value_refresh_mode = str(ui_prefs.get("sort_value_refresh_mode", default_refresh_mode)).strip().lower()
         if self.sort_value_refresh_mode not in {"full", "visible_only"}:
             self.sort_value_refresh_mode = default_refresh_mode
-        
+
         self.current_rating_system = config_rating_system or self.settings_manager.get_rating_system()
         self.rating_config = RATING_SYSTEMS[self.current_rating_system]
         self.color_map = self.rating_config['color_map']
@@ -128,17 +131,17 @@ class UiManager:
         )
 
         # Initialize other UI components
-        self.comment_tooltip: Optional[tk.Toplevel] = None
-        self.comment_indicators: Dict[tuple, tk.Widget] = {}  # Store comment indicators
-        self.comment_indicator_callbacks: Dict[tuple, str] = {}  # Store after_idle callback IDs
-        self.row_checkboxes: List[tk.IntVar] = []
-        self.column_checkboxes: List[tk.IntVar] = []
-        self.row_checkbox_widgets: List[tk.Checkbutton] = []
-        self.column_checkbox_widgets: List[tk.Checkbutton] = []
-        self.row_checkbox_label_widget: Optional[tk.Label] = None
-        self.column_checkbox_label_widget: Optional[tk.Label] = None
+        self.comment_tooltip: tk.Toplevel | None = None
+        self.comment_indicators: dict[tuple, tk.Widget] = {}  # Store comment indicators
+        self.comment_indicator_callbacks: dict[tuple, str] = {}  # Store after_idle callback IDs
+        self.row_checkboxes: list[tk.IntVar] = []
+        self.column_checkboxes: list[tk.IntVar] = []
+        self.row_checkbox_widgets: list[tk.Checkbutton] = []
+        self.column_checkbox_widgets: list[tk.Checkbutton] = []
+        self.row_checkbox_label_widget: tk.Label | None = None
+        self.column_checkbox_label_widget: tk.Label | None = None
         self.grid_checkboxes_hidden = False
-        self.expand_grid_button: Optional[tk.Button] = None
+        self.expand_grid_button: tk.Button | None = None
         self._current_hover_cell = None
         self._team_dropdowns_initialized = False
         self._auto_populated_teams = False
@@ -147,8 +150,8 @@ class UiManager:
         self._scenario_calc_delay_ms = 120
         self._pending_scenario_calc_signature = None
         self._last_scenario_calc_signature = None
-        self._team_cache: Dict[str, Dict[str, Any]] = {}
-        self._comment_cache: Dict[tuple, Dict[tuple, str]] = {}
+        self._team_cache: dict[str, dict[str, Any]] = {}
+        self._comment_cache: dict[tuple, dict[tuple, str]] = {}
         self._last_comment_indicator_signature = None
         self._scenario_change_auto = False
         self._event_loop_lag_threshold_ms = 16.0
@@ -172,8 +175,8 @@ class UiManager:
         self._last_post_load_refresh_signature = None
         self._last_status_bar_signature = None
         self._last_calc_grid_rows_signature = None
-        self._noop_skip_counters: Dict[str, int] = {}
-        self._noop_skip_last_log_at: Dict[str, float] = {}
+        self._noop_skip_counters: dict[str, int] = {}
+        self._noop_skip_last_log_at: dict[str, float] = {}
         self._tree_cache_enabled = True
         self._tree_cache = {}
         self._tree_cache_key = None
@@ -189,12 +192,12 @@ class UiManager:
         self._tree_memo_token_set_count = 0
         self._tree_memo_token_change_count = 0
         self._pending_generated_tree_cache_ensure = False
-        
-        
+
+
         # Initialize logger
         self.logger = get_logger(__name__)
         self.logger.info("UiManager initializing...")
-        
+
         with self.perf.span("startup.select_database"):
             self.select_database()
         with self.perf.span("startup.initialize_ui_vars"):
@@ -202,7 +205,7 @@ class UiManager:
 
         if print_output:
             print(f"TKINTER VERSION: {tk.TkVersion}")
-            
+
 
     def select_database(self, force_prompt: bool = False) -> bool:
         """Select database, optionally forcing the database selector UI.
@@ -213,7 +216,7 @@ class UiManager:
         # Try to load the last used database from config
         with self.perf.span("startup.select_database.read_last_preference"):
             last_path, last_name = self.db_preferences.get_last_database()
-        
+
         if not force_prompt and last_path and last_name:
             # Validate that the saved database still exists
             with self.perf.span("startup.select_database.validate_last_preference"):
@@ -232,7 +235,7 @@ class UiManager:
             else:
                 self.logger.warning(f"Last used database not found: {last_name} at {last_path}")
                 self.logger.info("Showing database selector...")
-        
+
         # No saved database or it doesn't exist - show the selector
         with self.perf.span("startup.select_database.prompt_selector"):
             db_load_ui = DbLoadUi()
@@ -274,7 +277,7 @@ class UiManager:
         return True
 
     @staticmethod
-    def _db_reference(path: Optional[str], name: Optional[str]) -> Tuple[str, str]:
+    def _db_reference(path: str | None, name: str | None) -> tuple[str, str]:
         """Build a normalized, comparable database reference."""
         normalized_path = os.path.normcase(os.path.abspath(path or ""))
         normalized_name = os.path.normcase((name or "").strip())
@@ -348,7 +351,7 @@ class UiManager:
         self._invalidate_comment_cache()
         self.update_ui()
         self.update_status_bar()
-            
+
     def initialize_ui_vars(self):
         with self.perf.span("startup.setup_root_window"):
             # set root
@@ -357,7 +360,7 @@ class UiManager:
             self.root.minsize(1400, 900)
             # Defer maximize to idle so root construction is not blocked by WM calls.
             self._pending_initial_zoom = True
-            self.root.title(f"QTR'S KLIK KLAKER")
+            self.root.title("QTR'S KLIK KLAKER")
 
             # set key bindings
             self.root.bind('<Escape>', lambda event: self.root.quit())
@@ -463,14 +466,14 @@ class UiManager:
         with self.perf.span("startup.setup_grid_data_model"):
             self.grid_data_model = GridDataModel()
             self.grid_data_model.add_observer(self._on_grid_data_changed)
-            
+
             # Widget references (Entry widgets only, no StringVars)
-            self.grid_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(6)] for _ in range(6)]
-            self.grid_display_widgets: List[List[Optional[tk.Entry]]] = [[None for _ in range(6)] for _ in range(6)]
-        
+            self.grid_widgets: list[list[tk.Entry | None]] = [[None for _ in range(6)] for _ in range(6)]
+            self.grid_display_widgets: list[list[tk.Entry | None]] = [[None for _ in range(6)] for _ in range(6)]
+
         # Comment overlay intentionally unused; per-cell bindings handle comments.
         self.comment_overlay = None
-        
+
         # Track grid flip state and store original data
         self.grid_is_flipped = False
         self.original_grid_data = None
@@ -513,11 +516,11 @@ class UiManager:
         self._comment_tooltip_cell = None
         self._comment_editor_open = False
         self._popup_pending = False
-        self.notes_text: Optional[tk.Text] = None
-        self.summary_explain_label: Optional[tk.Label] = None
-        self._tree_explain_tooltip: Optional[tk.Toplevel] = None
-        self._tree_explain_tooltip_label: Optional[tk.Label] = None
-        self._tree_explain_last_node: Optional[str] = None
+        self.notes_text: tk.Text | None = None
+        self.summary_explain_label: tk.Label | None = None
+        self._tree_explain_tooltip: tk.Toplevel | None = None
+        self._tree_explain_tooltip_label: tk.Label | None = None
+        self._tree_explain_last_node: str | None = None
 
 
         self.team_b = tk.IntVar()
@@ -554,18 +557,18 @@ class UiManager:
                 rating_system=self.current_rating_system,
             )
         self.tree_generator.set_generation_id(self._tree_generation_id)
-        
+
         # Track current sorting mode for column display
         self.current_sort_mode = "none"
 
         # Column sorting state
         self.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
         self.active_column_sort = None
-        
-        # Matchup output panel is created as part of right-column setup
-        
 
-    
+        # Matchup output panel is created as part of right-column setup
+
+
+
     def _populate_dropdowns(self):
         """Populate dropdowns after UI is visible (deferred for performance)"""
         with self.perf.span("startup.populate_dropdowns"):
@@ -579,9 +582,9 @@ class UiManager:
     def _populate_team_dropdowns_idle(self):
         with self.perf.span("startup.populate_dropdowns.team_dropdowns"):
             self.set_team_dropdowns()
-    
 
-    
+
+
     def create_ui(self):
         theme = getattr(self, "ui_theme", {})
         pad_sm = theme.get("pad_sm", 5)
@@ -603,7 +606,7 @@ class UiManager:
         self.previous_team1 = self.team1_var.get()
         # Attach a trace to the StringVar
         self.team1_var.trace_add('write', self._on_team_box_change_traced)
-		
+
         tk.Label(self.drop_down_frame, text='Select Team 2:', font=control_font).pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
         # Use a StringVar to hold the value of the Combobox
         self.team2_var = tk.StringVar()
@@ -628,11 +631,11 @@ class UiManager:
         self.previous_value = self.scenario_var.get()
         # Attach a trace to the StringVar
         self.scenario_var.trace_add('write', self._on_scenario_box_change_traced)
-        
+
         # Defer team dropdowns and scenario box population to after UI is shown
         self.root.after(10, self._populate_dropdowns)
 
-        # Add essential buttons to a row just above the pairing grid       
+        # Add essential buttons to a row just above the pairing grid
         tk.Button(
             self.button_row_frame,
             text="Save Grid",
@@ -658,9 +661,9 @@ class UiManager:
             bg=theme.get("bg_secondary", "lightgray"),
         )
         self._paste_5x5_button.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
-        
+
         # Data Management menu button
-        data_mgmt_button = tk.Button(self.button_row_frame, text="Data Management", 
+        data_mgmt_button = tk.Button(self.button_row_frame, text="Data Management",
                                    command=lambda: self.show_data_management_menu(),
                                    bg=theme.get("bg_primary", "lightcyan"),
                                    fg=theme.get("fg_primary", "darkgreen"),
@@ -682,7 +685,11 @@ class UiManager:
 
         # Middle-row sort controls (between top grid and tree).
         self.sort_controls_row_frame = tk.Frame(self.button_row_frame)
-        self.sort_controls_row_frame.pack(side=tk.LEFT, padx=(pad_xl := theme.get("pad_xl", 14), pad_sm), pady=pad_sm)
+        self.sort_controls_row_frame.pack(
+            side=tk.LEFT,
+            padx=(theme.get("pad_xl", 14), pad_sm),
+            pady=pad_sm,
+        )
 
         self.generate_button = tk.Button(
             self.sort_controls_row_frame,
@@ -744,16 +751,16 @@ class UiManager:
 
         # Set initial button states (all inactive)
         self.update_sort_button_states()
-        
 
-        
+
+
         # Configure Treeview with style
         style = ttk.Style()
         style.configure("Treeview", font=("Arial", 10))
         self.treeview.tree.heading("#0", text="Pairing", command=lambda: self.on_column_click("#0"))
         self.treeview.tree.heading("Rating", text="Rating", command=lambda: self.on_column_click("Rating"))
         self.treeview.tree.heading("Sort Value", text="Sort Value", command=lambda: self.on_column_click("Sort Value"))
-        
+
         # Configure column widths
         self.treeview.tree.column("Rating", width=80, minwidth=50)
         self.treeview.tree.column("Sort Value", width=100, minwidth=80)
@@ -778,9 +785,9 @@ class UiManager:
         self.treeview.tree.bind("<Motion>", self._on_tree_hover_explain, add='+')
         self.treeview.tree.bind("<Leave>", self._hide_tree_explain_tooltip, add='+')
         self.treeview.pack(expand=1, fill='both')
-        
+
         # Matchup output panel is created on startup
-        
+
         # Load grid once widgets exist
         self.root.after(1, self.load_grid_data_from_db)
 
@@ -789,7 +796,7 @@ class UiManager:
 
         self.update_combobox_colors()
         self.init_display_headers()
-        
+
         # Create status bar
         self.create_status_bar()
         self._refresh_paste_button_state()
@@ -895,11 +902,11 @@ class UiManager:
                 bg=theme.get("bg_secondary", "lightblue"),
             )
             rating_header.grid(row=1, column=0, columnspan=6, pady=(0, 2), sticky="ew")
-            
+
             # Visual separator
             separator = tk.Frame(self.grid_frame, width=3, bg="darkgray")
             separator.grid(row=1, column=6, rowspan=7, sticky="ns", padx=5)
-            
+
             calc_header = tk.Label(
                 self.grid_frame,
                 text="Calculations",
@@ -950,7 +957,7 @@ class UiManager:
                             add='+'
                         )
                         entry.bind("<Button-3>", lambda event, row=r, col=c: self.open_comment_editor(event, row, col), add='+')
-                
+
         with self.perf.span("grid.seed_rating_initial_values"):
             for r in range(6):
                 for c in range(6):
@@ -967,7 +974,7 @@ class UiManager:
             for r in range(6):
                 for c in range(5):
                     # Display grid entries (columns 7-11) - no textvariable
-                    display_entry = tk.Entry(self.grid_frame, width=8, 
+                    display_entry = tk.Entry(self.grid_frame, width=8,
                                            state='readonly', font=entry_font, relief=tk.SOLID, borderwidth=1,
                                            readonlybackground="lightgray")
                     display_entry.grid(row=r + 2, column=c + 7, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
@@ -1004,7 +1011,7 @@ class UiManager:
             checkbox_label = tk.Label(self.grid_frame, text="Row\nSelect", font=("Arial", 9, "bold"))
             checkbox_label.grid(row=1, column=12, pady=(0, 2))
             self.row_checkbox_label_widget = checkbox_label
-            
+
             for r in range(1, 6):
                 var = tk.IntVar()
                 entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"R{r}")
@@ -1017,7 +1024,7 @@ class UiManager:
             col_label = tk.Label(self.grid_frame, text="Column Select", font=("Arial", 9, "bold"))
             col_label.grid(row=8, column=1, columnspan=5, pady=(5, 0))
             self.column_checkbox_label_widget = col_label
-            
+
             for c in range(1, 6):
                 var = tk.IntVar()
                 entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"C{c}")
@@ -1139,7 +1146,7 @@ class UiManager:
             return  # Skip updating color if row checkbox is checked
         if self.column_checkboxes and col-1 < len(self.column_checkboxes) and self.column_checkboxes[col-1].get() == 1:
             return  # Skip updating color if column checkbox is checked
-        
+
         # V2: Get value from GridDataModel (may be int or str)
         value = self.grid_data_model.get_rating(row, col)
         # Convert to string for color map lookup
@@ -1156,7 +1163,7 @@ class UiManager:
 
         if widget.cget('bg') != new_color:
             widget.config(bg=new_color)
-    
+
     def update_grid_colors(self):
         """Update all grid cell colors based on current rating system"""
         if self._resize_active:
@@ -1188,7 +1195,7 @@ class UiManager:
 
         for rating, color in self.color_map.items():
             tree_widget.tag_configure(str(rating), background=color)
-    
+
     def create_status_bar(self):
         """Create status bar showing current rating system"""
         theme = getattr(self, "ui_theme", {})
@@ -1199,7 +1206,7 @@ class UiManager:
             bg=theme.get("bg_panel_alt", "#f7f9fb"),
         )
         self.status_frame.pack(side=tk.BOTTOM, fill=tk.X)
-        
+
         # Database info
         db_name = getattr(self, 'db_name', 'Unknown')
         self.db_status = tk.Label(
@@ -1211,7 +1218,7 @@ class UiManager:
             fg=theme.get("fg_muted", "#333333"),
         )
         self.db_status.pack(side=tk.LEFT, padx=theme.get("pad_sm", 5))
-        
+
         # Rating system info
         system_info = f"Rating System: {self.rating_config['name']} ({self.rating_range[0]}-{self.rating_range[1]})"
         self.rating_status = tk.Label(
@@ -1259,7 +1266,7 @@ class UiManager:
             length=95,
         )
         self.busy_progress.pack(side=tk.RIGHT, padx=(0, 2), pady=2)
-        
+
         # Add color preview
         self.color_preview_frame = tk.Frame(self.status_frame, bg=theme.get("bg_panel_alt", "#f7f9fb"))
         self.color_preview_frame.pack(side=tk.RIGHT, padx=theme.get("pad_sm", 5))
@@ -1428,7 +1435,7 @@ class UiManager:
             yield
         finally:
             self._end_busy_ui()
-    
+
     def update_status_bar(self):
         """Update status bar information"""
         current_signature = (
@@ -1444,11 +1451,11 @@ class UiManager:
         if hasattr(self, 'rating_status'):
             system_info = f"Rating System: {self.rating_config['name']} ({self.rating_range[0]}-{self.rating_range[1]})"
             self.rating_status.config(text=system_info)
-        
+
         if hasattr(self, 'db_status'):
             db_name = getattr(self, 'db_name', 'Unknown')
             self.db_status.config(text=f"Database: {db_name}")
-        
+
         self._rebuild_color_preview()
 
         self._refresh_status_messages()
@@ -1552,7 +1559,7 @@ class UiManager:
             messages.append("Unsaved grid data")
         self._set_status_messages(messages)
 
-    def _set_status_messages(self, messages: List[str]):
+    def _set_status_messages(self, messages: list[str]):
         if not hasattr(self, 'dynamic_status_label'):
             return
 
@@ -1645,7 +1652,7 @@ class UiManager:
 
         # Fallback strategy: detached process launch.
         try:
-            popen_kwargs: Dict[str, Any] = {"cwd": str(app_root)}
+            popen_kwargs: dict[str, Any] = {"cwd": str(app_root)}
             if os.name == "nt":
                 popen_kwargs["creationflags"] = (
                     subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
@@ -1855,7 +1862,7 @@ class UiManager:
             return
         yield from tree_gen._walk_model_nodes(None)
 
-    def _build_tree_cache_key(self) -> Optional[tuple]:
+    def _build_tree_cache_key(self) -> tuple | None:
         if not hasattr(self, 'team1_var') or not hasattr(self, 'team2_var'):
             return None
         team_1 = self.team1_var.get().strip()
@@ -2036,7 +2043,7 @@ class UiManager:
             self.logger.warning(f"Failed to load persistent strategic memo: {exc}")
             return None
 
-    def _save_persistent_strategic_memo(self, cache_key: tuple, payload: Dict[str, Any]):
+    def _save_persistent_strategic_memo(self, cache_key: tuple, payload: dict[str, Any]):
         if not cache_key or not payload or not self._is_persistent_strategic_memo_enabled():
             return
         if not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
@@ -2123,7 +2130,7 @@ class UiManager:
             self.logger.warning(f"Failed to load persistent tree cache: {exc}")
             return None
 
-    def _save_persistent_tree_snapshot(self, cache_key: tuple, payload: Dict[str, Any]):
+    def _save_persistent_tree_snapshot(self, cache_key: tuple, payload: dict[str, Any]):
         if not cache_key or not payload or not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
             return
         self._ensure_generated_tree_cache_table()
@@ -2424,7 +2431,7 @@ class UiManager:
         self._primary_metrics_dirty = False
         return not self._all_strategic_scores_are_zero()
 
-    def _get_strategic_score_distribution(self) -> Optional[Dict[str, int]]:
+    def _get_strategic_score_distribution(self) -> dict[str, int] | None:
         """Return basic visibility diagnostics for strategic score tags across current tree."""
         if not hasattr(self, 'treeview') or not self.treeview:
             return None
@@ -2639,7 +2646,7 @@ class UiManager:
 
         self._tree_autogen_job = self.root.after(75, self.auto_generate_tree_after_teams_loaded)
 
-    def _read_clipboard_text(self) -> Optional[str]:
+    def _read_clipboard_text(self) -> str | None:
         try:
             return self.root.clipboard_get()
         except tk.TclError:
@@ -2966,7 +2973,7 @@ class UiManager:
         else:
             self._paste_5x5_button.config(state=tk.DISABLED)
 
-    def _apply_5x5_grid(self, grid: List[List[int]]):
+    def _apply_5x5_grid(self, grid: list[list[int]]):
         before_snapshot = self.grid_data_model.get_state_snapshot()
         before_dirty = bool(self._grid_dirty)
 
@@ -3180,7 +3187,7 @@ class UiManager:
 
         self.root.after_idle(show_popup)
 
-    def _get_comment_for_cell(self, row: int, col: int) -> Optional[str]:
+    def _get_comment_for_cell(self, row: int, col: int) -> str | None:
         team1_name = self.team1_var.get()
         team2_name = self.team2_var.get()
         scenario_name = self.scenario_var.get()
@@ -3254,7 +3261,7 @@ class UiManager:
         if width <= 0:
             return 360
         return width
-    
+
     # Add this method to update display-only fields
     def update_display_fields(self, row, col, value):
         try:
@@ -3330,7 +3337,7 @@ class UiManager:
         # Guard: Don't run calculations if teams are not selected
         team_1 = self.combobox_1.get().strip()
         team_2 = self.combobox_2.get().strip()
-        
+
         if not team_1 or not team_2:
             empty_signature = self._build_scenario_calc_signature()
             if empty_signature == self._last_scenario_calc_signature:
@@ -3358,14 +3365,14 @@ class UiManager:
                 if self.row_checkboxes and row - 1 < len(self.row_checkboxes) and self.row_checkboxes[row - 1].get() == 1:
                     self.update_display_fields(row, 4, "---")
                     continue
-                
+
                 # V2: Get floor value from GridDataModel
                 floor_value = self.grid_data_model.get_display(row, 0)
                 if not floor_value or floor_value == "---" or floor_value.strip() == "":
                     self.update_display_fields(row, 4, "---")
                     continue
                 floor_rating_sum = int(floor_value)
-                
+
                 all_margins = []
                 for col in range(1, 6):
                     col_margin_sum = 0
@@ -3378,7 +3385,7 @@ class UiManager:
                                 col_margin_sum += cell_value
                     diff = floor_rating_sum - col_margin_sum
                     all_margins.append(diff)
-                
+
                 max_margin = max(all_margins)
                 min_margin = min(all_margins)
                 bus_text = self._get_bus_advisory_label(max_margin=max_margin, min_margin=min_margin)
@@ -3511,37 +3518,37 @@ class UiManager:
         try:
             welcome = WelcomeDialog(self.root)
             show_again = welcome.show_welcome_message()
-            
+
             # Save preference
             self.db_preferences.set_welcome_message_preference(show_again)
-            
+
             # If user chose to open settings, show data management menu
             if hasattr(welcome, 'result') and welcome.result == "open_settings":
                 self.show_data_management_menu()
         except Exception as e:
             self.logger.error(f"Error showing welcome dialog: {e}", exc_info=True)
-    
+
     def on_create_team(self):
         self.create_team()
 
     def on_modify_team(self):
         self.modify_team()
-        
+
     def on_delete_team(self):
         self.delete_team()
         self.update_ui()
-    
+
     def on_change_database(self):
         """Allow user to select a different database or create a new one."""
         from tkinter import messagebox
-        
+
         try:
             # Show confirmation dialog
-            result = messagebox.askyesno("Change Database", 
+            result = messagebox.askyesno("Change Database",
                                        "This will close the current database and allow you to select a new one.\n\n"
                                        "Any unsaved changes will be lost.\n\n"
                                        "Do you want to continue?")
-            
+
             if result:
                 previous_db = self._db_reference(getattr(self, 'db_path', None), getattr(self, 'db_name', None))
 
@@ -3557,7 +3564,7 @@ class UiManager:
                     return
 
                 self._reset_after_database_change()
-                
+
                 # Show success message
                 db_name = self.db_name if hasattr(self, 'db_name') and self.db_name else "Selected Database"
                 messagebox.showinfo(
@@ -3565,18 +3572,18 @@ class UiManager:
                     f"Successfully switched to: {db_name}\n\n"
                     "All views were reloaded for the new database.",
                 )
-                
+
         except Exception as e:
             print(f"Error changing database: {e}")
             if self._root_is_alive():
                 messagebox.showerror("Error", f"Failed to change database: {e}")
-    
+
     def on_configure_rating_system(self):
         """Show dialog to configure rating system preference."""
         try:
             dialog = RatingSystemDialog(self.root, self.current_rating_system, self.db_manager)
             new_system = dialog.show()
-            
+
             if new_system and new_system != self.current_rating_system:
                 previous_rating_system = self.current_rating_system
 
@@ -3596,10 +3603,10 @@ class UiManager:
                 self.color_map = self.rating_config['color_map']
                 self.rating_range = self.rating_config['range']
                 self._configure_tree_rating_tags()
-                
+
                 # Save to unified config (KLIK_KLAK_KONFIG.json)
                 self.db_preferences.update_ui_preferences({'rating_system': new_system})
-                
+
                 # Also save to old settings for backward compatibility
                 self.settings_manager.set_rating_system(new_system)
 
@@ -3632,22 +3639,22 @@ class UiManager:
                 self._invalidate_team_cache()
                 self._invalidate_comment_cache()
                 self.update_ui()
-                
+
                 # Update grid colors immediately
                 self.update_grid_colors()
-                
+
                 # Update status bar
                 self.update_status_bar()
-                
+
                 # Show success message
-                messagebox.showinfo("Rating System Updated", 
+                messagebox.showinfo("Rating System Updated",
                                   f"Rating system changed from: {RATING_SYSTEMS[previous_rating_system]['name']}\n"
                                   f"to: {self.rating_config['name']}\n\n"
                                   f"Database: {self.db_name}\n"
                                   f"Range: {self.rating_range[0]}-{self.rating_range[1]}\n"
                                   f"Normalized ratings: {normalized_rows}\n"
                                   f"All views updated without restart.")
-                
+
         except Exception as e:
             print(f"Error configuring rating system: {e}")
             if self._root_is_alive():
@@ -3842,12 +3849,12 @@ class UiManager:
             relative_path="docs/FULL_USER_GUIDE.md",
             reopen_data_management_on_close=reopen_data_management_on_close,
         )
-    
+
     def show_data_management_menu(self):
         """Show a popup menu with data management options."""
         import tkinter as tk
         from tkinter import messagebox
-        
+
         try:
             # Create popup menu window with resilient one-screen sizing.
             menu_window = tk.Toplevel(self.root)
@@ -3855,11 +3862,11 @@ class UiManager:
             menu_window.geometry("860x720")
             menu_window.minsize(760, 640)
             menu_window.resizable(True, True)
-            
+
             # Center the window
             menu_window.transient(self.root)
             menu_window.grab_set()
-            
+
             # Position relative to main window
             x = self.root.winfo_x() + 50
             y = self.root.winfo_y() + 50
@@ -3982,22 +3989,22 @@ class UiManager:
                 section_button.pack(fill=tk.X, pady=(6, 0))
                 apply_state()
                 return section_container
-            
+
             # Title label
-            title_label = tk.Label(menu_window, text="Data Management", 
+            title_label = tk.Label(menu_window, text="Data Management",
                                  font=ui_tokens["title_font"], bg=ui_tokens["title_bg"], pady=10)
             title_label.pack(fill=tk.X, padx=10, pady=(10, 15))
-            
+
             # Create main frame for 2x2 grid layout
             main_frame = tk.Frame(menu_window, bg=ui_tokens["dialog_bg"])
             main_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=10)
-            
+
             # Weighted grid keeps dense sections readable while preserving one-screen layout.
             main_frame.grid_columnconfigure(0, weight=1)
             main_frame.grid_columnconfigure(1, weight=1)
             main_frame.grid_rowconfigure(0, weight=3)
             main_frame.grid_rowconfigure(1, weight=2)
-            
+
             # TOP LEFT: Import & Export section
             import_export_body = create_section(
                 main_frame,
@@ -4015,7 +4022,7 @@ class UiManager:
             add_menu_button(import_export_body, "Import Individual Ratings", self.import_individual_player_ratings, tier="primary", bg="#e6f2ff", reopen_data_management=True)
             add_menu_button(import_export_body, "Bulk Import Player Files", self.bulk_import_individual_player_ratings, tier="primary", bg="#e6f2ff", reopen_data_management=True)
             add_menu_button(import_export_body, "Import Names Only", self.import_names_only_csv, tier="primary", bg="#e6f2ff", reopen_data_management=True)
-            
+
             # TOP RIGHT: Data Management section
             data_mgmt_body = create_section(
                 main_frame,
@@ -4055,7 +4062,7 @@ class UiManager:
                 tier="utility",
                 reopen_data_management=True,
             )
-            
+
             # BOTTOM LEFT: Team Management section
             team_mgmt_body = create_section(
                 main_frame,
@@ -4069,7 +4076,7 @@ class UiManager:
             add_menu_button(team_mgmt_body, "Modify Team", self.on_modify_team, tier="primary", reopen_data_management=True)
             add_menu_button(team_mgmt_body, "Delete Team", self.on_delete_team, tier="secondary", reopen_data_management=True)
             add_menu_button(team_mgmt_body, "Import Templates", self.show_import_templates_popup, tier="utility", reopen_data_management=False)
-            
+
             # BOTTOM RIGHT: Database section
             database_body = create_section(
                 main_frame,
@@ -4105,7 +4112,7 @@ class UiManager:
                 bg=section_palette["db_settings"]["bg"]
             )
             perf_toggle.grid(row=0, column=0, sticky="w", padx=(0, 12), pady=(0, 6))
-            
+
             tree_autogen_toggle = tk.Checkbutton(
                 advanced_toggle_grid,
                 text="Tree Auto-Generate (restart)",
@@ -4145,21 +4152,21 @@ class UiManager:
                 wraplength=320,
                 justify=tk.LEFT,
             ).pack(anchor="w", pady=(0, 10))
-            
+
             # Close button frame at the bottom
             close_frame = tk.Frame(menu_window)
             close_frame.pack(pady=(4, 10))
-            
+
             close_button = tk.Button(close_frame, text="Close", width=28, height=2,
                                    command=menu_window.destroy,
                                    bg="lightcoral", fg="white", font=("Arial", 10, "bold"),
                                    relief=tk.RAISED, borderwidth=2)
             close_button.pack()
-            
+
         except Exception as e:
             print(f"Error showing data management menu: {e}")
             messagebox.showerror("Data Management", self._operation_failed_error(f"could not open Data Management menu: {e}"))
-    
+
     def _menu_action(self, menu_window, action_func, reopen_data_management_on_complete=False):
         """Execute menu action and close menu window."""
         try:
@@ -4172,7 +4179,7 @@ class UiManager:
             from tkinter import messagebox
             if self._root_is_alive():
                 messagebox.showerror("Data Management", self._operation_failed_error(f"menu action could not be executed: {e}"))
-    
+
     def export_xlsx(self):
         """Export selected matchup in the active simple XLSX template."""
         try:
@@ -4243,7 +4250,7 @@ class UiManager:
             self.logger.exception("Failed to open import logs folder")
             messagebox.showerror("Import Logs", self._operation_failed_error(f"could not open import logs folder: {exc}"))
 
-    def _write_import_diagnostic_report(self, report: Dict[str, Any]) -> str:
+    def _write_import_diagnostic_report(self, report: dict[str, Any]) -> str:
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         millis = int((time.time() % 1) * 1000)
         file_name = f"import_diagnostic_{timestamp}_{millis:03d}.json"
@@ -4256,8 +4263,8 @@ class UiManager:
         self,
         operation: str,
         status: str,
-        details: Optional[Dict[str, Any]] = None,
-        exc: Optional[Exception] = None,
+        details: dict[str, Any] | None = None,
+        exc: Exception | None = None,
     ):
         team_name = ""
         scenario_value = ""
@@ -4270,7 +4277,7 @@ class UiManager:
         except Exception:
             scenario_value = ""
 
-        report: Dict[str, Any] = {
+        report: dict[str, Any] = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "operation": operation,
             "status": status,
@@ -4361,8 +4368,7 @@ class UiManager:
         if not players:
             raise ValueError("No players are available for the selected friendly team.")
 
-        selected: List[Optional[Tuple[int, str]]] = [None]
-        player_name_by_id = {pid: name for pid, name in players}
+        selected: list[tuple[int, str] | None] = [None]
 
         dialog = tk.Toplevel(self.root)
         dialog.title(title)
@@ -4409,7 +4415,7 @@ class UiManager:
         if not team_names:
             raise ValueError("No teams are available.")
 
-        selected: List[Optional[str]] = [None]
+        selected: list[str | None] = [None]
         dialog = tk.Toplevel(self.root)
         dialog.title(title)
         dialog.geometry("430x170")
@@ -4538,7 +4544,7 @@ class UiManager:
             )
 
     def _load_individual_player_csv_rows(self, file_path):
-        with open(file_path, mode="r", newline="", encoding="utf-8-sig") as csvfile:
+        with open(file_path, newline="", encoding="utf-8-sig") as csvfile:
             reader = csv.DictReader(csvfile)
             required_columns = self._individual_player_export_columns()
             fieldnames = reader.fieldnames or []
@@ -4614,8 +4620,8 @@ class UiManager:
         target_player_id,
         target_player_name,
     ):
-        warnings: List[str] = []
-        errors: List[str] = []
+        warnings: list[str] = []
+        errors: list[str] = []
 
         first = rows[0]
         if first.get("schema_version") != "player_ratings_export_v1":
@@ -4657,7 +4663,7 @@ class UiManager:
 
         import_rows = []
         for idx, row in enumerate(rows, start=2):
-            row_errors: List[str] = []
+            row_errors: list[str] = []
             for metadata_key in (
                 "schema_version",
                 "app_export_version",
@@ -4806,7 +4812,7 @@ class UiManager:
                 return None
 
         summary = self.db_manager.replace_individual_player_ratings(target_team_id, target_player_id, import_rows)
-        summary = cast(Dict[str, Any], dict(summary))
+        summary = cast(dict[str, Any], dict(summary))
         summary["warnings"] = warnings
         summary["rows_in_file"] = len(import_rows)
         return summary
@@ -4851,7 +4857,7 @@ class UiManager:
                 self.load_grid_data_from_db(refresh_ui=True)
                 warning_text = ""
                 if summary.get("warnings"):
-                    warning_text = "\n\nWarnings:\n- " + "\n- ".join(cast(List[str], summary["warnings"]))
+                    warning_text = "\n\nWarnings:\n- " + "\n- ".join(cast(list[str], summary["warnings"]))
 
                 report = self._build_import_report(
                     operation="import_individual_player_ratings",
@@ -4913,7 +4919,7 @@ class UiManager:
                 succeeded = 0
                 failed = 0
                 results = []
-                per_file_reports: List[Dict[str, Any]] = []
+                per_file_reports: list[dict[str, Any]] = []
 
                 for file_name in file_names:
                     file_path = os.path.join(folder_path, file_name)
@@ -4928,7 +4934,6 @@ class UiManager:
                             file_player_id = None
 
                         target_player_id = None
-                        target_player_name = file_player_name
 
                         local_db_fingerprint = self.db_manager.get_db_fingerprint()
                         local_roster_hash = self.db_manager.get_team_roster_hash(target_team_id)
@@ -4968,7 +4973,7 @@ class UiManager:
                             raise ValueError("Import canceled.")
                         succeeded += 1
                         result_line = f"Success: {file_name} -> {file_player_name} ({summary['rows_in_file']} rows)"
-                        summary_warnings = cast(List[str], summary.get("warnings") or [])
+                        summary_warnings = cast(list[str], summary.get("warnings") or [])
                         if summary_warnings:
                             result_line += "\n   Warnings:\n   - " + "\n   - ".join(summary_warnings)
                         results.append(result_line)
@@ -5037,7 +5042,7 @@ class UiManager:
                 "Bulk Import Failed",
                 f"Bulk import failed:\n{exc}\n\nDiagnostics log:\n{log_path}",
             )
-    
+
     def on_generate_combinations(self):
         with self._busy_ui_operation("Loading - generating combinations"):
             # Ensure matchup output panel is available before generate/extract flows.
@@ -5045,7 +5050,13 @@ class UiManager:
 
             cache_key = self._build_tree_cache_key()
             our_team_first = bool(self.team_b.get()) if hasattr(self, 'team_b') else True
-            if self._tree_cache_enabled and cache_key and not self._using_lazy_model_render():
+            using_model_engine = bool(
+                hasattr(self, "tree_generator")
+                and self.tree_generator
+                and callable(getattr(self.tree_generator, "_use_model_engine", None))
+                and self.tree_generator._use_model_engine()
+            )
+            if self._tree_cache_enabled and cache_key and not self._using_lazy_model_render() and not using_model_engine:
                 if cache_key == self._tree_cache_key and self._tree_has_nodes():
                     self.tree_generator.our_team_first = our_team_first
                     self._set_tree_generation_id(self._tree_generation_id)
@@ -5074,7 +5085,7 @@ class UiManager:
                     self._reset_tree_sort_state()
                     return
                 self._log_perf_entry("tree.cache.miss", 0.0)
-            
+
             fNames, oNames = self.prep_names()
             fRatings, oRatings = self.prep_ratings(fNames,oNames)
             if self.print_output:
@@ -5099,13 +5110,13 @@ class UiManager:
                 )
             self._set_tree_generation_id(self._next_tree_generation_id())
             self._set_tree_memo_state_token(cache_key)
-            
+
             # Automatically expand the root "Pairings" node
             root_nodes = self.treeview.tree.get_children()
             if root_nodes:
                 self.treeview.tree.item(root_nodes[0], open=True)
 
-            if self._tree_cache_enabled and cache_key and not self._using_lazy_model_render():
+            if self._tree_cache_enabled and cache_key and not self._using_lazy_model_render() and not using_model_engine:
                 cache_payload = {
                     "snapshot": self._capture_tree_snapshot(),
                     "generation_id": self._tree_generation_id,
@@ -5119,7 +5130,7 @@ class UiManager:
             # Strategic sorting is intentionally user-initiated.
             self._reset_tree_sort_state()
             self._update_matchup_summary([])
-        
+
     def sort_by_confidence(self):
         """Sort tree by risk-adjusted confidence scores"""
         with self._busy_ui_operation("Loading - sorting by confidence"):
@@ -5261,7 +5272,7 @@ class UiManager:
                             strategic_invocation_id=strategic_invocation_id,
                             entries=len(memo_payload.get("entries", [])),
                         )
-    
+
     def unsort_tree(self):
         """Remove all sorting and return to default order"""
         self.current_sort_mode = "none"
@@ -5272,21 +5283,21 @@ class UiManager:
         self.is_sorted = self.active_column_sort is not None
         self.update_sort_button_states()
         self._update_sort_hint()
-    
+
     def toggle_cumulative_sort(self):
         """Toggle cumulative sorting on/off"""
         if self.active_sort_mode == "cumulative":
             self.unsort_tree()
         else:
             self.sort_by_cumulative()
-    
+
     def toggle_confidence_sort(self):
         """Toggle confidence sorting on/off"""
         if self.active_sort_mode == "confidence":
             self.unsort_tree()
         else:
             self.sort_by_confidence()
-    
+
     def toggle_counter_sort(self):
         """Toggle counter-resistance sorting on/off"""
         if self.active_sort_mode == "resistance":
@@ -5300,7 +5311,7 @@ class UiManager:
             self.unsort_tree()
         else:
             self.sort_by_strategic()
-    
+
     def update_sort_button_states(self):
         """Update button appearance to show active/inactive states"""
         # Reset all buttons to inactive state (dim red circle)
@@ -5308,7 +5319,7 @@ class UiManager:
         self.confidence_button.config(text="Highest\nConfidence", relief=tk.RAISED, bg='SystemButtonFace')
         self.counter_button.config(text="Counter\nPick", relief=tk.RAISED, bg='SystemButtonFace')
         self.strategic_button.config(text="Strategic\nFusion", relief=tk.RAISED, bg='SystemButtonFace')
-        
+
         # Set active button to bright red circle and pressed appearance
         if self.active_sort_mode == "cumulative":
             self.cumulative_button.config(text="Cumulative\nSort", relief=tk.SUNKEN, bg='lightcoral')
@@ -5394,6 +5405,16 @@ class UiManager:
                     self.tree_generator.unsort_tree()
                 return
 
+            use_model_engine = bool(
+                hasattr(self, "tree_generator")
+                and self.tree_generator
+                and callable(getattr(self.tree_generator, "_use_model_engine", None))
+                and self.tree_generator._use_model_engine()
+            )
+            if use_model_engine and not getattr(self.tree_generator, "original_order_saved", False):
+                self.tree_generator.save_original_order()
+                self.tree_generator.original_order_saved = True
+
             if compute_primary_tags and primary_mode:
                 self._set_tree_memo_state_token()
                 recomputed_any = False
@@ -5402,9 +5423,9 @@ class UiManager:
                 prior_materialize_strategic_tags = bool(
                     getattr(self.tree_generator, "_materialize_strategic_tags_on_memo_hit", True)
                 )
-                setattr(self.tree_generator, "_suppress_display_updates", True)
-                setattr(self.tree_generator, "_confidence_aux_tags_enabled", False)
-                setattr(self.tree_generator, "_materialize_strategic_tags_on_memo_hit", False)
+                self.tree_generator._suppress_display_updates = True
+                self.tree_generator._confidence_aux_tags_enabled = False if not (use_model_engine and primary_mode == "strategic3") else prior_conf_aux_tags
+                self.tree_generator._materialize_strategic_tags_on_memo_hit = False
 
                 def run_metric(metric_key, span_label, compute_func):
                     nonlocal recomputed_any
@@ -5424,9 +5445,8 @@ class UiManager:
                     elif primary_mode == "resistance":
                         run_metric("resistance", "sort.compute.resistance2", self.tree_generator.calculate_counter_resistance_scores_enhanced)
                     elif primary_mode == "strategic3":
-                        use_model_engine = getattr(self.tree_generator, "_use_model_engine", lambda: False)
                         fused_v3 = getattr(self.tree_generator, "calculate_enhanced_v3_scores", None)
-                        if callable(fused_v3) and callable(use_model_engine) and use_model_engine():
+                        if callable(fused_v3) and use_model_engine:
                             should_recompute = any(
                                 self._is_metric_stale(metric)
                                 for metric in ("cumulative", "confidence", "resistance", "strategic3")
@@ -5485,13 +5505,9 @@ class UiManager:
                                 tag_writes=int(strategic_profile.get("tag_writes", 0)),
                             )
                 finally:
-                    setattr(self.tree_generator, "_suppress_display_updates", prior_suppress_display)
-                    setattr(self.tree_generator, "_confidence_aux_tags_enabled", prior_conf_aux_tags)
-                    setattr(
-                        self.tree_generator,
-                        "_materialize_strategic_tags_on_memo_hit",
-                        prior_materialize_strategic_tags,
-                    )
+                    self.tree_generator._suppress_display_updates = prior_suppress_display
+                    self.tree_generator._confidence_aux_tags_enabled = prior_conf_aux_tags
+                    self.tree_generator._materialize_strategic_tags_on_memo_hit = prior_materialize_strategic_tags
 
                 self._last_primary_metrics_signature = self._build_primary_metrics_signature(primary_mode)
                 self._primary_metrics_dirty = False
@@ -5702,7 +5718,6 @@ class UiManager:
 
         child_set_key = tuple(sorted(children))
         tie_break_order = getattr(self, 'tie_break_order', 'confidence_then_cumulative')
-        current_sort_mode = getattr(self, 'current_sort_mode', 'none')
         primary_signature = getattr(self, '_last_primary_metrics_signature', None)
         sort_context_key = (
             primary_mode or "none",
@@ -5716,7 +5731,7 @@ class UiManager:
         sort_cache = getattr(self, '_sorted_children_cache', None)
         if sort_cache is None:
             sort_cache = {}
-            setattr(self, '_sorted_children_cache', sort_cache)
+            self._sorted_children_cache = sort_cache
         cached_order = sort_cache.get(cache_key)
 
         if cached_order is not None:
@@ -5827,6 +5842,9 @@ class UiManager:
         root = getattr(tree_gen, "model_root", None)
         if root is None:
             return
+        if not getattr(tree_gen, "original_order_saved", False):
+            tree_gen.save_original_order()
+            tree_gen.original_order_saved = True
 
         secondary_state = "none"
         if secondary_column:
@@ -5898,7 +5916,12 @@ class UiManager:
             if not children:
                 return
 
-            primary_reverse = bool(primary_mode and not children[0].is_opponent_choice)
+            decision_node = parent_node
+            if getattr(decision_node, "parent", None) is None and getattr(decision_node, "depth", None) == 0:
+                decision_node = children[0]
+            primary_reverse = bool(
+                primary_mode and not tree_gen._is_opponent_choice_level(decision_node)
+            )
             primary_has_ties = False
             if primary_mode:
                 primary_values = [primary_key(child) for child in children]
@@ -6002,8 +6025,8 @@ class UiManager:
                     self._measure_update_idletasks("teams.change.redraw")
             except (ValueError,IndexError) as e:
                 print(f"team_box_change error: {e}")
-            
-    
+
+
 
     ####################
     # DB Fill/Save Funcs
@@ -6045,7 +6068,7 @@ class UiManager:
         self._set_grid_dirty(False)
         self._last_post_load_refresh_signature = refresh_signature
 
-    def _invalidate_team_cache(self, team_name: Optional[str] = None):
+    def _invalidate_team_cache(self, team_name: str | None = None):
         if team_name:
             self._team_cache.pop(team_name, None)
             return
@@ -6055,7 +6078,7 @@ class UiManager:
         self._comment_cache.clear()
         self._last_comment_indicator_signature = None
 
-    def _get_team_data(self, team_name: str) -> Optional[Dict[str, Any]]:
+    def _get_team_data(self, team_name: str) -> dict[str, Any] | None:
         if not team_name:
             return None
 
@@ -6078,7 +6101,7 @@ class UiManager:
         self._team_cache[team_name] = data
         return data
 
-    def _get_comment_map_for_current_selection(self) -> Dict[tuple, str]:
+    def _get_comment_map_for_current_selection(self) -> dict[tuple, str]:
         team1_name = self.team1_var.get().strip() if hasattr(self, 'team1_var') else ''
         team2_name = self.team2_var.get().strip() if hasattr(self, 'team2_var') else ''
         scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
@@ -6104,7 +6127,7 @@ class UiManager:
         self._comment_cache[cache_key] = comments or {}
         return self._comment_cache[cache_key]
 
-    def _has_comment_cached(self, row: int, col: int, comment_map: Optional[Dict[tuple, str]] = None) -> bool:
+    def _has_comment_cached(self, row: int, col: int, comment_map: dict[tuple, str] | None = None) -> bool:
         friendly_player = self.grid_data_model.get_rating(row, 0)
         opponent_player = self.grid_data_model.get_rating(0, col)
         if not friendly_player or not opponent_player:
@@ -6157,7 +6180,7 @@ class UiManager:
             if self.print_output:
                 print(f"DEBUG: Auto-populated teams: {team_names[0]} vs {team_names[1]}")
 
-    def _set_combobox_values_if_changed(self, combobox: ttk.Combobox, values: List[str]) -> bool:
+    def _set_combobox_values_if_changed(self, combobox: ttk.Combobox, values: list[str]) -> bool:
         """Apply combobox value options only when the option list has changed."""
         normalized_values = tuple(values)
         current_values = tuple(combobox.cget('values'))
@@ -6257,7 +6280,7 @@ class UiManager:
         if hasattr(self, 'root'):
             self.root.after(0, apply_snapshot)
 
-    def _fetch_grid_snapshot(self, team_1: str, team_2: str, scenario_id: int) -> Optional[Dict[str, Any]]:
+    def _fetch_grid_snapshot(self, team_1: str, team_2: str, scenario_id: int) -> dict[str, Any] | None:
         team_1_data = self._fetch_team_data_for_load(team_1)
         team_2_data = self._fetch_team_data_for_load(team_2)
         if not team_1_data or not team_2_data:
@@ -6319,7 +6342,7 @@ class UiManager:
             'ratings_rows': ratings_rows
         }
 
-    def _fetch_team_data_for_load(self, team_name: str) -> Optional[Dict[str, Any]]:
+    def _fetch_team_data_for_load(self, team_name: str) -> dict[str, Any] | None:
         if not team_name:
             return None
 
@@ -6336,7 +6359,7 @@ class UiManager:
         players = [{'id': row[0], 'name': row[1]} for row in player_results]
         return {'team_id': team_id, 'players': players}
 
-    def _apply_grid_snapshot(self, snapshot: Dict[str, Any], refresh_ui: bool = True):
+    def _apply_grid_snapshot(self, snapshot: dict[str, Any], refresh_ui: bool = True):
         team_1_name = snapshot.get('team_1_name', '').strip()
         team_2_name = snapshot.get('team_2_name', '').strip()
         scenario_id = snapshot.get('scenario_id')
@@ -6377,7 +6400,7 @@ class UiManager:
 
         if refresh_ui:
             self._post_grid_load_refresh()
-        
+
     def auto_generate_tree_after_teams_loaded(self):
         """
         Automatically generate the matchup tree after both teams are loaded.
@@ -6393,16 +6416,16 @@ class UiManager:
             if root_nodes and len(root_nodes) > 0:
                 # Tree already exists, don't regenerate
                 return
-            
+
             # Generate the tree silently in the background
             with self.perf.span("tree.auto_generate"):
                 self.on_generate_combinations()
             print("Auto-generated matchup tree after teams loaded")
-            
+
         except Exception as e:
             # Don't block UI if generation fails
             print(f"Warning: Auto-generation of tree failed: {e}")
-        
+
     def save_grid_data_to_db(self):
         with self.perf.span("grid.save_to_db"):
             self._save_grid_data_to_db()
@@ -6410,7 +6433,7 @@ class UiManager:
     def _save_grid_data_to_db(self):
         # Prevent saving when grid is flipped to opponent's perspective
         if self.grid_is_flipped:
-            messagebox.showwarning("Cannot Save", 
+            messagebox.showwarning("Cannot Save",
                 "Cannot save data while grid is flipped to opponent's perspective.\n"
                 "Please click 'Flip Grid' again to restore friendly perspective before saving.")
             return
@@ -6423,16 +6446,16 @@ class UiManager:
                 self.current_rating_system,
             )
             return
-        
+
         team_1 = self.combobox_1.get().strip()
         team_2 = self.combobox_2.get().strip()
-        
+
         # Guard: Don't try to save data if teams are not selected
         if not team_1 or not team_2:
-            messagebox.showwarning("Cannot Save", 
+            messagebox.showwarning("Cannot Save",
                 "Please select both teams before saving.")
             return
-        
+
         scenario_id = self.get_scenario_num()
 
         team_1_id = self.db_manager.query_team_id(team_1)
@@ -6465,7 +6488,7 @@ class UiManager:
                     continue
                 try:
                     rating = int(rating_value)
-                    
+
                     team_1_player_id = team_1_dict[row]['id']
                     team_2_player_id = team_2_dict[col]['id']
                     self.db_manager.upsert_rating(
@@ -6478,7 +6501,7 @@ class UiManager:
                     )
                 except (ValueError, IndexError) as e:
                     print(f"Error saving rating at ({row}, {col}): {e}")
-                    continue 
+                    continue
 
             self._set_grid_dirty(False)
 
@@ -6507,34 +6530,34 @@ class UiManager:
         try:
             # Check if team already exists
             team_exists = team_name in existing_team_names
-            
+
             if team_exists:
                 # Update existing team's players
                 team_id = self.db_manager.query_team_id(team_name)
-                
+
                 if team_id is None:
                     raise RuntimeError(f"Could not find team ID for existing team '{team_name}'")
-                
+
                 # Delete existing players for this team using secure method
                 secure_db = self.db_manager.get_secure_interface()
                 secure_db.delete_players_for_team_secure(team_id)
-                
+
                 # Insert new players
                 for player_name in player_names:
                     self.db_manager.create_player(player_name, team_id)
-                    
-                messagebox.showinfo("Success", 
+
+                messagebox.showinfo("Success",
                                   f"Team '{team_name}' has been updated successfully!\n\n"
                                   f"Players updated:\n" + "\n".join([f"- {name}" for name in player_names]))
             else:
                 # Create new team
                 team_id = self.db_manager.upsert_team(team_name)
-                
+
                 # Create players
                 for player_name in player_names:
                     self.db_manager.create_player(player_name, team_id)
-                    
-                messagebox.showinfo("Success", 
+
+                messagebox.showinfo("Success",
                                   f"Team '{team_name}' has been created successfully!\n\n"
                                   f"Players added:\n" + "\n".join([f"- {name}" for name in player_names]))
 
@@ -6543,7 +6566,7 @@ class UiManager:
             self._invalidate_comment_cache()
             self.set_team_dropdowns()
             self.update_ui()
-            
+
         except Exception as e:
             messagebox.showerror("Error", f"Failed to create/update team: {str(e)}")
             print(f"create_team error: {e}")
@@ -6611,7 +6634,11 @@ class UiManager:
                 self.db_manager.rename_team(team_id, updated_team_name)
 
             # Use stable player IDs to avoid disturbing ratings/comments relationships.
-            for (player_id, current_player_name), updated_player_name in zip(players, updated_player_names):
+            for (player_id, current_player_name), updated_player_name in zip(
+                players,
+                updated_player_names,
+                strict=False,
+            ):
                 if current_player_name != updated_player_name:
                     self.db_manager.rename_player(player_id, team_id, updated_player_name)
 
@@ -6625,7 +6652,7 @@ class UiManager:
                 changed_items.append(f"Team renamed to '{updated_team_name}'")
             changed_players = [
                 (old, new)
-                for old, new in zip(initial_player_names, updated_player_names)
+                for old, new in zip(initial_player_names, updated_player_names, strict=False)
                 if old != new
             ]
             if changed_players:
@@ -6662,7 +6689,7 @@ class UiManager:
         try:
             secure_db = self.db_manager.get_secure_interface()
             success = secure_db.delete_team_secure(team_name)
-            
+
             if not success:
                 messagebox.showerror("Error", f"Team not found: '{team_name}'")
                 return
@@ -6675,7 +6702,7 @@ class UiManager:
             self._invalidate_team_cache()
             self._invalidate_comment_cache()
             self.set_team_dropdowns()
-            self.update_ui
+            self.update_ui()
         except (ValueError, IndexError) as e:
             print(f"delete_team caused an error trying to update the UI: {e}")
 
@@ -6903,8 +6930,8 @@ class UiManager:
 
     def _load_names_only_csv_rows(self, file_path):
         rows = []
-        errors: List[str] = []
-        with open(file_path, mode="r", newline="", encoding="utf-8-sig") as csv_file:
+        errors: list[str] = []
+        with open(file_path, newline="", encoding="utf-8-sig") as csv_file:
             reader = csv.reader(csv_file)
             raw_rows = list(reader)
 
@@ -6991,7 +7018,7 @@ class UiManager:
                 scenario_ids = sorted(SCENARIO_MAP.keys())
 
                 successful_teams = 0
-                failed_rows: List[str] = []
+                failed_rows: list[str] = []
                 ratings_upserted = 0
 
                 for row in imported_rows:
@@ -7090,45 +7117,45 @@ class UiManager:
             title="Select Excel File for Import",
             filetypes=[("Excel files", "*.xlsx *.xls"), ("All files", "*.*")]
         )
-        
+
         if not file_path:
             return
-            
+
         try:
             # Extract filename without extension for team name
             file_name = os.path.splitext(os.path.basename(file_path))[0]
-            
+
             # Create and execute the simple importer
             simple_importer = SimpleExcelImporter(
-                db_manager=self.db_manager, 
-                file_path=file_path, 
+                db_manager=self.db_manager,
+                file_path=file_path,
                 scenario_id=0,  # Default to neutral scenario
                 rating_min=self.rating_range[0],
                 rating_max=self.rating_range[1],
             )
-            
+
             teams_imported = simple_importer.execute()
-            
+
             # Show success message
             messagebox.showinfo(
-                "Import Successful", 
+                "Import Successful",
                 f"Successfully imported {teams_imported} teams from {file_name}"
             )
-            
+
             # Refresh the UI to show the new data
             self._invalidate_team_cache()
             self._invalidate_comment_cache()
             self.update_ui()
-            
+
         except Exception as e:
             messagebox.showerror(
-                "Import Error", 
+                "Import Error",
                 f"Failed to import Excel file:\n{str(e)}"
             )
             print(f"Excel import error: {e}")
 
     def export_csvs(self):
-        print(f"Exporting Matchups to CSV")
+        print("Exporting Matchups to CSV")
 
         # Prompt the user to select a file location to save the CSV
         file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
@@ -7165,9 +7192,23 @@ class UiManager:
 
     def retrieve_ratings(self, team1_players, team2_players):
         ratings = {}
-        scenario_id = []        
+        scenario_id = []
+        team1_player_ids = {}
+        team2_player_ids = {}
+        for player_name in team1_players:
+            player_rows = self.db_manager.query_sql(
+                f"SELECT player_id FROM players WHERE player_name = '{player_name}'"
+            )
+            if player_rows:
+                team1_player_ids[player_name] = player_rows[0][0]
+        for player_name in team2_players:
+            player_rows = self.db_manager.query_sql(
+                f"SELECT player_id FROM players WHERE player_name = '{player_name}'"
+            )
+            if player_rows:
+                team2_player_ids[player_name] = player_rows[0][0]
         for scenario in range(0,7):
-            
+
             scenario_id = scenario
             ratings[scenario_id] = {}
             for player1 in team1_players:
@@ -7233,7 +7274,7 @@ class UiManager:
         return ratings_by_name
 
 
-    
+
     def import_csvs(self):
         file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
         if not file_path:
@@ -7299,7 +7340,7 @@ class UiManager:
         team_id_1 = 0
         team_id_2 = 0
 
-        header_errors: List[str] = []
+        header_errors: list[str] = []
         for index, line in enumerate(team_lines):
             row_num = index + 1
             if not line or not (line[0] or "").strip():
@@ -7320,7 +7361,7 @@ class UiManager:
                 )
                 continue
 
-            validated_players: List[str] = []
+            validated_players: list[str] = []
             row_has_error = False
             for player_idx, raw_player_name in enumerate(imported_player_names, start=1):
                 try:
@@ -7359,7 +7400,7 @@ class UiManager:
             raise ValueError("Header validation failed:\n- " + "\n- ".join(header_errors[:20]))
 
         scenario_id = None
-        line_errors: List[str] = []
+        line_errors: list[str] = []
         ratings_upserted = 0
 
         team_1_players_ids = {name: self.db_manager.query_player_id(name, team_id_1) for name in team_players_1}
@@ -7416,7 +7457,7 @@ class UiManager:
                 line_errors.append(f"row {offset}: expected 5 ratings columns, found {len(raw_ratings)}")
                 continue
 
-            validated_ratings: List[int] = []
+            validated_ratings: list[int] = []
             rating_error = False
             for rating_idx, raw_rating in enumerate(raw_ratings, start=1):
                 try:
@@ -7481,7 +7522,7 @@ class UiManager:
         fRatings = {fNames[i]: {oNames[j]: self.grid_data_model.get_rating(i+1, j+1) for j in range(5)} for i in range(5)}
         oRatings = {oNames[i]: {fNames[j]: self.grid_data_model.get_rating(j+1, i+1) for j in range(5)} for i in range(5)}
         return fRatings, oRatings
-    
+
     def prep_scenario(self):
         scenario = self.get_scenario_num()
         return scenario
@@ -7495,7 +7536,7 @@ class UiManager:
             fNames_sorted = fNames
             oNames_sorted = oNames
         return fNames_sorted, oNames_sorted
-    
+
     # def get_row_range(self):
     #     current_scenario = self.get_scenario_num()
     #     row_lo, row_hi = self.scenario_ranges.get(current_scenario, (1, 6))  # Default to (1, 6) if scenario is not found
@@ -7530,7 +7571,7 @@ class UiManager:
         """Validate grid data based on current rating system"""
         min_rating, max_rating = self.rating_range
         valid_ratings = list(range(min_rating, max_rating + 1))
-        
+
         for row in range(1, 6):
             for col in range(1, 6):
                 # V2: Read from GridDataModel (may be int or str)
@@ -7538,10 +7579,10 @@ class UiManager:
                 # Convert to int for validation if it's a string digit
                 if isinstance(value, str) and value.strip().isdigit():
                     value = int(value)
-                
+
                 if isinstance(value, int) and value not in valid_ratings:
                     system_name = self.rating_config['name']
-                    messagebox.showerror("Error", 
+                    messagebox.showerror("Error",
                                        f"Invalid rating at row {row+1}, column {col+1}.\n\n"
                                        f"Current system: {system_name}\n"
                                        f"Valid ratings: {min_rating}-{max_rating}")
@@ -7585,15 +7626,13 @@ class UiManager:
     def get_friendly_player_names(self):
         # V2: Read from GridDataModel
         return [self.grid_data_model.get_rating(row, 0) for row in range(1, 6)]
-    
+
     def get_enemy_player_names(self):
         """Get enemy/opponent player names from grid."""
         return self.get_opponent_player_names()
-    
+
     def extract_ratings(self):
         ratings = {}
-        fNames = self.get_friendly_player_names()
-        oNames = self.get_opponent_player_names()
         for row in range(1, 6):
             # V2: Read from GridDataModel
             player = self.grid_data_model.get_rating(row, 0)
@@ -7627,19 +7666,19 @@ class UiManager:
             for callback_id in self.comment_indicator_callbacks.values():
                 try:
                     self.root.after_cancel(callback_id)
-                except:
+                except Exception:
                     pass  # Callback may have already executed
             self.comment_indicator_callbacks.clear()
         else:
             self.comment_indicator_callbacks = {}
-        
+
         # Now destroy the indicator widgets
         if hasattr(self, 'comment_indicators'):
             for indicator in self.comment_indicators.values():
                 try:
                     if indicator.winfo_exists():
                         indicator.destroy()
-                except:
+                except Exception:
                     pass  # Widget may already be destroyed
             self.comment_indicators.clear()
         else:
@@ -7701,14 +7740,14 @@ class UiManager:
                 fill="#D32F2F",
                 outline="white"
             )
-            
+
             # Store the indicator for cleanup later
             self.comment_indicators[(row, col)] = indicator
-            
+
             # Schedule positioning after the widget is drawn and store callback ID
             callback_id = self.root.after_idle(lambda: self.position_comment_indicator(indicator, row, col))
             self.comment_indicator_callbacks[(row, col)] = callback_id
-            
+
         except Exception as e:
             print(f"Error adding comment indicator at ({row}, {col}): {e}")
 
@@ -7718,7 +7757,7 @@ class UiManager:
             # First check if indicator still exists (might have been cleared)
             if not indicator.winfo_exists():
                 return
-            
+
             widget = self.grid_widgets[row][col]
             if widget is not None and widget.winfo_exists():
                 # Match the cell background to reduce visual seams.
@@ -7735,12 +7774,12 @@ class UiManager:
                     x=-2,      # Slight offset from edge
                     y=2        # Slight offset from edge
                 )
-        except Exception as e:
+        except Exception:
             # Silently handle errors - widget may have been destroyed
             try:
                 if indicator.winfo_exists():
                     indicator.destroy()
-            except:
+            except Exception:
                 pass  # Widget already destroyed
 
     def show_comment_tooltip(self, event, row, col):
@@ -7854,7 +7893,7 @@ class UiManager:
             print(f"Error opening comment editor: {e}")
             messagebox.showerror("Error", f"Failed to open comment editor: {e}")
 
-    def create_comment_dialog(self, team1_name, team2_name, scenario_name, 
+    def create_comment_dialog(self, team1_name, team2_name, scenario_name,
                             friendly_player, opponent_player, existing_comment):
         """Create a dialog window for editing comments"""
         self._comment_editor_open = True
@@ -7862,52 +7901,52 @@ class UiManager:
         dialog.title("Edit Matchup Comment")
         dialog.geometry("500x400")
         dialog.resizable(True, True)
-        
+
         # Make dialog modal
         dialog.transient(self.root)
         dialog.grab_set()
-        
+
         # Title label
         title_text = f"Comment for {friendly_player} vs {opponent_player}\nScenario: {scenario_name}"
         title_label = tk.Label(dialog, text=title_text, font=("Arial", 12, "bold"))
         title_label.pack(pady=10)
-        
+
         # Character count frame
         count_frame = tk.Frame(dialog)
         count_frame.pack(fill=tk.X, padx=10)
-        
+
         char_count_label = tk.Label(count_frame, text="Characters: 0/2000", anchor="e")
         char_count_label.pack(side=tk.RIGHT)
-        
+
         # Text area for comment
         text_frame = tk.Frame(dialog)
         text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
+
         comment_text = tk.Text(
-            text_frame, 
-            height=15, 
-            width=60, 
+            text_frame,
+            height=15,
+            width=60,
             wrap=tk.WORD,
             font=("Arial", 10)
         )
-        
+
         # Scrollbar for text area
         scrollbar = tk.Scrollbar(text_frame, orient=tk.VERTICAL, command=comment_text.yview)
         comment_text.configure(yscrollcommand=scrollbar.set)
-        
+
         comment_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
+
         # Insert existing comment
         if existing_comment:
             comment_text.insert(tk.END, existing_comment)
-            
+
         # Update character count
         def update_char_count(event=None):
             content = comment_text.get("1.0", tk.END).strip()
             char_count = len(content)
             char_count_label.config(text=f"Characters: {char_count}/2000")
-            
+
             # Change color if approaching or exceeding limit
             if char_count > 2000:
                 char_count_label.config(fg="red")
@@ -7915,12 +7954,12 @@ class UiManager:
                 char_count_label.config(fg="orange")
             else:
                 char_count_label.config(fg="black")
-        
+
         # Bind character count update
         comment_text.bind('<KeyRelease>', update_char_count)
         comment_text.bind('<ButtonRelease>', update_char_count)
         update_char_count()  # Initial count
-        
+
         # Button frame
         button_frame = tk.Frame(dialog)
         button_frame.pack(fill=tk.X, padx=10, pady=10)
@@ -7928,17 +7967,17 @@ class UiManager:
         def close_dialog():
             self._comment_editor_open = False
             dialog.destroy()
-        
+
         def save_comment():
             try:
                 comment_content = comment_text.get("1.0", tk.END).strip()
-                
+
                 # Validate length
                 if len(comment_content) > 2000:
-                    messagebox.showerror("Comment Too Long", 
+                    messagebox.showerror("Comment Too Long",
                                        "Comment must be 2000 characters or less.")
                     return
-                
+
                 # Save to database
                 if comment_content:
                     self.db_manager.upsert_comment_by_name(
@@ -7961,11 +8000,11 @@ class UiManager:
                     self.update_grid_colors()
 
                 close_dialog()
-                
+
             except Exception as e:
                 print(f"Error saving comment: {e}")
                 messagebox.showerror("Error", f"Failed to save comment: {e}")
-        
+
         def delete_comment():
             if messagebox.askyesno("Delete Comment", "Are you sure you want to delete this comment?"):
                 try:
@@ -7981,12 +8020,12 @@ class UiManager:
                 except Exception as e:
                     print(f"Error deleting comment: {e}")
                     messagebox.showerror("Error", f"Failed to delete comment: {e}")
-        
+
         # Buttons
         tk.Button(button_frame, text="Save", command=save_comment, bg="lightgreen").pack(side=tk.LEFT, padx=5)
         tk.Button(button_frame, text="Delete", command=delete_comment, bg="lightcoral").pack(side=tk.LEFT, padx=5)
         tk.Button(button_frame, text="Cancel", command=close_dialog).pack(side=tk.RIGHT, padx=5)
-        
+
         # Focus on text area
         comment_text.focus_set()
 
@@ -8005,11 +8044,11 @@ class UiManager:
             self._refresh_materialized_sort_values()
             return
         children = self.treeview.tree.get_children(node)
-        
+
         for child in children:
             # Get the appropriate sort value based on current mode
             sort_value = str(self.get_sort_value_for_node(child))
-            
+
             # Update the Sort Value column (second column, index 1)
             current_values = list(self.treeview.tree.item(child, 'values'))
             current_sort_value = str(current_values[1]) if len(current_values) >= 2 else None
@@ -8027,9 +8066,9 @@ class UiManager:
                 current_values.append(sort_value)
             else:
                 current_values[1] = sort_value
-            
+
             self.treeview.tree.item(child, values=current_values)
-            
+
             # Recursively update children
             should_recurse = recurse_mode == "all"
             if recurse_mode == "expanded":
@@ -8045,7 +8084,9 @@ class UiManager:
         if tree_gen is None:
             return
         tree = self.treeview.tree
-        for widget_id in list(tree_gen.projector.widget_to_node.keys()):
+        for widget_id, model_node in list(tree_gen.projector.widget_to_node.items()):
+            if getattr(model_node, "parent", None) is None and getattr(model_node, "depth", None) == 0:
+                continue
             try:
                 sort_value = str(self.get_sort_value_for_node(widget_id))
                 current_values = list(tree.item(widget_id, 'values'))
@@ -8078,22 +8119,22 @@ class UiManager:
             if not self.grid_is_flipped:
                 # Phase 1: Use snapshot API for cleaner state management
                 self.flip_snapshot = self.grid_data_model.get_state_snapshot()
-                
+
                 self.grid_data_model.begin_batch()
-                
+
                 # 1. Swap team player names
                 friendly_names = [self.grid_data_model.get_rating(row, 0) for row in range(1, 6)]
                 enemy_names = [self.grid_data_model.get_rating(0, col) for col in range(1, 6)]
-                
+
                 # Swap the names
                 for row in range(1, 6):
                     if row - 1 < len(enemy_names):
                         self.grid_data_model.set_rating(row, 0, enemy_names[row - 1], notify=False)
-                
+
                 for col in range(1, 6):
                     if col - 1 < len(friendly_names):
                         self.grid_data_model.set_rating(0, col, friendly_names[col - 1], notify=False)
-                
+
                 # 2. Flip ratings around 3 (1Γåö5, 2Γåö4, 3 stays 3)
                 for row in range(1, 6):
                     for col in range(1, 6):
@@ -8102,22 +8143,22 @@ class UiManager:
                             # Flip around 3: new_rating = 6 - old_rating
                             flipped_rating = 6 - current_value
                             self.grid_data_model.set_rating(row, col, flipped_rating, notify=False)
-                
+
                 self.grid_data_model.end_batch()
                 # Batch mutation used notify=False for performance; emit one refresh event.
                 self.grid_data_model._notify_observers('grid_loaded')
                 self.grid_is_flipped = True
                 print("Grid flipped to opponent's perspective")
-                
+
             else:
                 # Phase 1: Restore using snapshot API
                 if hasattr(self, 'flip_snapshot') and self.flip_snapshot:
                     self.grid_data_model.restore_state_snapshot(self.flip_snapshot, notify=True)
                     self.flip_snapshot = None
-                
+
                 self.grid_is_flipped = False
                 print("Grid restored to friendly perspective")
-                
+
         except Exception as e:
             print(f"Error flipping grid perspective: {e}")
             messagebox.showerror("Error", f"Failed to flip grid perspective: {e}")
@@ -8162,7 +8203,7 @@ class UiManager:
         self.pairing_plan_notes = ""
         self.db_preferences.set_pairing_plan_notes("")
 
-    def create_matchup_output_panel(self, parent: Optional[tk.Frame] = None):
+    def create_matchup_output_panel(self, parent: tk.Frame | None = None):
         """Create a panel to display the final 5 matchups in a simple format."""
         try:
             theme = getattr(self, "ui_theme", {})
@@ -8188,7 +8229,7 @@ class UiManager:
                 pady=theme.get("pad_sm", 5),
                 expand=True,
             )
-            
+
             # Panel title
             title_label = tk.Label(
                 self.output_panel_frame,
@@ -8233,19 +8274,19 @@ class UiManager:
                 borderwidth=1
             )
             self.summary_histogram.pack(fill=tk.X, pady=(4, 0))
-            
+
             # Instructions
-            instructions = tk.Label(self.output_panel_frame, 
+            instructions = tk.Label(self.output_panel_frame,
                                   text="Select a pairing from the tree above, then click 'Extract Matchups' to display the 5 final matchups:",
                                   font=theme.get("font_body", ("Arial", 9)),
                                   bg=theme.get("bg_highlight", "lightyellow"),
                                   fg=theme.get("fg_muted", "darkblue"))
             instructions.pack(pady=(0, 5))
-            
+
             # Button and checkbox frame
             button_frame = tk.Frame(self.output_panel_frame, bg=theme.get("bg_highlight", "lightyellow"))
             button_frame.pack(pady=5)
-            
+
             # Extract button
             extract_button = tk.Button(
                 button_frame,
@@ -8257,39 +8298,39 @@ class UiManager:
                 relief=tk.RAISED,
             )
             extract_button.pack(side=tk.LEFT, padx=(0, 10))
-            
+
             # Verbose mode checkbox
             self.verbose_matchup_var = tk.BooleanVar()
             # Initialize from config: verbose=True if format is "verbose", else False
             current_format = self.db_preferences.get_matchup_output_format()
             self.verbose_matchup_var.set(current_format == "verbose")
-            
+
             verbose_checkbox = tk.Checkbutton(button_frame, text="Verbose Output",
                                             variable=self.verbose_matchup_var,
                                             command=self.on_verbose_mode_changed,
                                             font=theme.get("font_body", ("Arial", 9)),
                                             bg=theme.get("bg_highlight", "lightyellow"))
             verbose_checkbox.pack(side=tk.LEFT)
-            
+
             # Text area for matchups display
-            self.matchups_text = tk.Text(self.output_panel_frame, height=8, width=80, 
+            self.matchups_text = tk.Text(self.output_panel_frame, height=8, width=80,
                                        font=theme.get("font_mono", ("Consolas", 10)), bg="white", relief=tk.SUNKEN,
                                        borderwidth=2, wrap=tk.WORD)
             self.matchups_text.pack(padx=10, pady=(0, 10), fill=tk.BOTH, expand=True)
-            
+
             # Add scrollbar
             scrollbar = tk.Scrollbar(self.matchups_text)
             scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
             self.matchups_text.config(yscrollcommand=scrollbar.set)
             scrollbar.config(command=self.matchups_text.yview)
-            
+
             # Copy button
-            copy_button = tk.Button(self.output_panel_frame, text="Copy to Clipboard", 
+            copy_button = tk.Button(self.output_panel_frame, text="Copy to Clipboard",
                                   command=self.copy_matchups_to_clipboard,
                                   font=theme.get("font_body", ("Arial", 9)),
                                   bg=theme.get("bg_secondary", "lightblue"), relief=tk.RAISED)
             copy_button.pack(pady=(0, 5))
-            
+
         except Exception as e:
             if hasattr(self, "logger"):
                 self.logger.exception("Failed to create matchup output panel")
@@ -8301,19 +8342,19 @@ class UiManager:
         try:
             is_verbose = self.verbose_matchup_var.get()
             format_type = "verbose" if is_verbose else "standard"
-            
+
             # Save to config
             success = self.db_preferences.set_matchup_output_format(format_type)
-            
+
             if success:
                 print(f"Matchup output format updated to: {format_type}")
             else:
-                print(f"Warning: Failed to save matchup output format preference")
-                
+                print("Warning: Failed to save matchup output format preference")
+
         except Exception as e:
             print(f"Error updating verbose mode preference: {e}")
 
-    def _update_matchup_summary(self, matchups: List[Dict[str, Any]]):
+    def _update_matchup_summary(self, matchups: list[dict[str, Any]]):
         if not hasattr(self, 'summary_matchups_label'):
             return
 
@@ -8351,7 +8392,7 @@ class UiManager:
         selected_item = self.treeview.tree.selection() if hasattr(self, 'treeview') else []
         self._update_explainability_card(selected_item[0] if selected_item else None)
 
-    def _get_tag_value(self, node_id: Optional[str], prefix: str, default: int = 0) -> int:
+    def _get_tag_value(self, node_id: str | None, prefix: str, default: int = 0) -> int:
         if not node_id:
             return default
         try:
@@ -8374,7 +8415,7 @@ class UiManager:
         active_mode = self.active_sort_mode or "none"
         return profile.get(active_mode, "Mode: Unsorted (raw tree order)")
 
-    def _format_explainability_text(self, node_id: Optional[str]) -> str:
+    def _format_explainability_text(self, node_id: str | None) -> str:
         if not node_id:
             return "Explainability: select a tree node to view C2/Q2/R2 and strategic factors."
 
@@ -8418,7 +8459,7 @@ class UiManager:
         ]
         return "\n".join(lines)
 
-    def _update_explainability_card(self, node_id: Optional[str]):
+    def _update_explainability_card(self, node_id: str | None):
         if self.summary_explain_label is None:
             return
         self.summary_explain_label.config(text=self._format_explainability_text(node_id))
@@ -8477,7 +8518,7 @@ class UiManager:
         self._tree_explain_tooltip.lift()
         self._tree_explain_last_node = node_id
 
-    def _parse_rating_value(self, rating: Any) -> Optional[float]:
+    def _parse_rating_value(self, rating: Any) -> float | None:
         if rating is None:
             return None
         if isinstance(rating, (int, float)):
@@ -8492,7 +8533,7 @@ class UiManager:
         except ValueError:
             return None
 
-    def _render_confidence_histogram(self, ratings: List[float]):
+    def _render_confidence_histogram(self, ratings: list[float]):
         if not hasattr(self, 'summary_histogram'):
             return
         canvas = self.summary_histogram
@@ -8535,41 +8576,41 @@ class UiManager:
             canvas.create_rectangle(x0, y0, x1, y1, fill=bar_color, outline="#4f4f4f")
             label = f"{bucket_value}"
             canvas.create_text(x0 + 2, height - 2, anchor=tk.SW, text=label, fill="#555555", font=("Arial", 7))
-    
+
     def format_matchups_verbose(self, matchups, item_text):
         """Format matchups in verbose mode with complete decision path details."""
         output_text = f"Complete Decision Path - {item_text}\n"
         output_text += "=" * 70 + "\n\n"
-        
+
         for matchup in matchups:
             round_num = matchup.get('round', '?')
             choice = matchup.get('choice', 'Unknown choice')
             decision = matchup.get('decision', 'Unknown decision')
             rating = matchup.get('rating', 'N/A')
-            
+
             output_text += f"Matchup {round_num}: {choice}\n"
             output_text += f"\tDecision: {decision} (Rating: {rating})\n\n"
-        
+
         output_text += "=" * 70 + "\n"
         output_text += f"Total Decision Points: {len(matchups)}\n"
         output_text += f"Generated at: {self.get_current_timestamp()}\n"
         output_text += "\nThis shows the complete path of decisions made to reach the selected tree position."
-        
+
         return output_text
-    
+
     def format_matchups_concise(self, matchups, item_text):
         """Format matchups in concise mode with brief summary."""
         output_text = ""
-        
+
         for i, matchup in enumerate(matchups, 1):
             decision = matchup.get('decision', 'Unknown decision')
             rating = matchup.get('rating', 'N/A')
             output_text += f"{i}. {decision} ({rating})\n"
-        
+
         output_text += f"\nGenerated: {self.get_current_timestamp()}"
-        
+
         return output_text
-    
+
     def extract_final_matchups(self):
         """Extract the final 5 matchups from the currently selected tree item."""
         try:
@@ -8582,56 +8623,56 @@ class UiManager:
 
             # Get selected item from tree
             selected_item = self.treeview.tree.selection()
-            
+
             if not selected_item:
                 messagebox.showwarning("No Selection", "Please select a pairing from the tree above.")
                 return
-            
+
             # Get the selected item's data
             item = selected_item[0]
             item_text = self.treeview.tree.item(item, 'text')
             item_values = self.treeview.tree.item(item, 'values')
-            
+
             print(f"Selected item text: {item_text}")
             print(f"Selected item values: {item_values}")
-            
+
             # Parse the matchup information
             matchups = self.parse_matchups_from_tree_item(item)
-            
+
             print(f"Parsed matchups: {matchups}")
-            
+
             if not matchups:
                 # Provide more detailed debugging information
                 children_count = len(self.treeview.tree.get_children(item))
-                debug_info = f"Debug Info:\n"
+                debug_info = "Debug Info:\n"
                 debug_info += f"- Selected item: {item_text}\n"
                 debug_info += f"- Item values: {item_values}\n"
                 debug_info += f"- Children count: {children_count}\n"
-                debug_info += f"- Tree structure analysis required\n"
-                
+                debug_info += "- Tree structure analysis required\n"
+
                 messagebox.showwarning("No Matchups", f"No matchup data found for the selected item.\n\n{debug_info}")
                 return
-            
+
             # Format matchups based on config preference
             output_format = self.db_preferences.get_matchup_output_format()
-            
+
             if output_format == "verbose":
                 output_text = self.format_matchups_verbose(matchups, item_text)
             else:  # Default to standard
                 output_text = self.format_matchups_concise(matchups, item_text)
-            
+
             # Always log the verbose version to file, regardless of UI display format
             verbose_output = self.format_matchups_verbose(matchups, item_text)
             self.logger.info(f"Matchup Extraction:\n{verbose_output}")
-            
+
             # Display in text widget
             self.matchups_text.delete(1.0, tk.END)
             self.matchups_text.insert(1.0, output_text)
 
             self._update_matchup_summary(matchups)
-            
+
             print(f"Successfully extracted {len(matchups)} matchups from selected tree item")
-            
+
         except Exception as e:
             print(f"Error extracting final matchups: {e}")
             import traceback
@@ -8643,68 +8684,68 @@ class UiManager:
         try:
             # Build the complete path from root to selected item
             decision_path = self.build_decision_path(item)
-            
+
             if not decision_path:
                 return []
-                
+
             # Convert path items to matchup decisions
             matchups = self.convert_path_to_matchups(decision_path)
-            
+
             return matchups
-            
+
         except Exception as e:
             print(f"Error parsing matchups from tree item: {e}")
             return []
-    
+
     def build_decision_path(self, target_item):
         """Build the complete path from root to the target item."""
         try:
             path = []
             current_item = target_item
-            
+
             # Traverse up the tree to build the complete path
             while current_item:
                 item_text = self.treeview.tree.item(current_item, 'text')
                 item_values = self.treeview.tree.item(current_item, 'values')
-                
+
                 path.insert(0, {
                     'item_id': current_item,
                     'text': item_text,
                     'values': item_values,
                     'level': len(path)
                 })
-                
+
                 # Get parent item
                 parent = self.treeview.tree.parent(current_item)
                 current_item = parent if parent else None
-            
+
             print(f"Built decision path with {len(path)} levels:")
             for i, step in enumerate(path):
                 print(f"  Level {i}: {step['text']}")
-            
+
             return path
-            
+
         except Exception as e:
             print(f"Error building decision path: {e}")
             return []
-    
+
     def convert_path_to_matchups(self, decision_path):
         """Convert the decision path into individual matchup decisions."""
         try:
             matchups = []
-            
+
             # Skip the root "Pairings" node and focus on actual decision nodes
             decision_nodes = [node for node in decision_path if 'vs' in node['text'] or 'rating' in node['text']]
-            
+
             print(f"Processing {len(decision_nodes)} decision nodes:")
-            
+
             for i, node in enumerate(decision_nodes):
                 text = node['text']
                 values = node['values']
                 rating = values[0] if values else 'N/A'
-                
+
                 print(f"  Processing node {i+1}: {text}")
-                
+
                 if ' vs ' in text and ' OR ' in text:
                     # This is a choice node like "HABIBI vs Pete (3/5) OR Bokur (3/5)"
                     matchup_info = self.parse_choice_node(text, decision_nodes, i)
@@ -8712,12 +8753,12 @@ class UiManager:
                         matchup_info['rating'] = rating
                         matchup_info['round'] = i + 1
                         matchups.append(matchup_info)
-                        
+
                 elif ' rating ' in text:
                     # This is a decision node like "Pete rating 3"
                     # The decision was made in the parent choice node
                     continue
-                    
+
                 elif ' vs ' in text and ' OR ' not in text:
                     # This is a final decision like "Kyle vs STEVE (3/5)"
                     parts = text.split(' vs ')
@@ -8726,7 +8767,7 @@ class UiManager:
                         opponent_with_rating = parts[1].strip()
                         # Extract opponent name (remove rating in parentheses)
                         opponent = opponent_with_rating.split('(')[0].strip()
-                        
+
                         matchups.append({
                             'round': i + 1,
                             'friendly': friendly,
@@ -8735,14 +8776,14 @@ class UiManager:
                             'choice': text,
                             'decision': text
                         })
-            
+
             # Now identify the actual decisions made by looking at the tree structure
             return self.identify_actual_decisions(decision_path, matchups)
-            
+
         except Exception as e:
             print(f"Error converting path to matchups: {e}")
             return []
-    
+
     def parse_choice_node(self, text, all_nodes, current_index):
         """Parse a choice node to extract the options and determine the decision made."""
         try:
@@ -8750,45 +8791,45 @@ class UiManager:
             # Format: "Player1 vs Player2 (X/Y) OR Player3 (X/Y)"
             if ' vs ' not in text or ' OR ' not in text:
                 return None
-                
+
             parts = text.split(' vs ', 1)
             friendly = parts[0].strip()
-            
+
             options_part = parts[1]
             options = [opt.strip() for opt in options_part.split(' OR ')]
-            
+
             # Look at the next node in the path to determine which option was chosen
             decision_made = None
             if current_index + 1 < len(all_nodes):
                 next_node = all_nodes[current_index + 1]
                 next_text = next_node['text']
-                
+
                 # Determine which option was selected
                 for option in options:
                     option_name = option.split('(')[0].strip()
                     if option_name in next_text or next_text.startswith(option_name):
                         decision_made = f"{friendly} vs {option}"
                         break
-            
+
             return {
                 'friendly': friendly,
                 'options': options,
                 'choice': text,
                 'decision': decision_made or f"{friendly} vs {options[0]}"  # Default to first option
             }
-            
+
         except Exception as e:
             print(f"Error parsing choice node: {e}")
             return None
-    
+
     # ========================================================================
     # V2: GridDataModel Integration Methods
     # ========================================================================
-    
+
     def _on_grid_data_changed(self, event_type: str, *args):
         """
         Observer callback for GridDataModel changes.
-        
+
         Updates UI widgets in response to data model changes.
         """
         if event_type == 'rating_changed':
@@ -8796,16 +8837,16 @@ class UiManager:
             self._invalidate_calc_grid_cache()
             self._update_entry_from_model(row, col)
             self.update_color_on_change(None, None, None, row, col)
-        
+
         elif event_type == 'display_changed':
             row, col, value = args
             self._update_display_entry_from_model(row, col)
-        
+
         elif event_type == 'comment_changed':
             row, col, comment_text = args
             # Update comment indicator
             self._update_comment_indicator(row, col, comment_text is not None)
-        
+
         elif event_type == 'cell_disabled':
             row, col, is_disabled = args
             self._invalidate_calc_grid_cache()
@@ -8816,13 +8857,13 @@ class UiManager:
                 else:
                     widget.config(state='normal')
                     self.update_color_on_change(None, None, None, row, col)
-        
+
         elif event_type == 'batch_update':
             # Efficiently handle batch updates (e.g., from load_grid_data_from_db)
             notifications = args[0]
             for evt_type, evt_args in notifications:
                 self._on_grid_data_changed(evt_type, *evt_args)
-        
+
         elif event_type == 'grid_cleared':
             self._invalidate_tree_cache("grid_cleared")
             self._invalidate_calc_grid_cache()
@@ -8831,7 +8872,7 @@ class UiManager:
                 for c in range(6):
                     self._update_entry_from_model(r, c)
                     self._update_display_entry_from_model(r, c)
-        
+
         elif event_type == 'grid_loaded':
             self._invalidate_calc_grid_cache()
             # Refresh entire grid after load
@@ -8842,17 +8883,17 @@ class UiManager:
                     if self.grid_data_model.has_comment(r, c):
                         self._update_comment_indicator(r, c, True)
             self.update_grid_colors()
-    
+
     def _sync_entry_to_model(self, row: int, col: int, widget: tk.Entry):
         """
         Sync Entry widget value to GridDataModel.
-        
+
         Called on FocusOut and Return key to update model with manual entry.
         Phase 1: Converts rating cells (row > 0, col > 0) to integers.
         """
         current_value = widget.get().strip()
         model_value = self.grid_data_model.get_rating(row, col)
-        
+
         # For rating cells, convert to integer or None
         if row > 0 and col > 0:
             # Rating cell - convert to int if valid, None if empty
@@ -8884,7 +8925,7 @@ class UiManager:
         else:
             # Header cell - keep as string (player name)
             new_value = current_value if current_value else None
-        
+
         if new_value != model_value:
             self.grid_data_model.set_rating(row, col, new_value)
             # Trigger color update and scenario calculations
@@ -8893,7 +8934,7 @@ class UiManager:
             if row > 0 and col > 0:
                 self._invalidate_tree_cache("rating_change")
                 self._set_grid_dirty(True)
-    
+
     def _update_entry_from_model(self, row: int, col: int):
         """
         Update Entry widget from GridDataModel value.
@@ -8903,7 +8944,7 @@ class UiManager:
         if widget:
             current_text = widget.get()
             model_value = self.grid_data_model.get_rating(row, col)
-            
+
             # Convert model value to string for Entry widget
             if model_value is None:
                 model_str = ''
@@ -8911,11 +8952,11 @@ class UiManager:
                 model_str = str(model_value)
             else:
                 model_str = str(model_value)  # Handle string (player names)
-            
+
             if current_text != model_str:
                 widget.delete(0, tk.END)
                 widget.insert(0, model_str)
-    
+
     def _update_display_entry_from_model(self, row: int, col: int):
         """Update display Entry widget from GridDataModel value"""
         widget = self.grid_display_widgets[row][col]
@@ -8929,7 +8970,7 @@ class UiManager:
             widget.delete(0, tk.END)
             widget.insert(0, new_value)
             widget.config(state='readonly')
-    
+
     def _update_comment_indicator(self, row: int, col: int, has_comment: bool):
         """Update visual comment indicator for cell without altering rating-based color."""
         self._last_comment_indicator_signature = None
@@ -8957,17 +8998,17 @@ class UiManager:
 
         # Always preserve the rating color map for commented cells.
         self.update_color_on_change(None, None, None, row, col)
-    
+
     def _update_comment_overlay_geometry(self):
         """Calculate and update CommentOverlay geometry after grid layout"""
         if not self.comment_overlay:
             return
-        
+
         # Calculate cell positions and grid bounding box
         cell_positions = {}
         min_x = min_y = float('inf')
         max_x = max_y = 0
-        
+
         for r in range(1, 6):  # Only matchup cells (skip headers)
             for c in range(1, 6):
                 widget = self.grid_widgets[r][c]
@@ -8976,25 +9017,25 @@ class UiManager:
                     y = widget.winfo_y()
                     width = widget.winfo_width()
                     height = widget.winfo_height()
-                    
+
                     cell_positions[(r, c)] = (x, y, width, height)
-                    
+
                     min_x = min(min_x, x)
                     min_y = min(min_y, y)
                     max_x = max(max_x, x + width)
                     max_y = max(max_y, y + height)
-        
+
         # Grid bounding box
         grid_bbox = (min_x, min_y, max_x - min_x, max_y - min_y)
-        
+
         # Update overlay
         self.comment_overlay.update_grid_geometry(cell_positions, grid_bbox)
         self.comment_overlay.show()
-    
+
     def _open_comment_editor_for_cell(self, row: int, col: int):
         """
         Open comment editor for specific cell (callback for CommentOverlay).
-        
+
         Simplified version that works with GridDataModel.
         """
         try:
@@ -9002,85 +9043,85 @@ class UiManager:
             team1_name = self.team1_var.get()
             team2_name = self.team2_var.get()
             scenario_name = self.scenario_var.get()
-            
+
             # Get player names from grid
             friendly_player = self.grid_data_model.get_rating(row, 0)
             opponent_player = self.grid_data_model.get_rating(0, col)
-            
+
             if not all([team1_name, team2_name, scenario_name, friendly_player, opponent_player]):
-                messagebox.showwarning("Missing Information", 
+                messagebox.showwarning("Missing Information",
                                      "Please select teams, scenario, and ensure player names are filled in.")
                 return
-            
+
             # Get existing comment from database
             existing_comment = self.db_manager.query_comment_by_name(
-                team1_name, team2_name, scenario_name, 
+                team1_name, team2_name, scenario_name,
                 friendly_player, opponent_player
             ) or ""
-            
+
             # Create comment editor dialog
             self.create_comment_dialog(
-                team1_name, team2_name, scenario_name, 
+                team1_name, team2_name, scenario_name,
                 friendly_player, opponent_player, existing_comment
             )
-            
+
         except Exception as e:
             print(f"Error opening comment editor: {e}")
             messagebox.showerror("Error", f"Failed to open comment editor: {e}")
             return
-    
+
     def identify_actual_decisions(self, decision_path, preliminary_matchups):
         """Identify the actual decisions made by analyzing the tree traversal path."""
         try:
             final_matchups = []
-            
+
             # Group nodes by their position in the decision tree
             choice_nodes = []
             decision_nodes = []
-            
+
             for node in decision_path:
                 text = node['text']
                 if ' vs ' in text and ' OR ' in text:
                     choice_nodes.append(node)
                 elif ' rating ' in text:
                     decision_nodes.append(node)
-            
+
             print(f"Found {len(choice_nodes)} choice nodes and {len(decision_nodes)} decision nodes")
-            
+
             # Match each choice with its corresponding decision
             for i, choice_node in enumerate(choice_nodes):
                 choice_text = choice_node['text']
                 rating = choice_node['values'][0] if choice_node['values'] else 'N/A'
-                
+
                 # Find the corresponding decision node
                 decision_text = None
                 if i < len(decision_nodes):
                     decision_text = decision_nodes[i]['text']
-                
+
                 # Parse the choice and decision
                 matchup = self.create_matchup_from_choice_and_decision(choice_text, decision_text, rating, i + 1)
                 if matchup:
                     final_matchups.append(matchup)
-            
+
             return final_matchups
-            
+
         except Exception as e:
             print(f"Error identifying actual decisions: {e}")
             return preliminary_matchups  # Return preliminary results as fallback
-    
+
     def create_matchup_from_choice_and_decision(self, choice_text, decision_text, rating, round_num):
         """Create a matchup entry from choice and decision texts."""
         try:
             if not choice_text or ' vs ' not in choice_text:
                 return None
-                
+
             # Parse choice: "Player1 vs Player2 (X/Y) OR Player3 (X/Y)"
             parts = choice_text.split(' vs ', 1)
             friendly = parts[0].strip()
-            
+
             options_part = parts[1]
             options = [opt.strip() for opt in options_part.split(' OR ')]
-            
+
             # Determine which option was chosen based on decision_text
             chosen_option = options[0]  # Default
             if decision_text:
@@ -9089,10 +9130,10 @@ class UiManager:
                     if option_name in decision_text:
                         chosen_option = option
                         break
-            
+
             # Clean up the chosen option (remove rating info)
             opponent = chosen_option.split('(')[0].strip()
-            
+
             return {
                 'round': round_num,
                 'friendly': friendly,
@@ -9101,11 +9142,11 @@ class UiManager:
                 'choice': f"{friendly} vs {' or '.join([opt.split('(')[0].strip() for opt in options])}",
                 'decision': f"{friendly} vs {opponent}"
             }
-            
+
         except Exception as e:
             print(f"Error creating matchup from choice and decision: {e}")
             return None
-    
+
     def extract_opponent_from_context(self, context_text, player):
         """Extract opponent name from context text."""
         try:
@@ -9113,53 +9154,53 @@ class UiManager:
             if ' vs ' in context_text and ' OR ' in context_text:
                 vs_part = context_text.split(' vs ')[1]  # Get everything after " vs "
                 or_parts = vs_part.split(' OR ')  # Split on " OR "
-                
+
                 for part in or_parts:
                     # Extract player name (remove rating info in parentheses)
                     clean_name = part.split('(')[0].strip()
                     if clean_name != player:
                         return clean_name
-            
+
             return "Unknown"
-            
+
         except Exception as e:
             print(f"Error extracting opponent from context: {e}")
             return "Unknown"
-    
+
     def extract_matchups_from_tree_structure(self, item):
         """Alternative method to extract matchups by analyzing tree structure."""
         try:
             matchups = []
-            
+
             # Get the item text and try to understand the matchup structure
             item_text = self.treeview.tree.item(item, 'text')
             item_values = self.treeview.tree.item(item, 'values')
-            
+
             print(f"Analyzing tree item: {item_text}")
             print(f"Item values: {item_values}")
-            
+
             # For now, create a basic structure based on what we can extract
             if item_text and item_values:
                 rating = item_values[0] if item_values else 'N/A'
-                
+
                 # Try to extract player names from the text
                 if ' vs ' in item_text:
                     parts = item_text.split(' vs ')
                     friendly = parts[0].strip()
                     opponent_part = parts[1].strip()
-                    
+
                     # Clean up opponent name (remove rating info)
                     opponent = opponent_part.split('(')[0].strip()
-                    
+
                     matchups.append({
                         'friendly': friendly,
                         'opponent': opponent,
                         'rating': rating,
                         'path': item_text
                     })
-            
+
             return matchups
-            
+
         except Exception as e:
             print(f"Error in alternative matchup extraction: {e}")
             return []
@@ -9185,8 +9226,8 @@ class UiManager:
 
 if __name__ == '__main__':
     ui_manager = UiManager(
-        color_map=DEFAULT_COLOR_MAP, 
-        scenario_map=SCENARIO_MAP, 
+        color_map=DEFAULT_COLOR_MAP,
+        scenario_map=SCENARIO_MAP,
         directory=os.getcwd(),
         scenario_ranges=SCENARIO_RANGES,
         scenario_to_csv_map=SCENARIO_TO_CSV_MAP

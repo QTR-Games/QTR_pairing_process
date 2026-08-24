@@ -11,8 +11,10 @@ class PairingNode:
     base: int
     depth: int
     is_opponent_choice: bool
-    parent: "PairingNode | None" = None
-    children: list["PairingNode"] = field(default_factory=list)
+    parent: PairingNode | None = None
+    children: list[PairingNode] = field(default_factory=list)
+    counts_toward_total: bool = False
+    base_for_our_team: int = 0
     cumulative: int = 0
     cumulative2: int = 0
     confidence: int = 0
@@ -160,14 +162,30 @@ class TreeProjector:
         expanded_node_ids: set[int] | None = None,
     ) -> None:
         tree = treeview.tree if hasattr(treeview, "tree") else treeview
-        if lazy and expanded_node_ids is None:
+        if expanded_node_ids is None:
             expanded_node_ids = self.expanded_node_ids(tree)
         yview = None
-        if lazy:
-            try:
-                yview = tree.yview()
-            except Exception:
-                yview = None
+        try:
+            yview = tree.yview()
+        except Exception:
+            yview = None
+        selected_node_ids: list[int] = []
+        try:
+            for widget_id in tree.selection():
+                node = self.widget_to_node.get(widget_id)
+                if node is not None:
+                    selected_node_ids.append(id(node))
+        except Exception:
+            selected_node_ids = []
+        focus_node_id = None
+        try:
+            focus_widget_id = tree.focus()
+        except Exception:
+            focus_widget_id = ""
+        if focus_widget_id:
+            focus_node = self.widget_to_node.get(focus_widget_id)
+            if focus_node is not None:
+                focus_node_id = id(focus_node)
         tree.delete(*tree.get_children())
         self.widget_to_node.clear()
         self.node_to_widget.clear()
@@ -181,15 +199,40 @@ class TreeProjector:
                 materialize_through_depth=1,
                 expanded_node_ids=expanded_node_ids or set(),
             )
-            if yview:
+        else:
+            self._project_node(model, tree, "", expanded_node_ids=expanded_node_ids or set())
+        if yview:
+            try:
+                tree.yview_moveto(yview[0])
+            except Exception:
+                pass
+        if selected_node_ids:
+            restored_selection = [
+                widget_id
+                for node_id in selected_node_ids
+                if (widget_id := self.node_to_widget.get(node_id)) is not None
+            ]
+            if restored_selection:
                 try:
-                    tree.yview_moveto(yview[0])
+                    tree.selection_set(restored_selection)
                 except Exception:
                     pass
-            return
-        self._project_node(model, tree, "")
+        if focus_node_id is not None:
+            restored_focus = self.node_to_widget.get(focus_node_id)
+            if restored_focus is not None:
+                try:
+                    tree.focus(restored_focus)
+                except Exception:
+                    pass
 
-    def _project_node(self, node: PairingNode, tree, parent_id: str) -> str:
+    def _project_node(
+        self,
+        node: PairingNode,
+        tree,
+        parent_id: str,
+        *,
+        expanded_node_ids: set[int],
+    ) -> str:
         if node.parent is None and node.depth == 0:
             widget_id = tree.insert(parent_id, "end", text=node.text, tags=self._tags_for(node))
         else:
@@ -202,8 +245,18 @@ class TreeProjector:
             )
         self.widget_to_node[widget_id] = node
         self.node_to_widget[id(node)] = widget_id
+        if id(node) in expanded_node_ids:
+            try:
+                tree.item(widget_id, open=True)
+            except Exception:
+                pass
         for child in node.children:
-            self._project_node(child, tree, widget_id)
+            self._project_node(
+                child,
+                tree,
+                widget_id,
+                expanded_node_ids=expanded_node_ids,
+            )
         return widget_id
 
     def _project_node_lazy(

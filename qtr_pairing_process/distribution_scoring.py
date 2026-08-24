@@ -80,6 +80,9 @@ def contributes_to_total(node) -> bool:
     Only this rule yields 15.00 on the 1-5 five-game data; summing all nodes
     yields 28.64.
     """
+    explicit = getattr(node, "counts_toward_total", None)
+    if explicit is not None:
+        return bool(explicit)
     if not node.children:
         return True
     return " rating " in str(node.text)
@@ -117,7 +120,7 @@ def mix(dists: list[Distribution], weights: list[float]) -> Distribution:
         weights = [1.0] * len(dists)
         total_weight = float(len(dists))
     merged: Distribution = {}
-    for dist, weight in zip(dists, weights):
+    for dist, weight in zip(dists, weights, strict=False):
         if weight <= 0.0:
             continue
         scale = weight / total_weight
@@ -329,7 +332,7 @@ class DistributionScorer:
             if current.parent is None or not contributes_to_total(current):
                 own = 0
             else:
-                own = int(current.base)
+                own = int(getattr(current, "base_for_our_team", current.base))
             child_need = cur_need - own
 
             if not children_done:

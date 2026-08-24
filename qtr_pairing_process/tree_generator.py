@@ -1,20 +1,19 @@
 """ © Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 
-from itertools import combinations, permutations
+import hashlib
+import math
 import os
 import tkinter
-import math
-import hashlib
-import json
+from itertools import combinations, permutations
 
 import qtr_pairing_process.utility_funcs as uf
-from qtr_pairing_process.constants import RATING_SYSTEMS, DEFAULT_RATING_SYSTEM
-from qtr_pairing_process.pairing_model import PairingNode, TreeProjector
+from qtr_pairing_process.constants import DEFAULT_RATING_SYSTEM, RATING_SYSTEMS
 from qtr_pairing_process.distribution_scoring import (
     DistributionScorer,
     annotate_risk,
     win_threshold,
 )
+from qtr_pairing_process.pairing_model import PairingNode, TreeProjector
 
 
 def risk_columns_requested():
@@ -109,7 +108,7 @@ class TreeGenerator:
         }
         if self.risk_enabled and self.engine != "model":
             self.risk_enabled = False
-        self.risk_lambda = float(os.environ.get("QTR_RISK_LAMBDA", "1.0") or 1.0)
+        self.risk_lambda = self._read_env_float("QTR_RISK_LAMBDA", 1.0)
         self.model_root = None
         self._model_team_size = 0
         self.projector = TreeProjector()
@@ -215,6 +214,24 @@ class TreeGenerator:
 
         return self._clamp(numeric, min_value, max_value)
 
+    def _read_env_float(self, name, fallback):
+        raw_value = os.environ.get(name, "")
+        if raw_value in (None, ""):
+            return float(fallback)
+        try:
+            numeric = float(raw_value)
+        except (TypeError, ValueError):
+            return float(fallback)
+        if not math.isfinite(numeric):
+            return float(fallback)
+        return numeric
+
+    def _rating_from_our_perspective(self, rating, attacker_side):
+        rating_value = self._to_int_rating(rating)
+        if attacker_side == "our":
+            return rating_value
+        return int((self.rating_min + self.rating_max) - rating_value)
+
     def generate_combinations(self, fNames, oNames, fRatings, oRatings, our_team_first=True):
         self.fRatings = fRatings
         self.our_team_first = our_team_first
@@ -230,7 +247,7 @@ class TreeGenerator:
         if self.sort_alpha:
             fNames_sorted.sort()
             oNames_sorted.sort()
-        
+
         for name in fNames_sorted:
             fnames_filtered = [x for x in fNames_sorted if x!=name]
 
@@ -238,9 +255,9 @@ class TreeGenerator:
             self.generate_nested_combinations(name, fnames_filtered, oNames_sorted, fRatings, oRatings, tree_top)
             fNames_sorted[:] = uf.cycle_list(fNames_sorted)
             # oNames_sorted[:] = cycle_list(oNames_sorted)
-        
+
     def generate_nested_combinations(self, first_fName, fNames, oNames, fRatings, oRatings, parent):
-        
+
         combs = list(combinations(oNames, 2))
         if oNames and not combs:
             first_oName = oNames[0]
@@ -262,12 +279,12 @@ class TreeGenerator:
                 values=(base_rating, cumulative_score, confidence_score, resistance_score),
                 tags=(str(base_rating),),
             )
-            
+
             if fNames:
                 opponent_perms = list(permutations(comb, 2))
                 if self.sort_alpha:
                     opponent_perms = sorted(opponent_perms)
-                for opponent, next_fName in opponent_perms:                    
+                for opponent, next_fName in opponent_perms:
                     nested_oNames = [name for name in oNames if name != opponent and name!=next_fName]
                     # Calculate scores for child node
                     child_rating = fRatings[first_fName].get(opponent, 0)
@@ -327,6 +344,8 @@ class TreeGenerator:
             base=0,
             depth=0,
             is_opponent_choice=self._resolve_opponent_choice_level(0),
+            counts_toward_total=False,
+            base_for_our_team=0,
             state_choosing_side="root",
             state_our_pool=frozenset(str(name) for name in fNames),
             state_opponent_pool=frozenset(str(name) for name in oNames),
@@ -405,6 +424,8 @@ class TreeGenerator:
                 depth=depth,
                 is_opponent_choice=node_is_opponent_choice,
                 parent=parent,
+                counts_toward_total=not bool(fNames),
+                base_for_our_team=self._rating_from_our_perspective(base_rating, attacker_side),
                 confidence=confidence_score,
                 resistance=resistance_score,
                 state_attacker=str(first_fName),
@@ -452,6 +473,11 @@ class TreeGenerator:
                         depth=child_depth,
                         is_opponent_choice=child_is_opponent_choice,
                         parent=node,
+                        counts_toward_total=True,
+                        base_for_our_team=self._rating_from_our_perspective(
+                            child_rating,
+                            attacker_side,
+                        ),
                         confidence=child_confidence,
                         resistance=child_resistance,
                         state_attacker=str(next_fName),
@@ -535,6 +561,18 @@ class TreeGenerator:
             attr = TreeProjector._PREFIX_TO_ATTR[prefix]
             setattr(node, attr, int(value))
         self.projector.mark_metrics(node, tuple(prefix_values.keys()))
+
+    def _set_confidence2_model_metrics(self, node, floor2, ceiling2, score, regret2, *, expose_aux_tags):
+        node.floor2 = int(floor2)
+        node.ceiling2 = int(ceiling2)
+        node.confidence2 = int(score)
+        node.regret2 = int(regret2)
+        self.projector.mark_metrics(node, ("confidence2_", "regret2_"))
+        if expose_aux_tags:
+            self.projector.mark_metrics(node, ("floor2_", "ceiling2_"))
+        else:
+            self.projector.clear_metric(node, "floor2_")
+            self.projector.clear_metric(node, "ceiling2_")
 
     def _resolve_opponent_choice_level(self, depth):
         if self.our_team_first:
@@ -732,11 +770,14 @@ class TreeGenerator:
             if current is not None:
                 base_conf = self.calculate_rating_confidence(current.base)
                 score = int(self._clamp(base_conf, 0, 100))
-                prefix_values = {"confidence2_": score, "regret2_": 0}
-                if write_aux_tags:
-                    prefix_values["floor2_"] = score
-                    prefix_values["ceiling2_"] = score
-                self._set_model_metrics(current, prefix_values)
+                self._set_confidence2_model_metrics(
+                    current,
+                    score,
+                    score,
+                    score,
+                    0,
+                    expose_aux_tags=write_aux_tags,
+                )
                 self.projector.set_confidence_value(current, score)
                 if memo is not None:
                     memo[memo_key] = (score, score, score, 0, write_aux_tags)
@@ -762,11 +803,14 @@ class TreeGenerator:
             floor2 = int(round(self._clamp(min(child_scores), 0, 100)))
             ceiling2 = int(round(self._clamp(max(child_scores), 0, 100)))
             regret2 = max(0, ceiling2 - floor2)
-            prefix_values = {"confidence2_": score, "regret2_": regret2}
-            if write_aux_tags:
-                prefix_values["floor2_"] = floor2
-                prefix_values["ceiling2_"] = ceiling2
-            self._set_model_metrics(current, prefix_values)
+            self._set_confidence2_model_metrics(
+                current,
+                floor2,
+                ceiling2,
+                score,
+                regret2,
+                expose_aux_tags=write_aux_tags,
+            )
             self.projector.set_confidence_value(current, score)
             if memo is not None:
                 memo[memo_key] = (floor2, ceiling2, score, regret2, write_aux_tags)
@@ -892,11 +936,14 @@ class TreeGenerator:
 
     def _apply_confidence2_memo_model(self, node, payload):
         floor2, ceiling2, score, regret2, wrote_aux = payload
-        prefix_values = {"confidence2_": int(score), "regret2_": int(regret2)}
-        if wrote_aux:
-            prefix_values["floor2_"] = int(floor2)
-            prefix_values["ceiling2_"] = int(ceiling2)
-        self._set_model_metrics(node, prefix_values)
+        self._set_confidence2_model_metrics(
+            node,
+            floor2,
+            ceiling2,
+            score,
+            regret2,
+            expose_aux_tags=bool(wrote_aux),
+        )
         self.projector.set_confidence_value(node, int(score))
         return int(floor2), int(ceiling2), int(score)
 
@@ -1094,11 +1141,14 @@ class TreeGenerator:
             if "confidence2" in missing_metrics:
                 base_conf = self.calculate_rating_confidence(current.base)
                 score = int(self._clamp(base_conf, 0, 100))
-                prefix_values = {"confidence2_": score, "regret2_": 0}
-                if write_aux_tags:
-                    prefix_values["floor2_"] = score
-                    prefix_values["ceiling2_"] = score
-                self._set_model_metrics(current, prefix_values)
+                self._set_confidence2_model_metrics(
+                    current,
+                    score,
+                    score,
+                    score,
+                    0,
+                    expose_aux_tags=write_aux_tags,
+                )
                 self.projector.set_confidence_value(current, score)
                 results["confidence2"] = (score, score, score)
                 if memos:
@@ -1177,11 +1227,14 @@ class TreeGenerator:
             floor2 = int(round(self._clamp(min(child_scores), 0, 100)))
             ceiling2 = int(round(self._clamp(max(child_scores), 0, 100)))
             regret2 = max(0, ceiling2 - floor2)
-            prefix_values = {"confidence2_": score, "regret2_": regret2}
-            if write_aux_tags:
-                prefix_values["floor2_"] = floor2
-                prefix_values["ceiling2_"] = ceiling2
-            self._set_model_metrics(current, prefix_values)
+            self._set_confidence2_model_metrics(
+                current,
+                floor2,
+                ceiling2,
+                score,
+                regret2,
+                expose_aux_tags=write_aux_tags,
+            )
             self.projector.set_confidence_value(current, score)
             results["confidence2"] = (floor2, ceiling2, score)
             if memos:
@@ -1301,8 +1354,8 @@ class TreeGenerator:
             q_raw = current.confidence2
             r_raw = current.resistance2
             memo_key = self._build_structural_memo_key_model(current)
-            floor2 = current.floor2 if self.projector.has_metric(current, "floor2_") else q_raw
-            ceiling2 = current.ceiling2 if self.projector.has_metric(current, "ceiling2_") else q_raw
+            floor2 = int(getattr(current, "floor2", q_raw))
+            ceiling2 = int(getattr(current, "ceiling2", q_raw))
             c_norm = normalize(c_raw, "c_min", "c_max")
             q_norm = normalize(q_raw, "q_min", "q_max")
             r_norm = normalize(r_raw, "r_min", "r_max")
@@ -1437,7 +1490,7 @@ class TreeGenerator:
             if not hasattr(self, 'original_order_saved') or not self.original_order_saved:
                 self.save_original_order()
                 self.original_order_saved = True
-            
+
             # First, calculate cumulative values for all complete paths
             self.calculate_all_path_values("")
             # Then sort recursively from root
@@ -1451,7 +1504,7 @@ class TreeGenerator:
             self._project_model()
             return result
         children = self.treeview.tree.get_children(node)
-        
+
         if not children:
             # This is a leaf node, its cumulative value is its own value
             if node:  # Skip empty root
@@ -1478,7 +1531,7 @@ class TreeGenerator:
                     max_cumulative = max(max_cumulative, total_cumulative)
                 else:
                     max_cumulative = max(max_cumulative, child_cumulative)
-            
+
             if node:  # Skip empty root
                 # Store cumulative value in tags and update display
                 item_data = self.treeview.tree.item(node)
@@ -1500,7 +1553,7 @@ class TreeGenerator:
         children = self.treeview.tree.get_children(node)
         if not children:
             return
-        
+
         # Get cumulative values for all children
         children_with_scores = []
         for child in children:
@@ -1517,13 +1570,13 @@ class TreeGenerator:
         else:
             # Our choice level: Sort by HIGHEST cumulative value first (we pick what's best for us)
             children_with_scores.sort(key=lambda x: x[1], reverse=True)
-        
+
         # Reorder children in the tree
         for child, _ in children_with_scores:
             self.treeview.tree.detach(child)
         for child, _ in children_with_scores:
             self.treeview.tree.move(child, node, 'end')
-        
+
         # Recursively sort grandchildren
         for child, _ in children_with_scores:
             self.sort_children_by_cumulative(child)
@@ -1560,7 +1613,7 @@ class TreeGenerator:
             if not hasattr(self, 'original_order_saved') or not self.original_order_saved:
                 self.save_original_order()
                 self.original_order_saved = True
-            
+
             # Calculate confidence scores for all paths
             self.calculate_confidence_scores("")
             # Sort recursively from root
@@ -1574,7 +1627,7 @@ class TreeGenerator:
             self._project_model()
             return result
         children = self.treeview.tree.get_children(node)
-        
+
         if not children:
             # Leaf node - calculate floor, ceiling, and confidence
             if node:
@@ -1590,7 +1643,7 @@ class TreeGenerator:
             path_floors = []
             path_ceilings = []
             path_confidences = []
-            
+
             for child in children:
                 child_floor, child_ceiling, child_confidence = self.calculate_confidence_scores(child)
                 if node:
@@ -1609,7 +1662,7 @@ class TreeGenerator:
                     path_floors.append(child_floor)
                     path_ceilings.append(child_ceiling)
                     path_confidences.append(child_confidence)
-            
+
             if node and path_floors and path_ceilings and path_confidences:
                 # Use the best-case scenario from available paths
                 best_floor = max(path_floors)
@@ -1618,10 +1671,10 @@ class TreeGenerator:
                 avg_confidence = sum(path_confidences) / len(path_confidences)
                 variance_penalty = self.calculate_variance_penalty(path_floors + path_ceilings)
                 final_confidence = avg_confidence - variance_penalty
-                
+
                 self.store_confidence_data(node, best_floor, best_ceiling, final_confidence)
                 return best_floor, best_ceiling, final_confidence
-            
+
             return 0, 0, 0
 
     def calculate_rating_confidence(self, rating):
@@ -1642,7 +1695,7 @@ class TreeGenerator:
         """Calculate penalty for high variance in path values"""
         if len(values) < 2:
             return 0
-        
+
         mean_val = sum(values) / len(values)
         variance = sum((x - mean_val) ** 2 for x in values) / len(values)
         # Normalize variance to a 0-20 penalty scale
@@ -1655,19 +1708,19 @@ class TreeGenerator:
         try:
             item_data = self.treeview.tree.item(node)
             current_tags = list(item_data.get('tags', []))
-            
+
             # Remove existing confidence tags
             current_tags = [tag for tag in current_tags if not any(
                 str(tag).startswith(prefix) for prefix in ['confidence_', 'floor_', 'ceiling_']
             )]
-            
+
             # Add new confidence data
             current_tags.extend([
                 f'confidence_{int(confidence)}',
                 f'floor_{floor_val}',
                 f'ceiling_{ceiling_val}'
             ])
-            
+
             self.treeview.tree.item(node, tags=current_tags)
 
             # Update the confidence score column (index 2)
@@ -1684,7 +1737,7 @@ class TreeGenerator:
         children = self.treeview.tree.get_children(node)
         if not children:
             return
-        
+
         # Get confidence scores for all children
         children_with_scores = []
         for child in children:
@@ -1701,13 +1754,13 @@ class TreeGenerator:
         else:
             # Our choice level: Sort by HIGHEST confidence first (we pick what's most confident)
             children_with_scores.sort(key=lambda x: x[1], reverse=True)
-        
+
         # Reorder children in the tree
         for child, _ in children_with_scores:
             self.treeview.tree.detach(child)
         for child, _ in children_with_scores:
             self.treeview.tree.move(child, node, 'end')
-        
+
         # Recursively sort grandchildren
         for child, _ in children_with_scores:
             self.sort_children_by_confidence(child)
@@ -1744,7 +1797,7 @@ class TreeGenerator:
             if not hasattr(self, 'original_order_saved') or not self.original_order_saved:
                 self.save_original_order()
                 self.original_order_saved = True
-            
+
             # Calculate counter-resistance scores for all paths
             self.calculate_counter_resistance_scores("")
             # Sort recursively from root
@@ -1758,7 +1811,7 @@ class TreeGenerator:
             self._project_model()
             return result
         children = self.treeview.tree.get_children(node)
-        
+
         if not children:
             # Leaf node - evaluate counter-resistance
             if node:
@@ -1771,7 +1824,7 @@ class TreeGenerator:
         else:
             # Branch node - simulate opponent responses
             path_resistances = []
-            
+
             for child in children:
                 child_resistance = self.calculate_counter_resistance_scores(child)
                 if node:
@@ -1787,13 +1840,13 @@ class TreeGenerator:
                     path_resistances.append(adjusted_resistance)
                 else:
                     path_resistances.append(child_resistance)
-            
+
             if node and path_resistances:
                 # Use the most counter-resistant path
                 best_resistance = max(path_resistances)
                 self.store_counter_resistance_data(node, best_resistance)
                 return best_resistance
-            
+
             return 0
 
     def calculate_counter_resistance(self, rating):
@@ -1843,7 +1896,7 @@ class TreeGenerator:
         children = self.treeview.tree.get_children(node)
         if not children:
             return
-        
+
         # Get counter-resistance scores for all children
         children_with_scores = []
         for child in children:
@@ -1860,13 +1913,13 @@ class TreeGenerator:
         else:
             # Our choice level: Sort by HIGHEST resistance first (we pick what's most counter-resistant)
             children_with_scores.sort(key=lambda x: x[1], reverse=True)
-        
+
         # Reorder children in the tree
         for child, _ in children_with_scores:
             self.treeview.tree.detach(child)
         for child, _ in children_with_scores:
             self.treeview.tree.move(child, node, 'end')
-        
+
         # Recursively sort grandchildren
         for child, _ in children_with_scores:
             self.sort_children_by_counter_resistance(child)
@@ -2713,7 +2766,7 @@ class TreeGenerator:
         if hasattr(self, 'original_order') and self.original_order:
             self.unsort_matchup_tree()
         else:
-            # If no original order saved, we can't restore, but we can at least 
+            # If no original order saved, we can't restore, but we can at least
             # clear the cumulative values to prepare for fresh generation
             self.clear_cumulative_values("")
 
@@ -2733,7 +2786,7 @@ class TreeGenerator:
                 current_tags = list(item_data.get('tags', []))
                 current_tags = [tag for tag in current_tags if not str(tag).startswith('cumulative_')]
                 self.treeview.tree.item(child, tags=current_tags)
-            except:
+            except Exception:
                 pass
             self.clear_cumulative_values(child)
     def save_original_order(self):
@@ -2741,17 +2794,22 @@ class TreeGenerator:
         if self._use_model_engine():
             self._model_original_order = {}
             self.original_order = {}
-            root_nodes = [self.model_root] if self.model_root is not None else []
-            for root in root_nodes:
-                if root.children:
-                    self._model_original_order[id(root)] = list(root.children)
-                    widget_id = self.projector.widget_id_for(root)
-                    if widget_id is not None:
-                        self.original_order[widget_id] = [
-                            self.projector.widget_id_for(child)
-                            for child in root.children
-                            if self.projector.widget_id_for(child) is not None
-                        ]
+            if self.model_root is None:
+                return
+
+            def walk(model_node):
+                self._model_original_order[id(model_node)] = list(model_node.children)
+                widget_id = self.projector.widget_id_for(model_node)
+                if widget_id is not None:
+                    self.original_order[widget_id] = [
+                        child_widget_id
+                        for child in model_node.children
+                        if (child_widget_id := self.projector.widget_id_for(child)) is not None
+                    ]
+                for child in model_node.children:
+                    walk(child)
+
+            walk(self.model_root)
             return
         root_nodes = self.treeview.tree.get_children()
         for root in root_nodes:
@@ -2772,7 +2830,7 @@ class TreeGenerator:
             except tkinter.TclError as e:
                 print(f"Error getting children of root {root}: {e}")
                 continue
-            
+
             # Detach all current children
             for child_id in current_child_ids:
                 try:
@@ -2780,7 +2838,7 @@ class TreeGenerator:
                 except tkinter.TclError as e:
                     print(f"Error detaching child {child_id}: {e}")
                     continue
-            
+
             # Reinsert the children in their original order
             for child_id in original_child_ids:
                 try:
@@ -2824,7 +2882,7 @@ class TreeGenerator:
     def sort_by_strategic_optimal(self):
         """
         Strategic Optimal Expected Value sorting - combines multi-objective optimization
-        with intelligent weighting to maximize 3/5 win probability while preventing 
+        with intelligent weighting to maximize 3/5 win probability while preventing
         catastrophic failures and accounting for opponent counter-strategies.
         """
         if self._use_model_engine():
@@ -2842,7 +2900,7 @@ class TreeGenerator:
             if not hasattr(self, 'original_order_saved') or not self.original_order_saved:
                 self.save_original_order()
                 self.original_order_saved = True
-            
+
             # Calculate strategic optimal scores for all paths
             self.calculate_strategic_optimal_scores("")
             # Sort recursively from root
@@ -2852,10 +2910,10 @@ class TreeGenerator:
     def calculate_strategic_optimal_scores(self, node):
         """
         Calculate strategic optimal expected value scores using multi-objective optimization.
-        
+
         Key factors:
         1. Expected value considering opponent responses
-        2. 3/5 win probability optimization  
+        2. 3/5 win probability optimization
         3. Catastrophic failure prevention (floor protection)
         4. Counter-pick resistance (front-loaded)
         5. Team strength adaptive weighting
@@ -2865,33 +2923,33 @@ class TreeGenerator:
             self._project_model()
             return result
         children = self.treeview.tree.get_children(node)
-        
+
         if not children:
             # Leaf node - calculate base strategic value
             if node:
                 try:
                     rating = int(self.treeview.tree.item(node, 'values')[0])
-                    
+
                     # Core Expected Value Calculation
                     base_ev = self.calculate_base_expected_value(rating)
-                    
+
                     # Win Probability for 3/5 context
                     win_probability = self.calculate_win_probability(rating)
-                    
-                    # Catastrophic Failure Protection 
+
+                    # Catastrophic Failure Protection
                     floor_protection = self.calculate_floor_protection(rating)
-                    
+
                     # Counter-pick Resistance (front-loaded weighting)
                     counter_resistance = self.calculate_counter_resistance_value(rating)
-                    
+
                     # Multi-objective score combination
                     strategic_score = self.combine_strategic_factors(
                         base_ev, win_probability, floor_protection, counter_resistance
                     )
-                    
+
                     self.store_strategic_optimal_data(node, strategic_score)
                     return strategic_score
-                    
+
                 except (ValueError, IndexError):
                     self.store_strategic_optimal_data(node, 0)
                     return 0
@@ -2908,20 +2966,20 @@ class TreeGenerator:
                         node_win_prob = self.calculate_win_probability(node_rating)
                         node_floor = self.calculate_floor_protection(node_rating)
                         node_counter = self.calculate_counter_resistance_value(node_rating)
-                        
+
                         node_strategic = self.combine_strategic_factors(
                             node_base_ev, node_win_prob, node_floor, node_counter
                         )
-                        
+
                         # Combine node score with best child path
                         total_strategic = self.aggregate_path_scores(node_strategic, child_score)
                         path_scores.append(total_strategic)
-                        
+
                     except (ValueError, IndexError):
                         path_scores.append(child_score)
                 else:
                     path_scores.append(child_score)
-            
+
             if node:
                 # Use best (maximum) strategic score for this branch
                 best_strategic = max(path_scores) if path_scores else 0
@@ -2991,10 +3049,10 @@ class TreeGenerator:
     def combine_strategic_factors(self, base_ev, win_prob, floor_protect, counter_resist):
         """
         Combine strategic factors using multi-objective optimization weights
-        
+
         Priority weighting based on user requirements:
         1. Floor Protection (40%) - Prevent catastrophic failures
-        2. Win Probability (30%) - Optimize for 3/5 wins  
+        2. Win Probability (30%) - Optimize for 3/5 wins
         3. Base Expected Value (20%) - General expected value
         4. Counter Resistance (10%) - Front-loaded but diminishing returns
         """
@@ -3005,7 +3063,7 @@ class TreeGenerator:
             base_ev * 0.20 +            # Medium priority: general EV
             counter_resist * 0.10       # Lower priority: counter resistance
         )
-        
+
         return strategic_score
 
     def aggregate_path_scores(self, node_score, child_score):
@@ -3019,16 +3077,16 @@ class TreeGenerator:
         try:
             item_data = self.treeview.tree.item(node)
             current_tags = list(item_data.get('tags', []))
-            
+
             # Remove existing strategic tags
             current_tags = [tag for tag in current_tags if not str(tag).startswith('strategic_')]
-            
+
             # Add new strategic data
             current_tags.append(f'strategic_{int(strategic_score)}')
-            
+
             self.treeview.tree.item(node, tags=current_tags)
-            
-            # Update the sort value column with strategic score  
+
+            # Update the sort value column with strategic score
             self.update_node_strategic_display(node, strategic_score)
         except Exception:
             pass
@@ -3055,30 +3113,30 @@ class TreeGenerator:
         children = self.treeview.tree.get_children(node)
         if not children:
             return
-        
+
         # Get strategic scores for all children
         children_with_scores = []
         for child in children:
             strategic_score = self.get_strategic_score_from_tags(child)
             children_with_scores.append((child, strategic_score))
-        
+
         # Determine if this is an opponent decision level or our choice level
         # Use the first child to determine the level, since all children are at the same level
         is_opponent_choice_level = self._is_opponent_choice_level(children[0])
-        
+
         if is_opponent_choice_level:
             # Opponent choice level: Sort by LOWEST strategic score first (opponent picks what's worst for us)
             children_with_scores.sort(key=lambda x: x[1], reverse=False)
         else:
             # Our choice level: Sort by HIGHEST strategic score first (we pick what's best for us)
             children_with_scores.sort(key=lambda x: x[1], reverse=True)
-        
+
         # Reorder children in the tree
         for child, _ in children_with_scores:
             self.treeview.tree.detach(child)
         for child, _ in children_with_scores:
             self.treeview.tree.move(child, node, 'end')
-        
+
         # Recursively sort grandchildren
         for child, _ in children_with_scores:
             self.sort_children_by_strategic_optimal(child)
@@ -3102,15 +3160,15 @@ class TreeGenerator:
         """
         Determine if this node represents an opponent choice level based on tree depth
         and the "Our Team First" setting.
-        
+
         Rules:
-        1. If "Our Team First" is checked: Level 1=Us, 2=Them, 3=Us, 4&5=Them  
+        1. If "Our Team First" is checked: Level 1=Us, 2=Them, 3=Us, 4&5=Them
         2. If "Our Team First" is unchecked: Level 1=Them, 2=Us, 3=Them, 4&5=Us
         3. The team that doesn't go first controls both decisions 4 & 5
-        
+
         Args:
             node: Node ID to check
-            
+
         Returns:
             True if this is an opponent choice level, False if it's our choice level
         """
@@ -3120,10 +3178,10 @@ class TreeGenerator:
                 return bool(model_node.is_opponent_choice)
         if not node:
             return False
-        
+
         # Calculate the depth of this node (1-based)
         depth = self._calculate_node_depth(node)
-        
+
         if self.our_team_first:
             # Our team goes first
             if depth == 1 or depth == 3:
@@ -3131,22 +3189,22 @@ class TreeGenerator:
             elif depth == 2 or depth == 4 or depth == 5:
                 return True   # Opponent choice
         else:
-            # Opponent team goes first  
+            # Opponent team goes first
             if depth == 1 or depth == 3:
                 return True   # Opponent choice
             elif depth == 2 or depth == 4 or depth == 5:
                 return False  # Our choice
-        
+
         # Default for unexpected depths - alternate starting from our_team_first
         return (depth % 2) != (1 if self.our_team_first else 0)
-    
+
     def _calculate_node_depth(self, node):
         """
         Calculate the depth of a node in the tree (1-based, root children are depth 1)
-        
+
         Args:
             node: Node ID
-            
+
         Returns:
             Depth as integer (1-based)
         """
@@ -3156,14 +3214,14 @@ class TreeGenerator:
                 return int(model_node.depth)
         depth = 0
         current = node
-        
+
         while current:
-            parent = self.treeview.tree.parent(current) 
+            parent = self.treeview.tree.parent(current)
             if not parent:  # Reached root
                 break
             depth += 1
             current = parent
-        
+
         return depth
 
     def update_node_cumulative_display(self, node, cumulative_value):

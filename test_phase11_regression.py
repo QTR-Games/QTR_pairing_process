@@ -2,9 +2,9 @@
 """Phase 11 regression coverage for strategic sorting behavior."""
 
 import tkinter as tk
-from tkinter import ttk
 from contextlib import nullcontext
-from typing import cast, Any
+from tkinter import ttk
+from typing import Any, cast
 
 from qtr_pairing_process.perf_timer import PerfTimer
 from qtr_pairing_process.tree_generator import TreeGenerator
@@ -755,7 +755,7 @@ def test_matchup_output_panel_does_not_render_explainability_summary_label():
     root.withdraw()
 
     ui = UiManager.__new__(UiManager)
-    setattr(ui, "db_preferences", cast(Any, DummyUIPrefs()))
+    ui.db_preferences = cast(Any, DummyUIPrefs())
     parent = tk.Frame(root)
     parent.pack()
 
@@ -779,7 +779,7 @@ def test_matchup_output_panel_does_not_render_explainability_summary_label():
 
 def test_ensure_matchup_output_panel_rebuilds_missing_widgets():
     ui = UiManager.__new__(UiManager)
-    setattr(ui, "perf", cast(Any, DummyPerf()))
+    ui.perf = cast(Any, DummyPerf())
     ui.matchup_output_panel_created = False
 
     stale_frame = DummyWidget(exists=True)
@@ -801,7 +801,7 @@ def test_ensure_matchup_output_panel_rebuilds_missing_widgets():
 
 def test_ensure_matchup_output_panel_keeps_valid_widgets():
     ui = UiManager.__new__(UiManager)
-    setattr(ui, "perf", cast(Any, DummyPerf()))
+    ui.perf = cast(Any, DummyPerf())
     ui.matchup_output_panel_created = False
     ui.output_panel_frame = DummyWidget(exists=True)
     ui.matchups_text = DummyWidget(exists=True)
@@ -915,16 +915,16 @@ def test_should_invalidate_strategic_memo_reason_policy():
 
 def test_set_tree_memo_state_token_tracks_token_churn():
     ui = UiManager.__new__(UiManager)
-    setattr(ui, "tree_generator", cast(Any, DummyTokenTreeGenerator()))
+    ui.tree_generator = cast(Any, DummyTokenTreeGenerator())
     ui._tree_generation_id = 1
-    setattr(ui, "perf", cast(Any, DummyPerf()))
+    ui.perf = cast(Any, DummyPerf())
 
     cache_key = ("TeamA", "TeamB", 1, "1-5", True, "sig")
     ui._set_tree_memo_state_token(cache_key)
     ui._set_tree_memo_state_token(cache_key)
     ui._set_tree_memo_state_token(("TeamA", "TeamB", 2, "1-5", True, "sig"))
 
-    token_gen = cast(DummyTokenTreeGenerator, getattr(ui, "tree_generator"))
+    token_gen = cast(DummyTokenTreeGenerator, ui.tree_generator)
     assert len(token_gen.tokens) == 3
     assert ui._tree_memo_token_set_count == 3
     assert ui._tree_memo_token_change_count == 2
@@ -975,8 +975,8 @@ def test_memo_state_change_clears_with_expected_reason_bucket():
 
 def test_sort_by_strategic_emits_new_telemetry_fields(tmp_path):
     ui = UiManager.__new__(UiManager)
-    setattr(ui, "tree_generator", cast(Any, DummyMemoStatsTreeGenerator()))
-    setattr(ui, "perf", cast(Any, PerfTimer(enabled=True, log_path=tmp_path / "perf_test.log")))
+    ui.tree_generator = cast(Any, DummyMemoStatsTreeGenerator())
+    ui.perf = cast(Any, PerfTimer(enabled=True, log_path=tmp_path / "perf_test.log"))
     ui._tree_generation_id = 1
     ui._available_explainability_metrics = {
         "cumulative",
@@ -1062,7 +1062,7 @@ def test_sort_by_strategic_recovers_from_all_zero_tags():
 
 def test_apply_combined_sort_emits_phase_timing_telemetry(tmp_path):
     ui = UiManager.__new__(UiManager)
-    setattr(ui, "perf", cast(Any, PerfTimer(enabled=True, log_path=tmp_path / "perf_apply_combined.log")))
+    ui.perf = cast(Any, PerfTimer(enabled=True, log_path=tmp_path / "perf_apply_combined.log"))
 
     class DummyTreeGenForApply:
         cumulative2_alpha = 0.8
@@ -1166,7 +1166,7 @@ def test_is_metric_stale_fast_path_skips_tag_scan_when_signature_matches():
 
 def test_apply_combined_sort_restores_display_suppression_flag():
     ui = UiManager.__new__(UiManager)
-    setattr(ui, "perf", cast(Any, DummyPerf()))
+    ui.perf = cast(Any, DummyPerf())
 
     class DummyTreeGenForSuppression:
         cumulative2_alpha = 0.8
@@ -1470,10 +1470,10 @@ def test_strategic_score_distribution_counts_nodes():
 def test_persistent_memo_toggle_updates_runtime_and_prefs():
     ui = UiManager.__new__(UiManager)
     prefs_store = DummyStrategicPrefsStore()
-    setattr(ui, "db_preferences", cast(Any, prefs_store))
-    setattr(ui, "persistent_memo_var", cast(Any, DummyIntVar(0)))
-    setattr(ui, "tree_generator", cast(Any, DummyMemoStatsTreeGenerator()))
-    setattr(ui, "strategic_preferences", _persistent_prefs())
+    ui.db_preferences = cast(Any, prefs_store)
+    ui.persistent_memo_var = cast(Any, DummyIntVar(0))
+    ui.tree_generator = cast(Any, DummyMemoStatsTreeGenerator())
+    ui.strategic_preferences = _persistent_prefs()
 
     ui._on_persistent_memo_toggle()
 
@@ -1549,7 +1549,7 @@ def test_apply_combined_strategic_reuses_fresh_base_metrics():
     ui = UiManager.__new__(UiManager)
     ui.treeview = DummyTreeView(tree)  # type: ignore[assignment]
     ui.tree_generator = gen
-    setattr(ui, "perf", DummyPerf())
+    ui.perf = DummyPerf()
     ui.column_sort_states = {"#0": "none", "Rating": "none", "Sort Value": "none"}
     ui.active_sort_mode = "strategic3"
     ui.active_column_sort = None
@@ -1603,7 +1603,10 @@ def test_strategic_preferences_are_loaded_into_generator():
     assert abs(resistance2_beta - 1.7) < 1e-9
     assert abs(resistance2_gamma - 2.8) < 1e-9
     expected_weights = (0.5, 0.3, 0.2)
-    assert all(abs(actual - expected) < 1e-9 for actual, expected in zip(gen.strategic3_weights, expected_weights))
+    assert all(
+        abs(actual - expected) < 1e-9
+        for actual, expected in zip(gen.strategic3_weights, expected_weights, strict=False)
+    )
     strategic3_rho = cast(float, gen.strategic3_rho)
     strategic3_lam = cast(float, gen.strategic3_lam)
     assert abs(strategic3_rho - 0.33) < 1e-9
@@ -1741,3 +1744,41 @@ def test_strategic_tag_reader_ignores_exploit_prefix_collision():
 
     root.destroy()
     assert strategic_value == -108
+
+
+def test_refresh_materialized_sort_values_skips_synthetic_root():
+    class FakeTree:
+        def __init__(self):
+            self.nodes = {
+                "root": {"values": (), "text": "Pairings"},
+                "child": {"values": (5,), "text": "A vs X"},
+            }
+
+        def item(self, node, option=None, **kwargs):
+            if kwargs:
+                if "values" in kwargs:
+                    self.nodes[node]["values"] = tuple(kwargs["values"])
+                return None
+            data = self.nodes[node]
+            if option == "values":
+                return data["values"]
+            return data
+
+    root_model = type("RootNode", (), {"parent": None, "depth": 0})()
+    child_model = type("ChildNode", (), {"parent": root_model, "depth": 1})()
+    projector = type(
+        "Projector",
+        (),
+        {"widget_to_node": {"root": root_model, "child": child_model}},
+    )()
+
+    ui = UiManager.__new__(UiManager)
+    ui.treeview = DummyTreeView(FakeTree())  # type: ignore[assignment]
+    ui.tree_generator = type("TreeGen", (), {"projector": projector})()
+    ui.current_sort_mode = "strategic3"
+    ui.get_sort_value_for_node = lambda node: 7 if node == "child" else 0
+
+    ui._refresh_materialized_sort_values()
+
+    assert ui.treeview.tree.nodes["root"]["values"] == ()
+    assert ui.treeview.tree.nodes["child"]["values"] == (5, "7")
