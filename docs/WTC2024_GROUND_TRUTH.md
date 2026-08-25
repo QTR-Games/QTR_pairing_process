@@ -653,6 +653,113 @@ both hard requirements of Capacitor 8) and publishes it to a rolling
 
 ---
 
+## Finding 17 — The app went silent at the one decision that was actually ours
+
+Driving the deployed build at phone width, tapping the first button at every
+step, the round finished on **14** — one point under the `GUARANTEED 15` the app
+had printed moments earlier. The engine was not wrong. The *screen* was.
+
+At an offer, the defending side names two players and the **attacking** side
+chooses which of the two it faces. When we hold the attacker, that choice is
+ours — and the app rendered it as two bare buttons reading `A1 played` and
+`A2 played`, with no values and no guidance. Tapping the first one cost a point.
+
+This is the mission statement failing at the last inch. The app exists to stop
+you being trapped, and it went quiet at the exact moment of choice.
+
+Two things came out of it.
+
+### The floor and the advice are now tied together in CI
+
+`webapp/src/engine/live.invariant.test.ts` asserts that the number `Verdict`
+prints (`protocolFloor`) and the number `LivePanel` advises toward
+(`moveOptions`) land in the same place. Playing both sides perfectly lands
+**exactly** on the promised floor, for both values of `ourTeamFirst`.
+
+Worth recording: the third test *reproduced* the 14-vs-15 gap, and the fault was
+in my test, not the app — my adversarial loop let *us* choose arbitrarily at
+pick decisions. Picking arbitrarily is not "following the advice". Once our side
+searched for its better half, all three passed. The bug the drive-through found
+was a **UI** bug the whole time.
+
+### "Either one is the same" is a bug, not an answer
+
+The first version of the hint read *"Either half is worth the same — take
+whichever suits the table."* That is the coin-flip non-answer, and it is wrong
+in principle: the guaranteed number is a minimax value, so on a tight board it
+ties constantly. **A tie is not an absence of signal. It is the floor being the
+wrong instrument.**
+
+Measured on the five real WTC boards, across every offer where the pick is ours:
+
+| | count | share |
+|---|---|---|
+| Offers where the pick is ours | 1550 | |
+| ...where the floor ties | 660 | **43%** |
+
+So on nearly half of our own decisions, the headline number has nothing to say.
+
+`pickTieBreak` reaches for the next instrument, and then the next:
+
+1. **Floor** — the guaranteed number. Settles 57%.
+2. **Typical** — what it plays out to if they play their own board rather than
+   hunting ours (Finding 16's `outlook`). Settles 204 more.
+3. **Upside** — same floor, same typical, but one half keeps a bigger prize
+   alive if they misplay. *Play to your outs.*
+4. **Pressure** — identical on all three, so the separator is how much of their
+   reply space actually holds us to the floor. Settles 214 more.
+
+| | count | share of ties |
+|---|---|---|
+| Answered by the ladder | 418 | **63%** |
+| Still unanswered | 242 | 37% (**16%** of all our picks) |
+
+On the real Australia board — the one that bussed Irving — the app now says:
+
+> Both hold 14. Take Sea Raiders — same floor and same upside, but only **33%**
+> of their replies hold you there, against **50%**.
+
+That is a reason you can act on where there was previously a shrug.
+
+### The threshold is measured, not guessed
+
+`outlook` averages sampled opponent grids, so it carries a sampling error, and
+printing a gap smaller than that error dresses noise up as advice — worse than
+silence, because it looks authoritative. The first build did exactly that: it
+told me to take one half because it left **16.8** against **16.7**.
+
+`webapp/src/engine/measure.tiebreak.test.ts` measured that error against a
+1500-trial reference over 155 real states:
+
+| trials | p90 error | max error | ms per call |
+|---|---|---|---|
+| 24 | 0.209 | 0.351 | 6.6 |
+| **96** | **0.096** | **0.191** | **27.1** |
+| 192 | 0.065 | 0.157 | 57.5 |
+| 384 | 0.040 | 0.105 | 112.5 |
+
+A 0.1-point "difference" at 24 trials is **pure noise**. The shipped rung uses
+96 trials and refuses to print a gap under **0.4** — above the worst case of two
+independent errors (0.191 each). Rungs 3 and 4 are computed exactly from the
+board, so they are allowed to act on any difference at all.
+
+One negative result worth keeping: the **upside** figure is an order statistic
+(p90), and at 96 trials its error is *quantised* — exactly right in over 90% of
+states, but occasionally off by a **full point**. That is a step function, not
+smooth noise, so it cannot carry a sampled threshold. It survives in the ladder
+only because rungs 3 and 4 are computed from `moveOptions` exactly. On the five
+real boards it never fired; **pressure** did that work.
+
+### And one presentation bug it surfaced
+
+The tie-break runs only for the row being recommended, to bound its cost. But
+the first build rendered the same *"both play out identically"* prose on rows
+where it had never been computed — a claim the app had not checked. The prose is
+now restricted to the row it was actually measured for; the other rows still
+carry values on both halves, which was the substantive fix anyway.
+
+---
+
 ## What this changes — revised
 
 | Question originally asked | What the ground truth says |
