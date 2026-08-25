@@ -10,12 +10,11 @@ def test_post_load_refresh_skips_when_signature_unchanged():
     ui = UiManager.__new__(UiManager)
     u = cast(Any, ui)
 
-    calls = {"comment": 0, "calc": 0, "set_dirty": 0, "skip": 0}
+    calls = {"comment": 0, "set_dirty": 0, "skip": 0}
     u._grid_dirty = False
     u._last_post_load_refresh_signature = ("sig",)
     u._build_post_load_refresh_signature = lambda: ("sig",)
     u.update_comment_indicators = lambda: calls.__setitem__("comment", calls["comment"] + 1)
-    u._schedule_scenario_calculations = lambda immediate=False: calls.__setitem__("calc", calls["calc"] + 1)
     u._set_grid_dirty = lambda is_dirty: calls.__setitem__("set_dirty", calls["set_dirty"] + 1)
 
     def _skip_noop(*_args, **_kwargs):
@@ -28,7 +27,6 @@ def test_post_load_refresh_skips_when_signature_unchanged():
 
     assert calls["skip"] == 1
     assert calls["comment"] == 0
-    assert calls["calc"] == 0
     assert calls["set_dirty"] == 0
 
 
@@ -36,19 +34,17 @@ def test_post_load_refresh_runs_when_signature_changes():
     ui = UiManager.__new__(UiManager)
     u = cast(Any, ui)
 
-    calls = {"comment": 0, "calc": 0, "set_dirty": 0}
+    calls = {"comment": 0, "set_dirty": 0}
     u._grid_dirty = False
     u._last_post_load_refresh_signature = ("old",)
     u._build_post_load_refresh_signature = lambda: ("new",)
     u.update_comment_indicators = lambda: calls.__setitem__("comment", calls["comment"] + 1)
-    u._schedule_scenario_calculations = lambda immediate=False: calls.__setitem__("calc", calls["calc"] + 1)
     u._set_grid_dirty = lambda is_dirty: calls.__setitem__("set_dirty", calls["set_dirty"] + 1)
     u._skip_noop = lambda *_args, **_kwargs: True
 
     ui._post_grid_load_refresh()
 
     assert calls["comment"] == 1
-    assert calls["calc"] == 1
     assert calls["set_dirty"] == 1
     assert u._last_post_load_refresh_signature == ("new",)
 

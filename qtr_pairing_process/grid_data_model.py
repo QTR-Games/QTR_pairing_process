@@ -30,7 +30,6 @@ class GridDataModel:
         # Core data structures - pure Python (no Tkinter dependencies)
         # Ratings: int for actual ratings (1-5), str for player names (headers), None for empty
         self.ratings: List[List[Union[int, str, None]]] = [[None for _ in range(6)] for _ in range(6)]
-        self.display: List[List[str]] = [['' for _ in range(6)] for _ in range(6)]
         self.comments: Dict[Tuple[int, int], str] = {}
         self.disabled_cells: Set[Tuple[int, int]] = set()
         
@@ -49,7 +48,6 @@ class GridDataModel:
         
         Event types:
         - 'rating_changed': (row, col, new_value)
-        - 'display_changed': (row, col, new_value)
         - 'comment_changed': (row, col, comment_text or None)
         - 'cell_disabled': (row, col, is_disabled)
         - 'batch_update': (list of changes)
@@ -156,24 +154,6 @@ class GridDataModel:
         if notify:
             self._notify_observers('grid_loaded')
     
-    # Display grid access
-    
-    def get_display(self, row: int, col: int) -> str:
-        """Get display/calculated value for cell"""
-        return self.display[row][col]
-    
-    def set_display(self, row: int, col: int, value: str, notify: bool = True):
-        """Set display/calculated value"""
-        old_value = self.display[row][col]
-        self.display[row][col] = value
-        
-        if notify and old_value != value:
-            self._notify_observers('display_changed', row, col, value)
-    
-    def get_all_display(self) -> List[List[str]]:
-        """Get entire display grid (returns copy)"""
-        return [row[:] for row in self.display]
-    
     # Comment management
     
     def has_comment(self, row: int, col: int) -> bool:
@@ -244,9 +224,8 @@ class GridDataModel:
     # Bulk operations
     
     def clear_grid(self, notify: bool = True):
-        """Clear all rating and display values"""
+        """Clear all rating values"""
         self.ratings = [[None for _ in range(6)] for _ in range(6)]
-        self.display = [['' for _ in range(6)] for _ in range(6)]
         
         if notify:
             self._notify_observers('grid_cleared')
@@ -259,7 +238,6 @@ class GridDataModel:
         """
         return {
             'ratings': self.get_all_ratings(),
-            'display': self.get_all_display(),
             'comments': self.get_all_comments(),
             'disabled_cells': self.disabled_cells.copy()
         }
@@ -271,7 +249,6 @@ class GridDataModel:
         Use with begin_batch()/end_batch() for efficient restoration.
         """
         self.ratings = [row[:] for row in snapshot['ratings']]
-        self.display = [row[:] for row in snapshot['display']]
         self.comments = snapshot['comments'].copy()
         self.disabled_cells = snapshot['disabled_cells'].copy()
         
