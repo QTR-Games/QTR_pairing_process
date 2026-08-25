@@ -51,6 +51,7 @@
 
 import type { Matrix } from "./boardAnalysis";
 import type { ProtocolState, Side } from "./protocol";
+import { atLeast, extendDistribution, probabilityMatrix, winsNeeded } from "./winProbability";
 
 /** A single matchup: OUR player `ours` against THEIR player `theirs`. */
 export interface Cell {
@@ -493,4 +494,363 @@ export function pinReport(
     defense.push(isPinned(matrix, i, threshold, base, ourTeamFirst));
   }
   return { offense, defense };
+}
+
+// ---------------------------------------------------------------------------
+// Probability-valued avoidance
+// ---------------------------------------------------------------------------
+
+/**
+ * ## Why everything above this line reads 0.000
+ *
+ * `dodgeMap` prices a refusal in points and reports `free: true` on every cell
+ * of every fixture board. That is not a bug and it is not a discovery -- it is
+ * what happens when you ask an additive objective which of two bad cells you
+ * would rather eat. The sum does not care. Swap a 9 and a 1 for two 5s and the
+ * guaranteed total is unchanged, so a search that maximises the total is
+ * genuinely indifferent, and reports the indifference honestly.
+ *
+ * The decision is not indifferent. A round is taken by winning three of five,
+ * and 5-5-5-5-5 wins a round far more often than 9-9-1-1-1 despite the equal
+ * total. Under P(>= 3 wins) the same dodges that priced at zero price at up to
+ * 7.969% (measured over 45 saved boards, `files/probe_dodge_price.py`).
+ *
+ * So this section gives the avoidance search its own value function. The
+ * app-wide objective is untouched: the verdict, the threshold and the sort all
+ * still run on points. Only the question "what does this refusal cost?" is
+ * answered in the currency that actually decides the round.
+ *
+ * ## Why this is a separate search rather than a swapped constant
+ *
+ * The points search accumulates: `value(node) = cell + value(child)`. That is
+ * what lets it memoise on the pools alone, because the future is independent of
+ * the past.
+ *
+ * P(>= 3) does not accumulate. Whether one more win matters depends entirely on
+ * how many are already banked, so the value of a subtree depends on the path
+ * taken to reach it. The search therefore carries the distribution of wins so
+ * far and evaluates only at a complete assignment, and the memo key includes
+ * that distribution.
+ *
+ * The tempting shortcut -- carry "wins still needed" as an integer and take
+ * `p * V(need-1) + (1-p) * V(need)` -- is WRONG, and worth naming so it is not
+ * reintroduced as an optimisation. It presumes the two terms may be achieved by
+ * different strategies, when one strategy has to serve both. It would overstate
+ * our chances by exactly the amount that hindsight is worth.
+ *
+ * The cost of doing it properly is bounded: at a given pool state the
+ * distribution depends only on the multiset of probabilities already fixed, so
+ * distinct paths that fixed the same values share a memo entry.
+ */
+
+/** Distribution signature for the memo key. Rounded to keep float noise out. */
+const distKey = (dist: readonly number[]): string => {
+  let out = "";
+  for (let i = 0; i < dist.length; i++) out += (i ? "," : "") + dist[i].toFixed(9);
+  return out;
+};
+
+/**
+ * Minimax P(>= `need` wins) among strategies that never reach a forbidden cell.
+ *
+ * `null` carries the same meaning as in `solveAvoiding`: the constraint cannot
+ * be met against best play. The propagation rule is identical -- we need one
+ * way through, they need one way in -- so the two searches agree exactly on
+ * *whether* a dodge is possible and disagree only on what it costs.
+ *
+ * `probs[i][j]` is the probability OUR player `i` beats THEIR player `j`.
+ */
+export function solveAvoidingChance(
+  probs: Matrix,
+  state: ProtocolState,
+  forbidden: number,
+  need: number,
+  dist: readonly number[] = [1],
+  memo: Map<string, number | null> = new Map(),
+): number | null {
+  const { ourPool, theirPool, attacker, attackerSide } = state;
+  const n = probs.length;
+  const key = `${ourPool}|${theirPool}|${attacker}|${attackerSide}|${distKey(dist)}`;
+  if (memo.has(key)) return memo.get(key) as number | null;
+
+  let result: number | null;
+
+  if (attacker < 0) {
+    let best: number | null = null;
+    for (const p of bits(ourPool)) {
+      const sub = solveAvoidingChance(
+        probs,
+        { ourPool: ourPool & ~(1 << p), theirPool, attacker: p, attackerSide: "our" },
+        forbidden,
+        need,
+        dist,
+        memo,
+      );
+      if (sub !== null && (best === null || sub > best)) best = sub;
+    }
+    memo.set(key, best);
+    return best;
+  }
+
+  const offeringPool = attackerSide === "our" ? theirPool : ourPool;
+  const candidates = bits(offeringPool);
+
+  if (candidates.length === 0) {
+    result = atLeast(dist, need);
+    memo.set(key, result);
+    return result;
+  }
+
+  if (candidates.length === 1) {
+    const other = candidates[0];
+    const [ours, theirs] = attackerSide === "our" ? [attacker, other] : [other, attacker];
+    result = isForbidden(forbidden, ours, theirs, n)
+      ? null
+      : atLeast(extendDistribution(dist, probs[ours][theirs]), need);
+    memo.set(key, result);
+    return result;
+  }
+
+  const defenderIsUs = attackerSide === "their";
+  let chosen: number | null = null;
+  let sawUnmeetable = false;
+
+  for (let a = 0; a < candidates.length; a++) {
+    for (let b = a + 1; b < candidates.length; b++) {
+      const value = resolveOfferChance(
+        probs,
+        state,
+        [candidates[a], candidates[b]],
+        forbidden,
+        need,
+        dist,
+        memo,
+      );
+      if (value === null) {
+        if (!defenderIsUs) sawUnmeetable = true;
+        continue;
+      }
+      if (chosen === null) chosen = value;
+      else if (defenderIsUs ? value > chosen : value < chosen) chosen = value;
+    }
+    if (sawUnmeetable) break;
+  }
+
+  result = sawUnmeetable ? null : chosen;
+  memo.set(key, result);
+  return result;
+}
+
+/** Value of one offer, in round-win probability. Mirrors `resolveOfferAvoiding`. */
+function resolveOfferChance(
+  probs: Matrix,
+  state: ProtocolState,
+  pair: [number, number],
+  forbidden: number,
+  need: number,
+  dist: readonly number[],
+  memo: Map<string, number | null>,
+): number | null {
+  const { ourPool, theirPool, attacker, attackerSide } = state;
+  const n = probs.length;
+  const attackerIsUs = attackerSide === "our";
+  let best: number | null = null;
+
+  for (const picked of pair) {
+    const leftover = picked === pair[0] ? pair[1] : pair[0];
+    const [ours, theirs] = attackerIsUs ? [attacker, picked] : [picked, attacker];
+
+    if (isForbidden(forbidden, ours, theirs, n)) {
+      if (!attackerIsUs) return null;
+      continue;
+    }
+
+    const nextOurPool = attackerIsUs ? ourPool : ourPool & ~(1 << picked) & ~(1 << leftover);
+    const nextTheirPool = attackerIsUs
+      ? theirPool & ~(1 << picked) & ~(1 << leftover)
+      : theirPool;
+
+    const nextDist = extendDistribution(dist, probs[ours][theirs]);
+    const exhausted = popcount(nextOurPool) === 0 && popcount(nextTheirPool) === 0;
+    const total = exhausted
+      ? atLeast(nextDist, need)
+      : solveAvoidingChance(
+          probs,
+          {
+            ourPool: nextOurPool,
+            theirPool: nextTheirPool,
+            attacker: leftover,
+            attackerSide: attackerIsUs ? "their" : "our",
+          },
+          forbidden,
+          need,
+          nextDist,
+          memo,
+        );
+
+    if (total === null) {
+      if (!attackerIsUs) return null;
+      continue;
+    }
+
+    if (best === null) best = total;
+    else if (attackerIsUs ? total > best : total < best) best = total;
+  }
+
+  return best;
+}
+
+/**
+ * Guaranteed P(win the round) among strategies that refuse every forbidden cell.
+ *
+ * Pass `forbidden = 0` for the unconstrained baseline. With `ourTeamFirst =
+ * false` they open with whichever player is worst for us, matching the
+ * convention in `avoidingFloor` so the two are directly comparable.
+ */
+export function avoidingWinChance(
+  probs: Matrix,
+  forbidden: number,
+  ourTeamFirst = true,
+): number | null {
+  const n = probs.length;
+  const full = (1 << n) - 1;
+  const need = winsNeeded(n);
+
+  if (ourTeamFirst) {
+    return solveAvoidingChance(
+      probs,
+      { ourPool: full, theirPool: full, attacker: -1, attackerSide: "our" },
+      forbidden,
+      need,
+    );
+  }
+
+  const memo = new Map<string, number | null>();
+  let worst: number | null = null;
+  for (let p = 0; p < n; p++) {
+    const sub = solveAvoidingChance(
+      probs,
+      {
+        ourPool: full,
+        theirPool: full & ~(1 << p),
+        attacker: p,
+        attackerSide: "their" as Side,
+      },
+      forbidden,
+      need,
+      [1],
+      memo,
+    );
+    if (sub === null) return null;
+    if (worst === null || sub < worst) worst = sub;
+  }
+  return worst;
+}
+
+/**
+ * A dodge priced in the currency that decides the round.
+ *
+ * `price` is a probability difference, so `0.031` means "refusing this costs
+ * roughly three rounds in a hundred". It is not a points total and must never
+ * be rendered alongside one without a unit.
+ */
+export interface ChancePrice {
+  cell: Cell;
+  /** Second cell, when this prices a pair. */
+  second?: Cell;
+  /** The rating in the cell, carried through for display. */
+  rating: number;
+  /** Our chance of taking the round with no constraint. */
+  base: number;
+  /** Our chance among strategies that refuse the cell. */
+  avoided: number | null;
+  /** `base - avoided`, as a probability. Non-negative. */
+  price: number | null;
+  /** True when the refusal costs nothing measurable. */
+  free: boolean;
+}
+
+/** Chance-valued baseline: what we can guarantee with nothing refused. */
+export function winChanceFloor(
+  matrix: Matrix,
+  ratingMin = 1,
+  ratingMax = 5,
+  ourTeamFirst = true,
+): number {
+  const probs = probabilityMatrix(matrix, ratingMin, ratingMax);
+  return avoidingWinChance(probs, 0, ourTeamFirst) ?? 0;
+}
+
+/**
+ * The price of refusing each matchup on the board, one at a time, in round-win
+ * probability. Cheapest first.
+ *
+ * This is the chance-valued twin of `dodgeMap`. The two agree on which dodges
+ * are POSSIBLE -- the search structure is identical -- and disagree on which
+ * are worth arguing about, which is the entire reason it exists.
+ */
+export function dodgeMapChance(
+  matrix: Matrix,
+  ratingMin = 1,
+  ratingMax = 5,
+  ourTeamFirst = true,
+): ChancePrice[] {
+  const n = matrix.length;
+  const probs = probabilityMatrix(matrix, ratingMin, ratingMax);
+  const base = avoidingWinChance(probs, 0, ourTeamFirst) ?? 0;
+  const out: ChancePrice[] = [];
+
+  for (let ours = 0; ours < n; ours++) {
+    for (let theirs = 0; theirs < n; theirs++) {
+      const cell: Cell = { ours, theirs };
+      const avoided = avoidingWinChance(probs, cellBit(cell, n), ourTeamFirst);
+      const price = avoided === null ? null : base - avoided;
+      out.push({
+        cell,
+        rating: matrix[ours][theirs],
+        base,
+        avoided,
+        price,
+        free: price !== null && price < 1e-9,
+      });
+    }
+  }
+
+  out.sort((a, b) => {
+    if (a.price === null) return b.price === null ? 0 : 1;
+    if (b.price === null) return -1;
+    return a.price - b.price || a.rating - b.rating;
+  });
+  return out;
+}
+
+/**
+ * Can both of these be refused at once, and what does it cost in round-win
+ * probability?
+ *
+ * Avoidance does not compose, so this cannot be recovered by adding two entries
+ * of `dodgeMapChance`. `price === null` means one strategy cannot escape both.
+ */
+export function pricePairChance(
+  matrix: Matrix,
+  a: Cell,
+  b: Cell,
+  ratingMin = 1,
+  ratingMax = 5,
+  ourTeamFirst = true,
+): ChancePrice {
+  const n = matrix.length;
+  const probs = probabilityMatrix(matrix, ratingMin, ratingMax);
+  const base = avoidingWinChance(probs, 0, ourTeamFirst) ?? 0;
+  const avoided = avoidingWinChance(probs, forbidCells([a, b], n), ourTeamFirst);
+  const price = avoided === null ? null : base - avoided;
+  return {
+    cell: a,
+    second: b,
+    rating: matrix[a.ours][a.theirs],
+    base,
+    avoided,
+    price,
+    free: price !== null && price < 1e-9,
+  };
 }

@@ -107,7 +107,6 @@ export function Verdict({ board, onHighlight }: Props) {
           strong
         />
         <Stat label="Ceiling" value={fmt(o.ceiling)} note="best still reachable" />
-        <Stat label="To win" value={fmt(tau)} />
       </div>
 
       <p className="reading">
