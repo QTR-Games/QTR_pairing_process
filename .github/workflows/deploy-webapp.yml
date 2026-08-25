@@ -1,0 +1,55 @@
+﻿# Publish the phone app.
+#
+# The point of this workflow is distribution. An APK has to be sideloaded and
+# re-sent every time something changes; a hosted PWA installs from a link and
+# updates itself. Teammates open the URL once with signal, add it to the home
+# screen, and it works offline from then on.
+name: deploy-webapp
+
+on:
+  push:
+    branches: [main]
+    paths: ['webapp/**', '.github/workflows/deploy-webapp.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a deploy midway; let a run finish before the next starts.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - run: npm ci
+        working-directory: webapp
+
+      # vite.config.ts sets base to './', so the bundle resolves correctly from
+      # the /QTR_pairing_process/ subpath Pages serves it from.
+      - run: npm run build
+        working-directory: webapp
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: webapp/dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
