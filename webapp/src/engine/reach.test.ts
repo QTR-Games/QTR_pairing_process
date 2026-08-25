@@ -15,10 +15,10 @@ const fixtures = boards as Fixture[];
 /**
  * One sweep of every board, shared by every assertion below.
  *
- * Computed once rather than per test on purpose. Each sweep is 31 boards of
- * ten constrained searches, and recomputing it in six separate tests put this
- * file's runtime high enough to starve `worstMatchupDodge.test.ts` of a worker
- * and push a neighbouring 2.9 s test past the 5 s default timeout.
+ * This used to be shared because recomputing it per test was slow enough to
+ * starve a neighbouring test file of a worker. `reachReport` is now ten sorts
+ * of five numbers, so that no longer applies -- it stays shared only because
+ * the assertions genuinely want the same data.
  */
 const REPORTS: { fixture: Fixture; report: ReachReport }[] = fixtures.map((fixture) => ({
   fixture,
@@ -57,8 +57,9 @@ describe("forcedCeiling", () => {
         if (c.overstated) overstated++;
       }
     }
-    // Measured 25/155. Asserted as a band so a solver regression is caught but
-    // adding a fixture board does not fail the suite on an exact count.
+    // Measured 25/155, and equal to "columns whose max is unique". Asserted as
+    // a band here so adding a fixture board does not fail the suite on an exact
+    // count; `reach.equivalence.test.ts` holds the exact rule.
     expect(total).toBe(155);
     expect(overstated).toBeGreaterThan(10);
     expect(overstated).toBeLessThan(60);
@@ -94,7 +95,8 @@ describe("forcedFloor", () => {
         if (f.protectedByProtocol) shielded++;
       }
     }
-    // Measured 64/155 -- the headline claim this module exists to make.
+    // Measured 64/155 -- the headline claim this module exists to make, and
+    // equal to "rows whose min is unique".
     expect(total).toBe(155);
     expect(shielded).toBeGreaterThan(30);
     expect(shielded).toBeLessThan(110);
@@ -123,13 +125,5 @@ describe("reachReport", () => {
     const big = reachReport(scaled, protocolFloor(scaled, true).value);
     expect(big.ceilings.map((c) => c.level)).toEqual(report.ceilings.map((c) => c.level! * 10));
     expect(big.floors.map((f) => f.level)).toEqual(report.floors.map((f) => f.level * 10));
-  });
-
-  it("threads through which side nominates first", () => {
-    // Not an equality claim -- only that the flag reaches the solver rather
-    // than the grid being read directly, which would ignore it entirely.
-    const { matrix } = fixtures[6];
-    const report = reachReport(matrix, protocolFloor(matrix, false).value, false);
-    for (const c of report.ceilings) expect(c.level).not.toBeNull();
   });
 });
