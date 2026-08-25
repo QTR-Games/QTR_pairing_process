@@ -92,6 +92,52 @@ const bits = (mask: number): number[] => {
 const popcount = (mask: number): number => bits(mask).length;
 
 /**
+ * A memo table bound to the board it was filled from.
+ *
+ * `solveProtocol`'s memo key is `ourPool|theirPool|attacker|attackerSide` and
+ * deliberately does NOT include the matrix, because carrying 25 numbers in a
+ * string key would cost more than the lookup saves. That makes the memo
+ * perfectly reusable across states of the same board, and silently wrong
+ * across different boards -- it would hand back another board's answer with no
+ * error and no visible symptom.
+ *
+ * Pairing the map with the matrix it belongs to turns that into a thrown error
+ * at the call site. Same reasoning as `pickTieBreak`'s required `ratingSpan`:
+ * the only way a caller gets this wrong is silently, so make it loud.
+ *
+ * Reuse is the point. Because the key covers the whole state, one cache stays
+ * valid for an entire round -- every tap narrows the pools, and the subtrees
+ * below the new state were already searched while valuing the old one.
+ */
+export interface SolveCache {
+  readonly matrix: Matrix;
+  readonly memo: Map<string, ProtocolResult>;
+}
+
+/** A cache for one board. Hold it as long as the board does not change. */
+export function solveCache(matrix: Matrix): SolveCache {
+  return { matrix, memo: new Map<string, ProtocolResult>() };
+}
+
+/**
+ * The memo to use for `matrix`, or a fresh private one when no cache is given.
+ *
+ * Reference equality on purpose: two structurally equal matrices are still two
+ * different boards as far as a caller is concerned, and a deep compare here
+ * would cost more than the memo saves.
+ */
+export function memoFor(matrix: Matrix, cache?: SolveCache): Map<string, ProtocolResult> {
+  if (!cache) return new Map<string, ProtocolResult>();
+  if (cache.matrix !== matrix) {
+    throw new Error(
+      "SolveCache belongs to a different board. Memo keys omit the matrix, so " +
+        "reusing one across boards returns the wrong board's answers.",
+    );
+  }
+  return cache.memo;
+}
+
+/**
  * Exact minimax value of a pairing state.
  *
  * We maximise; the opponent minimises. Both the offer and the pick are real

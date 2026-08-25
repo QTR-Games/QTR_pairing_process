@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { Matrix } from "../../engine/boardAnalysis";
 import type { LiveState } from "../../engine/live";
 import { moveOptions, newRound, pickOptions } from "../../engine/live";
+import { solveCache } from "../../engine/protocol";
 import type { Board } from "../../model/board";
 
 interface Props {
@@ -37,7 +38,12 @@ export function ProtocolTree({ board, matrix, tau, onHighlight }: Props) {
   const n = board.ourPlayers.length;
   const root = useMemo(() => newRound(n, board.ourTeamFirst), [n, board.ourTeamFirst]);
 
-  const openers = useMemo(() => moveOptions(matrix, root), [matrix, root]);
+  // One search for the whole tree. `offers` explores a child of the state
+  // `openers` just valued, and `picks` a child of that, so nearly everything
+  // the second and third calls need is already in the cache.
+  const cache = useMemo(() => solveCache(matrix), [matrix]);
+
+  const openers = useMemo(() => moveOptions(matrix, root, cache), [matrix, root, cache]);
   const weOpen = board.ourTeamFirst;
 
   const [opener, setOpener] = useState<number | null>(null);
@@ -56,8 +62,8 @@ export function ProtocolTree({ board, matrix, tau, onHighlight }: Props) {
   }, [chosenOpener, root, weOpen]);
 
   const offers = useMemo(
-    () => (afterOpen ? moveOptions(matrix, afterOpen) : []),
-    [matrix, afterOpen],
+    () => (afterOpen ? moveOptions(matrix, afterOpen, cache) : []),
+    [matrix, afterOpen, cache],
   );
 
   // The offering side is whoever did not open, and they are minimising our
@@ -69,8 +75,10 @@ export function ProtocolTree({ board, matrix, tau, onHighlight }: Props) {
 
   const picks = useMemo(
     () =>
-      afterOpen && chosenOffer?.pair ? pickOptions(matrix, afterOpen, chosenOffer.pair) : [],
-    [matrix, afterOpen, chosenOffer],
+      afterOpen && chosenOffer?.pair
+        ? pickOptions(matrix, afterOpen, chosenOffer.pair, cache)
+        : [],
+    [matrix, afterOpen, chosenOffer, cache],
   );
 
   const nameOpener = (i: number) =>

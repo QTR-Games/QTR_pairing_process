@@ -30,6 +30,7 @@ import {
   playerLeverage,
   type LiveState,
 } from "./live";
+import { solveCache, type SolveCache } from "./protocol";
 
 const ON = process.env.QTR_PERF === "1";
 
@@ -55,23 +56,23 @@ const BOARD: Matrix = [
  * this file measured only the panel-level calls and reported 7.6ms, which was
  * an undercount of the thing being complained about.
  */
-function oneRender(matrix: Matrix, s: LiveState, span: number): number {
-  const opts = moveOptions(matrix, s);
-  playerLeverage(matrix, s);
+function oneRender(matrix: Matrix, s: LiveState, span: number, cache?: SolveCache): number {
+  const opts = moveOptions(matrix, s, cache);
+  playerLeverage(matrix, s, cache);
   const d = currentDecision(s);
   const ours = "owner" in d && d.owner === "our";
 
   if (ours) {
-    for (const o of opts) optionProfile(matrix, s, o);
+    for (const o of opts) optionProfile(matrix, s, o, cache);
   }
 
   // What OptionRow does for every offer row on screen.
   const choiceIsOurs = "attackerSide" in d && d.attackerSide === "our";
   for (const o of opts) {
     if (!o.pair) continue;
-    const picks = pickOptions(matrix, s, o.pair);
+    const picks = pickOptions(matrix, s, o.pair, cache);
     if (choiceIsOurs && Math.abs(picks[0].value - picks[1].value) < 1e-9) {
-      pickTieBreak(matrix, s, o.pair, span);
+      pickTieBreak(matrix, s, o.pair, span, cache);
     }
   }
 
@@ -79,7 +80,7 @@ function oneRender(matrix: Matrix, s: LiveState, span: number): number {
 }
 
 /** Walk the recommended line, timing each decision on the way down. */
-function walk(matrix: Matrix, ourTeamFirst: boolean, span = 1) {
+function walk(matrix: Matrix, ourTeamFirst: boolean, span = 1, cache?: SolveCache) {
   let s = newRound(matrix.length, ourTeamFirst);
   const rows: { depth: number; kind: string; options: number; ms: number }[] = [];
   let guard = 0;
@@ -89,7 +90,7 @@ function walk(matrix: Matrix, ourTeamFirst: boolean, span = 1) {
     if (d.kind === "done") break;
 
     const t0 = performance.now();
-    const options = oneRender(matrix, s, span);
+    const options = oneRender(matrix, s, span, cache);
     const ms = performance.now() - t0;
     rows.push({ depth: s.committed.length, kind: d.kind, options, ms });
 
@@ -98,7 +99,7 @@ function walk(matrix: Matrix, ourTeamFirst: boolean, span = 1) {
       continue;
     }
 
-    const best = moveOptions(matrix, s)[0];
+    const best = moveOptions(matrix, s, cache)[0];
     if (d.kind === "open") {
       const p = d.owner === "our" ? best.ours! : best.theirs!;
       s = {
@@ -150,6 +151,67 @@ describe.skipIf(!ON)("cost of one tap", () => {
     console.log(lines.join("\n"));
 
     expect(worst).toBeGreaterThan(0);
+  });
+
+  /**
+   * What sharing the search is worth.
+   *
+   * The solver was never slow. It was being asked the same questions over and
+   * over and forbidden from remembering the answers: `moveOptions` allocated a
+   * fresh memo on entry, `playerLeverage` called it a second time for the same
+   * state, and `optionProfile` called it once per option on screen -- each
+   * time from nothing.
+   *
+   * `SolveCache` binds a memo to a board so it can be shared. The key already
+   * covers the whole state, so one cache stays valid for a whole round: every
+   * tap narrows the pools, and the subtrees under the new state were searched
+   * while valuing the old one.
+   *
+   * Both walks below produce identical numbers -- that is asserted, not
+   * assumed, because a cache that changes an answer is a bug and not an
+   * optimisation.
+   */
+  it("reports what one shared cache per board is worth", () => {
+    const lines: string[] = [];
+    lines.push("");
+    lines.push("  Whole round, cold memo vs one cache per board");
+    lines.push("  opening   cold ms   cached ms   speedup");
+
+    let coldTotal = 0;
+    let warmTotal = 0;
+
+    for (const first of [true, false]) {
+      const cold = walk(BOARD, first);
+      const cache = solveCache(BOARD);
+      const warm = walk(BOARD, first, 1, cache);
+
+      // Identical advice, or the cache is not an optimisation.
+      expect(warm.map((r) => `${r.depth}:${r.kind}:${r.options}`)).toEqual(
+        cold.map((r) => `${r.depth}:${r.kind}:${r.options}`),
+      );
+
+      const c = cold.reduce((a, r) => a + r.ms, 0);
+      const w = warm.reduce((a, r) => a + r.ms, 0);
+      coldTotal += c;
+      warmTotal += w;
+
+      lines.push(
+        `  ${(first ? "we open" : "they open").padEnd(9)}${c.toFixed(1).padStart(7)}` +
+          `${w.toFixed(1).padStart(12)}${(c / w).toFixed(1).padStart(10)}x`,
+      );
+    }
+
+    lines.push("");
+    lines.push(
+      `  whole round: ${coldTotal.toFixed(1)} ms -> ${warmTotal.toFixed(1)} ms ` +
+        `(${(coldTotal / warmTotal).toFixed(1)}x, ${(coldTotal - warmTotal).toFixed(1)} ms saved)`,
+    );
+    lines.push(
+      `  on a phone:  ${(coldTotal * 8).toFixed(0)} ms -> ${(warmTotal * 8).toFixed(0)} ms`,
+    );
+    console.log(lines.join("\n"));
+
+    expect(warmTotal).toBeLessThanOrEqual(coldTotal);
   });
 
   /**
