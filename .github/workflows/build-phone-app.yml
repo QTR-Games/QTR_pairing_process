@@ -14,6 +14,12 @@
 # The installed APK is entirely offline. It bundles the web assets locally and
 # sets no server.url, so it never makes a network request at runtime. Venue
 # wifi cannot affect it.
+#
+# This also replaces the old android.yml, which built the same debug APK a
+# second time on every push to main and could not survive the native project
+# being committed -- it ran `cap add android`, which exits 1 when android/
+# already exists. Rather than keep two workflows building one artifact, the
+# pull_request trigger moved here, so a broken phone build still blocks a merge.
 name: build-phone-app
 
 on:
@@ -22,14 +28,19 @@ on:
     paths:
       - 'webapp/**'
       - '.github/workflows/build-phone-app.yml'
+  pull_request:
+    paths:
+      - 'webapp/**'
+      - '.github/workflows/build-phone-app.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Never cancel a build midway; let a run finish before the next starts.
+# Never cancel a build midway; let a run finish before the next starts. Scoped
+# per ref, or every open pull request would queue behind every other one.
 concurrency:
-  group: build-phone-app
+  group: build-phone-app-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -108,11 +119,16 @@ jobs:
       # something looks wrong.
       - name: Collect the APK
         working-directory: webapp
+        env:
+          # On a pull_request event GITHUB_SHA is the throwaway merge commit,
+          # which names the file after something that does not exist in history.
+          # Use the real head.
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           src=android/app/build/outputs/apk/debug/app-debug.apk
           mkdir -p artifact
           cp "$src" artifact/qtr-pairing.apk
-          cp "$src" "artifact/qtr-pairing-${GITHUB_SHA:0:7}.apk"
+          cp "$src" "artifact/qtr-pairing-${SHA:0:7}.apk"
           ls -lh artifact/*.apk
 
       - uses: actions/upload-artifact@v4

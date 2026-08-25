@@ -6,17 +6,18 @@ logic -- that is deliberate, and it is what keeps the phone and the laptop
 showing the same numbers.
 
 You do not need any of this to get an APK. **CI builds one on every push to
-`main`**, downloadable from the Actions tab as the `qtr-pairing-apk` artifact.
-This document is for building locally, and for setting up release signing.
+`main` and on every pull request**, downloadable from the Actions tab as the
+`qtr-pairing-apk` artifact. This document is for building locally, and for
+setting up release signing.
 
 ## The two workflows, and which one you want
 
 | | `build-phone-app.yml` | `release-apk.yml` |
 |---|---|---|
-| Runs | every push to `main` | manual dispatch, or a `v*` tag |
+| Runs | every push to `main`, every pull request, or manual dispatch | manual dispatch, or a `v*` tag |
 | Build type | `assembleDebug` | `assembleRelease` |
 | Signed with | throwaway debug key | the project's own release key |
-| Good for | a quick look | a phone you rely on at an event |
+| Good for | a quick look, and blocking a merge that breaks the phone build | a phone you rely on at an event |
 
 Use the release APK for anything that matters. A debug APK is signed with a key
 generated on the runner, which is different on every build, so Android treats

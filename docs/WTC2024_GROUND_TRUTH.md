@@ -646,10 +646,10 @@ branches, no horizontal overflow.
 
 `webapp/vite.config.ts` already sets `base: './'`, so the identical `dist` loads
 from a `file://` WebView origin with no second build. The Android app is a
-Capacitor wrapper around the same bundle that serves GitHub Pages — one artifact,
-two delivery routes. `.github/workflows/android.yml` builds it (Node 22, JDK 21 —
-both hard requirements of Capacitor 8) and publishes it to a rolling
-`phone-latest` release so a phone browser can install it from a plain URL.
+Capacitor wrapper around the same bundle the webapp serves — one artifact, two
+delivery routes. `.github/workflows/build-phone-app.yml` builds it (Node 22,
+JDK 21 — both hard requirements of Capacitor 8) and uploads the APK as a
+workflow artifact, downloadable from the Actions tab.
 
 ---
 
