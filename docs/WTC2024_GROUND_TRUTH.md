@@ -263,6 +263,34 @@ large local database):
 | `join_ratings_outcomes.py` | Builds the Australia 5×5 grid and the round-5 board |
 | `calibrate_ratings.py` | Finding 9 — all 25 Irving games vs their pre-event rating |
 | `signal_hunt.py` | Findings 8 and 11 — rating distribution, priority-by-faction |
+| `parse_thorny.py` | Findings 13/14 — decodes all 771 cells of the Thorny Devils sheet to an ordinal scale; writes `thorny_ratings.json` |
+| `mirror_test.py` | Findings 12/13 — the two-grid correlation and the 120-assignment enumeration |
+
+Findings 12–14 additionally require a **user-supplied, read-only** source that is not in the
+repository and is not reproducible from public data:
+`C:\dev\QTR_pairing_process\Thorny DEvils WTC matchup sheet.xlsx` — the opposing team's own
+preparation grid, sheet `Matchups`, 31 team blocks.
+
+### Caveats on Findings 12–14, stated before anyone over-reads them
+
+- **The correlation is over 25 cells, from one opposing team, at one event.** r = −0.049 is a
+  strong refutation of *r = +1.00* — an axiom that strict admits no exceptions — but it is
+  not a measurement of "how uncorrelated teams are in general." One more opponent grid would
+  do far more for this than any amount of further analysis of this one.
+- **The 120-assignment enumeration is exact, not statistical.** "0 of 120 better" and "6 vs 13
+  distinct totals" are complete enumerations of a finite space. They carry no sampling error.
+  They *do* depend on the scale decoding below.
+- **The ordinal decoding is a working hypothesis.** `Red=0, Orange=1, Yellow=2, Green=3`, with
+  a parenthetical lean worth ±0.5 toward the named colour. It is inferred from usage, not from
+  their instructions sheet. `green(b)` and one `purple yellow` cell remain undecoded and are
+  treated as green and yellow respectively. Findings 13 and 14 are robust to this — both
+  survive any monotone relabelling — but the exact 13.5 total is not.
+- **Per-game outcome accuracy is n=5** and is deliberately not reported as a win rate here.
+  Finding 9 covers calibration on the larger 23-game sample.
+- **Neither team's grid is "right."** Australia's finer grid steered better *in this round*.
+  Their two Green cells that did get played went 1-1 in Irving's favour on one of them
+  (Aleks rated Mike `Green - Ekat`; **Mike won 15-9**). Resolution helps you steer; it does
+  not make the numbers true.
 
 Raw HTML is preserved in `wtc2024_raw\` (`games_r1..r5.html`, `standings_team.html`,
 `standings_player.html`, `stats.html`). The Longshanks AJAX endpoints, which need no
@@ -278,11 +306,152 @@ Intermittent 403s clear on retry with a `Referer` header of the event page.
 
 ---
 
-## What this changes
+## Finding 12 — The mirror axiom is false, and it failed on the game that lost the tournament
+
+The most load-bearing assumption in the whole system, stated by the user:
+
+> *"You also have to assume that the opponent would be writing numbers that are flipped
+> around the midpoint from yours. If you're correct, and you think its a 5, then the opponent
+> MUST also think that's a 1 for them."*
+
+The app encodes this literally as `6 − r` (`ui_manager_v2.py:8219-8226`), and the whole
+conservation framework in `SCORING_MATHEMATICS.md` §3.4 rests on it.
+
+**We now have both teams' grids for the same 25 cells.** Correlation between Team Irving's
+view and the Thorny Devils' view, after normalising both to "good for Irving":
+
+```
+r = -0.049
+```
+
+The mirror axiom predicts **r = +1.00**. Zero means the two teams saw **completely unrelated
+boards**. Mean absolute disagreement was 0.253 on a 0–1 scale — a quarter of the entire range.
+
+### The cell that decided the tournament
+
+| Matchup | Irving said | Australia said | Actual |
+|---|---|---|---|
+| **Steve vs Robin (Sea Raiders)** | **3 — dead even** | **`Green horruskh` — "I want this"** | **Robin won 8-2** |
+| Rick vs Nads (House Kallyss) | 3 — dead even | `Green Hellyth` — "I want this" | Nads won 8-5 |
+| Mike vs Nads | 3 — dead even | `Green SCy` — "I want this" | *(not played)* |
+| Jake vs Aleks (Winter Korps) | **1 — disaster for us** | `Orange - Ekat` — **bad for them too** | *(not played)* |
+
+The largest single disagreement, `Jake vs Aleks`, is the most instructive: **both teams
+believed they would lose it.** That is not a mirror, in either direction. It is two
+independent estimates that happen to be mutually pessimistic — and it is the exact cell
+Australia was steering *away* from.
+
+### What this does and does not overturn
+
+Be precise, because two different claims wear the same clothes:
+
+- **Objective zero-sum is still true.** If the true win probability is 0.7 for you, it is 0.3
+  for them. Tautology. Untouched.
+- **Subjective mirror is false.** *Their estimate* is not the reflection of *your estimate*.
+  That is the version the app implements, and it is what r = −0.049 refutes.
+
+`test_zero_sum_conservation.py` uses the objective reading as an idealisation to test whether
+a propagation rule is *symmetric*. That remains valid — it is a test of the rule, not of the
+world. But the *interpretation* attached to it in §3.4 — that a conserving rule is therefore
+unbiased in play — is now weaker than stated: a rule can be perfectly symmetric with respect
+to a mirrored opponent and still be wrong, because the real opponent is not mirrored. **The
+opponent's independent estimate is an unmodelled source of variance, and it is large.**
+
+---
+
+## Finding 13 — The bus was not chaos. It was a solved assignment problem.
+
+> *"Those madmen just threw out reason and 'bussed' a player to line up a bunch of other
+> favorable matchups."*
+
+They did not throw out reason. Scoring the round-5 board against **Australia's own grid**,
+across all 120 possible player assignments:
+
+| | Score (their scale, higher = better for them) |
+|---|---:|
+| Worst possible assignment | 7.0 |
+| Mean over all 120 | 9.7 |
+| **What they achieved** | **13.5** |
+| **Best possible assignment** | **13.5** |
+
+**Zero of 120 assignments were better than the one they got.** They found the global optimum.
+Of the 5 "Green — I will win this for my team" cells available anywhere in the 5×5, they
+converted **3**: Nads onto Rick, Robin onto Steve, Aleks onto Mike.
+
+That is what the "bus" actually was. Not a player thrown away — a maximiser run to
+completion on a grid Irving could not see.
+
+### And Irving's grid said the board was fine
+
+Scoring the *same* board with Irving's grid:
+
+| | Score (Irving's scale) |
+|---|---:|
+| Worst possible | 10.0 |
+| Mean over all 120 | 13.4 |
+| **What actually happened** | **14.0** |
+| Best possible | 15.0 |
+
+**Irving's own numbers rated the losing board as slightly above average — 14 out of a
+possible 15.** The grid did not merely fail to warn. It gave reassurance about the worst
+board on the table.
+
+### Resolution: 6 outcomes versus 13
+
+Across all 120 assignments, Irving's grid produced **6 distinct total scores**. Australia's
+produced **13**. Australia's board had **2.2× the resolution** — more than twice as many
+distinguishable futures to steer between.
+
+That is the mechanism, stated plainly: **the team with the finer grid could see more distinct
+boards, and therefore could steer.** The team with the flatter grid saw 120 assignments
+collapse into 6 buckets and had nothing to steer with.
+
+---
+
+## Finding 14 — Australia's "3-colour" system was really a 7-level system
+
+The Thorny Devils used green / yellow / red — the stoplight system, chosen because it is
+easier to fill in at a glance. Their actual sheet, 771 decoded cells across 31 opponent teams:
+
+| Level | Cells | Share |
+|---|---:|---:|
+| Red | 6 | 0.8% |
+| Red → Orange | 2 | 0.3% |
+| Orange | 122 | 15.8% |
+| Orange → Yellow | 41 | 5.3% |
+| Yellow | 370 | 48.0% |
+| Yellow → Green | 54 | 7.0% |
+| Green | 176 | 22.8% |
+| **Distinct levels used** | **7** | |
+
+They introduced **orange** — a fourth colour that is not in the stoplight system at all —
+and then annotated **50.1% of all cells** with a parenthetical lean: `yellow(g)`,
+`orange(Y)`, `yellow(o)`, `green(b)`. Half of every entry they made needed a modifier the
+system did not provide.
+
+> **This is the granularity argument, proven from the opposing team's worksheet.** A
+> three-level scale was not sufficient to express what they knew, so they spontaneously
+> invented half-steps until they had seven. The claim that "3 is easier for a human at a
+> glance" is true and irrelevant: they did not use 3. Nobody does.
+
+Two further columns exist in their sheet that this app does not model at all:
+
+- **Caster choice per matchup.** Every cell records not just how good the matchup is but
+  *which list they would bring* — `yellow(g) - hellyth` versus `green - scy`. The matchup
+  rating and the list decision are entangled, and here they are stored together.
+- **Explicit terrain flags.** Three cells carry `*Table` / `Sabbreth table` annotations,
+  marking matchups whose evaluation is conditional on terrain — the same signal
+  independently measured in **Finding 11**, here written down by hand by the opposing team.
+
+---
+
+## What this changes — revised
 
 | Question originally asked | What the ground truth says |
 |---|---|
 | *Can the math be faster?* | Yes — the scenario axis is provably constant on all real data (**Finding 7**). Collapsing it is a 7× reduction with identical output. |
-| *Can the analysis be more purposeful?* | The grid alone cannot be. 74% of it is one number (**Finding 8**) and the decisive game was rated "even" (**Finding 10**). Purpose has to come from signals the grid does not contain. |
-| *Can we beat "smart sort"?* | Better ranking of a flat matrix is not the win. **Finding 11** shows a real, per-army, actionable signal exists in public data and is currently unmodelled. |
-| *How do we avoid being bussed?* | Not by out-searching the opponent. By detecting that the grid is too flat to support a recommendation, and saying so, instead of ranking noise. |
+| *Can the analysis be more purposeful?* | Not from a flat grid. 74% of it is one number (**Finding 8**), and it rated the losing board 14/15 (**Finding 13**). |
+| *Can we beat "smart sort"?* | Better ranking of a low-resolution matrix is not the win. **Resolution itself** is the win (**Findings 13, 14**), plus signals the grid does not contain (**Finding 11**). |
+| *How do we avoid being bussed?* | **Stop modelling them as your mirror** (**Finding 12**). Assume an opponent who *maximises on a grid you cannot see* (**Finding 13**), and score your openings by how bad their best reply can be — not by your own optimistic total. |
+
+---
