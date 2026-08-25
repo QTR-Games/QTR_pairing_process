@@ -131,6 +131,29 @@ jobs:
           cp "$src" "artifact/qtr-pairing-${SHA:0:7}.apk"
           ls -lh artifact/*.apk
 
+      # Read the version back out of the finished APK rather than trusting that
+      # Gradle applied what it was given. A wrong versionCode is invisible until
+      # a phone refuses the install with an unexplained "App not installed", so
+      # it is worth one second here to assert it. Failing loudly is correct:
+      # an APK stuck at versionCode 1 cannot be installed over an earlier build,
+      # which makes it useless for the thing this workflow exists to do.
+      - name: Verify the APK version
+        working-directory: webapp
+        env:
+          EXPECTED: ${{ github.run_number }}
+        run: |
+          aapt2=$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -1)
+          badging=$("$aapt2" dump badging artifact/qtr-pairing.apk | head -1)
+          echo "$badging"
+          actual=$(echo "$badging" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p")
+          if [ "$actual" != "$EXPECTED" ]; then
+            echo "::error::APK versionCode is '$actual', expected '$EXPECTED'." \
+                 "An APK that does not advance its versionCode cannot be installed" \
+                 "over an earlier build. See docs/android-build.md."
+            exit 1
+          fi
+          echo "versionCode $actual — installs over any earlier build."
+
       - uses: actions/upload-artifact@v4
         with:
           name: qtr-pairing-apk

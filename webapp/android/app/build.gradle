@@ -36,6 +36,11 @@ def resolvedVersionCode = (System.getenv('ANDROID_VERSION_CODE')
 def resolvedVersionName = System.getenv('ANDROID_VERSION_NAME')
     ?: project.findProperty('qtrVersionName') ?: '1.0'
 
+// State it in the build output. A wrong versionCode does not fail the build --
+// it fails the install, hours later, on a phone, as an unexplained "App not
+// installed". Printing it here is the only cheap place to catch that.
+println "QTR: building versionCode ${resolvedVersionCode}, versionName ${resolvedVersionName}"
+
 android {
     namespace = "com.qtrgames.pairing"
     compileSdk = rootProject.ext.compileSdkVersion
