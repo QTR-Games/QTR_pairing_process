@@ -1,11 +1,15 @@
 import { useMemo, useState } from "react";
 import { dodgeMapChance } from "../../engine/avoidance";
 import { evenThreshold } from "../../engine/boardAnalysis";
+import { cellOutlooks } from "../../engine/boardAnalysis";
 import type { Matrix } from "../../engine/boardAnalysis";
 import type { LiveState } from "../../engine/live";
 import { openingChoice } from "../../engine/protocol";
 import { boardMatrix, boardScale, isRated, type Board } from "../../model/board";
 import { SCALES } from "../../model/scale";
+
+/** Which analysis, if any, is drawn inside the 25 cells. */
+type OverlayMode = "none" | "exposure" | "dodge";
 import { DODGE_MODES, type DodgeMode } from "../../model/settings";
 import { Grid, Rosters } from "../Grid";
 import { LivePanel } from "../LivePanel";
@@ -56,7 +60,8 @@ export function DesktopWorkspace({
   const tau = evenThreshold(board.ourPlayers.length, scale.min, scale.max);
 
   const [highlight, setHighlight] = useState<Set<string>>(new Set());
-  const [heat, setHeat] = useState(false);
+  const [overlayMode, setOverlayMode] = useState<OverlayMode>("none");
+  const heat = overlayMode === "dodge";
 
   const lockedCells = useMemo(() => {
     const s = new Set<string>();
@@ -93,6 +98,38 @@ export function DesktopWorkspace({
     return { byCell, max };
   }, [heat, rated, matrix, scale.min, scale.max, board.ourTeamFirst]);
 
+  /**
+   * Guaranteed floor and reachable ceiling for all 25 openings, and what each
+   * one costs against the best available floor.
+   *
+   * This is the structure `decisionReport.frontier` is derived from, and it is
+   * shown INSTEAD of that frontier on purpose. Measured over the 31 saved
+   * boards, the frontier collapses to a single distinct (floor, ceiling) offer
+   * on 30 of them -- a frontier of ten cells is ten cells holding the same
+   * value, which is a tie and not a trade-off. Drawing it would be a UI for a
+   * one-element set.
+   *
+   * The map underneath it is the opposite. The floor spread across the 25 cells
+   * averages 2.61 points, runs 1.00 to 4.00, and is never flat on any board.
+   * About 22 of the 25 cells cost a full point or more against the best cell,
+   * and only about 3 tie it -- on 12 of 31 boards exactly one cell does. So the
+   * honest reading is not "here are your good options", it is "most of this
+   * board is a mistake, and here are the two or three that are not".
+   *
+   * Costs 0.18 ms mean and 0.50 ms worst, so unlike the dodge map this is safe
+   * to leave running; it is behind the selector only because the two overlays
+   * compete for the same cell slot.
+   */
+  const exposureMap = useMemo(() => {
+    if (overlayMode !== "exposure" || !rated) return null;
+    const outlooks = cellOutlooks(matrix, tau);
+    let bestFloor = -Infinity;
+    for (const o of outlooks.values()) bestFloor = Math.max(bestFloor, o.floor);
+    let worstCost = 0;
+    for (const o of outlooks.values()) worstCost = Math.max(worstCost, bestFloor - o.floor);
+    return { outlooks, bestFloor, worstCost };
+  }, [overlayMode, rated, matrix, tau]);
+
   const overlay = heatMap
     ? (i: number, j: number) => {
         const p = heatMap.byCell.get(`${i}-${j}`);
@@ -110,7 +147,29 @@ export function DesktopWorkspace({
           </span>
         );
       }
-    : undefined;
+    : exposureMap
+      ? (i: number, j: number) => {
+          const o = exposureMap.outlooks.get(`${i},${j}`);
+          if (!o) return null;
+          const cost = exposureMap.bestFloor - o.floor;
+          if (cost < 1e-9) {
+            return (
+              <span className="heat best">
+                <span className="heat-num">{o.floor.toFixed(1)} best</span>
+              </span>
+            );
+          }
+          const share = exposureMap.worstCost > 0 ? cost / exposureMap.worstCost : 0;
+          return (
+            <span className="heat cost">
+              <span className="heat-bar" style={{ width: `${Math.round(share * 100)}%` }} />
+              <span className="heat-num">
+                {o.floor.toFixed(1)} &minus;{cost.toFixed(1)}
+              </span>
+            </span>
+          );
+        }
+      : undefined;
 
   return (
     <div className="desk">
@@ -124,8 +183,15 @@ export function DesktopWorkspace({
           <div className="panel-head">
             <h2>Matchup sheet</h2>
             <label className="switch">
-              <input type="checkbox" checked={heat} onChange={(e) => setHeat(e.target.checked)} />
-              <span>Price every dodge</span>
+              <span>Overlay</span>
+              <select
+                value={overlayMode}
+                onChange={(e) => setOverlayMode(e.target.value as OverlayMode)}
+              >
+                <option value="none">None</option>
+                <option value="exposure">What each opening costs</option>
+                <option value="dodge">Price every dodge</option>
+              </select>
             </label>
           </div>
           <Grid
@@ -146,7 +212,17 @@ export function DesktopWorkspace({
               matchups you are stuck with. Recomputed on demand, about 293 ms.
             </p>
           )}
-          {!heat && (
+          {overlayMode === "exposure" && (
+            <p className="hint">
+              Each cell shows the round total you are still <em>guaranteed</em> if
+              that matchup happens, and what it gives up against the best opening
+              available. <strong>best</strong> marks the cells nothing beats.
+              Across the 31 saved event boards about 22 of the 25 cells cost a
+              full point or more and only about 3 tie the best, so read this as a
+              map of what to avoid rather than a menu. Costs 0.18 ms.
+            </p>
+          )}
+          {overlayMode === "none" && (
             <p className="hint">
               The phone build prices only the single worst matchup, because
               pricing all 25 costs 293 ms and there is nowhere to put the answer.
