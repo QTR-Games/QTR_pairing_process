@@ -1,0 +1,44 @@
+﻿# Webapp CI.
+#
+# The Python suite in tests.yml does not cover webapp/, so without this the
+# engine that drives event-day decisions would have no gate at all. Type check,
+# unit tests, and a real production build, because a build that only works on
+# one laptop is not a build.
+name: webapp
+
+on:
+  push:
+    branches: [main]
+    paths: ['webapp/**', '.github/workflows/webapp.yml']
+  pull_request:
+    paths: ['webapp/**', '.github/workflows/webapp.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npx vitest run
+
+      # tsc runs as part of the build script, so this covers type checking too.
+      - name: Production build
+        run: npm run build
+
+      - name: Check the service worker was emitted
+        run: test -f dist/sw.js && test -f dist/manifest.webmanifest

@@ -230,3 +230,259 @@ strictly zero-sum. Model-engine runs must pass
 `golden_master_environment({"QTR_ENGINE": "model", "QTR_RENDER": "lazy"})`;
 the harness otherwise pins `QTR_ENGINE=widget` and `model_root` is `None`.
 
+---
+
+# Finding 6 — the engine's optimism, measured in points
+
+You asked, of separating your choice from their response: *"how do we actually
+measure or address this scientifically?"* This is the answer to the first half
+of it. It turns a judgement call — "does the engine assume the opponent
+cooperates?" — into a number with units.
+
+## 6.1 — The test
+
+The same convention that makes the app work also makes it falsifiable. If your
+read of a matchup is a 5, theirs is a 1; across five games the two teams' round
+totals must sum to exactly 30. That is arithmetic, not modelling.
+
+So solve the same tournament twice: once from your seat, once from theirs, with
+the players swapped, every rating flipped to `6 − r`, and the who-picks-first
+flag inverted. Then measure
+
+```
+excess = (what we think we score) + (what they think they score) − 30
+```
+
+If the scoring rule is fair, that is zero. If it quietly lets each side assume
+the other will be helpful, **both** sides come out ahead of reality and the
+excess is positive. It is denominated in tournament points, so the size of the
+error is directly readable.
+
+Before trusting any of it, the harness checks the mirror is real: under a purely
+optimistic rule the two seats must value the game *identically*. They did, on
+all six matchups — 15/15, 15/15, 16/16, 16/16, 16/16, 17/17. A construction bug
+would almost certainly have broken that symmetry.
+
+## 6.2 — The result
+
+Team Irving 2024, six opponents, scenario 0. Conserved total 30.
+
+| rule | mean excess | min | max |
+|---|---|---|---|
+| optimistic — `max()` everywhere (today's `cumulative` metric) | **+1.667** | 0.000 | +4.000 |
+| minimax — `min()` at their levels | **−1.833** | −3.000 | 0.000 |
+| quantal — what the scoring engine actually ships | **−0.181** | −1.040 | +1.089 |
+
+Two things fall out, and the second one I did not expect.
+
+**The optimism is real and it is large.** Against England Dragons, both teams
+conclude they will take 17 points out of 30. Somebody is wrong by 4 points —
+which, on your scale, is most of a game. The rule never underestimates on any
+matchup tested, which is the signature of a bias rather than noise.
+
+**But flipping `max` to `min` is not the fix.** This is the part worth sitting
+with. Pure minimax — assume they always find your worst line — is wrong by
+almost exactly as much, just in the other direction. Both sides brace for their
+own worst case, and both cannot be right. It *feels* like the conservative,
+safe choice, and it is measurably no more honest than optimism.
+
+Only modelling the opponent as *good but fallible* lands near zero — and it does
+so about ten times more accurately than either extreme.
+
+## 6.3 — What this means for you
+
+Your axiom was that you must assume the opponent sees the same numbers you do,
+mirrored. That assumption now has a test attached, and the engine that ships
+passes it while the two obvious alternatives fail it in opposite directions.
+
+Concretely:
+
+1. **"Assume the worst" is not the safe default it looks like.** If you have
+   ever felt the tool was too pessimistic about a line, this is why that instinct
+   was worth listening to. Minimax feels conservative and is measurably no more
+   honest than optimism.
+2. **The bias is a property of the rule, not of your data.** Optimism never
+   underestimated on any matchup tested; minimax never overestimated on any.
+3. **This does not decide anything on its own.** Changing a propagation rule
+   changes displayed scores and will fail the golden master by design. That is a
+   re-baseline, and it belongs in the hand-walk you asked to do when you can
+   concentrate on it — not in a quiet commit.
+
+## 6.3a — Correction: which code path you actually see
+
+**I got this wrong the first time and told you so out loud, so it is recorded
+here too.** I originally reported that the `cumulative` column in the sort UI
+carried the +1.667 optimism. It does not.
+
+The v2 UI's `cumulative` sort mode routes to a *different* function:
+
+```
+ui_manager_v2.py:5477
+    run_metric("cumulative", ..., self.tree_generator.calculate_all_path_values_enhanced)
+```
+
+`calculate_all_path_values_enhanced` is the `cumulative2` rule. The pure-`max`
+function that measured +1.667 is `calculate_all_path_values`, and it is
+reachable from only two places, neither of which is the shipping v2 UI:
+
+- `ui_manager_v1_original.py:1095` — the original UI, your stable fallback
+- `golden_master_harness.py:33` — the test harness
+
+So the optimism is real, but it lives in the v1 path and in a test fixture. It
+was never the number in your v2 sort column.
+
+## 6.3b — What your sort column *actually* does
+
+`cumulative2` aggregates opponent levels as `α·min + (1−α)·mean`, with `α`
+defaulting to `0.80` (`tree_generator.py:736-741`). `α=1.0` is pure minimax;
+`α=0.0` is "the opponent picks at random". So it is a dial between the two
+failure modes measured above — and the conservation law can locate the honest
+setting on it.
+
+Sweeping `α` across the same six real opponents:
+
+| α | mean excess | reading |
+|---|---|---|
+| 0.00 | +0.554 | opponent picks at random |
+| **0.20** | **+0.043** | **least biased on this data** |
+| 0.40 | −0.455 | |
+| 0.60 | −0.934 | |
+| **0.80** | **−1.397** | **shipped default** |
+| 1.00 | −1.833 | pure minimax |
+
+So the correction cuts both ways. Your sort column is **not** flattering you by
++1.7 as I said. It is doing the opposite: at the shipped `α=0.80` it is
+**pessimistic by −1.40**, which is most of the way to full minimax — the very
+rule Finding 6 shows is no more honest than optimism.
+
+Two things follow, and the second is the useful one:
+
+1. **The direction of my earlier claim was backwards.** The column understates,
+   it does not overstate.
+2. **`α` is not a hand-tuned constant any more.** It is already a user
+   preference (`database_preferences.py:149`), and conservation now gives it a
+   *measurable* correct value rather than a guessed one. Moving `0.80 → ~0.20`
+   takes the metric from −1.40 to +0.04 without touching a single line of
+   scoring logic.
+
+That `α≈0.2` also lands near the quantal engine's −0.181 is corroborating: two
+independently-derived rules agreeing near zero is more convincing than either
+alone.
+
+**Caveat I will not paper over:** conservation is a *necessary* condition, not a
+sufficient one. `α=0.20` makes the model stop contradicting itself; it does not
+prove it predicts real opponents. It is a far better grounded default than a
+value that is provably self-inconsistent by 1.4 points, and that is the whole
+claim.
+
+## 6.4 — What it does *not* answer
+
+It measures whether the engine is *biased*. It does not yet separate what you
+control from what they do to you. The 0.92 swing in Finding 5 is still measured
+across all 50 depth-1 nodes, which bundle your opening pick with their reply.
+That decomposition is the other half of your question and is still open.
+
+## 6.5 — Reproduction
+
+- `test_zero_sum_conservation.py` (repo root) — the permanent guard. Hermetic,
+  synthetic 4v4, no external database, 4 tests in ~1.6s. Includes the
+  mirror-fidelity check as a precondition, so the conservation numbers cannot be
+  trusted spuriously.
+- `probe_conservation.py` (session `files/`) — the real-data probe that produced
+  the table in 6.2.
+
+On the synthetic 4v4 grid the effect is starker than on real data: both seats
+claim 16 points out of a possible 24, an excess of **+8.0**. Real rosters are
+flat (Finding 1), which compresses the bias — it does not remove it.
+
+The mathematics is written up in `docs/SCORING_MATHEMATICS.md` §3.4, where it
+now stands as the fourth and only *external* validation check on the scoring
+engine.
+
+
+---
+
+# Finding 7 — separating what you control from what they do to you
+
+*This is the measurement asked for as "how do we actually address this
+scientifically." It settles the caveat that every earlier number in this
+document carries: the swing was measured across depth-1 nodes, which bundles
+**your opening pick** together with **their reply**, so none of it was
+attributable to either side.*
+
+## The method
+
+Both halves are measured in round points on the same board, so they compare
+directly:
+
+| Quantity | Definition | Whose decision |
+|---|---|---|
+| **Choice range** | spread of guaranteed value across *our* legal openings | ours |
+| **Response range** | spread of value across *their* replies, once we have committed to our best opening | theirs |
+
+Choice range asks: how much does it cost to open badly, if they answer
+perfectly? Response range asks: once we have opened well, how much does their
+answer still move the result?
+
+Measured on all 31 real WTC 2024 boards. Harness:
+`webapp/src/engine/measure.decompose.test.ts`.
+
+## The result
+
+```
+our choice     mean 0.48   median 0.00   max 1.0
+their reply    mean 1.26   median 1.00   max 2.0
+
+Their reply outweighs our choice on 20/31 boards.
+Our choice is worth literally nothing on 16/31 boards.
+```
+
+Three things follow, and the third is the important one.
+
+1. **Their reply is worth about 2.6x your opening choice.** The half of the
+   decision you do not own dominates the half you do.
+
+2. **On 16 of 31 boards your opening choice is worth exactly zero.** Not
+   "nearly zero" — every legal opener guarantees the identical round total. The
+   median board is one of these. This is the honest, quantified version of the
+   "everything ties" complaint.
+
+3. **Therefore ranking openers cannot be the product.** On the median board
+   there is nothing to rank. An app whose central feature is sorting openings by
+   score is, on half its inputs, sorting numbers that are all the same — and
+   presenting the arbitrary winner as a recommendation.
+
+## What this justifies
+
+This is an independent argument for the opportunity profile, arrived at from
+the opposite direction. If our choice is worth 0 and their reply is worth 2.0,
+then the only lever left is **which option gives them the most ways to go
+wrong** — how much upside is on the table, and how many of their replies take
+it away. That is precisely what `optionProfile` reports, and it is why the
+tie-break is not a cosmetic addition: on 16 of 31 boards it is the *only*
+information available.
+
+It also reframes "play to your outs" as measurable rather than folkloric. When
+every opener guarantees the same floor, the choice between them is entirely a
+choice about their error surface. There is no floor left to trade away.
+
+## Caveats, stated plainly
+
+- Measured at the opening only. Later decisions may attribute differently, and
+  this does not claim otherwise.
+- `response` is taken as the upside of the opening the app would actually
+  recommend (the highest-upside option among tied-best openings). Using the
+  worst tied option instead lowers the response figure; the direction of the
+  result does not change, but the 2.6x ratio would.
+- Both quantities are computed against *our* grid, under the bound described in
+  `protocol.ts` — the opponent minimises our total. That bound survives not
+  knowing their grid (Finding 12, the mirror axiom is false), but it is a bound,
+  not a prediction of their preferences.
+
+## Supersedes
+
+The correction block at the top of this document cites a win-probability span
+of roughly 7.6%–70.6% on USA Bison. **That figure predates the threshold fix
+and the protocol-aware engine and should not be quoted.** The points-versus-
+probability argument it was making still stands; the specific numbers do not.
+Finding 7 is the current, re-measured statement of how much a decision matters.
