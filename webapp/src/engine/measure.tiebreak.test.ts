@@ -156,7 +156,7 @@ describe.skipIf(!process.env.QTR_MEASURE)("how big a gap in typical value is rea
             const picks = pickOptions(matrix, s, [i, j]);
             if (Math.abs(picks[0].value - picks[1].value) > 1e-9) continue;
             tied++;
-            const tb = pickTieBreak(matrix, s, [i, j]);
+            const tb = pickTieBreak(matrix, s, [i, j], 2);
             if (tb) {
               fired++;
               byReason[tb.reason] = (byReason[tb.reason] ?? 0) + 1;
@@ -210,23 +210,19 @@ describe.skipIf(!process.env.QTR_MEASURE)("what separates the ties the ladder ca
       const values = replies.map((r) => r.value).sort((x, y) => x - y);
       const worst = values[0];
 
-      // If they play their strongest reply, what is left for us afterwards?
-      const best = replies[0];
-      let ourNext = 0;
-      const nextState: LiveState = { ...after, ...best.next };
-      if (currentDecision(nextState).kind !== "done") {
-        const mine2 = moveOptions(matrix, nextState);
-        ourNext = mine2.length ? Math.max(...mine2.map((m) => m.value)) : nextState.banked;
-      } else {
-        ourNext = nextState.banked;
-      }
-
+      // A fifth candidate -- "look one move past their strongest reply" -- was
+      // measured here and reported as separating zero ties. That result was
+      // wrong: it advanced the state with a `next` field `MoveOption` does not
+      // have, so it read the *unadvanced* state and was identical for both
+      // halves by construction. It is removed rather than repaired because
+      // repairing it means committing to a reading of whose turn it is at this
+      // node, and that deserves its own measurement rather than a guess.
+      // Nothing shipped on the strength of it. See Finding 18.
       return {
         meanReply: values.reduce((a, v) => a + v, 0) / values.length,
         secondWorst: values.length > 1 ? values[1] : worst,
         nReplies: values.length,
         spread: values[values.length - 1] - worst,
-        ourNext,
       };
     }
 
@@ -252,7 +248,7 @@ describe.skipIf(!process.env.QTR_MEASURE)("what separates the ties the ladder ca
           for (let j = i + 1; j < n; j++) {
             const picks = pickOptions(matrix, s, [i, j]);
             if (Math.abs(picks[0].value - picks[1].value) > 1e-9) continue;
-            if (pickTieBreak(matrix, s, [i, j])) continue;
+            if (pickTieBreak(matrix, s, [i, j], 2)) continue;
 
             unanswered++;
             const pa = probe(matrix, s, picks[0].player, [i, j]);
@@ -260,7 +256,7 @@ describe.skipIf(!process.env.QTR_MEASURE)("what separates the ties the ladder ca
             if (!pa || !pb) continue;
 
             let separated = false;
-            for (const k of ["meanReply", "secondWorst", "nReplies", "spread", "ourNext"] as const) {
+            for (const k of ["meanReply", "secondWorst", "nReplies", "spread"] as const) {
               if (Math.abs(pa[k] - pb[k]) > 1e-9) {
                 sep[k] = (sep[k] ?? 0) + 1;
                 separated = true;
@@ -325,7 +321,7 @@ describe.skipIf(!process.env.QTR_MEASURE)("are the unseparable ties interchangea
           for (let j = i + 1; j < n; j++) {
             const picks = pickOptions(matrix, s, [i, j]);
             if (Math.abs(picks[0].value - picks[1].value) > 1e-9) continue;
-            if (pickTieBreak(matrix, s, [i, j])) continue;
+            if (pickTieBreak(matrix, s, [i, j], 2)) continue;
             unanswered++;
 
             // Their columns i and j, restricted to the players we still hold
@@ -392,7 +388,7 @@ describe.skipIf(!process.env.QTR_MEASURE)("what it costs to advise on every offe
         };
         const t0 = performance.now();
         for (let i = 0; i < n; i++) {
-          for (let j = i + 1; j < n; j++) pickTieBreak(matrix, s, [i, j]);
+          for (let j = i + 1; j < n; j++) pickTieBreak(matrix, s, [i, j], 2);
         }
         perDecision.push(performance.now() - t0);
       }
@@ -407,5 +403,67 @@ describe.skipIf(!process.env.QTR_MEASURE)("what it costs to advise on every offe
     );
 
     expect(perDecision.length).toBeGreaterThan(0);
+  }, 900_000);
+});
+
+/**
+ * Does the sampler's error scale with the rating span?
+ *
+ * `boardMatrix` hands the engine ratings in *display* units, so a 0-100 board
+ * reaches `pickTieBreak` as values around 0-100 and a stoplight board as 1-3.
+ * MIN_REAL_GAP was measured on stoplight boards and is an absolute number, so
+ * if the error grows with the span then the threshold is far too permissive on
+ * wide scales and the sampled rung starts printing noise as advice.
+ *
+ * This rescales the real boards and measures, rather than assuming linearity.
+ *
+ * Run: QTR_MEASURE=1 npx vitest run src/engine/measure.tiebreak.test.ts \
+ *        -t "scale with the rating span" --reporter=verbose --disable-console-intercept
+ */
+describe.skipIf(!process.env.QTR_MEASURE)("does sampling error scale with the rating span", () => {
+  it("measures the same boards stretched onto wider scales", () => {
+    // Stretch [1,3] onto each scale's [min,max], the same mapping the app uses.
+    const targets = [
+      { label: "stoplight 1-3", min: 1, max: 3 },
+      { label: "1-5", min: 1, max: 5 },
+      { label: "1-10", min: 1, max: 10 },
+      { label: "1-20", min: 1, max: 20 },
+      { label: "0-100", min: 0, max: 100 },
+    ];
+
+    console.log("\n  scale        | span |  p90 err |  max err | err/span");
+    console.log("  -------------|------|----------|----------|---------");
+
+    for (const t of targets) {
+      const span = t.max - t.min;
+      const errs: number[] = [];
+
+      for (const b of REAL) {
+        const stretched = (b.matrix as Matrix).map((row) =>
+          row.map((v) => t.min + ((v - 1) / 2) * span),
+        ) as Matrix;
+        for (const st of sampleStates(stretched.length)) {
+          const shipped = outlook(stretched, st, 0, 96).expected;
+          const reference = outlook(stretched, st, 0, REFERENCE_TRIALS).expected;
+          errs.push(Math.abs(shipped - reference));
+        }
+      }
+
+      errs.sort((x, y) => x - y);
+      const p90 = errs[Math.floor(0.9 * errs.length)];
+      const max = errs[errs.length - 1];
+      console.log(
+        `  ${t.label.padEnd(12)} | ${String(span).padStart(4)} | ` +
+          `${p90.toFixed(3).padStart(8)} | ${max.toFixed(3).padStart(8)} | ` +
+          `${(max / span).toFixed(4).padStart(8)}`,
+      );
+    }
+
+    console.log(
+      "\n  A flat err/span column means the threshold must be a fraction of the\n" +
+        "  rating span, not an absolute number of points.\n",
+    );
+
+    expect(true).toBe(true);
   }, 900_000);
 });

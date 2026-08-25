@@ -800,9 +800,20 @@ so terrain, form, and who wants the table decide it. Staying silent instead impl
 app looked and found nothing, which is a different and weaker claim.
 
 Of the 97 that genuinely differ, an exact instrument — the **mean over their whole
-reply space**, rather than just its ends — separates 51. Two candidates separated
-**zero**: reply count and our best follow-up after their strongest reply. They were
-measured and dropped rather than shipped on intuition.
+reply space**, rather than just its ends — separates 51. One further candidate,
+reply count, separated **zero** and was dropped rather than shipped on intuition.
+
+> **Correction.** This finding originally reported a *second* candidate — "our best
+> follow-up after their strongest reply" — as also separating zero. That result was
+> invalid. The probe advanced the state through a `next` field that `MoveOption` does
+> not have, so it read the **unadvanced** state and was identical for both halves by
+> construction. It could not have separated anything. The error surfaced in CI, where
+> `tsc -b` typechecks test files that a local `--noEmit` run over the app sources had
+> not. Nothing shipped on the strength of it — the candidate was never added as a
+> rung — but "we measured it and it does nothing" and "we never measured it" are
+> different claims, and only the second one is true. The probe is removed rather than
+> repaired: repairing it means committing to a reading of whose turn it is at that
+> node, which deserves its own measurement rather than a guess.
 
 Ladder coverage after adding both rungs:
 
@@ -843,3 +854,65 @@ one row in ten had advice into one where all ten do.
 The lesson is the recurring one in this file: **the guess was 6x pessimistic in the
 direction that justified doing less work.** Measuring it cost one test and removed the
 whole justification for the gate.
+
+---
+
+## Finding 19 — the advice threshold was only correct on one scale
+
+Finding 18 closed with a note: `MIN_REAL_GAP = 0.4` was calibrated on a 1–3 board and
+would need re-measuring if the rating scale widened. That note understated it. The
+scales already shipped — `stoplight`, `1-5`, `1-5 half-steps`, `1-10`, `1-20`, `0-100`
+are all selectable today — so this was not a future risk. It was a live defect for any
+team using a wide scale, which is the setting this project has been arguing for.
+
+`boardMatrix` hands the engine ratings in **display units**. A 0–100 board arrives at
+the tie-break as values around 0–100 and a stoplight board as 1–3. The threshold that
+decides whether a sampled difference is real was a fixed number of points in between.
+
+### The measurement
+
+The five real WTC boards were stretched onto every scale the app offers — the same
+mapping the app itself uses — and the sampler's error measured against a 1500-trial
+reference:
+
+| scale | span | p90 err | max err | **err / span** |
+|---|---|---|---|---|
+| stoplight 1–3 | 2 | 0.096 | 0.191 | 0.096 |
+| 1–5 | 4 | 0.154 | 0.532 | 0.133 |
+| 1–10 | 9 | 0.393 | 0.892 | 0.099 |
+| 1–20 | 19 | 0.841 | 2.189 | 0.115 |
+| 0–100 | 100 | 4.846 | 7.696 | **0.077** |
+
+The last column is flat. **The error is proportional to the rating span**, so no fixed
+number of points can be correct on more than one scale.
+
+Held at 0.4, a team on 0–100 would see the app print a half-point difference as a
+reason to take one half over the other, while its own noise floor on that board is
+nearly **eight points**. That is the exact failure the threshold exists to prevent,
+inverted: noise dressed as advice, and it looks authoritative.
+
+### The fix
+
+The threshold is now `0.2 × (scale.max − scale.min)`. That clears the measured worst
+case on every scale and reproduces the old `0.4` exactly on stoplight, so nothing
+about existing behaviour changes. `pickTieBreak` takes the span as a **required**
+argument rather than defaulting it — the only way a caller gets this wrong is
+silently, and silence is the failure mode.
+
+A contract test now asserts the user-visible version of this: the same board reaches
+the **same verdict for the same reason** on 1-5, 1-10, 1-20 and 0-100 as it does on
+stoplight. Switching scale re-labels the buttons; it does not change what the app
+tells you to do.
+
+### What this says about the scale work
+
+The user's long-held argument — that finer resolution beats a three-colour sheet —
+is already implemented at the display layer and was already correct at the storage
+layer, because ratings are kept as fractions. What was missing was the engine
+respecting the units it was handed. Widening the scale is not a feature to build; it
+is a setting that now behaves.
+
+One consequence worth keeping: the `upside` rung still fires **zero** times on 1–3
+boards, because whenever typical values tie the ceilings tie too. It is kept because
+it is exact and free — and a wider scale is precisely what would give it something to
+separate.

@@ -287,22 +287,48 @@ export interface PickTieBreak {
 const TIEBREAK_TRIALS = 96;
 
 /**
- * Smallest gap in typical value worth printing, set above the worst case of
- * two independent 96-trial errors (0.191 each). Below this the halves are
- * genuinely indistinguishable on this instrument and we say so rather than
- * inventing a reason.
+ * Smallest gap in typical value worth printing, as a fraction of the rating
+ * span. Below this the halves are genuinely indistinguishable on this
+ * instrument and we say so rather than inventing a reason.
  *
- * Only the sampled rung needs a threshold. The upside and pressure rungs are
- * computed exactly from the board, so any difference in them is real.
+ * This is a fraction, not a fixed number of points, because the engine sees
+ * ratings in whatever units are on screen -- a 0-100 board arrives here as
+ * values around 0-100. `measure.tiebreak.test.ts` stretched the same real
+ * boards onto every scale the app offers and measured the sampler's error:
+ *
+ *     scale        | span |  p90 err |  max err | err/span
+ *     stoplight    |    2 |    0.096 |    0.191 |   0.096
+ *     1-5          |    4 |    0.154 |    0.532 |   0.133
+ *     1-10         |    9 |    0.393 |    0.892 |   0.099
+ *     1-20         |   19 |    0.841 |    2.189 |   0.115
+ *     0-100        |  100 |    4.846 |    7.696 |   0.077
+ *
+ * The last column is flat, so the error is proportional to the span and a
+ * fixed threshold cannot be right on more than one scale. Held absolute at
+ * 0.4, a 0-100 board would print half-point "differences" as advice while its
+ * own noise floor is nearly 8 points. 0.2 of the span clears the measured
+ * worst case on every scale and reproduces the old 0.4 exactly on stoplight.
+ *
+ * Only the sampled rung needs a threshold. The upside, pressure and average
+ * rungs are computed exactly from the board, so any difference in them is real
+ * at any scale.
  */
-const MIN_REAL_GAP = 0.4;
+const MIN_REAL_GAP_FRACTION = 0.2;
 
 export function pickTieBreak(
   matrix: Matrix,
   s: LiveState,
   pair: [number, number],
+  /**
+   * Difference between the best and worst rating the current scale allows
+   * (`scale.max - scale.min`). Required rather than defaulted: the only way a
+   * caller gets this wrong is silently, and the failure is noise dressed as
+   * advice.
+   */
+  ratingSpan: number,
 ): PickTieBreak | null {
   if (s.attackerSide !== "our") return null;
+  const minRealGap = MIN_REAL_GAP_FRACTION * ratingSpan;
 
   const picks = pickOptions(matrix, s, pair);
   if (Math.abs(picks[0].value - picks[1].value) > 1e-9) return null;
@@ -353,7 +379,7 @@ export function pickTieBreak(
 
   // Rung 2: what it typically plays out to, if they play their own board
   // rather than hunting ours. Sampled, so it must clear the noise floor.
-  if (Math.abs(a.typical - b.typical) >= MIN_REAL_GAP) {
+  if (Math.abs(a.typical - b.typical) >= minRealGap) {
     const [win, lose] = a.typical > b.typical ? [a, b] : [b, a];
     return {
       player: win.player,

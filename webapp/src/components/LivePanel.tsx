@@ -143,6 +143,7 @@ export function LivePanel({ board, state, onState, onReset }: Props) {
                 best={idx === 0}
                 ownerIsUs={ownerIsUs}
                 tau={tau}
+                ratingSpan={scale.max - scale.min}
                 ourName={ourName}
                 theirName={theirName}
                 onChoose={() => {
@@ -211,6 +212,7 @@ function OptionRow({
   best,
   ownerIsUs,
   tau,
+  ratingSpan,
   ourName,
   theirName,
   onChoose,
@@ -224,6 +226,8 @@ function OptionRow({
   best: boolean;
   ownerIsUs: boolean;
   tau: number;
+  /** `scale.max - scale.min`; the tie-break threshold is a fraction of it. */
+  ratingSpan: number;
   ourName: (i: number) => string;
   theirName: (i: number) => string;
   onChoose: () => void;
@@ -250,7 +254,7 @@ function OptionRow({
     // boards, the whole list costs a median of 29ms and at worst 92ms.
     const tieBreak =
       choiceIsOurs && Math.abs(picks[0].value - picks[1].value) < 1e-9
-        ? pickTieBreak(matrix, state, option.pair)
+        ? pickTieBreak(matrix, state, option.pair, ratingSpan)
         : null;
     const highlight = (p: PickOption): boolean => {
       if (!choiceIsOurs) return false;
