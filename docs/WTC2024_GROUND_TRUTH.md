@@ -916,3 +916,87 @@ One consequence worth keeping: the `upside` rung still fires **zero** times on 1
 boards, because whenever typical values tie the ceilings tie too. It is kept because
 it is exact and free — and a wider scale is precisely what would give it something to
 separate.
+
+---
+
+## Finding 20 — ranking our openers is close to pointless; the variance is all in their reply
+
+Every decision-sensitivity number before this one was measured across depth-1
+nodes, which bundle **our opening pick** together with **their reply**. Nothing
+in that 0.92-point swing was attributable to either side. This splits them.
+
+Two quantities, both in round points on the same board, so they compare
+directly:
+
+- **our choice** — the spread of *guaranteed* value across our options. What
+  our decision is worth assuming they answer perfectly. The part we own.
+- **their reply** — the spread of value across *their* replies once we have
+  committed to our best option (`OptionProfile.upside`). The part we do not.
+
+Across all 31 real boards:
+
+| | mean | median | max |
+|---|---|---|---|
+| our choice | 0.48 | **0.00** | 1.0 |
+| their reply | 1.26 | 1.00 | 2.0 |
+
+- Their reply outweighs our choice on **20 of 31 boards**.
+- Our choice is worth **literally nothing on 16 of 31 boards** — every opener
+  guarantees exactly the same value.
+
+### What this overturns
+
+The app is built around ranking our options and declaring a winner. On half the
+real boards there is nothing to rank: minimax gives every opener the same
+number, correctly, because their best reply caps all of them equally. That is
+not the engine failing. It is one statistic being asked to carry more than it
+can.
+
+Meanwhile the quantity that *is* moving — up to 2.0 points, twice the largest
+swing our own choice ever produces — is what happens after we commit. It was
+never on screen.
+
+So "we cannot separate these openers" was never the honest answer, and neither
+was picking one by a rounding difference. The honest answer is: *these openers
+are equal if they play perfectly; here is how they differ when they do not.*
+
+### What it points the app at — which is where the app already points
+
+`OptionProfile` already computes the two numbers that survive this finding, and
+`LivePanel` already ranks by them:
+
+- `ifTheyErr` — what we get from their **worst** reply. The upside genuinely on
+  the table. This is the "play to your outs" number.
+- `punishingReplies / totalReplies` — how many of their replies actually hold us
+  to the guaranteed figure. One punishing reply in ten is a completely different
+  proposition from nine in ten, and minimax scores them identically.
+
+Ranking is `guaranteed value → upside → fewest punishing replies`
+(`LivePanel.tsx:71`), and `ProfileBar` puts both on screen. So Finding 20 is
+**confirmatory, not a work item**: it supplies the evidence that this ordering
+was the right call, which was previously an argument rather than a measurement.
+
+One real gap it does expose. `optionProfile` is only computed when at least two
+options tie (`LivePanel.tsx:64`). On boards where our choice *does* separate,
+the profile is hidden — yet even there their reply range (up to 2.0) exceeds the
+largest spread our own choice ever produces (1.0). The "up to X if they misstep"
+line is worth showing on the top option whether or not anything ties with it.
+
+
+### Caveats, stated plainly
+
+- `their reply` is taken as the **maximum** `upside` across our tied-best
+  options. Where several openers tie, this reports the best response range
+  available among them, not an average. The minimum is computed in the harness
+  and is not yet reported; the gap between them is what we surrender by picking
+  a tied option carelessly, and it has not been measured.
+- Values are quantised to whole round points on these boards, so the medians of
+  0.00 and 1.00 are exact, not rounded.
+
+Reproduce:
+
+```
+cd webapp
+$env:QTR_MEASURE="1"; npx vitest run src/engine/measure.decompose.test.ts `
+  --reporter=verbose --disable-console-intercept
+```
