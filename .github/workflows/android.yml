@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: android-${{ github.ref }}
@@ -72,13 +72,19 @@ jobs:
 
       - name: Name it after the commit
         id: name
+        env:
+          # On a pull_request event GITHUB_SHA is the throwaway merge commit,
+          # which names the file after something that does not exist in
+          # history. Use the real head.
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           src=android/app/build/outputs/apk/debug/app-debug.apk
           test -f "$src" || { echo "no APK at $src"; exit 1; }
-          out="qtr-pairing-${GITHUB_SHA::7}.apk"
+          out="qtr-pairing-${SHA:0:7}.apk"
           cp "$src" "$out"
           echo "path=webapp/$out" >> "$GITHUB_OUTPUT"
           echo "name=$out" >> "$GITHUB_OUTPUT"
+          echo "sha=${SHA:0:7}" >> "$GITHUB_OUTPUT"
           ls -lh "$out"
 
       - uses: actions/upload-artifact@v4
@@ -87,3 +93,36 @@ jobs:
           path: ${{ steps.name.outputs.path }}
           if-no-files-found: error
           retention-days: 30
+
+      # An Actions artifact is a login-gated zip, which is a poor way to get an
+      # app onto a teammate's phone. A release asset is a plain .apk on a URL a
+      # phone browser can open directly, so main publishes one and keeps the
+      # tag rolling.
+      - name: Publish it somewhere a phone can reach
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.name.outputs.sha }}
+          APK: ${{ steps.name.outputs.name }}
+        run: |
+          cat > notes.md <<NOTES
+          Built from $SHA.
+
+          **Android, sideload.** Download the .apk below on the phone and open
+          it. Android asks once for permission to install from this browser.
+
+          Debug-signed, so it will not update over a copy installed from a
+          different source -- uninstall the old one first if it refuses.
+
+          Everything stays on the device: no account, no sync, and it works
+          with no signal.
+
+          If you would rather not sideload, the same build runs in a browser at
+          https://qtr-games.github.io/QTR_pairing_process/ and can be added to
+          the home screen from there.
+          NOTES
+          gh release delete phone-latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create phone-latest "$APK" \
+            --title "QTR Pairing -- phone build" \
+            --prerelease \
+            --notes-file notes.md

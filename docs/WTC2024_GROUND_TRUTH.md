@@ -597,6 +597,62 @@ QTR_SEED=2 QTR_MEASURE=1 npx vitest run src/engine/measure.opponent.test.ts \
 
 ---
 
+## What shipped out of Finding 16
+
+Finding 16 said the fix was presentation: show the floor *as* a floor, and show
+the expected value beside it. That is now on screen.
+
+The verdict panel had four numbers — Floor, Guaranteed, Ceiling, To win — and
+"there are already too many numbers to look at" is a standing constraint, so
+nothing was added. The **permutation Floor gave up its slot**. It was the
+weakest of the four: it already carried an inline caption admitting it is too
+pessimistic, and a number whose own caption tells you to discount it does not
+deserve top billing. It still appears in the permutation detail, where that
+context lives.
+
+What replaced it is **Typical** — the expected value from `outlook()` in
+`webapp/src/engine/opponent.ts`, computed by sampling the two-grid solver rather
+than assuming the mirror.
+
+The pairing now reads:
+
+| Stat | Caption | What it assumes |
+|---|---|---|
+| `GUARANTEED` | *if they hunt you perfectly* | The worst-case bound — the mirror-axiom opponent of Finding 16 |
+| `TYPICAL` | *if they play their own board* | Their real grid, which is not your grid negated |
+
+That is the must-not-lose / must-win split, on screen, for the first time. On a
+realistic board (mostly midline, a few outliers) it reads `GUARANTEED 15` versus
+`TYPICAL 17.7` — the 1.4pt pessimism of Finding 16 made visible instead of
+silently baked into a single figure. When the gap clears 0.5 the panel says so
+directly: *"Being hunted costs N of that."*
+
+Two things worth recording because they were found by looking at the real screen
+rather than at the tests:
+
+- **`outlook()` needed a display clamp.** A discrete, left-skewed sample can put
+  the 10th percentile *above* the mean, which is mathematically fine and reads as
+  a bug (`"low 15 · typical 14.9"`). `low` is clamped to the mean and `high`
+  likewise. The test comment states this is a **display requirement**, not a
+  mathematical necessity — so nobody later "fixes" it back.
+- **A copy defect only a real board exposed.** When `guaranteed === tau` the
+  prose said *"0 short of the round."* Level does not win it. It now says *"dead
+  level with the round, and level does not win it."*
+
+Verified in a real browser against the deployed build at 390px, both prose
+branches, no horizontal overflow.
+
+### And it runs on a phone
+
+`webapp/vite.config.ts` already sets `base: './'`, so the identical `dist` loads
+from a `file://` WebView origin with no second build. The Android app is a
+Capacitor wrapper around the same bundle that serves GitHub Pages — one artifact,
+two delivery routes. `.github/workflows/android.yml` builds it (Node 22, JDK 21 —
+both hard requirements of Capacitor 8) and publishes it to a rolling
+`phone-latest` release so a phone browser can install it from a plain URL.
+
+---
+
 ## What this changes — revised
 
 | Question originally asked | What the ground truth says |
@@ -606,6 +662,6 @@ QTR_SEED=2 QTR_MEASURE=1 npx vitest run src/engine/measure.opponent.test.ts \
 | *Can we beat "smart sort"?* | Better ranking of a low-resolution matrix is not the win. **Resolution itself** is the win (**Findings 13, 14**), plus signals the grid does not contain (**Finding 11**). |
 | *How do we avoid being bussed?* | **Stop modelling them as your mirror** (**Finding 12**). Assume an opponent who *maximises on a grid you cannot see* (**Finding 13**), and score your openings by how bad their best reply can be — not by your own optimistic total. |
 | *Where should the analysis point?* | **Not at the opening.** Who you hold at the opening is worth nothing on the median board; one decision later it is worth 2 points (**Finding 15**). The heaviest analysis has been sitting on the weakest decision. |
-| *Is the current advice actually wrong?* | **No — the ranking is safe** (0.07 pts of regret), but the number beside it is **1.4 pts pessimistic** and unlabelled (**Finding 16**). The fix is presentation — show the floor *as* a floor, and show the expected value next to it. |
+| *Is the current advice actually wrong?* | **No — the ranking is safe** (0.07 pts of regret), but the number beside it was **1.4 pts pessimistic** and unlabelled (**Finding 16**). **Fixed** — the verdict now shows `GUARANTEED` and `TYPICAL` side by side. |
 
 ---
