@@ -29,10 +29,15 @@ in the repo and **corrects a conclusion**.
 
 ## Data
 
-`DapperBadgersImport1.xlsx` contains three real 5v5 matchups: Dapper Badgers
-vs USA Condor, USA Jackrabbits, and USA Bison. Ratings are the app's default
-1–5 scale where 3 is even, so the opponent's view of a pairing is the exact
-complement `6 - r` and the game is genuinely zero-sum.
+Three real 5v5 matchups from a past event: the home team versus three
+opponents. Ratings are the app's default 1–5 scale where 3 is even, so the
+opponent's view of a pairing is the exact complement `6 - r` and the game is
+genuinely zero-sum.
+
+The source workbook is no longer committed. It named real players alongside
+this team's private ratings of them, which is scouting material in a public
+repository; the measurements below are unaffected, because none of them
+depended on who anyone was.
 
 Scripts (session artifacts, not committed): `real_data_sensitivity.py`,
 `leverage_by_depth.py`, `upside_among_ties.py`.
@@ -123,7 +128,7 @@ minimax axis. That is an easy and quiet way to get wrong numbers.
 # ⚠️ Finding 5 — supersedes Recommendation item 1
 
 > **The caveat above has now been discharged.** Re-checked against
-> `teamIrving2024_FinalDB.db`: a complete real WTC event, Team Irving vs
+> `teamthe home team2024_FinalDB.db`: a complete real WTC event, the home team vs
 > **31 opponent teams**, all 5v5, 7 scenarios each = 217 real decision
 > problems. The compression mechanism is confirmed and much stronger than the
 > three-matchup sample suggested.
@@ -157,7 +162,7 @@ Win probability is defined against a threshold (`Outcome.win_probability`,
 measurement fixed that threshold at the naive midline, 15 — five games on a 1–5
 scale gives totals in 5..25, so 15 is "dead even".
 
-Against **Australia Spangled**, at need > 15, all 50 depth-1 lines return
+Against **Opponent 01**, at need > 15, all 50 depth-1 lines return
 P = 0.0000. Distinct win-probability values: **1**. The app collapses that to
 "all choices identical", which presents to the user as *coin flip, doesn't
 matter*.
@@ -180,7 +185,7 @@ threshold below where the app was looking.
 
 ## 5.3 — The reachable band is opponent-specific
 
-Same sweep against **Canada Goose** on the same scenario:
+Same sweep against **Opponent 04** on the same scenario:
 
 | need > | spread | interpretation |
 | --- | --- | --- |
@@ -192,7 +197,7 @@ Same sweep against **Canada Goose** on the same scenario:
 | 15 | 0.0312 | decision matters (barely) |
 | 16+ | 0.0000 | unreachable |
 
-Canada Goose's decision band extends to 15; Australia Spangled's stops at 14.
+Opponent 04's decision band extends to 15; Opponent 01's stops at 14.
 **How much your choice matters, and the target it should be aimed at, are
 properties of the opponent — and the app currently exposes neither.**
 
@@ -265,7 +270,7 @@ would almost certainly have broken that symmetry.
 
 ## 6.2 — The result
 
-Team Irving 2024, six opponents, scenario 0. Conserved total 30.
+the home team 2024, six opponents, scenario 0. Conserved total 30.
 
 | rule | mean excess | min | max |
 |---|---|---|---|
@@ -275,7 +280,7 @@ Team Irving 2024, six opponents, scenario 0. Conserved total 30.
 
 Two things fall out, and the second one I did not expect.
 
-**The optimism is real and it is large.** Against England Dragons, both teams
+**The optimism is real and it is large.** Against Opponent 06, both teams
 conclude they will take 17 points out of 30. Somebody is wrong by 4 points —
 which, on your scale, is most of a game. The rule never underestimates on any
 matchup tested, which is the signature of a bias rather than noise.

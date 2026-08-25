@@ -150,7 +150,7 @@ def test_only_resolutions_and_forced_finals_count_toward_the_total():
     # A leaf is a forced final pairing: it resolves itself.
     assert contributes_to_total(
         _node(
-            "Jack vs Justin (4/5) OR Justin (4/5)",
+            "Jack vs Bravo (4/5) OR Bravo (4/5)",
             4,
             9,
             counts_toward_total=True,

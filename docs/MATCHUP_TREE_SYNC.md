@@ -100,7 +100,7 @@ if hasattr(self, 'tree_synchronizer') and self.tree_synchronizer:
 ```python
 # Round 1: Pete vs Opponent3 (Friendly antes, Enemy responds)
 # Round 2: Opponent2 vs Kyle (Enemy antes, Friendly responds)
-# Round 3: Mike vs Opponent5 (Friendly antes, Enemy responds)
+# Round 3: Charlie vs Opponent5 (Friendly antes, Enemy responds)
 #
 # System builds complete path through tree:
 # Root → R1_Pete_vs_Opponent3 → R2_Opponent2_vs_Kyle → R3_Mike_vs_Opponent5

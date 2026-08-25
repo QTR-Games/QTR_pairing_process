@@ -97,7 +97,7 @@ describe.skipIf(!process.env.QTR_MEASURE)(
 
     const aus = rows.find((r) => r.opponent.includes("Thorny"))!;
     console.log(
-      `\n  Australia Thorny Devils: assignment floor ${aus.aFloor.toFixed(1)}, ` +
+      `\n  Opponent 02: assignment floor ${aus.aFloor.toFixed(1)}, ` +
         `protocol floor ${aus.pFloorUs.toFixed(1)} (we open) / ` +
         `${aus.pFloorThem.toFixed(1)} (they open), ceiling ${aus.ceiling.toFixed(1)}, tau ${TAU}`,
     );

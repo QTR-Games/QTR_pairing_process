@@ -63,7 +63,7 @@ def contributes_to_total(node) -> bool:
         depth 3  Brandon vs Bokur (3/5) OR Kyle (3/5)
         depth 4  Bokur rating 3
         ...
-        depth 9  Jack vs Justin (4/5) OR Justin (4/5)  <- forced final game
+        depth 9  Jack vs Bravo (4/5) OR Bravo (4/5)  <- forced final game
 
     Only resolutions are played games. An offer states what is on the table;
     the resolution says what actually happened. The final pairing is forced

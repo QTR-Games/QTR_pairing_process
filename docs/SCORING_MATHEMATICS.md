@@ -32,7 +32,7 @@ alternating sequence of *offers* and *resolutions*:
 | 3 | `Brandon vs Bokur (3/5) OR Kyle (3/5)` | offer |
 | 4 | `Bokur rating 3` | resolution |
 | … | | |
-| 9 | `Jack vs Justin (4/5) OR Justin (4/5)` | forced final |
+| 9 | `Jack vs Bravo (4/5) OR Bravo (4/5)` | forced final |
 
 One side puts a player forward against a restricted set of possible opponents;
 the other side chooses which of those actually happens. Control alternates. The
@@ -73,7 +73,7 @@ an adversary maximizing *their* total, which is identical to minimizing ours.
 
 > **Empirical correction (2026-08-24).** This section states one identity that
 > does two different jobs, and only one of them survives contact with real data.
-> See `WTC2024_GROUND_TRUTH.md` **Finding 12**, which compares Team Irving's grid
+> See `WTC2024_GROUND_TRUTH.md` **Finding 12**, which compares the home team's grid
 > against the opposing team's *own* preparation sheet for the same 25 matchups.
 >
 > - **As a statement about outcomes, it holds.** A game one side wins, the other
@@ -296,7 +296,7 @@ points, which makes it interpretable rather than merely detectable.
 > estimating opponent is not measured by this probe and is not currently
 > measured anywhere.
 
-Measured on real event data (Team Irving 2024, six opponents, scenario 0,
+Measured on real event data (the home team 2024, six opponents, scenario 0,
 \(n=5\), conserved total 30):
 
 | rule | mean excess | min | max | reading |
@@ -309,7 +309,7 @@ Two conclusions, and the second is the surprising one.
 
 1. **The optimistic rule is provably biased.** It is what
    `tree_generator.calculate_all_path_values` does: `max()` over all children
-   regardless of whose turn it is. Against England Dragons both sides conclude
+   regardless of whose turn it is. Against Opponent 06 both sides conclude
    they will score 17 of a possible 30. On the synthetic 4v4 fixture the effect
    is starker still: both seats claim 16 points out of a possible 24, an excess
    of **+8.0**. (This function is *not* what the v2 sort column calls — see
@@ -329,7 +329,7 @@ hermetically on a synthetic grid — weakly, then strictly on an uneven grid —
 plus a guard that the mirror construction is faithful before any conclusion is
 drawn from it, and a check that the quantal rule's conservation error is smaller
 than the optimistic rule's. The minimax sign and all three real-data magnitudes
-come from `probe_cumulative2_bias.py` against `teamIrving2024_FinalDB.db`, which
+come from `probe_cumulative2_bias.py` against `teamthe home team2024_FinalDB.db`, which
 is deliberately not a test fixture; **no test exercises minimax.**
 
 This does **not** close the wider p3c question. It establishes which rule is
@@ -619,14 +619,14 @@ over the tree to 1.0**.
 > **Validated against a real tournament.** Sections 1–6 reason about the model
 > from the inside. `docs/WTC2024_GROUND_TRUTH.md` checks it from the outside,
 > against the 400 real games of Warmachine WTC 2024 joined to the 5,425 ratings
-> Team Irving entered *before* that event. Three results there bear directly on
+> the home team entered *before* that event. Three results there bear directly on
 > the mathematics in this document:
 >
 > - **The scenario dimension is constant.** Across every real database ever
 >   produced — 1,150 matchup cells — **zero** vary by scenario. Every
 >   scenario-aware cost in §6 is a 7× multiplier over a constant.
 > - **The rating is not a calibrated strength.** 74.1% of WTC ratings are the
->   single value `3`, the value `5` was never used once, and Irving won 70% of
+>   single value `3`, the value `5` was never used once, and the home team won 70% of
 >   games their own ratings implied they would win ~45% of. Every objective in
 >   §2 treats the rating as calibrated. It is closer to an ordinal hint with a
 >   pessimistic bias — so **absolute path totals are not meaningful quantities,
@@ -789,7 +789,7 @@ each step and **they belong to different sides**:
 The player offered but not picked is then put forward by their own side. That
 leftover rule is what makes a *bus* possible: a side can offer a pair knowing
 that whichever one is declined dictates the following matchup. It is the
-mechanic Team Irving lost to in 2024, and an assignment-based bound cannot
+mechanic the home team lost to in 2024, and an assignment-based bound cannot
 represent it at all, because it has no notion of turn order.
 
 Exact minimax over that structure gives `protocolFloor`, which is **tighter

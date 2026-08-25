@@ -77,7 +77,7 @@ CREATE TABLE teams (
 **Columns**:
 
 - `team_id`: Auto-incrementing primary key
-- `team_name`: Human-readable team identifier (e.g., "England Lions", "Team Irving")
+- `team_name`: Human-readable team identifier (e.g., "Opponent 08", "the home team")
 
 **Constraints**:
 
@@ -88,8 +88,8 @@ CREATE TABLE teams (
 
 ```sql
 INSERT INTO teams (team_id, team_name) VALUES
-(1, 'Team Irving'),
-(2, 'England Lions'),
+(1, 'the home team'),
+(2, 'Opponent 08'),
 (3, 'Brussels Muscles');
 ```
 
@@ -127,11 +127,11 @@ CREATE TABLE players (
 
 ```sql
 INSERT INTO players (player_id, team_id, player_name) VALUES
-(1, 1, 'Justin'),
-(2, 1, 'Mike'),
-(3, 1, 'Rick'),
-(4, 1, 'Stephen'),
-(5, 1, 'Jake'),
+(1, 1, 'Bravo'),
+(2, 1, 'Charlie'),
+(3, 1, 'Delta'),
+(4, 1, 'Echo'),
+(5, 1, 'Alpha'),
 (6, 2, 'Christopher Clare'),
 (7, 2, 'Jaime Perkins'),
 (8, 2, 'Brett W'),
@@ -141,7 +141,7 @@ INSERT INTO players (player_id, team_id, player_name) VALUES
 
 **Business Rules**:
 
-- Player names may include faction/army information (e.g., "Sea Raiders - Hor / Sab")
+- Player names may include faction/army information (e.g., "List 44")
 - Special characters (apostrophes, hyphens) must be properly escaped
 - Player order within team matters for UI display (ORDER BY player_id)
 
@@ -228,11 +228,11 @@ CREATE TABLE IF NOT EXISTS ratings (
 
 ```sql
 INSERT INTO ratings (team_1_player_id, team_1_id, team_2_player_id, team_2_id, scenario_id, rating) VALUES
-(1, 1, 6, 2, 0, 3),  -- Justin vs Christopher Clare, Scenario Agnostic, Rating 3
-(1, 1, 7, 2, 0, 2),  -- Justin vs Jaime Perkins, Scenario Agnostic, Rating 2
-(1, 1, 8, 2, 0, 4),  -- Justin vs Brett W, Scenario Agnostic, Rating 4
-(2, 1, 6, 2, 1, 3),  -- Mike vs Christopher Clare, Recon Scenario, Rating 3
-(2, 1, 6, 2, 0, 2);  -- Mike vs Christopher Clare, Scenario Agnostic, Rating 2
+(1, 1, 6, 2, 0, 3),  -- Bravo vs Christopher Clare, Scenario Agnostic, Rating 3
+(1, 1, 7, 2, 0, 2),  -- Bravo vs Jaime Perkins, Scenario Agnostic, Rating 2
+(1, 1, 8, 2, 0, 4),  -- Bravo vs Brett W, Scenario Agnostic, Rating 4
+(2, 1, 6, 2, 1, 3),  -- Charlie vs Christopher Clare, Recon Scenario, Rating 3
+(2, 1, 6, 2, 0, 2);  -- Charlie vs Christopher Clare, Scenario Agnostic, Rating 2
 ```
 
 **Business Rules**:

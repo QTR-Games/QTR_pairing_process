@@ -129,7 +129,7 @@ export function Rosters({ board, onChange }: NamesProps) {
         <span>Opponent team</span>
         <input
           value={board.opponent}
-          placeholder="e.g. Australia Thorny Devils"
+          placeholder="e.g. Opponent 02"
           onChange={(e) => onChange({ ...board, opponent: e.target.value })}
         />
       </label>

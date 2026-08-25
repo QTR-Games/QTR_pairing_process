@@ -201,3 +201,12 @@ backup_pre_core_worktree.patch
 # Capacitor regenerates the native project in CI; it is never committed.
 webapp/android/
 webapp/ios/
+
+# Real event data stays out of a public repository. Rosters and ratings are
+# harmless apart; joined together they are scouting material. Keep working
+# copies outside the repo, or anonymise before committing.
+import_logs/
+*_Import.csv
+*_Import.txt
+*_Import.xlsx
+*_player_ratings_export*.csv

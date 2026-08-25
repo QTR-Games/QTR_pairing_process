@@ -37,7 +37,8 @@ Points and win probability are different objectives. A WTC round is won by
 crossing a threshold, not by accumulating points: with 1–5 ratings and
 complementary opponent values the two totals sum to 30, so we win above 15.
 
-Measured on the three real matchups in `DapperBadgersImport1.xlsx`
+Measured on three real matchups from a past event (source workbook no longer
+committed; see `docs/DECISION_SENSITIVITY_FINDINGS.md` § Data)
 (`points_vs_winprob.py`, opponent modelled as boundedly rational, λ=1.0):
 
 | Matchup | Point spread across openers | Win-probability spread |
