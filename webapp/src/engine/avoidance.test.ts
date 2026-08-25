@@ -16,8 +16,12 @@ import { protocolFloor } from "./protocol";
 import {
   type Cell,
   avoidingFloor,
+  canPin,
   dodgeMap,
   forbidCells,
+  isPinned,
+  pinInto,
+  pinReport,
   priceCells,
   pricePair,
 } from "./avoidance";
@@ -149,6 +153,120 @@ describe("scale independence", () => {
       const two = priceCells(shifted, [worst], shiftedBase, true);
 
       expect(two.price!).toBeCloseTo(one.price!, 9);
+    }
+  });
+});
+
+describe("the pin, as a claim about the protocol rather than the grid", () => {
+  const evenish = (m: number[][]): number => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const row of m) for (const x of row) { if (x < lo) lo = x; if (x > hi) hi = x; }
+    return (lo + hi) / 2;
+  };
+
+  it("reproduces protocolFloor when every row is allowed", () => {
+    // Allowing everything forbids nothing, so the derivation must collapse onto
+    // the unconstrained solver. If this drifts, every pin price is suspect.
+    for (const b of FIXTURES) {
+      const base = protocolFloor(b.matrix, true).value;
+      for (let j = 0; j < b.matrix.length; j++) {
+        const all = b.matrix.map((_, i) => i);
+        const pin = pinInto(b.matrix, j, all, base, true);
+        expect(pin.enforced).toBeCloseTo(base, 9);
+        expect(pin.price!).toBeCloseTo(0, 9);
+        expect(pin.free).toBe(true);
+      }
+    }
+  });
+
+  it("reports no pin when no row is allowed", () => {
+    // Forbidding a whole column leaves no complete pairing at all.
+    for (const b of FIXTURES.slice(0, 8)) {
+      const base = protocolFloor(b.matrix, true).value;
+      for (let j = 0; j < b.matrix.length; j++) {
+        expect(pinInto(b.matrix, j, [], base, true).enforced).toBeNull();
+      }
+    }
+  });
+
+  it("never gets worse as the allowed set grows", () => {
+    // Monotonicity is the property that fails loudly if forcing is not in fact
+    // avoidance of the complement: more ways to satisfy a constraint can never
+    // lower a guaranteed total, and a satisfiable constraint cannot become
+    // unsatisfiable when it is loosened.
+    for (const b of FIXTURES) {
+      const base = protocolFloor(b.matrix, true).value;
+      const n = b.matrix.length;
+      for (let j = 0; j < n; j++) {
+        let previous: number | null = null;
+        for (let size = 1; size <= n; size++) {
+          const allowed = Array.from({ length: size }, (_, i) => i);
+          const { enforced } = pinInto(b.matrix, j, allowed, base, true);
+          if (previous !== null) {
+            expect(enforced, `${b.opponent} col ${j} size ${size}`).not.toBeNull();
+            expect(enforced!).toBeGreaterThanOrEqual(previous - 1e-9);
+          }
+          if (enforced !== null) previous = enforced;
+        }
+      }
+    }
+  });
+
+  it("never claims a pin is worth more than playing freely", () => {
+    for (const b of FIXTURES) {
+      const base = protocolFloor(b.matrix, true).value;
+      const { offense, defense } = pinReport(b.matrix, evenish(b.matrix), base, true);
+      for (const p of [...offense, ...defense]) {
+        if (p.enforced === null) { expect(p.price).toBeNull(); continue; }
+        expect(p.enforced).toBeLessThanOrEqual(base + 1e-9);
+        expect(p.price!).toBeGreaterThanOrEqual(-1e-9);
+      }
+    }
+  });
+
+  it("treats a player with no losing matchups as safe rather than pinned", () => {
+    const strong = [
+      [5, 5, 5, 5, 5],
+      [1, 3, 3, 3, 3],
+      [1, 3, 3, 3, 3],
+      [1, 3, 3, 3, 3],
+      [1, 3, 3, 3, 3],
+    ];
+    const base = protocolFloor(strong, true).value;
+    expect(isPinned(strong, 0, 3, base, true).pinned).toBe(false);
+    expect(isPinned(strong, 0, 3, base, true).cells).toHaveLength(0);
+  });
+
+  it("distinguishes boards, so the column earns its place on the dashboard", () => {
+    // A flag that is always on, or always off, is noise. Both regimes must
+    // appear across real boards or the metric tells a captain nothing.
+    let pinnable = 0;
+    let unpinnable = 0;
+    for (const b of FIXTURES) {
+      const base = protocolFloor(b.matrix, true).value;
+      const threshold = evenish(b.matrix);
+      for (let j = 0; j < b.matrix.length; j++) {
+        if (canPin(b.matrix, j, threshold, base, true).enforced === null) unpinnable++;
+        else pinnable++;
+      }
+    }
+    expect(pinnable).toBeGreaterThan(0);
+    expect(unpinnable).toBeGreaterThan(0);
+  });
+
+  it("prices pins in the board's own units", () => {
+    for (const b of FIXTURES.slice(0, 8)) {
+      const base = protocolFloor(b.matrix, true).value;
+      const t = evenish(b.matrix);
+      const one = canPin(b.matrix, 0, t, base, true);
+
+      const doubled = b.matrix.map((row) => row.map((x) => x * 2));
+      const two = canPin(doubled, 0, t * 2, protocolFloor(doubled, true).value, true);
+
+      expect(two.cells.map((c) => c.ours)).toEqual(one.cells.map((c) => c.ours));
+      if (one.price === null) expect(two.price).toBeNull();
+      else expect(two.price!).toBeCloseTo(one.price * 2, 9);
     }
   });
 });

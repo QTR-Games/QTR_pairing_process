@@ -367,3 +367,130 @@ export function pricePair(
     free,
   };
 }
+
+/**
+ * Whether a player can be driven into a named set of matchups, and what it costs.
+ *
+ * `enforced` is `null` exactly when no strategy achieves it against best play.
+ */
+export interface PinStatus {
+  /** Row index for a defensive pin, column index for an offensive one. */
+  player: number;
+  /** The matchups the pin drives play into. */
+  cells: Cell[];
+  /** Guaranteed total among strategies that enforce the pin. */
+  enforced: number | null;
+  /** `base - enforced`. Non-negative; `null` when unenforceable. */
+  price: number | null;
+  /** True when enforcing costs nothing at all. */
+  free: boolean;
+}
+
+/**
+ * Forcing is avoidance wearing a different hat.
+ *
+ * To drive their player `theirs` into the set `allowedOurs`, forbid every other
+ * cell in their column. A complete pairing has to give them a partner, and the
+ * only partners left are the ones we chose -- so the pin holds exactly when the
+ * derived avoidance holds. That identity is why this needs no second solver:
+ * `solveAvoiding` already carries the pools, the memo and the null-propagation
+ * that make the claim survive the protocol rather than merely describe the grid.
+ *
+ * An empty `allowedOurs` forbids the whole column, no complete pairing exists,
+ * and the solver returns `null` -- which reads correctly as "cannot be pinned".
+ */
+export function pinInto(
+  matrix: Matrix,
+  theirs: number,
+  allowedOurs: readonly number[],
+  base: number,
+  ourTeamFirst = true,
+): PinStatus {
+  const n = matrix.length;
+  const allowed = new Set(allowedOurs);
+  const forbidden: Cell[] = [];
+  for (let ours = 0; ours < n; ours++) {
+    if (!allowed.has(ours)) forbidden.push({ ours, theirs });
+  }
+  const cells = allowedOurs.map((ours) => ({ ours, theirs }));
+  const { avoided, price, free } = priceCells(matrix, forbidden, base, ourTeamFirst);
+  return { player: theirs, cells, enforced: avoided, price, free };
+}
+
+/**
+ * The offensive pin: can we force their player into a matchup we favour?
+ *
+ * This is the column reading -- *how many of ours beat that one of theirs* --
+ * and it is deliberately not the row reading the desktop grid used to show.
+ * Counting favourable cells in a column says only that good matchups exist on
+ * paper; it cannot say whether the turn order lets us reach one. Here a `PIN`
+ * means the pairing lands there against any defence.
+ */
+export function canPin(
+  matrix: Matrix,
+  theirs: number,
+  threshold: number,
+  base: number,
+  ourTeamFirst = true,
+): PinStatus {
+  const favourable: number[] = [];
+  for (let ours = 0; ours < matrix.length; ours++) {
+    if (matrix[ours][theirs] > threshold) favourable.push(ours);
+  }
+  return pinInto(matrix, theirs, favourable, base, ourTeamFirst);
+}
+
+/**
+ * The defensive pin: can they force our player into a matchup we lose?
+ *
+ * Stated as its own negation, because that is the version the solver answers
+ * directly: we are pinned when no strategy refuses every bad cell in our row.
+ * When escape *is* possible, `price` is what the escape costs, which is the
+ * number worth arguing about and the one a cell count could never produce.
+ */
+export function isPinned(
+  matrix: Matrix,
+  ours: number,
+  threshold: number,
+  base: number,
+  ourTeamFirst = true,
+): PinStatus & { pinned: boolean } {
+  const n = matrix.length;
+  const bad: Cell[] = [];
+  for (let theirs = 0; theirs < n; theirs++) {
+    if (matrix[ours][theirs] < threshold) bad.push({ ours, theirs });
+  }
+  const { avoided, price, free } = priceCells(matrix, bad, base, ourTeamFirst);
+  return {
+    player: ours,
+    cells: bad,
+    enforced: avoided,
+    price,
+    free,
+    // No bad cells at all is safety, not a pin.
+    pinned: bad.length > 0 && avoided === null,
+  };
+}
+
+/**
+ * Both pins for every player, ready for display.
+ *
+ * `threshold` is supplied by the caller rather than assumed, which is what keeps
+ * this correct on 1-3, 1-5 and 1-10 boards alike; `evenThreshold` in
+ * ./boardAnalysis derives it from the scale in use.
+ */
+export function pinReport(
+  matrix: Matrix,
+  threshold: number,
+  base: number,
+  ourTeamFirst = true,
+): { offense: PinStatus[]; defense: (PinStatus & { pinned: boolean })[] } {
+  const n = matrix.length;
+  const offense: PinStatus[] = [];
+  const defense: (PinStatus & { pinned: boolean })[] = [];
+  for (let i = 0; i < n; i++) {
+    offense.push(canPin(matrix, i, threshold, base, ourTeamFirst));
+    defense.push(isPinned(matrix, i, threshold, base, ourTeamFirst));
+  }
+  return { offense, defense };
+}
