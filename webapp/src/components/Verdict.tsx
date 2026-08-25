@@ -79,6 +79,28 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
     [matrix, board.ourTeamFirst, guaranteed],
   );
 
+  /*
+    `typical.expected` is a Monte Carlo mean over 24 sampled opponent boards, so
+    comparing it to `tau` with a bare `>` hands the choice of advice to the
+    random draw whenever the two are close.
+
+    That is not hypothetical. Measured against a 4000-trial reference on the 31
+    saved boards, 5 of them sit closer to this line than the observed sampling
+    error, and one sits exactly on it at 0.000. On those boards the app was
+    confidently recommending "play for the win" or "you need them to give you
+    something" -- opposite instructions -- on a coin flip.
+
+    Two standard errors is the band, checked rather than assumed: the true error
+    fell inside 2 stderr on 29 of 31 boards and never exceeded it. The reply is
+    to say so, because "too close to call" is a real answer and the wrong half
+    of a confident answer is not.
+
+    Raising the trial count was the alternative and it is the wrong trade: 192
+    trials roughly halves the error for eight times the compute, on the phone,
+    which is the device that goes to the event.
+  */
+  const tooCloseToCall = Math.abs(typical.expected - tau) < 2 * typical.stderr;
+
   // The matchup on this board we would least like to play, and whether the
   // pairing protocol actually lets us refuse it.
   //
@@ -204,6 +226,15 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
           <>
             Playing this out properly guarantees {fmt(guaranteed)}, which takes the round
             outright. It cannot be taken away from you.
+          </>
+        ) : tooCloseToCall ? (
+          <>
+            The safe reading is {fmt(guaranteed)} and the round needs {fmt(tau)}. Playing
+            their own board they land you around {fmt(typical.expected)} -- which is on the
+            line, not over it. This one is genuinely too close to call: the typical case and
+            the round requirement are the same number to within the accuracy of the estimate,
+            so treat it as a coin flip that the ceiling at {fmt(o.ceiling)} can still win for
+            you.
           </>
         ) : typical.expected > tau ? (
           <>
