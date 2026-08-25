@@ -14,6 +14,7 @@ import {
   type Board,
 } from "./model/board";
 import { SCALES } from "./model/scale";
+import { DODGE_MODES, loadSettings, saveSettings, type DodgeMode } from "./model/settings";
 import { newRound, type LiveState } from "./engine/live";
 import { boardMatrix } from "./model/board";
 import { openingChoice } from "./engine/protocol";
@@ -38,6 +39,7 @@ export default function App() {
     return first ? loadLive(first.id) : null;
   });
   const [highlight, setHighlight] = useState<Set<string>>(new Set());
+  const [dodgeMode, setDodgeMode] = useState<DodgeMode>(() => loadSettings().dodgeMode);
 
   // Persist on every edit. There is no save button, because forgetting to press
   // one between rounds is not a failure mode worth having at an event.
@@ -108,7 +110,7 @@ export default function App() {
               fills in, with nothing to toggle at an event.
             */}
             {rated ? (
-              <Verdict board={board} onHighlight={setHighlight} />
+              <Verdict board={board} onHighlight={setHighlight} dodgeMode={dodgeMode} />
             ) : (
               <Rosters board={board} onChange={setBoard} />
             )}
@@ -166,6 +168,28 @@ export default function App() {
               <button className="primary wide" onClick={startRound}>
                 Start the round
               </button>
+
+              {/*
+                App-wide, not per-board: a preference about how much the screen
+                says, which should survive moving between boards.
+              */}
+              <label className="field inline">
+                <span>Show the worst-matchup price</span>
+                <select
+                  value={dodgeMode}
+                  onChange={(e) => {
+                    const next = e.target.value as DodgeMode;
+                    setDodgeMode(next);
+                    saveSettings({ dodgeMode: next });
+                  }}
+                >
+                  {DODGE_MODES.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
             {/* Whichever of the two did not lead goes here, so neither is lost. */}
             {rated && <Rosters board={board} onChange={setBoard} />}

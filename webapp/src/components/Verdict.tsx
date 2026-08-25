@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { worstMatchupDodge } from "../engine/avoidance";
 import type { Matrix } from "../engine/boardAnalysis";
 import { decisionReport, evenThreshold, LIVE, SECURED, UNWINNABLE } from "../engine/boardAnalysis";
@@ -6,10 +6,13 @@ import { outlook } from "../engine/opponent";
 import { protocolFloor } from "../engine/protocol";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale, isRated } from "../model/board";
+import type { DodgeMode } from "../model/settings";
 
 interface Props {
   board: Board;
   onHighlight?: (cells: Set<string>) => void;
+  /** How much to say about the worst matchup. Defaults to asking first. */
+  dodgeMode?: DodgeMode;
 }
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
@@ -36,7 +39,7 @@ const pct = (p: number) => `${(p * 100).toFixed(1)}%`;
  * Everything else on this screen exists to answer "so what do I do", and is
  * driven by the measured findings rather than by a single ranking number.
  */
-export function Verdict({ board, onHighlight }: Props) {
+export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
   const scale = boardScale(board);
   const matrix: Matrix = useMemo(() => boardMatrix(board, scale), [board, scale]);
   const tau = evenThreshold(board.ourPlayers.length, scale.min, scale.max);
@@ -80,9 +83,19 @@ export function Verdict({ board, onHighlight }: Props) {
   //
   // Deliberately narrow: only the worst-rated matchup, only when it is actually
   // bad, and silent otherwise. A list of 25 priced dodges is noise on a phone.
+  //
+  // It is not shown unconditionally, because measurement says it would never
+  // stop showing: on all 31 saved boards there is a matchup below the midpoint,
+  // so this insight has something to say every single time. `asked` gates both
+  // the display AND the solve -- in "off" and "onDemand" the engine is not run
+  // at all, so the cost is genuinely not paid rather than paid invisibly.
+  const [asked, setAsked] = useState(false);
+  const wantDodge = dodgeMode === "always" || (dodgeMode === "onDemand" && asked);
+
   const worstDodge = useMemo(
-    () => worstMatchupDodge(matrix, scale.min, scale.max, board.ourTeamFirst),
-    [matrix, scale.min, scale.max, board.ourTeamFirst],
+    () =>
+      wantDodge ? worstMatchupDodge(matrix, scale.min, scale.max, board.ourTeamFirst) : null,
+    [wantDodge, matrix, scale.min, scale.max, board.ourTeamFirst],
   );
 
   // An all-even board is arithmetically "unwinnable" -- it lands exactly on the
@@ -209,6 +222,21 @@ export function Verdict({ board, onHighlight }: Props) {
                    board rewards committing first.`
             }
           />
+        )}
+
+        {/*
+          Offered rather than shown. One tap, and it stays open for this board.
+        */}
+        {dodgeMode === "onDemand" && !asked && (
+          <button className="ghost wide" onClick={() => setAsked(true)}>
+            Price your worst matchup
+          </button>
+        )}
+
+        {wantDodge && worstDodge === null && (
+          <p className="hint">
+            Nothing on this board is rated badly enough to be worth dodging.
+          </p>
         )}
 
         {worstDodge && (
