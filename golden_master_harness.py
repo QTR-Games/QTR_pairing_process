@@ -21,6 +21,12 @@ SNAPSHOT_DIR = Path(__file__).resolve().parent / "golden_fixtures"
 FULL_FIDELITY_NODE_THRESHOLD = 5000
 RECORD_SEPARATOR = "\x1e"
 _UNSET: Final = object()
+
+# Marks which engine produced a snapshot. Deliberately not inside "metadata":
+# metadata is compared field-for-field against the fixture, and the whole point
+# of the model snapshot is that it must match the widget fixture exactly.
+SOURCE_ENGINE_KEY: Final = "source_engine"
+
 DEFAULT_SCORING_ENVIRONMENT: Final[dict[str, str | None]] = {
     "QTR_ENGINE": "widget",
     "QTR_RENDER": "eager",
@@ -145,7 +151,6 @@ def generate_model_snapshot(scenario: GoldenScenario, sort_mode: str) -> dict:
     """Generate a snapshot by traversing PairingNode state, not Treeview rows."""
     if sort_mode not in SORT_MODES:
         raise KeyError(f"unknown sort mode: {sort_mode}")
-
     with golden_master_environment({"QTR_ENGINE": "model"}), tk_treeview() as treeview:
         generator = TreeGenerator(
             treeview=treeview,
@@ -175,6 +180,10 @@ def generate_model_snapshot(scenario: GoldenScenario, sort_mode: str) -> dict:
             },
         )
 
+    # Deliberately outside "metadata", which is compared field-for-field against
+    # the fixture. This marks where the snapshot came from without changing what
+    # equivalence means.
+    snapshot[SOURCE_ENGINE_KEY] = "model"
     return snapshot
 
 
@@ -208,6 +217,19 @@ def snapshot_path(scenario_slug: str, sort_mode: str) -> Path:
 
 
 def write_snapshot(snapshot: dict) -> Path:
+    # The fixture is the widget engine's output, by definition. The model engine
+    # is checked *against* it (test_pairing_model_snapshot_matches_golden_master),
+    # so letting a model snapshot be written here would turn that test into a
+    # comparison of the model with itself: permanently green, and checking
+    # nothing. The path is keyed only on scenario and sort mode, so it would
+    # overwrite silently.
+    source = snapshot.get(SOURCE_ENGINE_KEY)
+    if source not in (None, "widget"):
+        raise ValueError(
+            f"refusing to write a {source!r}-engine snapshot as a golden fixture; "
+            "fixtures are captured from the widget engine and the model engine is "
+            "verified against them"
+        )
     scenario_slug = snapshot["metadata"]["scenario"]
     sort_mode = snapshot["metadata"]["sort_mode"]
     SNAPSHOT_DIR.mkdir(exist_ok=True)
