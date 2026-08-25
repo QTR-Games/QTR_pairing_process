@@ -46,11 +46,12 @@ jobs:
           cache: npm
           cache-dependency-path: webapp/package-lock.json
 
-      # JDK 17 is what the Android Gradle Plugin used by Capacitor 8 expects.
+      # Capacitor 8 compiles its Android library at source level 21; JDK 17
+      # gets as far as javac and then fails with "invalid source release: 21".
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - uses: android-actions/setup-android@v3
 
