@@ -13,7 +13,20 @@ import { describe, expect, it } from "vitest";
 import boards from "./__fixtures__/wtc2024Boards.json";
 import type { Matrix } from "./boardAnalysis";
 import type { LiveState } from "./live";
-import { currentDecision, newRound, pickOptions, pickTieBreak } from "./live";
+import {
+  currentDecision,
+  moveOptions,
+  newRound,
+  optionProfile,
+  pickOptions,
+  pickTieBreak,
+} from "./live";
+
+interface Fixture {
+  opponent: string;
+  matrix: number[][];
+}
+
 
 const MATRIX = (boards as unknown as { matrix: number[][] }[])[0].matrix as Matrix;
 const N = MATRIX.length;
@@ -243,5 +256,67 @@ describe("advice does not depend on the scale it is displayed in", () => {
         }
       }
     }
+  });
+});
+
+/**
+ * A clear winner still has a story to tell.
+ *
+ * The panel used to compute option profiles only when at least two options tied
+ * on guaranteed value, on the reasoning that a clear winner needs no tie-break.
+ * Finding 20 measured the two halves of the decision apart across all 31 real
+ * boards and that reasoning does not survive: the spread our own choice controls
+ * has a median of 0.00 and never exceeds 1.0, while the spread across their
+ * replies runs to 2.0. Their reply is the larger number even where our choice
+ * does separate, so there is upside worth naming on a clear winner too.
+ *
+ * This pins the engine-level guarantee the panel depends on: for a board where
+ * our options are NOT tied, the top option still yields a profile, and that
+ * profile still carries a reply range. If this ever returns null or a flat
+ * range, the panel silently loses the bigger half of the decision.
+ */
+describe("profiles on a board with a clear winner", () => {
+  const boardsWithSpread = (boards as unknown as Fixture[]).filter((f) => {
+    const s = newRound(f.matrix.length, true);
+    const opts = moveOptions(f.matrix as Matrix, s);
+    if (opts.length < 2) return false;
+    const vals = opts.map((o) => o.value);
+    return Math.max(...vals) - Math.min(...vals) > 1e-9;
+  });
+
+  it("finds real boards where our choice actually separates", () => {
+    // Finding 20: 15 of 31. If this drops to zero the rest of the block is
+    // vacuous and would pass without testing anything.
+    expect(boardsWithSpread.length).toBeGreaterThan(0);
+  });
+
+  it("still profiles the top option when nothing ties with it", () => {
+    for (const f of boardsWithSpread) {
+      const s = newRound(f.matrix.length, true);
+      const opts = moveOptions(f.matrix as Matrix, s);
+      const best = Math.max(...opts.map((o) => o.value));
+      const top = opts.find((o) => Math.abs(o.value - best) < 1e-9);
+      expect(top, `${f.opponent}: no top option`).toBeDefined();
+
+      const p = optionProfile(f.matrix as Matrix, s, top!);
+      expect(p, `${f.opponent}: top option has no profile`).not.toBeNull();
+      expect(p!.totalReplies, `${f.opponent}: no replies enumerated`).toBeGreaterThan(0);
+      expect(p!.ifTheyErr).toBeGreaterThanOrEqual(p!.guaranteed);
+      expect(p!.punishingReplies).toBeGreaterThan(0);
+      expect(p!.punishingReplies).toBeLessThanOrEqual(p!.totalReplies);
+    }
+  });
+
+  it("names upside on the top option somewhere real, not just in theory", () => {
+    // Their reply range being non-zero somewhere is the whole justification for
+    // showing the profile without a tie. Finding 20 measured it up to 2.0.
+    const ranges = boardsWithSpread.map((f) => {
+      const s = newRound(f.matrix.length, true);
+      const opts = moveOptions(f.matrix as Matrix, s);
+      const best = Math.max(...opts.map((o) => o.value));
+      const top = opts.find((o) => Math.abs(o.value - best) < 1e-9)!;
+      return optionProfile(f.matrix as Matrix, s, top)?.upside ?? 0;
+    });
+    expect(Math.max(...ranges)).toBeGreaterThan(0);
   });
 });
