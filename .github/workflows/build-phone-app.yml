@@ -1,14 +1,15 @@
 # Build the phone app and keep it downloadable, without publishing anything.
 #
-# This workflow used to deploy the web app to GitHub Pages and serve the APK
-# from a public URL. That was removed deliberately: the app is not stable
-# enough to be publicly usable yet, and the repository is public, so anything
-# Pages served was reachable by anyone who found the URL.
+# This is the normal path. The APK and the built web bundle are uploaded as
+# workflow artifacts, downloadable from the Actions tab by anyone with access to
+# the repository. To put the app on a phone: download the artifact, unzip it,
+# copy qtr-pairing.apk to the device over USB, and tap it.
 #
-# Nothing here is published now. The APK and the built web bundle are uploaded
-# as workflow artifacts, downloadable from the Actions tab by anyone with
-# access to the repository. To put the app on a phone: download the artifact,
-# unzip it, copy qtr-pairing.apk to the device over USB, and tap it.
+# This workflow used to deploy to GitHub Pages. It no longer does, because the
+# app is not stable enough to be publicly usable yet and this repository is
+# public, so anything Pages served was reachable by anyone who found the URL.
+# That capability still exists in deploy-webapp.yml, which is manual-dispatch
+# only and is kept as the event fallback.
 #
 # The installed APK is entirely offline. It bundles the web assets locally and
 # sets no server.url, so it never makes a network request at runtime. Venue
