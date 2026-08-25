@@ -397,6 +397,42 @@ Reproduce with the α-sweep probe at
 (run from the repo root). The propagation-bias result it builds on is pinned
 hermetically in-repo by `test_zero_sum_conservation.py`.
 
+### 3.4.2 Decision — what happens to `cumulative` before the event
+
+Asked to "drop this if prudent" and to decide rather than defer, the decision is
+**leave the Python default at α = 0.80 and ship nothing**, because the metric has
+already been dropped where it matters.
+
+The reasoning, and the facts that constrain it:
+
+1. **The phone app never had it.** `webapp/src` contains zero occurrences of
+   `cumulative`. The React engine scores through `protocol.ts` and reports
+   floor / guaranteed / ceiling. So the number that "always flatters" is absent
+   from the tool that will actually be used at the event. Removing it from the
+   Python app buys the event nothing.
+2. **Changing the default is a re-baseline, not a bugfix.** The golden master's
+   `enhanced_v3_scores` mode calls `calculate_all_path_values_enhanced`
+   (`golden_master_harness.py:52`), which reads `cumulative2_alpha`. Moving the
+   default therefore invalidates those fixtures *by design*. The Python app is
+   the agreed stable fallback; destabilising it days before an event to fix a
+   column the event will not use is the wrong trade.
+3. **No code change is needed to get the honest number anyway.** α is a
+   validated, clamped, persisted preference (`database_preferences.py:149`,
+   validated at `:207`), read at `tree_generator.py:53`. Setting
+   `strategic_preferences.cumulative2.alpha = 0.2` moves the metric from −1.40
+   to +0.04 at runtime, per the sweep above, without touching code or fixtures.
+
+**Correction to an earlier verbal claim.** This metric was previously described
+in conversation as optimistic — "it always flatters, by ~1.7 points". That was
+the wrong function. `+1.667` belongs to `calculate_all_path_values`, reachable
+only from v1 and the golden-master harness (§3.4.1). The column actually
+displayed in v2 is **pessimistic by −1.397**. The direction of the bias was
+reported backwards, and the number quoted came from a different rule.
+
+Revisit if the Python app outlives the phone app, in which case the change is
+"set α = 0.2, re-baseline `enhanced_v3_scores`, review the diff" — a deliberate
+maintenance task, not a hotfix.
+
 ---
 
 ## 4. Shift-invariance: which objective you can memoize
