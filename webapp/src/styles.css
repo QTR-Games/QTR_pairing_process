@@ -836,6 +836,24 @@ button.ghost {
     padding: 1.25rem 1.5rem;
   }
 
+  /* The rating sheet is a phone bottom-sheet: full width, pinned to the bottom
+     edge. That is right on a 390px screen, where "the bottom" is a thumb's
+     reach from anywhere. On a 1920x1080 monitor it lands as a 1905px strip
+     across the very bottom -- measured at 1316px from the cell that opened it,
+     with the cell itself sometimes scrolled out of view. It works, and it reads
+     as if nothing happened. Centre it and give it a real width. */
+  .app-wide .sheet-backdrop {
+    align-items: center;
+    justify-content: center;
+  }
+
+  .app-wide .sheet {
+    width: min(440px, 90vw);
+    border-radius: 16px;
+    padding: 1.25rem;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  }
+
   /* Three columns and a full-width strip beneath them. The sheet gets the most
      room because it is the thing being read across a table. */
   .desk {
