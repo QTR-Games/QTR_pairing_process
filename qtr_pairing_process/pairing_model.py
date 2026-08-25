@@ -372,13 +372,18 @@ class TreeProjector:
         if existing_children:
             tree.delete(*existing_children)
 
+        # Re-read the live expansion state rather than passing an empty set.
+        # Projecting with an empty set tells the lazy projector that nothing is
+        # open, so any descendant the user had already expanded collapses when
+        # its parent is materialized.
+        currently_expanded = self.expanded_node_ids(tree)
         for child in node.children:
             self._project_node_lazy(
                 child,
                 tree,
                 widget_id,
                 materialize_through_depth=child.depth,
-                expanded_node_ids=set(),
+                expanded_node_ids=currently_expanded,
             )
         return True
 

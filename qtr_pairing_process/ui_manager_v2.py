@@ -1,4 +1,4 @@
-﻿""" ┬⌐ Daniel P Raven and Matt Russell 2024 All Rights Reserved """
+""" ┬⌐ Daniel P Raven and Matt Russell 2024 All Rights Reserved """
 # native libraries
 import csv
 import hashlib
@@ -2012,6 +2012,32 @@ class UiManager:
         except Exception as exc:
             self.logger.warning(f"Could not ensure strategic_memo_cache table: {exc}")
 
+    @staticmethod
+    def _snapshot_row_key(cache_key: tuple) -> tuple:
+        """Map a cache key of any supported length onto the six persisted columns.
+
+        ``_build_tree_cache_key`` grew two discriminators (engine and whether
+        risk columns are on) so that a risk-on snapshot could not be restored
+        into a risk-off run. The persistence helpers still unpacked exactly six
+        values, so every real call raised ValueError before it reached its own
+        try block, which silently disabled snapshot persistence on the default
+        widget engine.
+
+        Rather than migrate the table, fold the extra discriminators into the
+        signature column. They still take part in row identity, so the original
+        cross-contamination stays impossible, and shorter keys keep working
+        unchanged.
+        """
+        if len(cache_key) < 6:
+            raise ValueError(f"cache key needs at least 6 fields, got {len(cache_key)}")
+        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = cache_key[:6]
+        extras = cache_key[6:]
+        if extras:
+            ratings_signature = json.dumps(
+                [ratings_signature, [str(x) for x in extras]], ensure_ascii=False
+            )
+        return (team_1, team_2, scenario_id, rating_system, team_first, ratings_signature)
+
     def _load_persistent_strategic_memo(self, cache_key: tuple):
         if not cache_key or not self._is_persistent_strategic_memo_enabled():
             return None
@@ -2025,7 +2051,7 @@ class UiManager:
         if not memo_state_token:
             return None
 
-        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = cache_key
+        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = self._snapshot_row_key(cache_key)
         try:
             with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
                 cur = conn.cursor()
@@ -2076,7 +2102,7 @@ class UiManager:
         if not memo_state_token:
             return
 
-        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = cache_key
+        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = self._snapshot_row_key(cache_key)
         try:
             memo_json = json.dumps(payload, ensure_ascii=False)
             with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
@@ -2114,7 +2140,7 @@ class UiManager:
         if not cache_key or not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
             return None
         self._ensure_generated_tree_cache_table()
-        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = cache_key
+        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = self._snapshot_row_key(cache_key)
         try:
             with self.db_manager.connect_db(self.db_path, self.db_name) as conn:
                 cur = conn.cursor()
@@ -2154,7 +2180,7 @@ class UiManager:
         if not cache_key or not payload or not getattr(self, 'db_path', None) or not getattr(self, 'db_name', None):
             return
         self._ensure_generated_tree_cache_table()
-        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = cache_key
+        team_1, team_2, scenario_id, rating_system, team_first, ratings_signature = self._snapshot_row_key(cache_key)
         try:
             snapshot_json = json.dumps(payload.get("snapshot", []), ensure_ascii=False)
             generation_id = int(payload.get("generation_id", self._tree_generation_id or 1))
