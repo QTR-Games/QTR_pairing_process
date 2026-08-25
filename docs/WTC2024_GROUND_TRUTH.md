@@ -1000,3 +1000,64 @@ cd webapp
 $env:QTR_MEASURE="1"; npx vitest run src/engine/measure.decompose.test.ts `
   --reporter=verbose --disable-console-intercept
 ```
+
+---
+
+## Finding 21 — the app lost the round on any reload, and took a build to notice a fix
+
+**Measured, not assumed.** Two controlled experiments against a real built
+bundle served over HTTP, with the service worker installed exactly as it is on
+the deployed site.
+
+### What was wrong
+
+**A new build arrived one launch late.** Deploying a changed build over a
+running install and reloading once left the old build on screen for the full
+15s the probe ran, with no worker waiting and none installing. A *second*
+reload showed the new build. The update mechanism worked; it was just always
+one open behind, because the page that triggers the update has already been
+served from the old cache.
+
+The consequence is specific: push a fix on event morning, open the app once in
+the car, and that is the open that misses it.
+
+**A reload wiped the round.** `live` was `useState<LiveState | null>(null)` in
+`App.tsx` and was never persisted. Boards were saved; the round in progress was
+not. Any reload -- Android reclaiming a backgrounded tab, a screen tapped awake
+into a fresh load, an accidental pull-to-refresh -- returned an empty board.
+Three pairings deep at a table is the worst possible moment for that.
+
+The second is the more serious of the two, and it made the first unfixable on
+its own: the obvious fix for a stale build is to reload when the new one is
+ready, which would have traded a stale build for a lost round.
+
+### What changed
+
+- `model/board.ts` -- `saveLive` / `loadLive`, keyed by board id, validated on
+  read, same corrupt-entry tolerance as `loadBoards`. Storing against the board
+  means returning to a board resumes its round and switching boards does not
+  inherit someone else's.
+- `App.tsx` -- `live` initialises from storage, persists on every change, and
+  the app opens on the Round tab when a round is in progress. Opening a saved
+  board resumes that board's round rather than discarding it.
+- `main.tsx` -- reload on `controllerchange`, guarded by whether a controller
+  existed at load, so a first-ever visit does not flash.
+
+### Measured after
+
+| | before | after |
+|---|---|---|
+| new build visible after one open | no -- still old at 15s | **yes, ~500ms** |
+| opens needed to get a new build | 2 | **1** |
+| round survives a reload | no | **yes, identical state and tab** |
+
+Verified end-to-end: a round played to a mid-decision state (`ourPool: 29`,
+`attacker: 1`, awaiting their offer against Bokur) came back after a reload on
+the same screen, on the Round tab, with the same pools.
+
+### Why it is filed here
+
+It is not a maths finding. It is filed because every number in this document is
+only worth something if the app is still holding the round when it is needed,
+and because the update path is how any correction in here actually reaches a
+phone.

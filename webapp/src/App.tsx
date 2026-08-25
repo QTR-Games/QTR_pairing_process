@@ -8,7 +8,9 @@ import {
   emptyBoard,
   isRated,
   loadBoards,
+  loadLive,
   saveBoard,
+  saveLive,
   type Board,
 } from "./model/board";
 import { SCALES } from "./model/scale";
@@ -20,8 +22,19 @@ type Tab = "board" | "round" | "boards";
 export default function App() {
   const [board, setBoard] = useState<Board>(() => loadBoards()[0] ?? emptyBoard());
   const [boards, setBoards] = useState<Board[]>(() => loadBoards());
-  const [tab, setTab] = useState<Tab>("board");
-  const [live, setLive] = useState<LiveState | null>(null);
+  const [tab, setTab] = useState<Tab>(() => {
+    // Land on the round if one is already in progress. Opening to the board
+    // after a reload looks exactly like having lost it.
+    const first = loadBoards()[0];
+    return first && loadLive(first.id) ? "round" : "board";
+  });
+  const [live, setLive] = useState<LiveState | null>(() => {
+    // Resume whatever was in progress. Reached after a reload, after Android
+    // reclaimed the app, or after a new build took over -- none of which should
+    // cost you a round you are standing in the middle of.
+    const first = loadBoards()[0];
+    return first ? loadLive(first.id) : null;
+  });
   const [highlight, setHighlight] = useState<Set<string>>(new Set());
 
   // Persist on every edit. There is no save button, because forgetting to press
@@ -29,6 +42,11 @@ export default function App() {
   useEffect(() => {
     if (board.opponent || isRated(board)) setBoards(saveBoard(board));
   }, [board]);
+
+  // Same rule for the round itself.
+  useEffect(() => {
+    saveLive(board.id, live);
+  }, [board.id, live]);
 
   const scale = boardScale(board);
   const rated = isRated(board);
@@ -150,8 +168,11 @@ export default function App() {
                     className="board-open"
                     onClick={() => {
                       setBoard(b);
-                      setLive(null);
-                      setTab("board");
+                      // Resume that board's round if it has one, rather than
+                      // silently discarding it just because you looked away.
+                      const resumed = loadLive(b.id);
+                      setLive(resumed);
+                      setTab(resumed ? "round" : "board");
                     }}
                   >
                     <span>{b.opponent || "Untitled"}</span>

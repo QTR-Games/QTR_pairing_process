@@ -3,6 +3,44 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+/*
+ * Take a new build on the first open, not the second.
+ *
+ * Left to itself the service worker updates in the background, but the page that
+ * triggered the update has already been served from the old cache -- so a push
+ * only appears on the *next* launch. Measured: fifteen seconds still showing the
+ * old build, then correct after a second reload. If a fix goes out on event
+ * morning and the app is opened once in the car, that is the launch that
+ * matters, and it is the one that misses it.
+ *
+ * `controllerchange` fires when a newly activated worker claims this page, which
+ * under `registerType: 'autoUpdate'` is the moment the new build is ready to be
+ * served. Reloading then picks it up immediately.
+ *
+ * The `hadController` guard matters: on a first-ever visit the worker also
+ * claims the page, but that page is already running the newest code, and
+ * reloading there would be a pointless flash on the very first launch.
+ *
+ * Reloading at all is only safe because the round in progress is persisted (see
+ * `saveLive` in model/board.ts). Without that, this would trade a stale build
+ * for a lost round, which is the worse of the two.
+ */
+if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller
+  let reloading = false
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return
+    reloading = true
+    window.location.reload()
+  })
+}
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
