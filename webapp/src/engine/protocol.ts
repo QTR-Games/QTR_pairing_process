@@ -282,3 +282,110 @@ export function protocolGap(
 ): number {
   return protocolFloor(matrix, ourTeamFirst).value - assignmentFloorValue;
 }
+
+/**
+ * Step 1 of the pairing protocol: which side to take when you win the dice-off.
+ *
+ * Player Pack 2026 v1.1 p.20 step 1, verbatim: "Dice off until one captain has
+ * rolled higher than the other. The captain with the higher roll gets to choose
+ * whether they are Team A, or Team B in the process below." Team B puts the
+ * first player up, which is `ourTeamFirst = true` here.
+ *
+ * The app has always let you set this by hand. It has never told you which one
+ * to pick, and it is the single decision in a round that costs nothing to get
+ * right and cannot be recovered once made.
+ *
+ * ## What the answer turns out to be
+ *
+ * Measured over all 31 real WTC boards (`measure.openOrReceive.test.ts`),
+ * making them open is better on 18 and identical on 13. Better on ZERO. Worth a
+ * mean 0.58 points, up to a full point; in P(>= 3 wins), a mean 4.63% and up to
+ * 7.97%. Points and probability pick the same side on 31 of 31.
+ *
+ * ## Why it is a default and not a law
+ *
+ * A hunt over 16,000 random 5v5 boards (`measure.openTheorem.test.ts`) found
+ * boards where opening wins, on real scales:
+ *
+ *     1-5    opening better on  0 / 5,000
+ *     1-10   opening better on  2 / 5,000   (max 1.00 pt)
+ *     1-2    opening better on 11 / 3,000   (max 1.00 pt)
+ *     4-5    opening better on  9 / 3,000   (max 1.00 pt)
+ *
+ * Only 5v5 is searched. The one other format is 3v3, and 3v3 uses a different
+ * pairing process entirely -- not this protocol -- so a 3x3 board would
+ * measure nothing about anything. Board sizes that are not formats are not
+ * searched at all.
+ *
+ * The pattern is that exceptions live where ratings tie. On a compressed scale
+ * (1-2, 4-5) a third of boards are dead level and roughly 1 in 300 flips; on a
+ * wide 1-10 scale almost nothing ties and it is 1 in 2,500. That matters,
+ * because a team who rate everything a 4 or a 5 are exactly the team most
+ * likely to hit one.
+ *
+ * So the function computes the answer rather than printing "always receive".
+ * The default is right on well over 99% of boards, but the exceptions cost a
+ * full point, they exist on the scale being used at the event, and computing
+ * them costs one extra call.
+ *
+ * Both numbers are floors, so the comparison survives not knowing their grid:
+ * whatever they are optimising, they cannot take us below either figure.
+ *
+ * ## What this function does NOT price
+ *
+ * Opening is not only a matchup concession. It also buys table control. Player
+ * Pack 2026 v1.1 p.20 step 8: "The team that doesn't pick the match-up chooses
+ * the table each time." Step 10 spells the trade out: team B "gets to choose
+ * two match-ups and three tables, while team A will get to choose three
+ * match-ups and two table". Working it through matchup by matchup:
+ *
+ *     matchup   pairing   table     tables left
+ *     1         B         A         5
+ *     2         A         B         4
+ *     3         B         A         3
+ *     4         A         B         2
+ *     5         A         B         1  <- forced, not a choice
+ *
+ * So opening trades one matchup pick for one extra table pick, and the pack
+ * oversells even that: B's third table is the last one standing. Real picks are
+ * two apiece.
+ *
+ * This function prices the matchup half only. The unpriced half favours
+ * opening, which is the direction that could in principle flip the answer.
+ *
+ * Two independent things say it does not. The 31-board measurement above puts
+ * receiving ahead on 18 and level on 13, never behind; and the player community
+ * has settled on receiving as the better side. A table edge large enough to
+ * overturn a result that one-sided would have shown up in how the game is
+ * actually played.
+ *
+ * The table half is deliberately left unpriced, and that is a scoping decision
+ * rather than a gap waiting to be filled. Terrain is pre-set by the organisers;
+ * nobody places it, nobody designs a list for a specific table, and the whole
+ * decision is "which of these five suits what my army does". That is a judgement
+ * a player makes standing in front of the tables, and putting a number on it
+ * would dress up a read as a calculation. What the app can honestly do is say
+ * WHO holds each pick -- the column above, derived from the rules alone, with no
+ * data entry -- and leave the choice itself to the person making it.
+ */
+export interface OpeningChoice {
+  /** True when we should put the first player up. */
+  weOpen: boolean;
+  /** Guaranteed total if we open. */
+  openValue: number;
+  /** Guaranteed total if they open. */
+  receiveValue: number;
+  /** Points given up by taking the wrong side. Zero when it makes no odds. */
+  gain: number;
+}
+
+export function openingChoice(matrix: Matrix): OpeningChoice {
+  const openValue = protocolFloor(matrix, true).value;
+  const receiveValue = protocolFloor(matrix, false).value;
+  return {
+    weOpen: openValue > receiveValue,
+    openValue,
+    receiveValue,
+    gain: Math.abs(openValue - receiveValue),
+  };
+}

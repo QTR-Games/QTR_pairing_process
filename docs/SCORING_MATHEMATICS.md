@@ -86,6 +86,12 @@ an adversary maximizing *their* total, which is identical to minimizing ours.
 >   teams' views of the same 25 cells correlate at **r = −0.049**, with mean
 >   absolute disagreement of 0.253 on a normalised 0–1 scale. The opponent
 >   optimises against a board we cannot see, and it is not ours flipped.
+>   *Robustness (2026-08-25): a jackknife over all 25 cells moves r across
+>   −0.128 … +0.132, and the single most influential cell is one the opposing
+>   team rated on player reputation rather than army. Read the result as*
+>   **"indistinguishable from 0, decisively distinguishable from +1"** *rather
+>   than as the precise value −0.049. The refutation survives every
+>   leave-one-out; the exact figure does not.*
 >
 > Consequence for this document: the adversarial treatment of opponent levels is
 > still the right *modelling posture* — they do maximise, and their gain is our
@@ -858,7 +864,7 @@ direction.
 | result | status |
 |---|---|
 | Protocol floor is tighter than the assignment floor | proved by construction; the assignment bound includes unreachable outcomes |
-| Mirror axiom is false | measured, r = -0.049 on 25 shared matchups |
+| Mirror axiom is false | measured, r = -0.049 on 25 shared matchups; jackknife −0.128 … +0.132, all ≫ 4 SE from the predicted +1.00 |
 | Opponent bound survives unknown opponent grids | follows from minimising our total, not modelling theirs |
 | Top openers tie | measured, 28/31 real boards |
 | Opportunity profile separates ties | measured, 24/28 |

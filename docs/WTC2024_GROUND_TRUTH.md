@@ -265,6 +265,7 @@ large local database):
 | `signal_hunt.py` | Findings 8 and 11 — rating distribution, priority-by-faction |
 | `parse_thorny.py` | Findings 13/14 — decodes all 771 cells of the Thorny Devils sheet to an ordinal scale; writes `thorny_ratings.json` |
 | `mirror_test.py` | Findings 12/13 — the two-grid correlation and the 120-assignment enumeration |
+| `mirror_robustness.py` | Finding 12 robustness — jackknife over all 25 cells, per-player gap table |
 
 Findings 12–14 additionally require a **user-supplied, read-only** source that is not in the
 repository and is not reproducible from public data:
@@ -324,8 +325,15 @@ view and the Thorny Devils' view, after normalising both to "good for Irving":
 r = -0.049
 ```
 
-The mirror axiom predicts **r = +1.00**. Zero means the two teams saw **completely unrelated
-boards**. Mean absolute disagreement was 0.253 on a 0–1 scale — a quarter of the entire range.
+The mirror axiom predicts **r = +1.00**. The measured value is indistinguishable from zero —
+the two teams' views of the same board carry **no usable information about each other**. Mean
+absolute disagreement was 0.253 on a 0–1 scale, a quarter of the entire range.
+
+> **Read the magnitude carefully.** At n = 25 the standard error of a correlation is
+> ≈ 0.21, so −0.049 is *one fifth of a standard error* from zero. The defensible claim is
+> "indistinguishable from 0, decisively distinguishable from +1." Any stronger reading of the
+> exact value — including an earlier draft of this section, which called the boards
+> "completely unrelated" — over-reads a single sample. See the robustness check below.
 
 ### The cell that decided the tournament
 
@@ -334,12 +342,63 @@ boards**. Mean absolute disagreement was 0.253 on a 0–1 scale — a quarter of
 | **Steve vs Sea Raiders** | **3 — dead even** | **`Green horruskh` — "I want this"** | **Sea Raiders won 8-2** |
 | Rick vs House Kallyss | 3 — dead even | `Green Hellyth` — "I want this" | House Kallyss won 8-5 |
 | Mike vs House Kallyss | 3 — dead even | `Green SCy` — "I want this" | *(not played)* |
-| Jake vs Winter Korps | **1 — disaster for us** | `Orange - Ekat` — **bad for them too** | *(not played)* |
+| Jake vs Winter Korps † | **1 — disaster for us** | `Orange - Ekat` — **bad for them too** | *(not played)* |
 
-The largest single disagreement, `Jake vs Winter Korps`, is the most instructive: **both teams
-believed they would lose it.** That is not a mirror, in either direction. It is two
-independent estimates that happen to be mutually pessimistic — and it is the exact cell
-Australia was steering *away* from.
+† **Reputation-contaminated** — Australia rated the *player*, not the army. See below; this is
+the single most influential cell in the correlation and removing it flips the sign.
+
+The largest single disagreement, `Jake vs Winter Korps`, was originally presented here as the
+most instructive cell: both teams believed they would lose it, which a mirror forbids. That
+reading is **withdrawn**. The team owner supplied the actual cause (2026-08-25):
+
+> *"NO ONE ever wants to play against Jake in a tournament. He's one of the best players in the
+> world. It WAS a losing matchup for Jake but their Winter Korps player did NOT like the idea of
+> throwing down with him. In this case Australia was wrong and should have grabbed that matchup."*
+
+So Australia's number on that cell is not an estimate of the **army**. It is an estimate of the
+**player** — which is a deliberate methodology violation, not a phenomenon to model:
+
+> *"We want to try to do these ratings agnostic of the actual player behind them ... You SHOULD
+> throw out what you know about the player and you SHOULD rate them just on the army."*
+
+The reasoning is that player-level knowledge is unprogrammable at bracket scale, and stale even
+when you have it — opponents switch armies and improve between events. The army is the stable,
+ratable object.
+
+### Robustness — is r = −0.049 an artefact of that one cell?
+
+`mirror_robustness.py`. It is the most load-bearing cell in the set, and removing it flips the
+sign:
+
+| | n | r | MAD |
+|---|---|---|---|
+| published, all cells | 25 | **−0.049** | 0.253 |
+| drop `Jake vs Winter Korps` | 24 | **+0.132** | 0.236 |
+| drop the entire `Jake` column | 20 | **+0.158** | 0.242 |
+| jackknife, leave-one-cell-out ×25 | 24 | **−0.128 … +0.132** | — |
+
+**The finding survives; the headline number is soft.** Every value in that range sits inside one
+standard error of zero and more than four away from +1.00, so the axiom is refuted under any
+leave-one-out. But the specific figure −0.049 should not be quoted as though it were precise, and
+"completely unrelated" was an over-reading.
+
+### The reputation effect is one cell, not a systematic term
+
+If Australia were fear-rating Jake generally, his whole column would be shifted. It is not —
+their most divergent read was **Mike**:
+
+| Irving player | n | Irving mean | Australia mean | gap |
+|---|---|---|---|---|
+| Justin | 5 | 0.450 | 0.333 | +0.117 |
+| **Mike** | 5 | 0.400 | 0.200 | **+0.200** |
+| Rick | 5 | 0.500 | 0.533 | −0.033 |
+| Stephen | 5 | 0.350 | 0.333 | +0.017 |
+| **Jake** | 5 | 0.400 | 0.367 | **+0.033** |
+
+A negative gap means Australia rated that column *better for Irving* than Irving did — i.e. they
+were avoiding him. Jake's gap is +0.033, essentially neutral. **Reputation contaminated exactly
+one square out of twenty-five.** This is the empirical case for the army-not-player rule: even an
+opponent who violates it, violates it rarely.
 
 ### What this does and does not overturn
 

@@ -110,12 +110,6 @@ def _base_prefs():
             "lam": 0.30,
             "round_win_guardrail_strength": "medium",
         },
-        "bus": {
-            "threshold_policy": "scenario_dependent",
-            "global_threshold": 60,
-            "scenario_thresholds": {},
-            "depth_thresholds": {"1": 65, "2": 62, "3": 58, "4": 55, "5": 52},
-        },
     }
 
 
@@ -656,31 +650,6 @@ def test_turn_integrity_depth_ownership():
     assert gen._is_opponent_choice_level(d2) is True   # depth 2
     assert gen._is_opponent_choice_level(d3) is False  # depth 3
 
-    root.destroy()
-
-
-def test_lock_in_bus_threshold_dynamics():
-    root = tk.Tk()
-    root.withdraw()
-
-    ui = UiManager.__new__(UiManager)
-    ui.strategic_preferences = _base_prefs()
-    ui.row_checkboxes = [tk.IntVar(value=0) for _ in range(5)]
-    ui.column_checkboxes = [tk.IntVar(value=0) for _ in range(5)]
-    ui.scenario_var = tk.StringVar(value="1 - Recon")
-
-    threshold_round1 = ui._get_bus_threshold()
-    ui.row_checkboxes[0].set(1)
-    threshold_round2 = ui._get_bus_threshold()
-
-    # With default prefs and scenario-dependent policy (no scenario override),
-    # threshold = average(global_threshold, depth_threshold).
-    # round1 depth=1 => (60 + 65) / 2 = 62
-    # round2 depth=2 => (60 + 62) / 2 = 61
-    assert isinstance(threshold_round1, int)
-    assert isinstance(threshold_round2, int)
-    assert threshold_round1 == 62
-    assert threshold_round2 == 61
     root.destroy()
 
 

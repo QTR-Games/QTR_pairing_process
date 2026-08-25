@@ -87,7 +87,6 @@ def _validate_grid_integrity(ui: UiManager, run_index: int) -> bool:
         ]
         label_texts = {str(label.cget("text")) for label in labels}
         has_rating_header = "Rating Matrix" in label_texts
-        has_calc_header = "Calculations" in label_texts
 
         rating_widget_count = sum(
             1
@@ -95,27 +94,14 @@ def _validate_grid_integrity(ui: UiManager, run_index: int) -> bool:
             for widget in row
             if widget is not None and widget.winfo_exists()
         )
-        display_widget_count = sum(
-            1
-            for row in getattr(ui, "grid_display_widgets", [])
-            for widget in row
-            if widget is not None and widget.winfo_exists()
-        )
 
-        healthy = (
-            has_rating_header
-            and has_calc_header
-            and rating_widget_count >= 36
-            and display_widget_count >= 30
-        )
+        healthy = has_rating_header and rating_widget_count >= 36
 
         if not healthy:
             print(
                 f"[capture run {run_index}] grid integrity failed: "
                 f"rating_header={int(has_rating_header)} "
-                f"calc_header={int(has_calc_header)} "
-                f"rating_cells={rating_widget_count} "
-                f"display_cells={display_widget_count}"
+                f"rating_cells={rating_widget_count}"
             )
         return healthy
     except Exception as exc:

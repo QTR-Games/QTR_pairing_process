@@ -280,7 +280,6 @@ Open with the **Data Management** button in the top bar, or **Ctrl+D**.
 |---|---|
 | Ctrl+Enter | Generate Combinations |
 | Ctrl+S | Save Grid to database |
-| Ctrl+R | Recalculate scenario values immediately |
 | Ctrl+Z | Undo last shortcut-tracked action |
 | Ctrl+Y | Redo last undone action |
 | Ctrl+F | Flip Grid perspective |

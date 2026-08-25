@@ -147,10 +147,6 @@ class UiManager:
         self._team_dropdowns_initialized = False
         self._auto_populated_teams = False
         self._team_change_in_progress = False
-        self._scenario_calc_job = None
-        self._scenario_calc_delay_ms = 120
-        self._pending_scenario_calc_signature = None
-        self._last_scenario_calc_signature = None
         self._team_cache: dict[str, dict[str, Any]] = {}
         self._comment_cache: dict[tuple, dict[tuple, str]] = {}
         self._last_comment_indicator_signature = None
@@ -175,14 +171,12 @@ class UiManager:
         self._last_applied_grid_selection_key = None
         self._last_post_load_refresh_signature = None
         self._last_status_bar_signature = None
-        self._last_calc_grid_rows_signature = None
         self._noop_skip_counters: dict[str, int] = {}
         self._noop_skip_last_log_at: dict[str, float] = {}
         self._tree_cache_enabled = True
         self._tree_cache = {}
         self._tree_cache_key = None
         self._tree_generation_id = 0
-        self._calc_grid_cache = {}
         self._primary_metrics_dirty = True
         self._last_primary_metrics_signature = None
         self._metric_signatures = {}
@@ -470,7 +464,6 @@ class UiManager:
 
             # Widget references (Entry widgets only, no StringVars)
             self.grid_widgets: list[list[tk.Entry | None]] = [[None for _ in range(6)] for _ in range(6)]
-            self.grid_display_widgets: list[list[tk.Entry | None]] = [[None for _ in range(6)] for _ in range(6)]
 
         # Comment overlay intentionally unused; per-cell bindings handle comments.
         self.comment_overlay = None
@@ -801,7 +794,6 @@ class UiManager:
         self.create_tooltip(self.scenario_box, "Choose one of the seven active competition scenarios")
 
         self.update_combobox_colors()
-        self.init_display_headers()
 
         # Create status bar
         self.create_status_bar()
@@ -898,7 +890,7 @@ class UiManager:
                 bg=theme.get("bg_primary", "lightcyan"),
                 fg=theme.get("fg_primary", "black"),
             )
-            grid_label.grid(row=0, column=0, columnspan=13, pady=(0, 5), sticky="ew")
+            grid_label.grid(row=0, column=0, columnspan=8, pady=(0, 5), sticky="ew")
 
             # Section headers
             rating_header = tk.Label(
@@ -908,18 +900,6 @@ class UiManager:
                 bg=theme.get("bg_secondary", "lightblue"),
             )
             rating_header.grid(row=1, column=0, columnspan=6, pady=(0, 2), sticky="ew")
-
-            # Visual separator
-            separator = tk.Frame(self.grid_frame, width=3, bg="darkgray")
-            separator.grid(row=1, column=6, rowspan=7, sticky="ns", padx=5)
-
-            calc_header = tk.Label(
-                self.grid_frame,
-                text="Calculations",
-                font=theme.get("font_body_bold", ("Arial", 9, "bold")),
-                bg=theme.get("bg_primary", "lightgreen"),
-            )
-            calc_header.grid(row=1, column=7, columnspan=5, pady=(0, 2), sticky="ew")
 
         # V2: Create the 6x6 rating grid WITHOUT StringVars or bindings
         # All state managed by GridDataModel; comments handled per cell.
@@ -975,53 +955,25 @@ class UiManager:
                     if initial_value is not None:
                         entry.insert(0, str(initial_value))
 
-        # Create the display grid (right side of unified grid, columns 7-11)
-        with self.perf.span("grid.create_display_cells"):
-            for r in range(6):
-                for c in range(5):
-                    # Display grid entries (columns 7-11) - no textvariable
-                    display_entry = tk.Entry(self.grid_frame, width=8,
-                                           state='readonly', font=entry_font, relief=tk.SOLID, borderwidth=1,
-                                           readonlybackground="lightgray")
-                    display_entry.grid(row=r + 2, column=c + 7, padx=1, pady=1, sticky="nsew", ipadx=2, ipady=2)
-                    self.grid_display_widgets[r][c] = display_entry
-
-        with self.perf.span("grid.seed_display_initial_values"):
-            for r in range(6):
-                for c in range(5):
-                    display_entry = self.grid_display_widgets[r][c]
-                    if not display_entry:
-                        continue
-                    # Set initial value from model
-                    initial_display = self.grid_data_model.get_display(r, c)
-                    if initial_display:
-                        display_entry.config(state='normal')
-                        display_entry.insert(0, initial_display)
-                        display_entry.config(state='readonly')
-
-        # Let matrix/calculation cells expand to consume available panel space.
+        # Let matrix cells expand to consume available panel space.
         # Keep checkbox and separator lanes fixed so lock controls remain readable.
-        for i in range(2, 8):  # rows 2-7 for matrix + calculation cells
+        for i in range(2, 8):  # rows 2-7 for matrix cells
             self.grid_frame.grid_rowconfigure(i, weight=1, uniform="analysis_rows")
 
         # Rating matrix block (cols 0-5)
         for i in range(0, 6):
             self.grid_frame.grid_columnconfigure(i, weight=1, uniform="rating_cols")
 
-        # Calculation block (cols 7-11)
-        for i in range(7, 12):
-            self.grid_frame.grid_columnconfigure(i, weight=1, uniform="calc_cols")
-
         with self.perf.span("grid.create_selection_checkboxes"):
-            # Add row checkboxes (column 12)
+            # Add row checkboxes (column 7)
             checkbox_label = tk.Label(self.grid_frame, text="Row\nSelect", font=("Arial", 9, "bold"))
-            checkbox_label.grid(row=1, column=12, pady=(0, 2))
+            checkbox_label.grid(row=1, column=7, pady=(0, 2))
             self.row_checkbox_label_widget = checkbox_label
 
             for r in range(1, 6):
                 var = tk.IntVar()
                 entry = tk.Checkbutton(self.grid_frame, variable=var, text=f"R{r}")
-                entry.grid(row=r + 2, column=12, padx=2, pady=1, sticky="w")
+                entry.grid(row=r + 2, column=7, padx=2, pady=1, sticky="w")
                 var.trace_add('write', lambda name, index, mode, row=r, var=var: self.on_row_checkbox_change(row, var))
                 self.row_checkboxes.append(var)
                 self.row_checkbox_widgets.append(entry)
@@ -1040,13 +992,13 @@ class UiManager:
                 self.column_checkbox_widgets.append(entry)
 
         with self.perf.span("grid.configure_layout_weights"):
-            # Keep checkbox and separator lanes fixed.
+            # Keep checkbox lanes fixed.
             self.grid_frame.grid_rowconfigure(0, weight=0)
             self.grid_frame.grid_rowconfigure(1, weight=0)
             self.grid_frame.grid_rowconfigure(8, weight=0)
             self.grid_frame.grid_rowconfigure(9, weight=0)
             self.grid_frame.grid_columnconfigure(6, weight=0, minsize=10)
-            self.grid_frame.grid_columnconfigure(12, weight=0, minsize=72)
+            self.grid_frame.grid_columnconfigure(7, weight=0, minsize=72)
 
         # Re-apply current checkbox visibility state when rebuilding the grid.
         self._set_grid_checkbox_visibility(visible=not self.grid_checkboxes_hidden)
@@ -1070,7 +1022,7 @@ class UiManager:
         if visible:
             for widget in widgets:
                 widget.grid()
-            self.grid_frame.grid_columnconfigure(12, weight=0, minsize=72)
+            self.grid_frame.grid_columnconfigure(7, weight=0, minsize=72)
             if self.expand_grid_button is not None:
                 self.expand_grid_button.config(
                     text="Expand Grid",
@@ -1081,7 +1033,7 @@ class UiManager:
         else:
             for widget in widgets:
                 widget.grid_remove()
-            self.grid_frame.grid_columnconfigure(12, weight=0, minsize=0)
+            self.grid_frame.grid_columnconfigure(7, weight=0, minsize=0)
             if self.expand_grid_button is not None:
                 self.expand_grid_button.config(
                     text="Show checkboxes",
@@ -1097,9 +1049,7 @@ class UiManager:
                 if self.grid_data_model.is_cell_disabled(row, col):
                     continue
                 widget.config(state='disabled', bg='grey')
-                # V2: Update data model and display
                 self.grid_data_model.set_cell_disabled(row, col, True)
-                self.update_display_fields(row, col, "---")
             else:  # Checkbox is unchecked
                 if self.column_checkboxes[col-1].get() == 0:  # Column checkbox is also unchecked
                     if not self.grid_data_model.is_cell_disabled(row, col):
@@ -1108,10 +1058,6 @@ class UiManager:
                     self.grid_data_model.set_cell_disabled(row, col, False)
                     # V2: No need to call update_color_on_change explicitly - observer handles it
 
-        # Row/column lock-ins drive calc-grid advisory fields only.
-        # Keep tree caches/scores intact to preserve UI responsiveness.
-        self._schedule_scenario_calculations(immediate=True)
-
     def on_column_checkbox_change(self, col, var):
         for row in range(1,6):
             widget = self.grid_widgets[row][col]
@@ -1119,9 +1065,7 @@ class UiManager:
                 if self.grid_data_model.is_cell_disabled(row, col):
                     continue
                 widget.config(state='disabled', bg='grey')
-                # V2: Update data model and display
                 self.grid_data_model.set_cell_disabled(row, col, True)
-                self.update_display_fields(row, col, "---")
             else:  # Checkbox is unchecked
                 if self.row_checkboxes[row-1].get() == 0:  # Row checkbox is also unchecked
                     if not self.grid_data_model.is_cell_disabled(row, col):
@@ -1129,10 +1073,6 @@ class UiManager:
                     widget.config(state='normal')
                     self.grid_data_model.set_cell_disabled(row, col, False)
                     # V2: Observer handles color update
-
-        # Row/column lock-ins drive calc-grid advisory fields only.
-        # Keep tree caches/scores intact to preserve UI responsiveness.
-        self._schedule_scenario_calculations(immediate=True)
 
     def update_combobox_colors(self):
         for row in range(1, 6):
@@ -1549,7 +1489,6 @@ class UiManager:
             self._grid_dirty = is_dirty
             if is_dirty:
                 self._last_post_load_refresh_signature = None
-                self._last_calc_grid_rows_signature = None
             self._refresh_status_messages()
 
     def _build_post_load_refresh_signature(self) -> tuple:
@@ -1689,9 +1628,6 @@ class UiManager:
     def _mark_grid_color_dirty(self):
         self._grid_color_dirty = True
 
-    def _invalidate_calc_grid_cache(self):
-        self._calc_grid_cache.clear()
-
     def _current_lock_masks(self):
         row_mask = tuple(int(v.get()) for v in self.row_checkboxes) if self.row_checkboxes else (0, 0, 0, 0, 0)
         col_mask = tuple(int(v.get()) for v in self.column_checkboxes) if self.column_checkboxes else (0, 0, 0, 0, 0)
@@ -1710,112 +1646,13 @@ class UiManager:
             matrix.append(tuple(row_values))
         return tuple(matrix)
 
-    def _build_calc_grid_cache_key(self):
-        team_1 = self.combobox_1.get().strip() if hasattr(self, 'combobox_1') else ""
-        team_2 = self.combobox_2.get().strip() if hasattr(self, 'combobox_2') else ""
-        scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
-        row_mask, col_mask = self._current_lock_masks()
-        return (team_1, team_2, scenario_id, row_mask, col_mask, self._get_grid_ratings_signature())
 
-    def _compute_calc_grid_rows_for_current_state(self):
-        row_mask, _ = self._current_lock_masks()
-        floor_values = {}
-        pinned_values = {}
-        can_pin_values = {}
-        protect_values = {}
-        bus_values = {}
 
-        for row in range(1, 6):
-            if row_mask[row - 1] == 1:
-                floor_values[row] = "---"
-                continue
-            floor_rating_sum = 0
-            for col in range(1, 6):
-                widget = self.grid_widgets[row][col]
-                if widget is not None and widget.cget('state') != 'disabled':
-                    cell_value = self.grid_data_model.get_rating(row, col)
-                    if isinstance(cell_value, int):
-                        floor_rating_sum += cell_value
-            floor_values[row] = floor_rating_sum
-
-        for row in range(1, 6):
-            if row_mask[row - 1] == 1:
-                pinned_values[row] = "---"
-                can_pin_values[row] = "---"
-                protect_values[row] = "---"
-                bus_values[row] = "---"
-                continue
-
-            num_bad_matchups = 0
-            good_matchups = 0
-            for col in range(1, 6):
-                widget = self.grid_widgets[row][col]
-                if widget is not None and widget.cget('state') != 'disabled':
-                    cell_value = self.grid_data_model.get_rating(row, col)
-                    if isinstance(cell_value, int):
-                        if cell_value < 3:
-                            num_bad_matchups += 1
-                        if cell_value > 3:
-                            good_matchups += 1
-
-            pinned_values[row] = "PINNED!" if num_bad_matchups > 1 else "---"
-            can_pin_values[row] = "PIN" if good_matchups > 1 else "---"
-            protect_values[row] = "Yes" if (pinned_values[row] != "---" or can_pin_values[row] != "---") else "No"
-
-            floor_value = floor_values[row]
-            if floor_value == "---":
-                bus_values[row] = "---"
-                continue
-
-            all_margins = []
-            for col in range(1, 6):
-                col_margin_sum = 0
-                for row1 in range(1, 6):
-                    widget = self.grid_widgets[row1][col]
-                    if widget is not None and widget.cget('state') != 'disabled':
-                        cell_value = self.grid_data_model.get_rating(row1, col)
-                        if isinstance(cell_value, int):
-                            col_margin_sum += cell_value
-                all_margins.append(int(floor_value) - col_margin_sum)
-
-            max_margin = max(all_margins)
-            min_margin = min(all_margins)
-            bus_values[row] = self._get_bus_advisory_label(max_margin=max_margin, min_margin=min_margin)
-
-        return {
-            "floor": floor_values,
-            "pinned": pinned_values,
-            "can_pin": can_pin_values,
-            "protect": protect_values,
-            "bus": bus_values,
-        }
-
-    def _apply_calc_grid_rows(self, rows):
-        row_signature = (
-            tuple(rows["floor"].get(row, "---") for row in range(1, 6)),
-            tuple(rows["pinned"].get(row, "---") for row in range(1, 6)),
-            tuple(rows["can_pin"].get(row, "---") for row in range(1, 6)),
-            tuple(rows["protect"].get(row, "---") for row in range(1, 6)),
-            tuple(rows["bus"].get(row, "---") for row in range(1, 6)),
-        )
-        if row_signature == self._last_calc_grid_rows_signature:
-            self._skip_noop("calc.grid.apply.skipped", "rows_unchanged", throttle_ms=250.0)
-            return
-
-        for row in range(1, 6):
-            self.update_display_fields(row, 0, rows["floor"].get(row, "---"))
-            self.update_display_fields(row, 1, rows["pinned"].get(row, "---"))
-            self.update_display_fields(row, 2, rows["can_pin"].get(row, "---"))
-            self.update_display_fields(row, 3, rows["protect"].get(row, "---"))
-            self.update_display_fields(row, 4, rows["bus"].get(row, "---"))
-
-        self._last_calc_grid_rows_signature = row_signature
 
     def _invalidate_tree_cache(self, reason: str = ""):
         if self._tree_cache:
             self._tree_cache.clear()
         self._tree_cache_key = None
-        self._invalidate_calc_grid_cache()
         self._sorted_children_cache.clear()
         self._primary_metrics_dirty = True
         self._last_primary_metrics_signature = None
@@ -2767,8 +2604,6 @@ class UiManager:
             ("<Control-Z>", self._on_shortcut_undo),
             ("<Control-y>", self._on_shortcut_redo),
             ("<Control-Y>", self._on_shortcut_redo),
-            ("<Control-r>", self._on_shortcut_recalculate_now),
-            ("<Control-R>", self._on_shortcut_recalculate_now),
             ("<Control-Shift-r>", self._on_shortcut_clear_all_tree_cache),
             ("<Control-Shift-R>", self._on_shortcut_clear_all_tree_cache),
             ("<Control-Key-1>", self._on_shortcut_strategic_sort),
@@ -2822,16 +2657,6 @@ class UiManager:
         self.on_generate_combinations()
         return "break"
 
-    def _on_shortcut_recalculate_now(self, _event=None):
-        previous_mode = self.active_sort_mode
-        self._schedule_scenario_calculations(immediate=True)
-        self._register_shortcut_action(
-            action_label="Recalculate scenario values",
-            category="calculation",
-            undo_fn=lambda mode=previous_mode: self._restore_sort_mode(mode),
-            redo_fn=lambda: self._schedule_scenario_calculations(immediate=True),
-        )
-        return "break"
 
     def _on_shortcut_clear_all_tree_cache(self, _event=None):
         self.clear_generated_tree_cache_all_matchups()
@@ -3033,7 +2858,6 @@ class UiManager:
             for c in range(1, 6):
                 self.grid_data_model.set_rating(r, c, grid[r - 1][c - 1])
         self.grid_data_model.end_batch()
-        self._schedule_scenario_calculations()
         self._set_grid_dirty(True)
 
         after_snapshot = self.grid_data_model.get_state_snapshot()
@@ -3048,7 +2872,6 @@ class UiManager:
     def _restore_grid_snapshot(self, snapshot, dirty_state: bool):
         self.grid_data_model.restore_state_snapshot(snapshot, notify=True)
         self._set_grid_dirty(dirty_state)
-        self._schedule_scenario_calculations(immediate=True)
 
     def _on_paste_5x5_button(self):
         clipboard_text = self._read_clipboard_text() or ""
@@ -3313,256 +3136,21 @@ class UiManager:
             return 360
         return width
 
-    # Add this method to update display-only fields
-    def update_display_fields(self, row, col, value):
-        try:
-            # V2: Update GridDataModel display value
-            self.grid_data_model.set_display(row, col, str(value), notify=True)
-        except (ValueError, IndexError) as e:
-            print(f"update_display_fields has failed with error:\n{e}")
 
-    def init_display_headers(self):
-        try:
-            self.update_display_fields(0,0,"FLOOR")
-            self.update_display_fields(0,1,"PINNED?")
-            self.update_display_fields(0,2,"CAN-PIN?")
-            self.update_display_fields(0,3,"PROTECT")
-            self.update_display_fields(0,4,"BUS RIDE")
-            # SUM MARG removed
-        except (ValueError, IndexError) as e:
-            print(f"update_display_fields has failed with error:\n{e}")
 
-    def on_scenario_calculations(self):
-        self._schedule_scenario_calculations()
 
-    def _build_scenario_calc_signature(self) -> tuple:
-        team_1 = self.combobox_1.get().strip() if hasattr(self, 'combobox_1') else ""
-        team_2 = self.combobox_2.get().strip() if hasattr(self, 'combobox_2') else ""
-        scenario_id = self.get_scenario_num() if hasattr(self, 'scenario_box') else 0
 
-        if not team_1 or not team_2:
-            return ("empty", team_1, team_2, scenario_id)
 
-        row_mask, col_mask = self._current_lock_masks()
-        return (team_1, team_2, scenario_id, row_mask, col_mask, self._get_grid_ratings_signature())
 
-    def _schedule_scenario_calculations(self, immediate: bool = False):
-        if not hasattr(self, 'root'):
-            return
 
-        request_signature = self._build_scenario_calc_signature()
 
-        if immediate and self._scenario_calc_job is None and request_signature == self._last_scenario_calc_signature:
-            self._skip_noop("scenario.calc.skipped", "immediate_no_change", throttle_ms=250.0)
-            return
 
-        if not immediate and self._scenario_calc_job is not None and request_signature == self._pending_scenario_calc_signature:
-            self._skip_noop("scenario.calc.skipped", "pending_same_request", throttle_ms=250.0)
-            return
 
-        if self._scenario_calc_job is not None:
-            try:
-                self.root.after_cancel(self._scenario_calc_job)
-            except Exception:
-                pass
-            self._scenario_calc_job = None
-            self._pending_scenario_calc_signature = None
 
-        if immediate:
-            self._pending_scenario_calc_signature = request_signature
-            self._run_scenario_calculations()
-            return
 
-        self._pending_scenario_calc_signature = request_signature
-        self._scenario_calc_job = self.root.after(
-            self._scenario_calc_delay_ms,
-            self._run_scenario_calculations
-        )
 
-    def _run_scenario_calculations(self):
-        self._scenario_calc_job = None
-        self._pending_scenario_calc_signature = None
-        self._on_scenario_calculations()
 
-    def _on_scenario_calculations(self):
-        # Guard: Don't run calculations if teams are not selected
-        team_1 = self.combobox_1.get().strip()
-        team_2 = self.combobox_2.get().strip()
 
-        if not team_1 or not team_2:
-            empty_signature = self._build_scenario_calc_signature()
-            if empty_signature == self._last_scenario_calc_signature:
-                self._skip_noop("scenario.calc.skipped", "empty_no_change", throttle_ms=400.0)
-                return
-            # Clear display fields when no teams are selected
-            for row in range(1, 6):
-                for col in range(0, 6):
-                    self.update_display_fields(row, col, "---")
-            self._last_scenario_calc_signature = empty_signature
-            return
-
-        cache_key = self._build_calc_grid_cache_key()
-        cached_rows = self._calc_grid_cache.get(cache_key)
-        if cached_rows is None:
-            cached_rows = self._compute_calc_grid_rows_for_current_state()
-            self._calc_grid_cache[cache_key] = cached_rows
-
-        self._apply_calc_grid_rows(cached_rows)
-        self._last_scenario_calc_signature = self._build_scenario_calc_signature()
-
-    def check_margins(self):
-        for row in range(1, 6):
-            try:
-                if self.row_checkboxes and row - 1 < len(self.row_checkboxes) and self.row_checkboxes[row - 1].get() == 1:
-                    self.update_display_fields(row, 4, "---")
-                    continue
-
-                # V2: Get floor value from GridDataModel
-                floor_value = self.grid_data_model.get_display(row, 0)
-                if not floor_value or floor_value == "---" or floor_value.strip() == "":
-                    self.update_display_fields(row, 4, "---")
-                    continue
-                floor_rating_sum = int(floor_value)
-
-                all_margins = []
-                for col in range(1, 6):
-                    col_margin_sum = 0
-                    for row1 in range(1, 6):
-                        widget = self.grid_widgets[row1][col]
-                        if widget is not None and widget.cget('state') != 'disabled':
-                            # V2: Get integer value directly from GridDataModel
-                            cell_value = self.grid_data_model.get_rating(row1, col)
-                            if isinstance(cell_value, int):
-                                col_margin_sum += cell_value
-                    diff = floor_rating_sum - col_margin_sum
-                    all_margins.append(diff)
-
-                max_margin = max(all_margins)
-                min_margin = min(all_margins)
-                bus_text = self._get_bus_advisory_label(max_margin=max_margin, min_margin=min_margin)
-                self.update_display_fields(row, 4, bus_text)
-                # SUM MARG removed
-            except (ValueError, IndexError) as e:
-                print(f"check_margins has failed for row {row} with error:\n{e}")
-
-    def _get_current_round_depth(self):
-        """Approximate current round depth from lock-in checkboxes (1..5)."""
-        row_locked = sum(1 for v in self.row_checkboxes if v.get() == 1)
-        col_locked = sum(1 for v in self.column_checkboxes if v.get() == 1)
-        return max(1, min(5, max(row_locked, col_locked) + 1))
-
-    def _get_current_scenario_number(self):
-        scenario_text = ""
-        if hasattr(self, "scenario_var"):
-            scenario_text = (self.scenario_var.get() or "").strip()
-        if not scenario_text:
-            return None
-        try:
-            return int(scenario_text.split("-")[0].strip())
-        except (ValueError, IndexError):
-            return None
-
-    def _get_bus_threshold(self):
-        bus_cfg = self.strategic_preferences.get("bus", {})
-        threshold_policy = bus_cfg.get("threshold_policy", "scenario_dependent")
-        global_threshold = int(bus_cfg.get("global_threshold", 60))
-
-        scenario_number = self._get_current_scenario_number()
-        scenario_thresholds = bus_cfg.get("scenario_thresholds", {})
-        depth_thresholds = bus_cfg.get("depth_thresholds", {})
-        depth_key = str(self._get_current_round_depth())
-        depth_threshold = depth_thresholds.get(depth_key)
-
-        threshold = global_threshold
-        if threshold_policy == "scenario_dependent" and scenario_number is not None:
-            threshold = scenario_thresholds.get(str(scenario_number), global_threshold)
-
-        if depth_threshold is not None:
-            try:
-                threshold = int((int(threshold) + int(depth_threshold)) / 2)
-            except (TypeError, ValueError):
-                pass
-
-        return max(0, min(100, int(threshold)))
-
-    def _get_bus_advisory_label(self, max_margin, min_margin):
-        """Display-only BUS advisory from spread opportunity and downside risk."""
-        spread = max_margin - min_margin
-        downside_risk = max(0, -min_margin)
-        bus_score = max(0, int((spread * 4) + (downside_risk * 2)))
-        threshold = self._get_bus_threshold()
-        bus_yes = bus_score >= threshold
-        return f"YES ({bus_score})" if bus_yes else f"NO ({bus_score})"
-
-    def check_protect(self):
-        for row in range(1, 6):
-            try:
-                if self.row_checkboxes[row - 1].get() == 1:
-                    self.update_display_fields(row, 3, "---")
-                    continue
-                # V2: Read from GridDataModel
-                row_pinned = self.grid_data_model.get_display(row, 1) != "---"
-                row_pinner = self.grid_data_model.get_display(row, 2) != "---"
-                protect = "Yes" if row_pinned or row_pinner else "No"
-                self.update_display_fields(row, 3, protect)
-            except (ValueError, IndexError) as e:
-                print(f"check_protect has failed for row {row} with error:\n{e}")
-
-    def check_for_pins(self):
-        for row in range(1, 6):
-            try:
-                if self.row_checkboxes and row - 1 < len(self.row_checkboxes) and self.row_checkboxes[row - 1].get() == 1:
-                    self.update_display_fields(row, 2, "---")
-                    continue
-                good_matchups = 0
-                for col in range(1, 6):
-                    widget = self.grid_widgets[row][col]
-                    if widget is not None and widget.cget('state') != 'disabled':
-                        # V2: Get integer value directly from GridDataModel
-                        cell_value = self.grid_data_model.get_rating(row, col)
-                        if isinstance(cell_value, int) and cell_value > 3:
-                            good_matchups += 1
-                can_pin = "PIN" if good_matchups > 1 else "---"
-                self.update_display_fields(row, 2, can_pin)
-            except (ValueError, IndexError) as e:
-                print(f"check_for_pins has failed for row {row} with error:\n{e}")
-
-    def check_pinned_players(self):
-        for row in range(1, 6):
-            try:
-                if self.row_checkboxes and row - 1 < len(self.row_checkboxes) and self.row_checkboxes[row - 1].get() == 1:
-                    self.update_display_fields(row, 1, "---")
-                    continue
-                num_bad_matchups = 0
-                for col in range(1, 6):
-                    widget = self.grid_widgets[row][col]
-                    if widget is not None and widget.cget('state') != 'disabled':
-                        # V2: Get integer value directly from GridDataModel
-                        cell_value = self.grid_data_model.get_rating(row, col)
-                        if isinstance(cell_value, int) and cell_value < 3:
-                            num_bad_matchups += 1
-                player_pinned = "PINNED!" if num_bad_matchups > 1 else "---"
-                self.update_display_fields(row, 1, player_pinned)
-            except (ValueError, IndexError) as e:
-                print(f"check_pinned_players has failed for row {row} with error:\n{e}")
-
-    def set_floor_values(self):
-        for row in range(1, 6):
-            try:
-                if self.row_checkboxes and row-1 < len(self.row_checkboxes) and self.row_checkboxes[row-1].get() == 1:
-                    self.update_display_fields(row, 0, "---")
-                    continue
-                floor_rating_sum = 0
-                for col in range(1, 6):
-                    widget = self.grid_widgets[row][col]
-                    if widget is not None and widget.cget('state') != 'disabled':
-                        # V2: Get integer value directly from GridDataModel
-                        cell_value = self.grid_data_model.get_rating(row, col)
-                        if isinstance(cell_value, int):
-                            floor_rating_sum += cell_value
-                self.update_display_fields(row, 0, floor_rating_sum)
-            except (ValueError, IndexError) as e:
-                print(f"set_floor_values has failed with error:\n{e}")
 
     def show_welcome_dialog(self):
         """Show welcome dialog on first startup"""
@@ -6148,7 +5736,6 @@ class UiManager:
                 with self.perf.span("teams.change.end_to_end"):
                     self._invalidate_comment_cache()
                     if not new_team1_value.strip() or not new_team2_value.strip():
-                        self._schedule_scenario_calculations(immediate=True)
                         self._measure_update_idletasks("teams.change.redraw")
                         return
                     self._apply_team_change_updates()
@@ -6194,7 +5781,6 @@ class UiManager:
             return
 
         self.update_comment_indicators()
-        self._schedule_scenario_calculations(immediate=True)
         self._set_grid_dirty(False)
         self._last_post_load_refresh_signature = refresh_signature
 
@@ -8964,13 +8550,8 @@ class UiManager:
         """
         if event_type == 'rating_changed':
             row, col, value = args
-            self._invalidate_calc_grid_cache()
             self._update_entry_from_model(row, col)
             self.update_color_on_change(None, None, None, row, col)
-
-        elif event_type == 'display_changed':
-            row, col, value = args
-            self._update_display_entry_from_model(row, col)
 
         elif event_type == 'comment_changed':
             row, col, comment_text = args
@@ -8979,7 +8560,6 @@ class UiManager:
 
         elif event_type == 'cell_disabled':
             row, col, is_disabled = args
-            self._invalidate_calc_grid_cache()
             widget = self.grid_widgets[row][col]
             if widget:
                 if is_disabled:
@@ -8996,20 +8576,16 @@ class UiManager:
 
         elif event_type == 'grid_cleared':
             self._invalidate_tree_cache("grid_cleared")
-            self._invalidate_calc_grid_cache()
             # Refresh entire grid
             for r in range(6):
                 for c in range(6):
                     self._update_entry_from_model(r, c)
-                    self._update_display_entry_from_model(r, c)
 
         elif event_type == 'grid_loaded':
-            self._invalidate_calc_grid_cache()
             # Refresh entire grid after load
             for r in range(6):
                 for c in range(6):
                     self._update_entry_from_model(r, c)
-                    self._update_display_entry_from_model(r, c)
                     if self.grid_data_model.has_comment(r, c):
                         self._update_comment_indicator(r, c, True)
             self.update_grid_colors()
@@ -9058,9 +8634,8 @@ class UiManager:
 
         if new_value != model_value:
             self.grid_data_model.set_rating(row, col, new_value)
-            # Trigger color update and scenario calculations
+            # Trigger color update
             self.update_color_on_change(None, None, None, row, col)
-            self._schedule_scenario_calculations()
             if row > 0 and col > 0:
                 self._invalidate_tree_cache("rating_change")
                 self._set_grid_dirty(True)
@@ -9087,19 +8662,6 @@ class UiManager:
                 widget.delete(0, tk.END)
                 widget.insert(0, model_str)
 
-    def _update_display_entry_from_model(self, row: int, col: int):
-        """Update display Entry widget from GridDataModel value"""
-        widget = self.grid_display_widgets[row][col]
-        if widget:
-            new_value = self.grid_data_model.get_display(row, col)
-            current_text = widget.get()
-            if current_text == new_value:
-                return
-
-            widget.config(state='normal')
-            widget.delete(0, tk.END)
-            widget.insert(0, new_value)
-            widget.config(state='readonly')
 
     def _update_comment_indicator(self, row: int, col: int, has_comment: bool):
         """Update visual comment indicator for cell without altering rating-based color."""

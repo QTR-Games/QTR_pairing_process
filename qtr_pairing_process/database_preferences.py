@@ -167,18 +167,6 @@ class DatabasePreferences:
                 "auto_sort_toggle_enabled": True,
                 "persistent_memo_enabled": True,
                 "persistent_memo_max_entries": 50000
-            },
-            "bus": {
-                "threshold_policy": "scenario_dependent",
-                "global_threshold": 60,
-                "scenario_thresholds": {},
-                "depth_thresholds": {
-                    "1": 65,
-                    "2": 62,
-                    "3": 58,
-                    "4": 55,
-                    "5": 52
-                }
             }
         }
 
@@ -200,7 +188,6 @@ class DatabasePreferences:
         confidence2 = raw.get("confidence2", {})
         resistance2 = raw.get("resistance2", {})
         strategic3 = raw.get("strategic3", {})
-        bus = raw.get("bus", {})
 
         validated = {
             "cumulative2": {
@@ -224,12 +211,6 @@ class DatabasePreferences:
                 "auto_sort_toggle_enabled": bool(strategic3.get("auto_sort_toggle_enabled", defaults["strategic3"]["auto_sort_toggle_enabled"])),
                 "persistent_memo_enabled": bool(strategic3.get("persistent_memo_enabled", defaults["strategic3"]["persistent_memo_enabled"])),
                 "persistent_memo_max_entries": int(self._clamp(strategic3.get("persistent_memo_max_entries", defaults["strategic3"]["persistent_memo_max_entries"]), 1000.0, 250000.0, defaults["strategic3"]["persistent_memo_max_entries"]))
-            },
-            "bus": {
-                "threshold_policy": bus.get("threshold_policy", defaults["bus"]["threshold_policy"]),
-                "global_threshold": int(self._clamp(bus.get("global_threshold", defaults["bus"]["global_threshold"]), 0.0, 100.0, defaults["bus"]["global_threshold"])),
-                "scenario_thresholds": bus.get("scenario_thresholds", defaults["bus"]["scenario_thresholds"]),
-                "depth_thresholds": bus.get("depth_thresholds", defaults["bus"]["depth_thresholds"])
             }
         }
 

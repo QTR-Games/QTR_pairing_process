@@ -74,3 +74,18 @@ Keep each PR scoped to one outcome. Include focused tests for behavior changes,
 run the affected tests plus the appropriate full suite, and explain any
 platform-specific Tk or Windows behavior. Do not merge, rebase unrelated work,
 or alter other pull requests unless explicitly asked.
+
+### Branch per pull request
+
+This repository squash-merges. A squash merge creates a brand-new commit on
+`main` with no ancestry link back to the commits it replaced, so the source
+branch still looks like it carries unmerged work. Keep committing to that same
+branch and every later push diverges and has to be forced.
+
+So: one branch per pull request. When a PR merges, delete the branch and cut a
+fresh one from `main` for the next piece of work. Never keep building on a
+branch that has already been squash-merged.
+
+Nothing is lost by squashing. GitHub keeps every original commit message in the
+body of the squashed commit, and `main` ends up reading as one entry per
+outcome, which is what you want from a fallback point.

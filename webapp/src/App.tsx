@@ -14,7 +14,10 @@ import {
   type Board,
 } from "./model/board";
 import { SCALES } from "./model/scale";
+import { DODGE_MODES, loadSettings, saveSettings, type DodgeMode } from "./model/settings";
 import { newRound, type LiveState } from "./engine/live";
+import { boardMatrix } from "./model/board";
+import { openingChoice } from "./engine/protocol";
 import "./styles.css";
 
 type Tab = "board" | "round" | "boards";
@@ -36,6 +39,7 @@ export default function App() {
     return first ? loadLive(first.id) : null;
   });
   const [highlight, setHighlight] = useState<Set<string>>(new Set());
+  const [dodgeMode, setDodgeMode] = useState<DodgeMode>(() => loadSettings().dodgeMode);
 
   // Persist on every edit. There is no save button, because forgetting to press
   // one between rounds is not a failure mode worth having at an event.
@@ -56,6 +60,22 @@ export default function App() {
     live?.committed.forEach((c) => s.add(`${c.ours}-${c.theirs}`));
     return s;
   }, [live]);
+
+  /**
+   * Step 1 of the protocol -- who nominates first -- is decided by a dice-off
+   * before any player is named, and it is the one decision on this screen that
+   * cannot be walked back later in the round. It is also the cheapest: it costs
+   * nothing to get right and, measured across all 31 saved boards, receiving is
+   * worth a mean 0.58 points over opening and never less than zero.
+   *
+   * The engine still computes it per board rather than printing a fixed answer,
+   * because the rule is a parity effect rather than a law -- see the note above
+   * `openingChoice` in engine/protocol.ts.
+   */
+  const opening = useMemo(
+    () => (rated ? openingChoice(boardMatrix(board, scale)) : null),
+    [board, scale, rated],
+  );
 
   function startRound() {
     setLive(newRound(board.ourPlayers.length, board.ourTeamFirst));
@@ -90,7 +110,7 @@ export default function App() {
               fills in, with nothing to toggle at an event.
             */}
             {rated ? (
-              <Verdict board={board} onHighlight={setHighlight} />
+              <Verdict board={board} onHighlight={setHighlight} dodgeMode={dodgeMode} />
             ) : (
               <Rosters board={board} onChange={setBoard} />
             )}
@@ -121,10 +141,55 @@ export default function App() {
                   <option value="them">They do</option>
                 </select>
               </label>
+              {/*
+                Silent when the two floors are level, because a recommendation
+                worth nothing is just one more thing to read at a table. Shown
+                as a button when it disagrees with the dropdown so the fix is
+                one tap rather than a second decision.
+              */}
+              {opening && opening.gain >= 0.005 && (
+                opening.weOpen === board.ourTeamFirst ? (
+                  <p className="hint">
+                    If you win the dice-off, {opening.weOpen ? "go first" : "make them go first"}
+                    {" "}-- worth {opening.gain.toFixed(2)} here. Already set.
+                  </p>
+                ) : (
+                  <button
+                    className="ghost wide"
+                    onClick={() => setBoard({ ...board, ourTeamFirst: opening.weOpen })}
+                  >
+                    Win the dice-off and{" "}
+                    {opening.weOpen ? "go first" : "make them go first"} -- worth{" "}
+                    {opening.gain.toFixed(2)}. Tap to set.
+                  </button>
+                )
+              )}
 
               <button className="primary wide" onClick={startRound}>
                 Start the round
               </button>
+
+              {/*
+                App-wide, not per-board: a preference about how much the screen
+                says, which should survive moving between boards.
+              */}
+              <label className="field inline">
+                <span>Show the worst-matchup price</span>
+                <select
+                  value={dodgeMode}
+                  onChange={(e) => {
+                    const next = e.target.value as DodgeMode;
+                    setDodgeMode(next);
+                    saveSettings({ dodgeMode: next });
+                  }}
+                >
+                  {DODGE_MODES.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
             {/* Whichever of the two did not lead goes here, so neither is lost. */}
             {rated && <Rosters board={board} onChange={setBoard} />}
