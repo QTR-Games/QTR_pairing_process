@@ -796,6 +796,307 @@ button.ghost {
 }
 
 /* ==========================================================================
+   Launch: the splash and the home menu.
+
+   Both are full screens rather than panels, and both are reached before the
+   app has drawn anything, so they carry their own spacing instead of
+   inheriting the tab layout's.
+   ========================================================================== */
+
+/*
+  The launch screens keep the 720px column but not the tail. That 4rem exists
+  to clear the sticky tab bar, and neither of these screens has one.
+*/
+.app-launch {
+  padding-bottom: 0;
+}
+
+/*
+  A fixed overlay, not a block in the flow. The splash covers whatever the app
+  has already painted, which matters on a warm reload: the board flashing up
+  behind a launch card looks like a bug.
+*/
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem 1.5rem calc(2rem + env(safe-area-inset-bottom, 0px));
+  background: var(--bg);
+  text-align: center;
+  /* Must stay in step with FADE_MS in Splash.tsx. */
+  transition: opacity 320ms ease;
+}
+
+.splash.leaving {
+  opacity: 0;
+}
+
+/*
+  A fixed box for the art rather than intrinsic size. The raven is a
+  placeholder and the wordmark is going with it, so the next piece of art will
+  not be 264x256 and must not be able to shove the name off the screen.
+  `contain` lets anything sit inside the same square.
+*/
+.splash-mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  animation: splash-rise 420ms ease-out both;
+}
+
+.splash-mark img {
+  width: 128px;
+  height: 128px;
+  object-fit: contain;
+}
+
+@keyframes splash-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.splash-name {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.splash-tagline {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.95rem;
+}
+
+/*
+  Positioned away from the mark so a thumb reaching for it cannot be read as
+  reaching for anything else. It is a hint, not a button: the whole screen
+  takes the tap.
+*/
+.splash-skip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.8rem;
+}
+
+/*
+  Reduced motion: no fade, no rise, no transition, including on the way out.
+  Splash.tsx already skips the leaving state in this mode; this makes the
+  intent hold even if that changes.
+*/
+.splash.still,
+.splash.still .splash-mark {
+  animation: none;
+  transition: none;
+}
+
+/*
+  A short fade so the handoff from splash to menu reads as one motion rather
+  than a cut. The splash is not layered over the menu -- see App.tsx for why --
+  so this is the only thing tying the two screens together.
+*/
+.home {
+  padding: 1.5rem 1rem calc(2rem + env(safe-area-inset-bottom, 0px));
+  animation: home-in 200ms ease-out both;
+}
+
+@keyframes home-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home {
+    animation: none;
+  }
+}
+
+.home-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Same fixed box, same reason as the splash. */
+.home-head img {
+  width: 72px;
+  height: 72px;
+  flex: none;
+  object-fit: contain;
+}
+
+.home-head h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.home-by {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+
+.home-primary {
+  margin-bottom: 0.6rem;
+}
+
+/*
+  Menu rows are bigger than the ghost buttons scattered through the app: this
+  is a screen you hit with a thumb while holding dice in the other hand.
+*/
+.home > .ghost.wide {
+  margin-bottom: 0.6rem;
+}
+
+.home .ghost.wide {
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/*
+  Each setting is a <details>. Collapsed by default so the menu stays a list of
+  choices you can read in one glance, which is the whole reason it exists.
+*/
+.home-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  margin-bottom: 0.6rem;
+  overflow: hidden;
+}
+
+.home-item > summary {
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+/* Both spellings: Android's WebView still wants the WebKit one. */
+.home-item > summary::-webkit-details-marker {
+  display: none;
+}
+
+.home-item > summary::after {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  border-right: 2px solid var(--dim);
+  border-bottom: 2px solid var(--dim);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 150ms ease;
+}
+
+.home-item[open] > summary::after {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+
+.home-item > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.home-body {
+  padding: 0 1rem 1rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+
+/*
+  Backup and restore draws its own separator when it sits at the bottom of the
+  saved list. Inside a panel that already has one, that reads as a stray line.
+*/
+.home-body .backup {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.home-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+}
+
+/*
+  The ghost rules above are element-scoped to <button>. These two are anchors,
+  because they leave the app, and without this they render as bare underlined
+  link text in a column of buttons. Same shape as button.ghost so the shared
+  class means one thing.
+*/
+a.ghost {
+  display: block;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--dim);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  text-align: center;
+  text-decoration: none;
+}
+
+a.ghost:hover {
+  border-color: var(--accent);
+}
+
+/*
+  The way back. Without it the menu is a launch screen you see once and can
+  never reach again, and the settings inside it go with it.
+*/
+.app-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  /* Carries the gap the <h1> used to hold, so the tabs do not shift up. */
+  margin-bottom: 0.5rem;
+}
+
+.app-title h1 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-menu {
+  flex: none;
+}
+
+/* ==========================================================================
    Desktop workspace -- everything below 1024px is untouched by this block.
    ==========================================================================
 
@@ -821,6 +1122,14 @@ button.ghost {
   .app-wide .app-head h1 {
     margin: 0;
     font-size: 1.35rem;
+  }
+
+  /*
+    The head is already a centred flex row here, so the gap the phone layout
+    carries below the title would just push it off-centre.
+  */
+  .app-wide .app-title {
+    margin-bottom: 0;
   }
 
   .app-wide .tabs {

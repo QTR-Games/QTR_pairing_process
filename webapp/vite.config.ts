@@ -19,8 +19,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'QTR Pairing',
-        short_name: 'QTR',
+        name: 'KLIK KLAK',
+        short_name: 'KLIK KLAK',
         description: 'Team pairing decisions, offline, at the table.',
         theme_color: '#14161a',
         background_color: '#14161a',

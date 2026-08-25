@@ -22,7 +22,10 @@ import type { CapacitorConfig } from "@capacitor/cli";
  */
 const config: CapacitorConfig = {
   appId: "com.qtrgames.pairing",
-  appName: "QTR Pairing",
+  // The launcher name only. `appId` deliberately stays `com.qtrgames.pairing`:
+  // it is the Android package identity, so changing it would orphan every
+  // existing install and force a manual uninstall before the next APK.
+  appName: "KLIK KLAK",
   webDir: "dist",
   android: {
     // Round totals are the point of the app; a WebView that reflows text on

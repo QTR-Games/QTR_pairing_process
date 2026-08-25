@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Grid, Rosters } from "./components/Grid";
 import { LivePanel } from "./components/LivePanel";
 import { Verdict } from "./components/Verdict";
-import { BoardBackup } from "./components/BoardBackup";
+import { HomeMenu } from "./components/HomeMenu";
+import { Splash } from "./components/Splash";
 import {
   boardScale,
   deleteBoard,
@@ -15,7 +16,7 @@ import {
   type Board,
 } from "./model/board";
 import { SCALES } from "./model/scale";
-import { DODGE_MODES, loadSettings, saveSettings, type DodgeMode } from "./model/settings";
+import { loadSettings, saveSettings, type DodgeMode } from "./model/settings";
 import { newRound, type LiveState } from "./engine/live";
 import { boardMatrix } from "./model/board";
 import { openingChoice } from "./engine/protocol";
@@ -24,6 +25,18 @@ import { useWideViewport } from "./components/desktop/useWideViewport";
 import "./styles.css";
 
 type Tab = "board" | "round" | "boards";
+
+/**
+ * Which of the three screens is up.
+ *
+ * A flat state rather than a route. The app is one bundle with no URL to speak
+ * of -- it runs from a file:// origin inside a WebView -- so a router would buy
+ * nothing and cost a back-button contract nobody has written down.
+ *
+ * The order is fixed: splash, then menu, then the app. Only the last of the
+ * three is reachable in both directions, via the Menu button in the header.
+ */
+type Screen = "splash" | "home" | "app";
 
 export default function App() {
   const [board, setBoard] = useState<Board>(() => loadBoards()[0] ?? emptyBoard());
@@ -43,6 +56,7 @@ export default function App() {
   });
   const [highlight, setHighlight] = useState<Set<string>>(new Set());
   const [dodgeMode, setDodgeMode] = useState<DodgeMode>(() => loadSettings().dodgeMode);
+  const [screen, setScreen] = useState<Screen>("splash");
 
   // Set and persist in one call. Both layouts expose this preference, so the
   // write has to live in one place or one of them will change it without
@@ -105,11 +119,87 @@ export default function App() {
     setTab("round");
   }
 
+  /**
+   * Leave the menu for the app, landing on a given tab.
+   *
+   * One helper rather than a closure per menu item, so every route out of the
+   * menu makes the same two writes and a fourth item cannot be added later
+   * that changes the tab but forgets the screen.
+   */
+  const enter = (to: Tab) => {
+    setTab(to);
+    setScreen("app");
+  };
+
+  /*
+    The launch screen, rendered alone.
+
+    It would look better layered over the menu, fading to reveal it. It is not,
+    and the reason is worth writing down: under `prefers-reduced-motion` the
+    splash calls `onDone` synchronously from its own `pointerdown` handler.
+    React flushes discrete events synchronously, so the splash would unmount
+    between `pointerdown` and `pointerup`, and the tap that dismissed it would
+    land as a `click` on whatever had been underneath -- which is the menu's
+    primary button. Nothing beneath it means nothing to hit by accident.
+
+    Everything above this line is a hook, so both early returns below are safe.
+  */
+  if (screen === "splash") {
+    return (
+      <div className="app app-launch">
+        <Splash onDone={() => setScreen("home")} />
+      </div>
+    );
+  }
+
+  if (screen === "home") {
+    return (
+      <div className="app app-launch">
+        <HomeMenu
+          /*
+            `Untitled` rather than null, matching what the saved list already
+            calls an unnamed board. Passing null would hide the resume button
+            for exactly the person who most needs it: someone mid-round who
+            never stopped to type the opponent's name.
+          */
+          liveOpponent={live ? board.opponent.trim() || "Untitled" : null}
+          lastBoard={boards[0] ?? null}
+          boardCount={boards.length}
+          dodgeMode={dodgeMode}
+          onDodgeMode={changeDodgeMode}
+          onResume={() => enter("round")}
+          onContinue={() => {
+            /*
+              Open the board the button actually names. These are normally the
+              same object -- the loaded board is the most recent one -- but a
+              delete from the saved list can leave them apart, and a button
+              that opens something other than what it says is worse than no
+              button.
+            */
+            const last = boards[0];
+            if (last && last.id !== board.id) {
+              setBoard(last);
+              setLive(loadLive(last.id));
+            }
+            enter("board");
+          }}
+          onBoards={() => enter("boards")}
+          onRestored={setBoards}
+        />
+      </div>
+    );
+  }
+
   if (wide) {
     return (
       <div className="app app-wide">
         <header className="app-head">
-          <h1>{board.opponent || "New board"}</h1>
+          <div className="app-title">
+            <button className="ghost app-menu" onClick={() => setScreen("home")}>
+              Menu
+            </button>
+            <h1>{board.opponent || "New board"}</h1>
+          </div>
           <nav className="tabs">
             {/*
               Two tabs, not three. Board and Round are the same screen here,
@@ -140,7 +230,6 @@ export default function App() {
                 setTab("board");
               }}
               onDelete={(id) => setBoards(deleteBoard(id))}
-              onRestored={setBoards}
             />
           ) : (
             <DesktopWorkspace
@@ -161,7 +250,12 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-head">
-        <h1>{board.opponent || "New board"}</h1>
+        <div className="app-title">
+          <button className="ghost app-menu" onClick={() => setScreen("home")}>
+            Menu
+          </button>
+          <h1>{board.opponent || "New board"}</h1>
+        </div>
         <nav className="tabs">
           <button className={tab === "board" ? "on" : ""} onClick={() => setTab("board")}>
             Board
@@ -244,24 +338,6 @@ export default function App() {
               <button className="primary wide" onClick={startRound}>
                 Start the round
               </button>
-
-              {/*
-                App-wide, not per-board: a preference about how much the screen
-                says, which should survive moving between boards.
-              */}
-              <label className="field inline">
-                <span>Show the worst-matchup price</span>
-                <select
-                  value={dodgeMode}
-                  onChange={(e) => changeDodgeMode(e.target.value as DodgeMode)}
-                >
-                  {DODGE_MODES.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
             </div>
             {/* Whichever of the two did not lead goes here, so neither is lost. */}
             {rated && <Rosters board={board} onChange={setBoard} />}
@@ -303,7 +379,6 @@ export default function App() {
               setTab(resumed ? "round" : "board");
             }}
             onDelete={(id) => setBoards(deleteBoard(id))}
-            onRestored={setBoards}
           />
         )}
       </main>
@@ -317,8 +392,6 @@ interface BoardsPanelProps {
   onNew: (b: Board) => void;
   onOpen: (b: Board) => void;
   onDelete: (id: string) => void;
-  /** The restored list, so the caller can re-render against it. */
-  onRestored: (boards: Board[]) => void;
 }
 
 /**
@@ -329,8 +402,14 @@ interface BoardsPanelProps {
  * the phone jumps to the round when one is in progress, because it cannot show
  * you the board and the round at the same time. The desktop workspace can, so
  * it always lands on the workspace.
+ *
+ * Backup and restore used to sit at the bottom of this list and now lives in
+ * the menu instead. One copy, not two: it is a three-way export/import with a
+ * file picker, a clipboard path and a textarea, and two of those rendered on
+ * two screens is twice the surface to get wrong on the morning someone is
+ * actually restoring a season of boards.
  */
-function BoardsPanel({ boards, scaleId, onNew, onOpen, onDelete, onRestored }: BoardsPanelProps) {
+function BoardsPanel({ boards, scaleId, onNew, onOpen, onDelete }: BoardsPanelProps) {
   return (
     <div className="boards">
       <button className="primary wide" onClick={() => onNew(emptyBoard(scaleId))}>
@@ -354,7 +433,7 @@ function BoardsPanel({ boards, scaleId, onNew, onOpen, onDelete, onRestored }: B
         ))}
         {boards.length === 0 && <p className="hint">Nothing saved yet.</p>}
       </ul>
-      <BoardBackup onRestored={onRestored} />
+      <p className="hint">Backing up and restoring boards is in Menu &rarr; Back up and restore.</p>
       <InstallNote />
     </div>
   );
