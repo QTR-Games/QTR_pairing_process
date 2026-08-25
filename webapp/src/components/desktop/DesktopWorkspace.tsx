@@ -6,6 +6,7 @@ import type { LiveState } from "../../engine/live";
 import { openingChoice } from "../../engine/protocol";
 import { boardMatrix, boardScale, isRated, type Board } from "../../model/board";
 import { SCALES } from "../../model/scale";
+import { DODGE_MODES, type DodgeMode } from "../../model/settings";
 import { Grid, Rosters } from "../Grid";
 import { LivePanel } from "../LivePanel";
 import { Verdict } from "../Verdict";
@@ -19,6 +20,8 @@ interface Props {
   live: LiveState | null;
   onLive: (s: LiveState | null) => void;
   onStartRound: () => void;
+  dodgeMode: DodgeMode;
+  onDodgeMode: (m: DodgeMode) => void;
 }
 
 /**
@@ -38,7 +41,15 @@ interface Props {
  * untouched phone tree on a media query, so the build that goes to an event on
  * a phone renders exactly the components it did before this file existed.
  */
-export function DesktopWorkspace({ board, onBoard, live, onLive, onStartRound }: Props) {
+export function DesktopWorkspace({
+  board,
+  onBoard,
+  live,
+  onLive,
+  onStartRound,
+  dodgeMode,
+  onDodgeMode,
+}: Props) {
   const scale = boardScale(board);
   const rated = isRated(board);
   const matrix: Matrix = useMemo(() => boardMatrix(board, scale), [board, scale]);
@@ -105,7 +116,7 @@ export function DesktopWorkspace({ board, onBoard, live, onLive, onStartRound }:
     <div className="desk">
       <div className="desk-col desk-read">
         <Currencies board={board} scale={scale} matrix={matrix} tau={tau} />
-        <Verdict board={board} onHighlight={setHighlight} />
+        <Verdict board={board} onHighlight={setHighlight} dodgeMode={dodgeMode} />
       </div>
 
       <div className="desk-col desk-sheet">
@@ -190,6 +201,25 @@ export function DesktopWorkspace({ board, onBoard, live, onLive, onStartRound }:
               >
                 <option value="us">We do</option>
                 <option value="them">They do</option>
+              </select>
+            </label>
+
+            {/*
+              App-wide rather than per-board, and deliberately mirrored from the
+              phone: the same preference has to be reachable on both layouts or
+              a value set on one silently governs the other.
+            */}
+            <label className="field inline">
+              <span>Worst-matchup price</span>
+              <select
+                value={dodgeMode}
+                onChange={(e) => onDodgeMode(e.target.value as DodgeMode)}
+              >
+                {DODGE_MODES.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
               </select>
             </label>
           </div>

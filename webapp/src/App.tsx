@@ -43,6 +43,14 @@ export default function App() {
   const [highlight, setHighlight] = useState<Set<string>>(new Set());
   const [dodgeMode, setDodgeMode] = useState<DodgeMode>(() => loadSettings().dodgeMode);
 
+  // Set and persist in one call. Both layouts expose this preference, so the
+  // write has to live in one place or one of them will change it without
+  // saving it.
+  const changeDodgeMode = (next: DodgeMode) => {
+    setDodgeMode(next);
+    saveSettings({ dodgeMode: next });
+  };
+
   /**
    * Which of the two layouts to render.
    *
@@ -139,6 +147,8 @@ export default function App() {
               live={live}
               onLive={setLive}
               onStartRound={startRound}
+              dodgeMode={dodgeMode}
+              onDodgeMode={changeDodgeMode}
             />
           )}
         </main>
@@ -241,11 +251,7 @@ export default function App() {
                 <span>Show the worst-matchup price</span>
                 <select
                   value={dodgeMode}
-                  onChange={(e) => {
-                    const next = e.target.value as DodgeMode;
-                    setDodgeMode(next);
-                    saveSettings({ dodgeMode: next });
-                  }}
+                  onChange={(e) => changeDodgeMode(e.target.value as DodgeMode)}
                 >
                   {DODGE_MODES.map((m) => (
                     <option key={m.id} value={m.id}>
