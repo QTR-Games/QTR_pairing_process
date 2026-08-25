@@ -364,7 +364,26 @@ function Leverage({
 }) {
   const spread =
     leverage[0].gainFromWaiting - leverage[leverage.length - 1].gainFromWaiting;
-  if (spread <= 0) return null;
+
+  // Measured across all 31 WTC 2024 boards: at the opening the players separate
+  // on only 15 of them, median spread 0.00. One decision later it is 26 of 31,
+  // median 2.00. So a flat readout here is the common case, not a failure -- and
+  // silently hiding the panel taught the user nothing about why it comes and
+  // goes. Saying "nothing in it, and here is when it will matter" is a usable
+  // signal; an empty space is not. See docs/WTC2024_GROUND_TRUTH.md Finding 15.
+  if (spread <= 0) {
+    return (
+      <div className="leverage flat">
+        <h3>Hold or play</h3>
+        <p className="leverage-lead">
+          Nothing in it. Every player is worth the same to hold, so this pick
+          costs you nothing either way — lead with whoever you like. Your{" "}
+          <strong>next</strong> decision, once they have answered, is where
+          holding usually starts to matter.
+        </p>
+      </div>
+    );
+  }
 
   const hold = leverage[0];
   const now = leverage[leverage.length - 1];
