@@ -43,7 +43,8 @@ describe("openingChoice", () => {
    * The measured default, stated as a test so a regression in the protocol
    * search is caught here rather than at an event. Receiving is at least as
    * good as opening on all 31 real boards -- and this asserts exactly that,
-   * not that it holds universally, because at n=4 it demonstrably does not.
+   * not that it holds universally, because the counterexamples below are
+   * 5v5 boards on real scales.
    */
   it("never prefers opening on a real board", () => {
     for (const { opponent, matrix } of boards as { opponent: string; matrix: number[][] }[]) {
@@ -53,19 +54,38 @@ describe("openingChoice", () => {
 
   /**
    * And the counterexample, pinned so the code is never simplified into
-   * hardcoding "always receive". Found by `measure.openTheorem.test.ts`; this
-   * is a 4v4 board, which is not a WTC format, but the engine takes a matrix
-   * rather than a format.
+   * hardcoding "always receive". Found by `measure.openTheorem.test.ts` at
+   * 5v5 on the 1-10 scale -- the exact format and scale being used at the
+   * event, not a hypothetical board size.
    */
-  it("does prefer opening on the known n=4 counterexample", () => {
+  it("does prefer opening on the known 5v5 counterexample", () => {
     const witness: Matrix = [
-      [1, 4, 1, 5],
-      [4, 1, 1, 1],
-      [4, 5, 2, 1],
-      [1, 1, 5, 3],
+      [5, 2, 10, 2, 5],
+      [10, 1, 1, 5, 6],
+      [8, 2, 5, 9, 6],
+      [4, 8, 2, 1, 6],
+      [1, 1, 9, 1, 5],
     ];
     const c = openingChoice(witness);
     expect(c.weOpen).toBe(true);
-    expect(c.gain).toBeCloseTo(5, 9);
+    expect(c.gain).toBeCloseTo(1, 9);
+  });
+
+  /**
+   * A compressed scale is where ties concentrate, and ties are where the
+   * choice stops being forced. Pinned separately because a team who rate
+   * everything 4 or 5 are the most likely to hit one of these in practice.
+   */
+  it("does prefer opening on the compressed-scale counterexample", () => {
+    const witness: Matrix = [
+      [4, 4, 5, 4, 5],
+      [5, 4, 4, 5, 5],
+      [5, 4, 4, 5, 5],
+      [4, 4, 4, 4, 5],
+      [4, 5, 5, 4, 5],
+    ];
+    const c = openingChoice(witness);
+    expect(c.weOpen).toBe(true);
+    expect(c.gain).toBeCloseTo(1, 9);
   });
 });

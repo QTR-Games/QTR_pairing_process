@@ -7,9 +7,20 @@
  * boards is 31 boards, and the claim being made -- "if you win the roll, always
  * make them open" -- would be stated to a captain as a rule.
  *
- * So hunt for a counterexample. Random boards, adversarial shapes, and small
- * boards where exhaustive-ish search is cheap. If one exists this prints it and
- * the rule becomes a default instead of a law.
+ * So hunt for a counterexample.
+ *
+ * ## Scope: 5v5 only
+ *
+ * Every board here is 5x5. The only other format that exists is 3v3, and 3v3
+ * uses a different pairing process entirely -- not the protocol in protocol.ts
+ * -- so a 3x3 board run through this search would measure nothing real. Sizes
+ * that are not tournament formats are not searched either: a counterexample at
+ * n=4 would be a fact about an arithmetic nobody plays.
+ *
+ * What varies instead is the rating scale, including two compressed ones
+ * (1-2, 4-5) where ties and edge behaviour concentrate, because a rule that
+ * survives a compressed scale is a rule that survives a team who rate
+ * everything a 3 or a 4.
  *
  * Run with:
  *   $env:QTR_MEASURE=1; npx vitest run src/engine/measure.openTheorem.test.ts
@@ -17,6 +28,8 @@
 import { describe, it } from "vitest";
 import { protocolFloor } from "./protocol";
 import type { Matrix } from "./boardAnalysis";
+
+const TEAM_SIZE = 5;
 
 // Deterministic PRNG so a counterexample can be reproduced exactly.
 function mulberry32(seed: number) {
@@ -29,47 +42,44 @@ function mulberry32(seed: number) {
   };
 }
 
-function randomBoard(n: number, lo: number, hi: number, rnd: () => number): Matrix {
-  return Array.from({ length: n }, () =>
-    Array.from({ length: n }, () => lo + Math.floor(rnd() * (hi - lo + 1))),
+function randomBoard(lo: number, hi: number, rnd: () => number): Matrix {
+  return Array.from({ length: TEAM_SIZE }, () =>
+    Array.from({ length: TEAM_SIZE }, () => lo + Math.floor(rnd() * (hi - lo + 1))),
   );
 }
 
+type ShapeAcc = {
+  open: number;
+  eq: number;
+  recv: number;
+  maxGain: number;
+  witness: Matrix | null;
+};
+
 describe.skipIf(!process.env.QTR_MEASURE)("is 'never open' a theorem?", () => {
-  it("hunts for a board where opening beats receiving", { timeout: 300_000 }, () => {
+  it("hunts for a 5v5 board where opening beats receiving", { timeout: 300_000 }, () => {
     const rnd = mulberry32(20260825);
     let tested = 0;
     let openBetter = 0;
     let equal = 0;
     let recvBetter = 0;
-    let worstOpenAdvantage = -Infinity;
-    let witness: { n: number; lo: number; hi: number; matrix: Matrix; gain: number } | null = null;
-    const perShape = new Map<string, { open: number; eq: number; recv: number; maxGain: number }>();
+    let best: { lo: number; hi: number; matrix: Matrix; gain: number } | null = null;
+    const perShape = new Map<string, ShapeAcc>();
 
-    // n=5 is the only size this measures anything about: a real 3v3 event uses
-    // a different pairing process entirely, so n=3 boards generated under the
-    // 5v5 protocol are not evidence about 3v3. They are kept as the odd-size
-    // half of the parity check. n=4 is not a WTC format either, and is included
-    // precisely because an even number of pairings changes who is forced into
-    // the last matchup -- the mechanism that could flip the result.
-    const shapes: { n: number; lo: number; hi: number; trials: number }[] = [
-      { n: 3, lo: 1, hi: 3, trials: 4000 },
-      { n: 3, lo: 1, hi: 5, trials: 4000 },
-      { n: 4, lo: 1, hi: 5, trials: 3000 },
-      { n: 5, lo: 1, hi: 5, trials: 2500 },
-      { n: 5, lo: 1, hi: 10, trials: 2500 },
-      // Degenerate/extreme shapes: all-equal, binary, and one-hot boards are
-      // where ties and edge behaviour live.
-      { n: 5, lo: 1, hi: 2, trials: 2000 },
-      { n: 5, lo: 4, hi: 5, trials: 2000 },
+    const shapes: { lo: number; hi: number; trials: number }[] = [
+      { lo: 1, hi: 5, trials: 5000 },
+      { lo: 1, hi: 10, trials: 5000 },
+      // Compressed scales: where ties and edge behaviour live.
+      { lo: 1, hi: 2, trials: 3000 },
+      { lo: 4, hi: 5, trials: 3000 },
     ];
 
-    for (const { n, lo, hi, trials } of shapes) {
-      const label = `n=${n} ${lo}-${hi}`;
-      const acc = { open: 0, eq: 0, recv: 0, maxGain: 0 };
+    for (const { lo, hi, trials } of shapes) {
+      const label = `${lo}-${hi}`;
+      const acc: ShapeAcc = { open: 0, eq: 0, recv: 0, maxGain: 0, witness: null };
       perShape.set(label, acc);
       for (let t = 0; t < trials; t++) {
-        const matrix = randomBoard(n, lo, hi, rnd);
+        const matrix = randomBoard(lo, hi, rnd);
         const open = protocolFloor(matrix, true).value;
         const recv = protocolFloor(matrix, false).value;
         const gain = open - recv;
@@ -77,11 +87,11 @@ describe.skipIf(!process.env.QTR_MEASURE)("is 'never open' a theorem?", () => {
         if (gain > 1e-9) {
           openBetter++;
           acc.open++;
-          if (gain > acc.maxGain) acc.maxGain = gain;
-          if (gain > worstOpenAdvantage) {
-            worstOpenAdvantage = gain;
-            witness = { n, lo, hi, matrix, gain };
+          if (gain > acc.maxGain) {
+            acc.maxGain = gain;
+            acc.witness = matrix;
           }
+          if (!best || gain > best.gain) best = { lo, hi, matrix, gain };
         } else if (gain < -1e-9) {
           recvBetter++;
           acc.recv++;
@@ -93,12 +103,18 @@ describe.skipIf(!process.env.QTR_MEASURE)("is 'never open' a theorem?", () => {
     }
 
     console.log("=".repeat(80));
-    console.log(`COUNTEREXAMPLE HUNT -- ${tested} random boards`);
+    console.log(`COUNTEREXAMPLE HUNT -- ${tested} random 5v5 boards`);
     console.log("=".repeat(80));
-    console.log("shape".padEnd(14) + "openBetter".padStart(12) + "equal".padStart(10) + "recvBetter".padStart(12) + "maxOpenGain".padStart(14));
+    console.log(
+      "scale".padEnd(10) +
+        "openBetter".padStart(12) +
+        "equal".padStart(10) +
+        "recvBetter".padStart(12) +
+        "maxOpenGain".padStart(14),
+    );
     for (const [label, a] of perShape) {
       console.log(
-        label.padEnd(14) +
+        label.padEnd(10) +
           `${a.open}`.padStart(12) +
           `${a.eq}`.padStart(10) +
           `${a.recv}`.padStart(12) +
@@ -109,17 +125,22 @@ describe.skipIf(!process.env.QTR_MEASURE)("is 'never open' a theorem?", () => {
     console.log(`opening strictly better  : ${openBetter}`);
     console.log(`identical                : ${equal}`);
     console.log(`receiving better         : ${recvBetter}`);
-    if (witness) {
+
+    // Print a witness per scale, not just the global best -- a counterexample
+    // that only exists on a 1-2 scale is a different claim from one that shows
+    // up on the scale actually being used at the event.
+    for (const [label, a] of perShape) {
+      if (!a.witness) continue;
       console.log("-".repeat(80));
-      console.log(`COUNTEREXAMPLE FOUND: n=${witness.n} ratings ${witness.lo}-${witness.hi}`);
-      console.log(`opening is worth +${witness.gain.toFixed(3)} points`);
-      for (const row of witness.matrix) console.log("   " + row.join(" "));
-      console.log("-".repeat(80));
-      console.log("=> 'always make them open' is a DEFAULT, not a law.");
-    } else {
-      console.log("-".repeat(80));
-      console.log("no counterexample found: receiving is never worse on any board tested.");
+      console.log(`WITNESS on scale ${label}: opening worth +${a.maxGain.toFixed(3)} points`);
+      for (const row of a.witness) console.log("   [" + row.join(", ") + "],");
     }
+    console.log("=".repeat(80));
+    console.log(
+      best
+        ? "=> 'always make them open' is a DEFAULT, not a law, even at 5v5."
+        : "=> no 5v5 counterexample: receiving is never worse on any board tested.",
+    );
     console.log("=".repeat(80));
   });
 });

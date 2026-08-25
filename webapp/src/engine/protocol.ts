@@ -304,28 +304,29 @@ export function protocolGap(
  *
  * ## Why it is a default and not a law
  *
- * A hunt over 20,000 random boards (`measure.openTheorem.test.ts`) found the
- * rule is a PARITY effect, not a universal one:
+ * A hunt over 16,000 random 5v5 boards (`measure.openTheorem.test.ts`) found
+ * boards where opening wins, on real scales:
  *
- *     n=5   opening better on    14 / 9,856   (0.14%, max 1.00 pt)
- *     n=4   opening better on 2,886 / 3,000   (96.2%)
- *     n=3   opening better on     0 / 4,000
+ *     1-5    opening better on  0 / 5,000
+ *     1-10   opening better on  2 / 5,000   (max 1.00 pt)
+ *     1-2    opening better on 11 / 3,000   (max 1.00 pt)
+ *     4-5    opening better on  9 / 3,000   (max 1.00 pt)
  *
- * With an odd number of pairings the last real decision belongs to the side
- * that received, and it settles the final two matchups at once -- which is
- * exactly what step 9 of the Player Pack describes. With an even number that
- * reverses.
+ * Only 5v5 is searched. The one other format is 3v3, and 3v3 uses a different
+ * pairing process entirely -- not this protocol -- so a 3x3 board would
+ * measure nothing about anything. Board sizes that are not formats are not
+ * searched at all.
  *
- * Only the n=5 row is evidence about THIS app. The n=3 boards were generated
- * under the 5v5 protocol and a real 3v3 event uses a different pairing process
- * entirely, so those rows say nothing about a 3v3 board; they are kept only as
- * the odd-size half of the parity finding. n=4 is not a WTC format at all and
- * is here purely because it is where the rule breaks.
+ * The pattern is that exceptions live where ratings tie. On a compressed scale
+ * (1-2, 4-5) a third of boards are dead level and roughly 1 in 300 flips; on a
+ * wide 1-10 scale almost nothing ties and it is 1 in 2,500. That matters,
+ * because a team who rate everything a 4 or a 5 are exactly the team most
+ * likely to hit one.
  *
- * So at the size that matters the rule holds on 9,842 of 9,856 boards, and the
- * 14 exceptions are worth at most a single point. It is still computed rather
- * than asserted, because 0.14% is not zero and the exceptions cost the same
- * whether or not anyone believed they existed.
+ * So the function computes the answer rather than printing "always receive".
+ * The default is right on well over 99% of boards, but the exceptions cost a
+ * full point, they exist on the scale being used at the event, and computing
+ * them costs one extra call.
  *
  * Both numbers are floors, so the comparison survives not knowing their grid:
  * whatever they are optimising, they cannot take us below either figure.

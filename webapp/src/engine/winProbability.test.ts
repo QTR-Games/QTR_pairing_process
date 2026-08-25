@@ -63,28 +63,25 @@ describe("toWinProbability", () => {
 
 describe("probabilityMatrix", () => {
   it("maps every cell and preserves shape", () => {
+    // A full 5x5 board, because that is the only size this app pairs.
     const m = [
-      [1, 3],
-      [5, 3],
+      [1, 3, 5, 3, 1],
+      [5, 3, 1, 3, 5],
+      [3, 3, 3, 3, 3],
+      [1, 1, 5, 5, 3],
+      [5, 5, 1, 1, 3],
     ];
     const p = probabilityMatrix(m, 1, 5);
-    expect(p).toHaveLength(2);
-    expect(p[0]).toHaveLength(2);
+    expect(p).toHaveLength(5);
+    for (const row of p) expect(row).toHaveLength(5);
     expect(p[0][1]).toBeCloseTo(0.5, 12);
     expect(p[1][0]).toBeCloseTo(0.925, 6);
   });
 });
 
 describe("winsNeeded", () => {
-  it("is a strict majority", () => {
+  it("is a strict majority of five", () => {
     expect(winsNeeded(5)).toBe(3);
-    expect(winsNeeded(3)).toBe(2);
-    expect(winsNeeded(7)).toBe(4);
-  });
-
-  it("requires more than half on an even count", () => {
-    expect(winsNeeded(4)).toBe(3);
-    expect(winsNeeded(6)).toBe(4);
   });
 });
 
