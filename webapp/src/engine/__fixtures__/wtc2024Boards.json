@@ -1,0 +1,1676 @@
+[
+ {
+  "opponent": "Australia Spangled Drongo",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Ravens of War - Lyl3 / Lyl1",
+   "Sea Raiders - Hor / Sab",
+   "Winter Korps - Ekat / Sav",
+   "House Kallyss - Hel / Mor",
+   "Storm Legion - Spark / Wolfe"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    2,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    2,
+    2,
+    2
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    2,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    1,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Australia Thorny Devils",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "House Kallyss - Scy / Hel",
+   "Sea Raiders - Hor / Sab",
+   "Exalted - Zaal / Xek",
+   "Winter Korps - Ekat / Sav",
+   "Infernals - Omo / Zaat"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    2,
+    3
+   ],
+   [
+    3,
+    3,
+    2,
+    2,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    2,
+    3,
+    1
+   ],
+   [
+    3,
+    3,
+    3,
+    1,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Brussels from Mussels",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Storm Legion - Cal / Wolfe",
+   "Brineblood Marauders - Rage / Shadow",
+   "Exalted - Zaal / Xek",
+   "Winter Korps - Ekat / Sav",
+   "Sea Raiders - Hor / Ori"
+  ],
+  "matrix": [
+   [
+    3,
+    2,
+    3,
+    2,
+    3
+   ],
+   [
+    3,
+    4,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    2,
+    3,
+    3
+   ],
+   [
+    3,
+    4,
+    3,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Canada Goose",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Shadowflame Shard - Kyr / Shy",
+   "Grymkin - Witch / Wand",
+   "Sea Raiders - Hor / Sab",
+   "House Kallyss - Scy / Hel",
+   "Winter Korps - Ekat / Sav"
+  ],
+  "matrix": [
+   [
+    3,
+    4,
+    3,
+    3,
+    2
+   ],
+   [
+    3,
+    3,
+    3,
+    2,
+    2
+   ],
+   [
+    3,
+    2,
+    3,
+    3,
+    3
+   ],
+   [
+    2,
+    2,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    2,
+    3,
+    1
+   ]
+  ]
+ },
+ {
+  "opponent": "Canada Moose",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Winter Korps - Sik / Sav",
+   "House Kallyss - Mor / Scry",
+   "Brineblood Marauders - Rage / Shadow",
+   "Dark Operations - Cyph / Thex",
+   "Sea Raiders - Hor / Sab"
+  ],
+  "matrix": [
+   [
+    2,
+    3,
+    2,
+    3,
+    2
+   ],
+   [
+    3,
+    3,
+    3,
+    2,
+    3
+   ],
+   [
+    2,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    4,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    4,
+    3,
+    2
+   ]
+  ]
+ },
+ {
+  "opponent": "England Dragons",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Storm Legion - Hux / Spark",
+   "Crucible Guard - Locke / Gear",
+   "House Kallyss - Tyr / Scy",
+   "Storm of the North - Kol / Borka",
+   "Dark Host - Gor / Scav"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    2,
+    3,
+    4,
+    2
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    2,
+    3,
+    2,
+    4
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "England Knights",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Brineblood Marauders - Boomy / Shadow",
+   "Infernals - Zaat / Aga",
+   "Shadows of the Retribution - Gary / Thyr",
+   "Rhul Guard - Oss / Mad",
+   "Dark Host - Denny 3 / Scav"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    4,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    2,
+    2,
+    3,
+    3
+   ],
+   [
+    4,
+    1,
+    2,
+    3,
+    4
+   ],
+   [
+    4,
+    3,
+    3,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "England Lions",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Sea Raiders - Hor / Sab",
+   "Winter Korps - Ekat / Sav",
+   "House Kallyss - Mor / Scry",
+   "Shadowflame Shard - Shy / Ras",
+   "Infernals - Omo / Zaat"
+  ],
+  "matrix": [
+   [
+    3,
+    2,
+    3,
+    3,
+    2
+   ],
+   [
+    3,
+    2,
+    2,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    2,
+    1
+   ],
+   [
+    3,
+    1,
+    3,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "France Caesar",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Blackfleet - Rah / Skar1",
+   "Grymkin - Dre / Witch",
+   "Ravens of War - Krys / Lyl1",
+   "Sea Raiders - Ori / Sab",
+   "Brineblood Marauders - Rage / Shadow"
+  ],
+  "matrix": [
+   [
+    3,
+    4,
+    3,
+    3,
+    2
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    2,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    2,
+    3,
+    4
+   ],
+   [
+    3,
+    3,
+    3,
+    2,
+    4
+   ]
+  ]
+ },
+ {
+  "opponent": "France Redbeard",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Blackfleet - Aik / Rah",
+   "Dark Operations - Cyph / Thex",
+   "Brineblood Marauders - Rage / Boomy",
+   "Shadowflame Shard - Kyr / Shy",
+   "Infernals - Aga / Omo"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    2,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    4,
+    2,
+    3
+   ],
+   [
+    3,
+    3,
+    4,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Germany Eichhornchen",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Sea Raiders - Hor / Sab",
+   "Shadowflame Shard - Shy / Ras",
+   "Brineblood Marauders - Rage / Shadow",
+   "House Kallyss - Hel / Tyr",
+   "Winter Korps - Ekat / Sav"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    2,
+    3,
+    2
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    2
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    4,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    4,
+    3,
+    1
+   ]
+  ]
+ },
+ {
+  "opponent": "Germany Fuchs",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Winter Korps - Ekat / Sav",
+   "Sea Raiders - Hor / Sab",
+   "Dark Host - Denny 3 / Scav",
+   "Infernals - Omo / Zaat",
+   "House Kallyss - Mor / Scry"
+  ],
+  "matrix": [
+   [
+    2,
+    2,
+    3,
+    3,
+    3
+   ],
+   [
+    2,
+    3,
+    2,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    1,
+    3
+   ],
+   [
+    3,
+    3,
+    4,
+    1,
+    3
+   ],
+   [
+    1,
+    3,
+    4,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Germany Rackelhahn",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Dark Host - Denny 3 / Scav",
+   "Brineblood Marauders - Rage / Boomy",
+   "Storm Legion - Spark / Wolfe",
+   "Dark Operations - Thex / Gaspy",
+   "House Kallyss - Mor / Scry"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    2,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    4,
+    4,
+    3,
+    2,
+    3
+   ],
+   [
+    4,
+    4,
+    3,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Iki-Turso",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Winter Korps - Ekat / Sav",
+   "Shadowflame Shard - Kyr / Shy",
+   "House Kallyss - Mor / Scry",
+   "Storm Legion - Cal / Spark",
+   "Convergence of Cyriss - Ori / Luc"
+  ],
+  "matrix": [
+   [
+    2,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    2,
+    3,
+    4,
+    2,
+    4
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    2,
+    3,
+    3,
+    3
+   ],
+   [
+    1,
+    3,
+    3,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Iku-Turso",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "House Kallyss - Haz / Scy",
+   "United Kriels - Jarl / Mad",
+   "House Kallyss - Tyr / Mor",
+   "Exalted - Zaal / Xek",
+   "Soldiers of Fortune - Dam / Ash "
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    4,
+    3,
+    4,
+    2,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    2,
+    3,
+    2,
+    3
+   ],
+   [
+    3,
+    4,
+    3,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Little Mermaids",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Sea Raiders - Hor / Sab",
+   "Winter Korps - Sik / Ekat",
+   "Devourers Host - Wurm / Iona",
+   "Storm Legion - Cal / Spark",
+   "Dark Host - Gor / Scav"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    4,
+    2,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    2,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    4
+   ],
+   [
+    3,
+    1,
+    3,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Masters of Pizza",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Winter Korps - Ekat / Sav",
+   "Infernals - Omo / Zaat",
+   "Brineblood Marauders - Rage / Boomy",
+   "Blindwater Congregation - Mae / Jaga",
+   "United Kriels - Mad / Gunn"
+  ],
+  "matrix": [
+   [
+    2,
+    3,
+    2,
+    3,
+    3
+   ],
+   [
+    2,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    1,
+    4,
+    3,
+    3
+   ],
+   [
+    1,
+    3,
+    4,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Mussels from Brussels",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Dark Host - Denny 3 / Scav",
+   "House Kallyss - Mor / Scry",
+   "House Kallyss - Hel / Tyr",
+   "Sea Raiders - Hor / Sab",
+   "Brineblood Marauders - Rage / Boomy"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    2,
+    2
+   ],
+   [
+    2,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    4,
+    3,
+    3,
+    3,
+    4
+   ],
+   [
+    4,
+    3,
+    3,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Netherlands Van Gogh",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Shadowflame Shard - Shy / Ras",
+   "Grymkin - Her / Wand",
+   "Winter Korps - Ekat / Sav",
+   "Dark Host - Denny 3 / Scav",
+   "House Kallyss - Haz / Hel"
+  ],
+  "matrix": [
+   [
+    3,
+    4,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    2,
+    2,
+    3
+   ],
+   [
+    3,
+    2,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    4,
+    3
+   ],
+   [
+    3,
+    3,
+    1,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Norway Hugin",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Storm Legion - Cal / Spark",
+   "Shadowflame Shard - Shy / Ras",
+   "First Army - Kraye / Caine",
+   "Rhul Guard - Oss / Gort",
+   "Crucible Guard - Ben / Gear"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    2,
+    2
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    2,
+    2,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Norway Munin",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Shadows of the Retribution - Kae / Gary",
+   "House Kallyss - Tyr / Scy",
+   "Temple Guardians - Thy / Feo",
+   "Shadowflame Shard - Shy / Ras",
+   "Winter Korps - Ekat / Sav"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    3,
+    2
+   ],
+   [
+    3,
+    3,
+    2,
+    3,
+    2
+   ],
+   [
+    2,
+    3,
+    2,
+    3,
+    3
+   ],
+   [
+    2,
+    3,
+    2,
+    2,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    1
+   ]
+  ]
+ },
+ {
+  "opponent": "Portugal Prime",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Exalted - Zaal / Xek",
+   "House Kallyss - Haz / Scy",
+   "Armored Korps - Irusk / Sor3",
+   "Temple Guardians - Amon / Mal",
+   "Dark Host - Aga / Denny3"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    2,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    2,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "South Africa Tokoloshe",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Grymkin - Witch / Wand",
+   "Storm of the North - Grim / Borka",
+   "Dark Operations - Mort / Cyph",
+   "House Kallyss - Scy / Hel",
+   "Infernals - Zaat / Aga"
+  ],
+  "matrix": [
+   [
+    4,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    2,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    2,
+    3,
+    3,
+    1
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Spain Rogue",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Brineblood Marauders - Boomy / Shadow",
+   "Grymkin - Witch / Wand",
+   "Winter Korps - Ekat / Sav",
+   "House Kallyss - Scy / Hel",
+   "Shadowflame Shard - Kyr / Shy"
+  ],
+  "matrix": [
+   [
+    2,
+    4,
+    2,
+    3,
+    3
+   ],
+   [
+    3,
+    2,
+    2,
+    4,
+    3
+   ],
+   [
+    3,
+    2,
+    3,
+    3,
+    3
+   ],
+   [
+    4,
+    3,
+    3,
+    3,
+    2
+   ],
+   [
+    4,
+    3,
+    1,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Sweden Asgard",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Winter Korps - Ekat / Sav",
+   "House Kallyss - Mor / Scry",
+   "Dark Operations - Thex / Gaspy",
+   "Sea Raiders - Ori / Sab",
+   "Grymkin - Witch / Wand"
+  ],
+  "matrix": [
+   [
+    2,
+    3,
+    3,
+    2,
+    4
+   ],
+   [
+    2,
+    3,
+    2,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    2
+   ],
+   [
+    3,
+    3,
+    2,
+    3,
+    3
+   ],
+   [
+    1,
+    3,
+    3,
+    2,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Sweden Utgard",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Secret Dominion - Kru / Brad",
+   "House Kallyss - Mor / Scry",
+   "Brineblood Marauders - Fire / Rage",
+   "Brineblood Marauders - Boomy / Shadow",
+   "Infernals - Omo / Zaat"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    2,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    4,
+    4,
+    1
+   ],
+   [
+    3,
+    3,
+    4,
+    4,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Sweden Valhall",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Storm Legion - Cal / Wolfe",
+   "Exalted - Zaal / Xek",
+   "Shadowflame Shard - Shy / Ras",
+   "Sea Raiders - Ori / Sab",
+   "Devourers Host - Wurm / Iona"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    4,
+    2,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    2,
+    3,
+    2,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    2,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Team Crichton",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "House Kallyss - Mor / Scry",
+   "Brineblood Marauders - Rage / Boomy",
+   "Dark Operations - Thex / Gaspy",
+   "Armored Korps - Hark / Irusk",
+   "Shadowflame Shard - Kyr / Shy"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    2,
+    3
+   ],
+   [
+    3,
+    4,
+    2,
+    2,
+    2
+   ],
+   [
+    3,
+    4,
+    3,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Team Herbert",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Sea Raiders - Hor / Sab",
+   "Shadowflame Shard - Ras / Kyr",
+   "Brineblood Marauders - Boomy / Shadow",
+   "House Kallyss - Mor / Scry",
+   "Infernals - Omo / Zaat"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    4,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    2,
+    4,
+    3,
+    1
+   ],
+   [
+    2,
+    3,
+    4,
+    3,
+    3
+   ]
+  ]
+ },
+ {
+  "opponent": "Team Poland",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "Winter Korps - Ekat / Sav",
+   "Sea Raiders - Hor / Kish",
+   "House Kallyss - Mor / Scry",
+   "Sea Raiders - Ori / Sab",
+   "Brineblood Marauders - Boomy / Shadow"
+  ],
+  "matrix": [
+   [
+    2,
+    3,
+    3,
+    3,
+    2
+   ],
+   [
+    2,
+    3,
+    3,
+    3,
+    3
+   ],
+   [
+    2,
+    2,
+    3,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    4
+   ],
+   [
+    1,
+    3,
+    3,
+    3,
+    4
+   ]
+  ]
+ },
+ {
+  "opponent": "The Italian Job",
+  "ourPlayers": [
+   "Justin",
+   "Mike",
+   "Rick",
+   "Stephen",
+   "Jake"
+  ],
+  "theirPlayers": [
+   "House Kallyss - Hel / Tyr",
+   "House Kallyss - Mor / Scry",
+   "Crucible Guard - Luk / Gear",
+   "Grymkin - Witch / Wand",
+   "Exalted - Mord / Zaal"
+  ],
+  "matrix": [
+   [
+    3,
+    3,
+    3,
+    4,
+    3
+   ],
+   [
+    4,
+    3,
+    2,
+    3,
+    3
+   ],
+   [
+    3,
+    3,
+    3,
+    2,
+    2
+   ],
+   [
+    3,
+    3,
+    2,
+    3,
+    2
+   ],
+   [
+    3,
+    3,
+    3,
+    3,
+    3
+   ]
+  ]
+ }
+]
