@@ -105,11 +105,15 @@ export function assignmentExtremes(matrix: Matrix): [number, number] {
 }
 
 export class Outlook {
-  constructor(
-    readonly floor: number,
-    readonly ceiling: number,
-    readonly tau: number,
-  ) {}
+  readonly floor: number;
+  readonly ceiling: number;
+  readonly tau: number;
+
+  constructor(floor: number, ceiling: number, tau: number) {
+    this.floor = floor;
+    this.ceiling = ceiling;
+    this.tau = tau;
+  }
 
   /** How much the remaining pairing decisions can still move the result. */
   get spread(): number {

@@ -194,3 +194,6 @@ decorator.py
 # Local merge backup patches
 backup_pre_core_staged.patch
 backup_pre_core_worktree.patch
+
+# Playwright MCP scratch output (screenshots, snapshots, console logs)
+.playwright-mcp/
