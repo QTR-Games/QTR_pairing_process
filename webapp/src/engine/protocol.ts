@@ -330,6 +330,41 @@ export function protocolGap(
  *
  * Both numbers are floors, so the comparison survives not knowing their grid:
  * whatever they are optimising, they cannot take us below either figure.
+ *
+ * ## What this function does NOT price
+ *
+ * Opening is not only a matchup concession. It also buys table control. Player
+ * Pack 2026 v1.1 p.20 step 8: "The team that doesn't pick the match-up chooses
+ * the table each time." Step 10 spells the trade out: team B "gets to choose
+ * two match-ups and three tables, while team A will get to choose three
+ * match-ups and two table". Working it through matchup by matchup:
+ *
+ *     matchup   pairing   table     tables left
+ *     1         B         A         5
+ *     2         A         B         4
+ *     3         B         A         3
+ *     4         A         B         2
+ *     5         A         B         1  <- forced, not a choice
+ *
+ * So opening trades one matchup pick for one extra table pick, and the pack
+ * oversells even that: B's third table is the last one standing. Real picks are
+ * two apiece.
+ *
+ * This function prices the matchup half only. The unpriced half favours
+ * opening, which is the direction that could in principle flip the answer.
+ *
+ * Two independent things say it does not. The 31-board measurement above puts
+ * receiving ahead on 18 and level on 13, never behind; and the player community
+ * has settled on receiving as the better side. A table edge large enough to
+ * overturn a result that one-sided would have shown up in how the game is
+ * actually played.
+ *
+ * Pricing the table half honestly would mean rating every player against every
+ * table, and the 2026 tables are not published -- p.27: "We are bringing the
+ * terrain from the WTC in Germany. More information will be provided later."
+ * Those ratings cannot exist until the venue. What CAN be derived with no data
+ * at all is the column above: who holds each table pick is a pure function of
+ * which side you took.
  */
 export interface OpeningChoice {
   /** True when we should put the first player up. */

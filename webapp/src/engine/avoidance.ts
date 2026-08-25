@@ -854,3 +854,75 @@ export function pricePairChance(
     free: price !== null && price < 1e-9,
   };
 }
+
+/** The worst matchup on a board, and what escaping it would cost. */
+export interface WorstDodge {
+  /** The rating shared by every cell considered here. */
+  rating: number;
+  /** How many cells on the board sit at that rating. */
+  count: number;
+  /** A representative cell, for when none of them can be escaped. */
+  example: Cell;
+  /** Cheapest cell we can actually refuse, or null when none can be. */
+  cheapest: ChancePrice | null;
+}
+
+/**
+ * Price only the matchups we would most like to be rid of.
+ *
+ * `dodgeMapChance` prices all 25 cells, which costs about 240 ms on a 5x5 --
+ * far too slow to sit behind a keystroke on a phone. A screen that reports the
+ * single worst matchup needs one solve for the baseline plus one per cell at
+ * that rating, which is typically two to four solves rather than twenty-six.
+ *
+ * Returns null when the board has no cell below the middle of its scale, on the
+ * grounds that "your worst matchup is a 6 out of 10" is not worth interrupting
+ * anyone for.
+ */
+export function worstMatchupDodge(
+  matrix: Matrix,
+  ratingMin = 1,
+  ratingMax = 5,
+  ourTeamFirst = true,
+): WorstDodge | null {
+  const n = matrix.length;
+  const mid = (ratingMin + ratingMax) / 2;
+
+  let worst = Infinity;
+  for (const row of matrix) {
+    for (const v of row) if (v < worst) worst = v;
+  }
+  if (!Number.isFinite(worst) || worst >= mid) return null;
+
+  const cells: Cell[] = [];
+  for (let ours = 0; ours < n; ours++) {
+    for (let theirs = 0; theirs < n; theirs++) {
+      if (matrix[ours][theirs] === worst) cells.push({ ours, theirs });
+    }
+  }
+  if (cells.length === 0) return null;
+
+  const probs = probabilityMatrix(matrix, ratingMin, ratingMax);
+  const base = avoidingWinChance(probs, 0, ourTeamFirst) ?? 0;
+
+  let cheapest: ChancePrice | null = null;
+  for (const cell of cells) {
+    const avoided = avoidingWinChance(probs, cellBit(cell, n), ourTeamFirst);
+    if (avoided === null) continue;
+    const price = base - avoided;
+    if (cheapest === null || price < (cheapest.price ?? Infinity)) {
+      cheapest = {
+        cell,
+        rating: worst,
+        base,
+        avoided,
+        price,
+        free: price < 1e-9,
+      };
+      // Nothing can beat a free dodge, so stop paying for more solves.
+      if (price < 1e-9) break;
+    }
+  }
+
+  return { rating: worst, count: cells.length, example: cells[0], cheapest };
+}

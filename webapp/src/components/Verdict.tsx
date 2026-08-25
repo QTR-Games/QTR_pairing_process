@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { worstMatchupDodge } from "../engine/avoidance";
 import type { Matrix } from "../engine/boardAnalysis";
 import { decisionReport, evenThreshold, LIVE, SECURED, UNWINNABLE } from "../engine/boardAnalysis";
 import { outlook } from "../engine/opponent";
@@ -12,6 +13,9 @@ interface Props {
 }
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
+/** Probabilities are shown as whole rounds per hundred, never as raw decimals. */
+const pct = (p: number) => `${(p * 100).toFixed(1)}%`;
 
 /**
  * What the round is actually worth.
@@ -62,6 +66,23 @@ export function Verdict({ board, onHighlight }: Props) {
         guaranteed,
       ),
     [matrix, board.ourTeamFirst, guaranteed],
+  );
+
+  // The matchup on this board we would least like to play, and whether the
+  // pairing protocol actually lets us refuse it.
+  //
+  // Priced in round-win probability, not points. The points-valued twin of this
+  // read 0.000 on all 31 saved boards, because a points total barely moves when
+  // you swap which bad cell you eat -- the total is nearly the same either way.
+  // The round does not care about the total; it cares whether three games fall
+  // your way. Under that currency the worst cell is worth 8.2% on average and
+  // 15.9% at the extreme.
+  //
+  // Deliberately narrow: only the worst-rated matchup, only when it is actually
+  // bad, and silent otherwise. A list of 25 priced dodges is noise on a phone.
+  const worstDodge = useMemo(
+    () => worstMatchupDodge(matrix, scale.min, scale.max, board.ourTeamFirst),
+    [matrix, scale.min, scale.max, board.ourTeamFirst],
   );
 
   // An all-even board is arithmetically "unwinnable" -- it lands exactly on the
@@ -187,6 +208,39 @@ export function Verdict({ board, onHighlight }: Props) {
                 : `Guaranteed ${fmt(pWe)} opening, ${fmt(pThey)} if they open. Unusually, this
                    board rewards committing first.`
             }
+          />
+        )}
+
+        {worstDodge && (
+          <Insight
+            title={
+              worstDodge.cheapest === null
+                ? `You cannot avoid ${board.ourPlayers[worstDodge.example.ours]} into ${board.theirPlayers[worstDodge.example.theirs]}`
+                : worstDodge.cheapest.free
+                  ? `Your worst matchup is free to refuse`
+                  : `Refusing your worst matchup costs ${pct(worstDodge.cheapest.price ?? 0)}`
+            }
+            body={
+              worstDodge.cheapest === null
+                ? `Rated ${fmt(worstDodge.rating)}, and no line of play escapes it -- they can force
+                   it whatever you do. Plan the other four around eating this one rather than
+                   spending decisions trying to dodge what cannot be dodged.`
+                : worstDodge.cheapest.free
+                  ? `${board.ourPlayers[worstDodge.cheapest.cell.ours]} into
+                     ${board.theirPlayers[worstDodge.cheapest.cell.theirs]} is rated
+                     ${fmt(worstDodge.rating)}, and refusing it costs nothing measurable -- your
+                     chance of taking the round is the same either way. Take the dodge.`
+                  : `${board.ourPlayers[worstDodge.cheapest.cell.ours]} into
+                     ${board.theirPlayers[worstDodge.cheapest.cell.theirs]} is rated
+                     ${fmt(worstDodge.rating)}. Staying out of it drops your chance of taking the
+                     round from ${pct(worstDodge.cheapest.base)} to
+                     ${pct(worstDodge.cheapest.avoided ?? 0)}. That is the price of the dodge --
+                     worth paying only if you think the rating understates how bad it is.`
+            }
+            onFocus={() => {
+              const c = worstDodge.cheapest ? worstDodge.cheapest.cell : worstDodge.example;
+              onHighlight?.(new Set([`${c.ours}-${c.theirs}`]));
+            }}
           />
         )}
 

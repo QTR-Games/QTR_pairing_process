@@ -22,7 +22,7 @@
  */
 import { describe, it } from "vitest";
 import boards from "./__fixtures__/wtc2024Boards.json";
-import { avoidingFloor, dodgeMapChance, dodgeMap, type Cell } from "./avoidance";
+import { avoidingFloor, dodgeMapChance, dodgeMap, worstMatchupDodge, type Cell } from "./avoidance";
 import { protocolFloor } from "./protocol";
 
 const FIXTURES = boards as { opponent: string; matrix: number[][] }[];
@@ -122,5 +122,33 @@ describe.skipIf(!process.env.QTR_MEASURE)("price of a dodge, in round-win probab
     console.log(`dodgeMapChance : ${chanceMs.toFixed(1)} ms`);
     console.log(`dodgeMap       : ${pointsMs.toFixed(1)} ms`);
     console.log(`ratio          : ${(chanceMs / pointsMs).toFixed(1)}x`);
+  });
+
+  it("times the screen path against the exhaustive one", { timeout: 60_000 }, () => {
+    // `dodgeMapChance` prices all 25 cells. The Verdict screen only ever shows
+    // the worst matchup, so `worstMatchupDodge` prices the two-to-four cells at
+    // that rating instead. This runs behind every cell tap on a phone, so the
+    // gap between these two numbers is the difference between a usable screen
+    // and a janky one.
+    const perBoard: number[] = [];
+    let quiet = 0;
+
+    for (const { matrix } of FIXTURES) {
+      const t = performance.now();
+      const got = worstMatchupDodge(matrix, 1, 5);
+      perBoard.push(performance.now() - t);
+      if (got === null) quiet++;
+    }
+
+    const t0 = performance.now();
+    dodgeMapChance(FIXTURES[0].matrix, 1, 5);
+    const exhaustiveMs = performance.now() - t0;
+
+    console.log("=".repeat(104));
+    console.log(`worstMatchupDodge mean : ${mean(perBoard).toFixed(1)} ms/board`);
+    console.log(`worstMatchupDodge max  : ${Math.max(...perBoard).toFixed(1)} ms/board`);
+    console.log(`dodgeMapChance (1 board): ${exhaustiveMs.toFixed(1)} ms`);
+    console.log(`speedup                : ${(exhaustiveMs / mean(perBoard)).toFixed(1)}x`);
+    console.log(`boards with nothing to say : ${quiet}/${FIXTURES.length}`);
   });
 });
