@@ -107,7 +107,7 @@ export function Verdict({ board, onHighlight }: Props) {
           strong
         />
         <Stat label="Ceiling" value={fmt(o.ceiling)} note="best still reachable" />
-        <Stat label="To win" value={fmt(tau)} note="anything above this takes the round" />
+        <Stat label="To win" value={fmt(tau)} />
       </div>
 
       <p className="reading">
@@ -242,14 +242,14 @@ function Stat({
 }: {
   label: string;
   value: string;
-  note: string;
+  note?: string;
   strong?: boolean;
 }) {
   return (
     <div className={"stat" + (strong ? " strong" : "")}>
       <span className="stat-label">{label}</span>
       <span className="stat-value">{value}</span>
-      <span className="stat-note">{note}</span>
+      {note ? <span className="stat-note">{note}</span> : null}
     </div>
   );
 }
