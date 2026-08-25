@@ -1000,3 +1000,144 @@ cd webapp
 $env:QTR_MEASURE="1"; npx vitest run src/engine/measure.decompose.test.ts `
   --reporter=verbose --disable-console-intercept
 ```
+
+---
+
+## Finding 21 — the app lost the round on any reload, and took a build to notice a fix
+
+**Measured, not assumed.** Two controlled experiments against a real built
+bundle served over HTTP, with the service worker installed exactly as it is on
+the deployed site.
+
+### What was wrong
+
+**A new build arrived one launch late.** Deploying a changed build over a
+running install and reloading once left the old build on screen for the full
+15s the probe ran, with no worker waiting and none installing. A *second*
+reload showed the new build. The update mechanism worked; it was just always
+one open behind, because the page that triggers the update has already been
+served from the old cache.
+
+The consequence is specific: push a fix on event morning, open the app once in
+the car, and that is the open that misses it.
+
+**A reload wiped the round.** `live` was `useState<LiveState | null>(null)` in
+`App.tsx` and was never persisted. Boards were saved; the round in progress was
+not. Any reload -- Android reclaiming a backgrounded tab, a screen tapped awake
+into a fresh load, an accidental pull-to-refresh -- returned an empty board.
+Three pairings deep at a table is the worst possible moment for that.
+
+The second is the more serious of the two, and it made the first unfixable on
+its own: the obvious fix for a stale build is to reload when the new one is
+ready, which would have traded a stale build for a lost round.
+
+### What changed
+
+- `model/board.ts` -- `saveLive` / `loadLive`, keyed by board id, validated on
+  read, same corrupt-entry tolerance as `loadBoards`. Storing against the board
+  means returning to a board resumes its round and switching boards does not
+  inherit someone else's.
+- `App.tsx` -- `live` initialises from storage, persists on every change, and
+  the app opens on the Round tab when a round is in progress. Opening a saved
+  board resumes that board's round rather than discarding it.
+- `main.tsx` -- reload on `controllerchange`, guarded by whether a controller
+  existed at load, so a first-ever visit does not flash.
+
+### Measured after
+
+| | before | after |
+|---|---|---|
+| new build visible after one open | no -- still old at 15s | **yes, ~500ms** |
+| opens needed to get a new build | 2 | **1** |
+| round survives a reload | no | **yes, identical state and tab** |
+
+Verified end-to-end: a round played to a mid-decision state (`ourPool: 29`,
+`attacker: 1`, awaiting their offer against Bokur) came back after a reload on
+the same screen, on the Round tab, with the same pools.
+
+### Why it is filed here
+
+It is not a maths finding. It is filed because every number in this document is
+only worth something if the app is still holding the round when it is needed,
+and because the update path is how any correction in here actually reaches a
+phone.
+
+---
+
+## Finding 22 — the maths are not slow, and the ceiling is the team size
+
+**Standing complaint this closes.** "I spent basically all of March and April
+rigorously performance testing the math calculations, but to be frank they
+always still seemed slow." That was never measured against the phone app. It has
+been now.
+
+### What one tap costs
+
+Not one call to the solver — everything `LivePanel` computes before it can draw
+a screen: `moveOptions`, `playerLeverage`, an `optionProfile` for every option,
+`pickOptions` for every offer row, and `pickTieBreak` on any row whose halves
+tie. Walking the recommended line on a mostly-even 5v5 board with real outliers:
+
+| depth | decision | options | ms |
+|---|---|---|---|
+| 0 | open | 5 | 7.9 |
+| 0 | offer | 10 | **13.1** |
+| 1 | offer | 6 | 0.2 |
+| 2 | offer | 3 | 0.0 |
+| 3 | offer | 1 | 0.0 |
+| 4 | forced | 1 | 0.0 |
+
+**Worst single render: 13.1 ms. The whole round: 34.8 ms.** A mid-range phone
+runs perhaps 4–8× slower, so the worst tap of a round lands near 100 ms and
+every other tap is imperceptible.
+
+There is no performance problem in the phone app. Whatever was slow across those
+two months, it was the Tkinter desktop app expanding and rendering a tree of
+thousands of nodes — not this engine.
+
+### An undercount I published to myself first
+
+The first version of this measurement called only the panel-level functions and
+reported **7.6 ms**. It omitted the per-row work, which is where the sampling
+lives — `pickTieBreak` runs 96 opponent-grid trials twice. Including it moved the
+worst case from 7.6 to 13.1, a 72% undercount. Recorded because the wrong number
+was nearly the reported one, and the difference was an entire category of work
+rather than noise.
+
+### Where it stops being fast
+
+The search is factorial. 5v5 being instant says nothing about larger formats:
+
+| n | opening render | on a slow phone |
+|---|---|---|
+| 4 | 0.4 ms | 3 ms |
+| 5 | 4.0 ms | 32 ms |
+| 6 | 29 ms | 232 ms |
+| 7 | 203 ms | 1.6 s |
+| 8 | 1 478 ms | **11.8 s** |
+| 9 | 14 852 ms | **119 s** |
+
+**About sevenfold per added player.** Six is fine, seven is a visible stall,
+eight is a hang, nine is a crash report.
+
+### Why this is not a bug today
+
+`TEAM_SIZE` is a hard constant of 5 in `webapp/src/model/board.ts`, and
+`isValidBoard` rejects any stored board whose grid is not 5×5. Nothing in the app
+can reach those sizes, so there is nothing to fix.
+
+It is filed as a **constraint, not a defect**. Exhaustive search is the right
+answer for 5v5 and a dead end past 6. Any future format wider than that needs a
+different algorithm — alpha-beta with ordering, or accepting a sampled answer
+instead of an exact one. Worth knowing before promising a bigger format to
+anyone, rather than after.
+
+### What was deliberately not done
+
+`moveOptions` allocates a fresh memo on entry, so a single render re-searches
+the same subtrees several times over. That is genuinely wasteful and it was
+tempting to fix. At 13 ms it would be optimising something nobody can perceive,
+on a sprint with an event at the end of it. Left alone on purpose; it is the
+first lever to pull if the format ever widens.
+
+**Reproduce:** `QTR_PERF=1 npx vitest run src/engine/measure.rendercost.test.ts`

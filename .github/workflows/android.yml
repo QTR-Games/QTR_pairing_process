@@ -68,7 +68,28 @@ jobs:
 
       - name: Assemble the APK
         working-directory: webapp/android
-        run: ./gradlew --no-daemon assembleDebug
+        # Maven Central has now failed this job twice for reasons that have
+        # nothing to do with the code: a 429 under load, then a sustained 403.
+        # Both cleared on a later run. The first version of this retried three
+        # times with a flat 30s pause, which covers about a minute and a half --
+        # and the 403 outlasted it, failing all three attempts inside five
+        # seconds each. Backing off doubles the wait each time, so five attempts
+        # ride out roughly eight minutes instead.
+        #
+        # Unlike the deploy workflow this one is still allowed to fail hard: it
+        # exists to tell you the APK is broken before it is merged.
+        run: |
+          delay=30
+          for attempt in 1 2 3 4 5; do
+            if ./gradlew --no-daemon assembleDebug; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 5 ]; then break; fi
+            echo "::warning::APK build attempt $attempt failed; retrying in ${delay}s"
+            sleep "$delay"
+            delay=$((delay * 2))
+          done
+          exit 1
 
       - name: Name it after the commit
         id: name
