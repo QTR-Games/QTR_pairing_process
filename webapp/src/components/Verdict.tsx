@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { Matrix } from "../engine/boardAnalysis";
 import { decisionReport, evenThreshold, LIVE, SECURED, UNWINNABLE } from "../engine/boardAnalysis";
+import { outlook } from "../engine/opponent";
 import { protocolFloor } from "../engine/protocol";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale, isRated } from "../model/board";
@@ -15,11 +16,18 @@ const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 /**
  * What the round is actually worth.
  *
- * Three numbers matter and the desktop app shows none of them plainly:
+ * Four numbers matter and the desktop app shows none of them plainly:
  *
- *  - the floor, which is what we get if everything goes against us
+ *  - the guaranteed total, which is what we hold if they hunt us perfectly
+ *  - the typical total, which is what happens when they play their own board
  *  - the ceiling, which is the best still reachable
  *  - the threshold, which is the line between winning the round and not
+ *
+ * The first two are the must-not-lose and must-win readings of the same
+ * position, and they are frequently more than a point apart. Showing only
+ * the guaranteed number -- as this screen used to -- silently hands every
+ * decision to the pessimistic one. See Finding 16 in
+ * docs/WTC2024_GROUND_TRUTH.md.
  *
  * Everything else on this screen exists to answer "so what do I do", and is
  * driven by the measured findings rather than by a single ranking number.
@@ -36,6 +44,25 @@ export function Verdict({ board, onHighlight }: Props) {
   const o = report.board;
   const guaranteed = board.ourTeamFirst ? pWe : pThey;
   const initiative = pWe - pThey;
+
+  // What happens when they optimise their own board rather than hunting ours.
+  // Finding 16: the guaranteed number is 1.40 pts pessimistic on real data,
+  // because it credits them with a grid that is the exact negative of ours --
+  // and two real teams' grids correlate at r = -0.049, not -1.
+  const typical = useMemo(
+    () =>
+      outlook(
+        matrix,
+        {
+          ourPool: (1 << matrix.length) - 1,
+          theirPool: (1 << matrix.length) - 1,
+          attacker: -1,
+          attackerSide: board.ourTeamFirst ? "our" : "their",
+        },
+        guaranteed,
+      ),
+    [matrix, board.ourTeamFirst, guaranteed],
+  );
 
   // An all-even board is arithmetically "unwinnable" -- it lands exactly on the
   // threshold, which needs to be beaten rather than met. Saying so before a
@@ -67,11 +94,16 @@ export function Verdict({ board, onHighlight }: Props) {
       <div className={`chip ${o.verdict}`}>{verdictLabel}</div>
 
       <div className="numbers">
-        <Stat label="Floor" value={fmt(o.floor)} note="if it all goes wrong" />
         <Stat
           label="Guaranteed"
           value={fmt(guaranteed)}
-          note={board.ourTeamFirst ? "we put a player up first" : "they put a player up first"}
+          note="if they hunt you perfectly"
+          strong
+        />
+        <Stat
+          label="Typical"
+          value={fmt(typical.expected)}
+          note="if they play their own board"
           strong
         />
         <Stat label="Ceiling" value={fmt(o.ceiling)} note="best still reachable" />
@@ -95,11 +127,22 @@ export function Verdict({ board, onHighlight }: Props) {
             Playing this out properly guarantees {fmt(guaranteed)}, which takes the round
             outright. It cannot be taken away from you.
           </>
+        ) : typical.expected > tau ? (
+          <>
+            The safe reading is {fmt(guaranteed)}
+            {tau - guaranteed < 0.05
+              ? ` -- dead level with the round, and level does not win it -- `
+              : ` -- ${fmt(tau - guaranteed)} short of the round -- `}
+            but that credits them with knowing exactly which matchups hurt you most.
+            Playing their own board they land you nearer {fmt(typical.expected)}, which
+            wins it. This is a round you take by playing for the win, not by protecting
+            the floor.
+          </>
         ) : (
           <>
-            Perfect play guarantees {fmt(guaranteed)}, which is {fmt(tau - guaranteed)}{" "}
-            short of the round. The win is reachable at {fmt(o.ceiling)} but it needs them
-            to give you something.
+            Guaranteed {fmt(guaranteed)}, typically {fmt(typical.expected)}, and the round
+            needs {fmt(tau)}. Neither reading gets there on its own, so the win has to come
+            from the ceiling at {fmt(o.ceiling)} -- it needs them to give you something.
           </>
         )}
       </p>
@@ -115,6 +158,18 @@ export function Verdict({ board, onHighlight }: Props) {
             body={`A naive worst case says ${fmt(o.floor)}, but that assumes they can hand-pick any
               set of matchups. They cannot -- pairing is turn-taking, and half the decisions
               are yours. Against best play you hold ${fmt(guaranteed)}.`}
+          />
+        )}
+
+        {typical.expected - guaranteed >= 0.5 && (
+          <Insight
+            title={`Being hunted costs ${fmt(typical.expected - guaranteed)} of that`}
+            body={`The guaranteed ${fmt(guaranteed)} assumes their grid is the exact opposite of
+              yours -- every matchup you rated good, they rated bad. Two real WTC teams'
+              grids matched that shape almost not at all. Playing a board of their own they
+              land you nearer ${fmt(typical.expected)}, and rarely below ${fmt(typical.low)}.
+              Use ${fmt(guaranteed)} when you must not lose, ${fmt(typical.expected)} when
+              you must win.`}
           />
         )}
 
