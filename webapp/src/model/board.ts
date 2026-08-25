@@ -62,7 +62,9 @@ export function isRated(board: Board): boolean {
   return board.fractions.some((row) => row.some((f) => Math.abs(f - 0.5) > 1e-9));
 }
 
-const KEY = "qtr.boards.v1";
+/** The storage key. Exported so the backup path cannot drift from the load path. */
+export const BOARDS_KEY = "qtr.boards.v1";
+const KEY = BOARDS_KEY;
 
 export function loadBoards(): Board[] {
   try {
@@ -76,7 +78,7 @@ export function loadBoards(): Board[] {
   }
 }
 
-function isValidBoard(b: unknown): b is Board {
+export function isValidBoard(b: unknown): b is Board {
   const x = b as Board;
   return (
     !!x &&

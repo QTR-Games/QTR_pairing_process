@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Grid, Rosters } from "./components/Grid";
 import { LivePanel } from "./components/LivePanel";
 import { Verdict } from "./components/Verdict";
+import { BoardBackup } from "./components/BoardBackup";
 import {
   boardScale,
   deleteBoard,
@@ -139,6 +140,7 @@ export default function App() {
                 setTab("board");
               }}
               onDelete={(id) => setBoards(deleteBoard(id))}
+              onRestored={setBoards}
             />
           ) : (
             <DesktopWorkspace
@@ -301,6 +303,7 @@ export default function App() {
               setTab(resumed ? "round" : "board");
             }}
             onDelete={(id) => setBoards(deleteBoard(id))}
+            onRestored={setBoards}
           />
         )}
       </main>
@@ -314,6 +317,8 @@ interface BoardsPanelProps {
   onNew: (b: Board) => void;
   onOpen: (b: Board) => void;
   onDelete: (id: string) => void;
+  /** The restored list, so the caller can re-render against it. */
+  onRestored: (boards: Board[]) => void;
 }
 
 /**
@@ -325,7 +330,7 @@ interface BoardsPanelProps {
  * you the board and the round at the same time. The desktop workspace can, so
  * it always lands on the workspace.
  */
-function BoardsPanel({ boards, scaleId, onNew, onOpen, onDelete }: BoardsPanelProps) {
+function BoardsPanel({ boards, scaleId, onNew, onOpen, onDelete, onRestored }: BoardsPanelProps) {
   return (
     <div className="boards">
       <button className="primary wide" onClick={() => onNew(emptyBoard(scaleId))}>
@@ -349,6 +354,7 @@ function BoardsPanel({ boards, scaleId, onNew, onOpen, onDelete }: BoardsPanelPr
         ))}
         {boards.length === 0 && <p className="hint">Nothing saved yet.</p>}
       </ul>
+      <BoardBackup onRestored={onRestored} />
       <InstallNote />
     </div>
   );

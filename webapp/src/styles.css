@@ -756,6 +756,45 @@ button.ghost {
   font-weight: 700;
 }
 
+/* Saving and restoring boards. Phone-first: this is the screen someone reaches
+   for when they are about to reinstall, so the controls wrap rather than
+   scroll and the text area is tall enough to prove it is not empty. */
+.backup {
+  border-top: 1px solid var(--line);
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+}
+
+.backup h2 {
+  font-size: 1rem;
+  margin: 0 0 0.35rem;
+}
+
+.backup .controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.backup-text {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: inherit;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 0.72rem;
+  padding: 0.5rem;
+  resize: vertical;
+  width: 100%;
+}
+
+/* Failure has to read differently from success at a glance. */
+.hint.bad {
+  color: var(--bad);
+  font-weight: 600;
+}
+
 /* ==========================================================================
    Desktop workspace -- everything below 1024px is untouched by this block.
    ==========================================================================
