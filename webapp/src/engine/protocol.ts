@@ -282,3 +282,72 @@ export function protocolGap(
 ): number {
   return protocolFloor(matrix, ourTeamFirst).value - assignmentFloorValue;
 }
+
+/**
+ * Step 1 of the pairing protocol: which side to take when you win the dice-off.
+ *
+ * Player Pack 2026 v1.1 p.20 step 1, verbatim: "Dice off until one captain has
+ * rolled higher than the other. The captain with the higher roll gets to choose
+ * whether they are Team A, or Team B in the process below." Team B puts the
+ * first player up, which is `ourTeamFirst = true` here.
+ *
+ * The app has always let you set this by hand. It has never told you which one
+ * to pick, and it is the single decision in a round that costs nothing to get
+ * right and cannot be recovered once made.
+ *
+ * ## What the answer turns out to be
+ *
+ * Measured over all 31 real WTC boards (`measure.openOrReceive.test.ts`),
+ * making them open is better on 18 and identical on 13. Better on ZERO. Worth a
+ * mean 0.58 points, up to a full point; in P(>= 3 wins), a mean 4.63% and up to
+ * 7.97%. Points and probability pick the same side on 31 of 31.
+ *
+ * ## Why it is a default and not a law
+ *
+ * A hunt over 20,000 random boards (`measure.openTheorem.test.ts`) found the
+ * rule is a PARITY effect, not a universal one:
+ *
+ *     n=5   opening better on    14 / 9,856   (0.14%, max 1.00 pt)
+ *     n=4   opening better on 2,886 / 3,000   (96.2%)
+ *     n=3   opening better on     0 / 4,000
+ *
+ * With an odd number of pairings the last real decision belongs to the side
+ * that received, and it settles the final two matchups at once -- which is
+ * exactly what step 9 of the Player Pack describes. With an even number that
+ * reverses.
+ *
+ * Only the n=5 row is evidence about THIS app. The n=3 boards were generated
+ * under the 5v5 protocol and a real 3v3 event uses a different pairing process
+ * entirely, so those rows say nothing about a 3v3 board; they are kept only as
+ * the odd-size half of the parity finding. n=4 is not a WTC format at all and
+ * is here purely because it is where the rule breaks.
+ *
+ * So at the size that matters the rule holds on 9,842 of 9,856 boards, and the
+ * 14 exceptions are worth at most a single point. It is still computed rather
+ * than asserted, because 0.14% is not zero and the exceptions cost the same
+ * whether or not anyone believed they existed.
+ *
+ * Both numbers are floors, so the comparison survives not knowing their grid:
+ * whatever they are optimising, they cannot take us below either figure.
+ */
+export interface OpeningChoice {
+  /** True when we should put the first player up. */
+  weOpen: boolean;
+  /** Guaranteed total if we open. */
+  openValue: number;
+  /** Guaranteed total if they open. */
+  receiveValue: number;
+  /** Points given up by taking the wrong side. Zero when it makes no odds. */
+  gain: number;
+}
+
+export function openingChoice(matrix: Matrix): OpeningChoice {
+  const openValue = protocolFloor(matrix, true).value;
+  const receiveValue = protocolFloor(matrix, false).value;
+  return {
+    weOpen: openValue > receiveValue,
+    openValue,
+    receiveValue,
+    gain: Math.abs(openValue - receiveValue),
+  };
+}
