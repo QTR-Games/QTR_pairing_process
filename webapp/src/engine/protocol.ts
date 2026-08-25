@@ -36,6 +36,23 @@
  * could do to us, so `protocolFloor` is a guarantee that survives not knowing
  * their grid at all.
  *
+ * That bound is real, but the paragraph above used to imply it dodged Finding
+ * 12. It does not, and the algebra is one line: a side maximising O = 1 - M is
+ * maximising sum(1 - M), which is minimising sum(M). "Worst-case opponent" and
+ * "mirror axiom" are therefore the SAME opponent wearing different clothes.
+ * `measure.opponent.test.ts` asserts this equivalence on all 31 real boards, to
+ * nine decimal places, and it runs in CI rather than behind the measurement
+ * flag -- if anyone ever makes these two models genuinely differ, it should be
+ * a deliberate act with a failing test in front of it.
+ *
+ * So this is a floor and only a floor. Finding 16 priced it: on real data it
+ * understates the realised total by 1.40 points, up to 2.5 on one board. The
+ * ranking it produces is nonetheless safe -- following it costs 0.07 points of
+ * regret -- so the fix was never to change this solver, but to stop presenting
+ * its output as a prediction. `outlook` in ./opponent.ts supplies the
+ * complementary "if they play their own board" figure, and the verdict screen
+ * now shows both.
+ *
  * The result is tighter than the assignment floor and strictly more honest than
  * assuming they cooperate.
  */
