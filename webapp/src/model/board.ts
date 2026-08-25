@@ -127,10 +127,22 @@ export const boardScale = (board: Board): Scale => scaleById(board.scaleId);
  * load, or a new build takes over. Standing at a table three pairings deep, that
  * is the worst possible time to be handed an empty round.
  *
- * Stored against the board id, so returning to a board resumes where it was
- * left and switching boards does not inherit someone else's round.
+ * Stored per board id, so returning to a board resumes where it was left and
+ * switching boards does not inherit -- or destroy -- someone else's round. The
+ * first version of this kept a single slot tagged with a board id, which met the
+ * second half of that promise and quietly broke the first: starting a round on a
+ * second board evicted the first board's. Two opponents in one day is the normal
+ * case at an event, so that had to go.
  */
-const LIVE_KEY = "qtr.live.v1";
+const LIVE_KEY = "qtr.live.v2";
+/** The single-slot layout this replaced. Read once, to migrate, then dropped. */
+const LEGACY_LIVE_KEY = "qtr.live.v1";
+
+/**
+ * How many boards may hold a round at once. Well above a day's worth of
+ * opponents, and low enough that storage cannot grow without bound.
+ */
+const MAX_LIVE_ROUNDS = 12;
 
 interface StoredLive {
   boardId: string;
@@ -138,31 +150,64 @@ interface StoredLive {
   savedAt: number;
 }
 
-export function loadLive(boardId: string): LiveState | null {
+type LiveMap = Record<string, StoredLive>;
+
+function readLiveMap(): LiveMap {
   try {
     const raw = localStorage.getItem(LIVE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as StoredLive;
-    if (!parsed || parsed.boardId !== boardId) return null;
-    return isValidLive(parsed.state) ? parsed.state : null;
+    if (raw) {
+      const parsed = JSON.parse(raw) as LiveMap;
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    }
+    // Nothing in the new layout. Someone updating mid-event may still have a
+    // round in the old one, and that is precisely the round worth rescuing.
+    const legacy = localStorage.getItem(LEGACY_LIVE_KEY);
+    if (!legacy) return {};
+    const one = JSON.parse(legacy) as StoredLive;
+    return one && one.boardId ? { [one.boardId]: one } : {};
   } catch {
     // Same rule as boards: a corrupt entry must not brick the app on event
     // morning. Losing the round is bad; losing the app is worse.
-    return null;
+    return {};
   }
 }
 
-export function saveLive(boardId: string, state: LiveState | null): void {
+function writeLiveMap(map: LiveMap, keep?: string): void {
   try {
-    if (!state) {
-      localStorage.removeItem(LIVE_KEY);
-      return;
-    }
-    const payload: StoredLive = { boardId, state, savedAt: Date.now() };
-    localStorage.setItem(LIVE_KEY, JSON.stringify(payload));
+    // Newest first, except that the round being played is never the one to
+    // evict -- several saves can land in the same millisecond, and ordering by
+    // timestamp alone would then drop by insertion order rather than by age.
+    const entries = Object.values(map).sort((a, b) => {
+      if (a.boardId === keep) return -1;
+      if (b.boardId === keep) return 1;
+      return b.savedAt - a.savedAt;
+    });
+    const kept: LiveMap = {};
+    for (const e of entries.slice(0, MAX_LIVE_ROUNDS)) kept[e.boardId] = e;
+    localStorage.setItem(LIVE_KEY, JSON.stringify(kept));
+    // Only once the new layout has taken, so a failed write cannot strand the
+    // round in neither place.
+    localStorage.removeItem(LEGACY_LIVE_KEY);
   } catch {
     // Out of quota. The in-memory round still works for this round.
   }
+}
+
+export function loadLive(boardId: string): LiveState | null {
+  const entry = readLiveMap()[boardId];
+  if (!entry) return null;
+  return isValidLive(entry.state) ? entry.state : null;
+}
+
+export function saveLive(boardId: string, state: LiveState | null): void {
+  const map = readLiveMap();
+  if (!state) {
+    if (!(boardId in map)) return;
+    delete map[boardId];
+  } else {
+    map[boardId] = { boardId, state, savedAt: Date.now() };
+  }
+  writeLiveMap(map, state ? boardId : undefined);
 }
 
 function isValidLive(s: unknown): s is LiveState {

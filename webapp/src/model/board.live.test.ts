@@ -10,7 +10,7 @@
  * small stub is cheaper and less fragile than adding jsdom to the toolchain for
  * four functions.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { newRound, type LiveState } from "../engine/live";
 
 class MemoryStorage {
@@ -61,6 +61,31 @@ describe("the round in progress survives a reload", () => {
     expect(loadLive("board-b")).toBeNull();
   });
 
+  it("keeps one board's round when another board starts one", () => {
+    // Two opponents in one day is the normal case at an event, not an edge one.
+    // Tapping through to a second board to check something must not cost the
+    // round you are standing in the middle of on the first.
+    const a: LiveState = {
+      ...newRound(5, true),
+      banked: 7,
+      committed: [{ ours: 0, theirs: 3, value: 4 }],
+    };
+    saveLive("board-a", a);
+    saveLive("board-b", newRound(5, false));
+
+    expect(loadLive("board-a")).toEqual(a);
+  });
+
+  it("clearing one board's round leaves the other alone", () => {
+    const b = { ...newRound(5, false), banked: 3 };
+    saveLive("board-a", newRound(5, true));
+    saveLive("board-b", b);
+    saveLive("board-a", null);
+
+    expect(loadLive("board-a")).toBeNull();
+    expect(loadLive("board-b")).toEqual(b);
+  });
+
   it("forgets the round when it is cleared", () => {
     saveLive("board-a", newRound(5, true));
     saveLive("board-a", null);
@@ -68,14 +93,14 @@ describe("the round in progress survives a reload", () => {
   });
 
   it("returns null rather than throwing on a corrupt entry", () => {
-    store.setItem("qtr.live.v1", "{not json");
+    store.setItem("qtr.live.v2", "{not json");
     expect(loadLive("board-a")).toBeNull();
   });
 
   it("rejects a stored shape that is not a round", () => {
     store.setItem(
-      "qtr.live.v1",
-      JSON.stringify({ boardId: "board-a", state: { ourPool: "all" }, savedAt: 1 }),
+      "qtr.live.v2",
+      JSON.stringify({ "board-a": { boardId: "board-a", state: { ourPool: "all" }, savedAt: 1 } }),
     );
     expect(loadLive("board-a")).toBeNull();
   });
@@ -83,8 +108,8 @@ describe("the round in progress survives a reload", () => {
   it("rejects a round whose committed pairings are malformed", () => {
     const bad = { ...newRound(5, true), committed: [{ ours: 0 }] };
     store.setItem(
-      "qtr.live.v1",
-      JSON.stringify({ boardId: "board-a", state: bad, savedAt: 1 }),
+      "qtr.live.v2",
+      JSON.stringify({ "board-a": { boardId: "board-a", state: bad, savedAt: 1 } }),
     );
     expect(loadLive("board-a")).toBeNull();
   });
@@ -94,9 +119,50 @@ describe("the round in progress survives a reload", () => {
     // all still pass and prove nothing.
     const good = { ...newRound(5, true), committed: [{ ours: 0, theirs: 1, value: 2 }] };
     store.setItem(
-      "qtr.live.v1",
-      JSON.stringify({ boardId: "board-a", state: good, savedAt: 1 }),
+      "qtr.live.v2",
+      JSON.stringify({ "board-a": { boardId: "board-a", state: good, savedAt: 1 } }),
     );
     expect(loadLive("board-a")).toEqual(good);
+  });
+
+  it("rescues a round left in the single-slot layout this replaced", () => {
+    // Updating mid-event is exactly when someone has a round in the old format,
+    // and exactly when losing it would hurt most.
+    const state = { ...newRound(5, true), banked: 5 };
+    store.setItem(
+      "qtr.live.v1",
+      JSON.stringify({ boardId: "board-a", state, savedAt: 1 }),
+    );
+
+    expect(loadLive("board-a")).toEqual(state);
+    expect(loadLive("board-b")).toBeNull();
+  });
+
+  it("drops the old slot only once the new layout holds the round", () => {
+    const state = { ...newRound(5, true), banked: 5 };
+    store.setItem("qtr.live.v1", JSON.stringify({ boardId: "board-a", state, savedAt: 1 }));
+
+    saveLive("board-b", newRound(5, false));
+
+    expect(store.getItem("qtr.live.v1")).toBeNull();
+    expect(loadLive("board-a")).toEqual(state);
+  });
+
+  it("does not grow without bound", () => {
+    // Time is frozen so every save shares a timestamp. That is the hard case:
+    // ordering by age alone cannot tell these apart, and picking wrong evicts
+    // the round actually being played.
+    const now = Date.now();
+    const spy = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      for (let i = 0; i < 20; i++) saveLive(`board-${i}`, { ...newRound(5, true), banked: i });
+    } finally {
+      spy.mockRestore();
+    }
+
+    const kept = Object.keys(JSON.parse(store.getItem("qtr.live.v2")!));
+    expect(kept.length).toBeLessThanOrEqual(12);
+    // The most recent round is the one being played, so it is the one to keep.
+    expect(loadLive("board-19")).not.toBeNull();
   });
 });
