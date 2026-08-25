@@ -11,8 +11,17 @@ import ravenUrl from "./assets/gronksoft-raven.png";
 export const BRAND = {
   /** 264x256 placeholder. Rendered at 128px so it never upscales. */
   logo: ravenUrl,
+  /** The studio. Shown on the splash, which is a publisher card. */
   name: "GronkSoft",
-  product: "QTR Pairing",
+  /**
+   * The product.
+   *
+   * Named for the sound dice make in a closed hand -- the moment just before a
+   * round is decided, which is the moment this app is for. The repository is
+   * still `QTR_pairing_process` and the Python tooling still carries the old
+   * name; only the shipped app is KLIK KLAK.
+   */
+  product: "KLIK KLAK",
   tagline: "Pairing maths for team tournaments",
 } as const;
 
