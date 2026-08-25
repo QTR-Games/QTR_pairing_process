@@ -31,6 +31,7 @@ export default function App() {
   }, [board]);
 
   const scale = boardScale(board);
+  const rated = isRated(board);
 
   const lockedCells = useMemo(() => {
     const s = new Set<string>();
@@ -63,7 +64,18 @@ export default function App() {
       <main>
         {tab === "board" && (
           <>
-            <Verdict board={board} onHighlight={setHighlight} />
+            {/*
+              Setup and reading want opposite orders. On a fresh board you are
+              typing names, so the rosters belong at the top; once anything is
+              rated you are reading the position, so the verdict does. Keying
+              this off isRated means the screen reorders itself as the board
+              fills in, with nothing to toggle at an event.
+            */}
+            {rated ? (
+              <Verdict board={board} onHighlight={setHighlight} />
+            ) : (
+              <Rosters board={board} onChange={setBoard} />
+            )}
             <Grid board={board} onChange={setBoard} highlight={highlight} locked={lockedCells} />
             <div className="controls">
               <label className="field inline">
@@ -96,7 +108,8 @@ export default function App() {
                 Start the round
               </button>
             </div>
-            <Rosters board={board} onChange={setBoard} />
+            {/* Whichever of the two did not lead goes here, so neither is lost. */}
+            {rated && <Rosters board={board} onChange={setBoard} />}
           </>
         )}
 
