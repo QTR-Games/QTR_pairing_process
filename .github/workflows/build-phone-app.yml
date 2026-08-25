@@ -14,6 +14,12 @@
 # The installed APK is entirely offline. It bundles the web assets locally and
 # sets no server.url, so it never makes a network request at runtime. Venue
 # wifi cannot affect it.
+#
+# This also replaces the old android.yml, which built the same debug APK a
+# second time on every push to main and could not survive the native project
+# being committed -- it ran `cap add android`, which exits 1 when android/
+# already exists. Rather than keep two workflows building one artifact, the
+# pull_request trigger moved here, so a broken phone build still blocks a merge.
 name: build-phone-app
 
 on:
@@ -22,14 +28,19 @@ on:
     paths:
       - 'webapp/**'
       - '.github/workflows/build-phone-app.yml'
+  pull_request:
+    paths:
+      - 'webapp/**'
+      - '.github/workflows/build-phone-app.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Never cancel a build midway; let a run finish before the next starts.
+# Never cancel a build midway; let a run finish before the next starts. Scoped
+# per ref, or every open pull request would queue behind every other one.
 concurrency:
-  group: build-phone-app
+  group: build-phone-app-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -65,16 +76,27 @@ jobs:
       # Order matters below. `cap sync` copies dist/ into the native project, so
       # the APK has to be built before anything is added to dist -- otherwise
       # the next run would package the previous APK inside the new one.
-      - name: Generate the native project
-        run: npx cap add android
+      #
+      # The native project is committed now, so there is no `cap add` step. What
+      # `cap sync` regenerates -- capacitor.build.gradle,
+      # capacitor-cordova-android-plugins/ and the assets config -- stays
+      # gitignored and is absent on a fresh checkout, so its directories have to
+      # exist before sync runs.
+      - name: Copy the bundle into the native project
         working-directory: webapp
-
-      - name: Copy the bundle into it
-        run: npx cap sync android
-        working-directory: webapp
+        run: |
+          mkdir -p android/app/src/main/assets android/app/src/main/res/xml
+          npx cap sync android
 
       - name: Assemble the APK
         working-directory: webapp/android
+        # Every debug build gets a distinct, increasing versionCode. Without
+        # this, each APK is versionCode 1, and a phone that already has an
+        # earlier build refuses the install rather than upgrading it. The run
+        # number is monotonic per repository, so it never regresses.
+        env:
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_VERSION_NAME: 0.debug.${{ github.run_number }}
         # Maven Central has failed this build twice for reasons unrelated to the
         # code: a 429 under load, then a sustained 403 that outlasted a flat
         # three-attempt, 30s retry. Backing off doubles the wait, so five
@@ -97,12 +119,40 @@ jobs:
       # something looks wrong.
       - name: Collect the APK
         working-directory: webapp
+        env:
+          # On a pull_request event GITHUB_SHA is the throwaway merge commit,
+          # which names the file after something that does not exist in history.
+          # Use the real head.
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           src=android/app/build/outputs/apk/debug/app-debug.apk
           mkdir -p artifact
           cp "$src" artifact/qtr-pairing.apk
-          cp "$src" "artifact/qtr-pairing-${GITHUB_SHA:0:7}.apk"
+          cp "$src" "artifact/qtr-pairing-${SHA:0:7}.apk"
           ls -lh artifact/*.apk
+
+      # Read the version back out of the finished APK rather than trusting that
+      # Gradle applied what it was given. A wrong versionCode is invisible until
+      # a phone refuses the install with an unexplained "App not installed", so
+      # it is worth one second here to assert it. Failing loudly is correct:
+      # an APK stuck at versionCode 1 cannot be installed over an earlier build,
+      # which makes it useless for the thing this workflow exists to do.
+      - name: Verify the APK version
+        working-directory: webapp
+        env:
+          EXPECTED: ${{ github.run_number }}
+        run: |
+          aapt2=$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -1)
+          badging=$("$aapt2" dump badging artifact/qtr-pairing.apk | head -1)
+          echo "$badging"
+          actual=$(echo "$badging" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p")
+          if [ "$actual" != "$EXPECTED" ]; then
+            echo "::error::APK versionCode is '$actual', expected '$EXPECTED'." \
+                 "An APK that does not advance its versionCode cannot be installed" \
+                 "over an earlier build. See docs/android-build.md."
+            exit 1
+          fi
+          echo "versionCode $actual — installs over any earlier build."
 
       - uses: actions/upload-artifact@v4
         with:

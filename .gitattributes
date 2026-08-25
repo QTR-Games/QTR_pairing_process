@@ -1,0 +1,29 @@
+# Line-ending and binary rules.
+#
+# This file exists mainly for the committed Android project. Without it, the
+# stored line endings of the Gradle wrapper depend on each contributor's local
+# `core.autocrlf`, and a `gradlew` committed with CRLF makes Linux CI fail with
+# `bad interpreter: /bin/sh^M` before Gradle ever starts -- a confusing failure
+# that looks nothing like its cause.
+
+# The wrapper is a POSIX shell script on Linux and macOS runners.
+webapp/android/gradlew text eol=lf
+# Its Windows counterpart is a batch file and needs CRLF.
+webapp/android/gradlew.bat text eol=crlf
+
+# Gradle and Android build inputs are text and should normalise to LF.
+*.gradle text eol=lf
+*.properties text eol=lf
+*.pro text eol=lf
+
+# Binary assets must never be line-ending converted. Git usually infers this,
+# but signing material and archives are too costly to get wrong silently.
+*.jar binary
+*.apk binary
+*.aab binary
+*.jks binary
+*.keystore binary
+*.png binary
+*.xlsx binary
+*.db binary
+*.pdf binary
