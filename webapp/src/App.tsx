@@ -168,9 +168,46 @@ export default function App() {
               ))}
               {boards.length === 0 && <p className="hint">Nothing saved yet.</p>}
             </ul>
+            <InstallNote />
           </div>
         )}
       </main>
     </div>
   );
 }
+
+/*
+ * How a teammate gets this onto their own phone.
+ *
+ * Two ways in, because Android and iOS disagree about what an app is. Android
+ * takes the APK, which behaves like anything else installed on the device. iOS
+ * has no sideloading, so it gets the home-screen route -- which is the same
+ * bundle, offline-capable once opened, just launched differently.
+ *
+ * It hides once the app is installed. Someone reading this inside the installed
+ * app has already done the thing it is asking them to do.
+ */
+function InstallNote() {
+  const installed =
+    "Capacitor" in window ||
+    window.matchMedia("(display-mode: standalone)").matches ||
+    // iOS predates the display-mode media query and reports it this way.
+    (navigator as unknown as { standalone?: boolean }).standalone === true;
+
+  if (installed) return null;
+
+  return (
+    <section className="install-note">
+      <h2>Put this on a phone</h2>
+      <p>
+        <a href="./qtr-pairing.apk">Download the Android app</a> — open the file
+        and allow the install when the phone asks.
+      </p>
+      <p className="hint">
+        On iPhone there is no download. Use Share, then “Add to Home Screen”.
+        Either way it works with no signal after the first open.
+      </p>
+    </section>
+  );
+}
+

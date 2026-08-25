@@ -728,3 +728,30 @@ button.ghost {
     height: 54px;
   }
 }
+
+/* The install note at the foot of the saved-boards list. Set apart with a rule
+   because it is about the app itself, not about anything in the list above it. */
+.install-note {
+  margin-top: 1.6rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+}
+
+.install-note h2 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+  margin: 0 0 0.5rem;
+}
+
+.install-note p {
+  font-size: 0.85rem;
+  margin: 0 0 0.5rem;
+}
+
+/* A download link is a target to hit on a phone, not a word in a sentence. */
+.install-note a {
+  color: var(--accent);
+  font-weight: 700;
+}
