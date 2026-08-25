@@ -359,12 +359,14 @@ export function protocolGap(
  * overturn a result that one-sided would have shown up in how the game is
  * actually played.
  *
- * Pricing the table half honestly would mean rating every player against every
- * table, and the 2026 tables are not published -- p.27: "We are bringing the
- * terrain from the WTC in Germany. More information will be provided later."
- * Those ratings cannot exist until the venue. What CAN be derived with no data
- * at all is the column above: who holds each table pick is a pure function of
- * which side you took.
+ * The table half is deliberately left unpriced, and that is a scoping decision
+ * rather than a gap waiting to be filled. Terrain is pre-set by the organisers;
+ * nobody places it, nobody designs a list for a specific table, and the whole
+ * decision is "which of these five suits what my army does". That is a judgement
+ * a player makes standing in front of the tables, and putting a number on it
+ * would dress up a read as a calculation. What the app can honestly do is say
+ * WHO holds each pick -- the column above, derived from the rules alone, with no
+ * data entry -- and leave the choice itself to the person making it.
  */
 export interface OpeningChoice {
   /** True when we should put the first player up. */
