@@ -723,7 +723,108 @@ it is shift-invariant.
    does *not* settle is whether to change it: doing so alters displayed scores
    and requires a reviewed re-baseline of the golden master. The measurement is
    done; the decision is deliberately not.
-5. **Separating "my choice" from "their response."** The 0.92 probability swing
-   in `DECISION_SENSITIVITY_FINDINGS.md` §5 is measured across all 50 depth-1
-   nodes, which bundle our opening choice with the opponent's reply. Attributing
-   it to the controllable half is the remaining measurement.
+5. ~~**Separating "my choice" from "their response."**~~ **Answered — see §11.3
+   and `DECISION_SENSITIVITY_FINDINGS.md` Finding 7.** Measured on 31 real
+   boards: their reply is worth ~2.6x our opening choice, and our choice is
+   worth *exactly zero* on 16 of 31 boards. The remaining open part is whether
+   the same ratio holds at later decisions, not at the opening.
+
+---
+
+## 11. The protocol engine (mobile)
+
+Sections 1-10 describe the desktop engine, which scores by enumerating
+assignments. `webapp/src/engine/` takes a different route, and the difference is
+mathematical rather than cosmetic.
+
+### 11.1 Why the assignment bound is loose
+
+The desktop floor minimises over **every perfect assignment** of our five
+players to theirs. That is safe, but many of those assignments are unreachable:
+WTC pairing is a turn-taking game, not a free choice of permutation. Bounding
+over outcomes that cannot occur understates what we can guarantee.
+
+`protocol.ts` plays the actual game instead. Two distinct decisions exist at
+each step and **they belong to different sides**:
+
+1. which pair to offer — the defending side's decision
+2. which of the pair plays — the attacking side's decision
+
+The player offered but not picked is then put forward by their own side. That
+leftover rule is what makes a *bus* possible: a side can offer a pair knowing
+that whichever one is declined dictates the following matchup. It is the
+mechanic Team Irving lost to in 2024, and an assignment-based bound cannot
+represent it at all, because it has no notion of turn order.
+
+Exact minimax over that structure gives `protocolFloor`, which is **tighter
+than the assignment floor and strictly more honest than assuming cooperation**.
+
+### 11.2 The opponent model, and what it does not claim
+
+Finding 12 measured the correlation between two teams' ratings of the same 25
+matchups at **r = -0.049**. The mirror axiom — that their grid is ours
+reflected — is false. We therefore cannot infer which matchups they *want*.
+
+So the engine does not try. The opponent minimises **our** total on **our own**
+numbers. This is deliberately not a claim about their preferences; it is a
+bound. Whatever they are really optimising, they cannot do worse to us than the
+worst that can be done to us. `protocolFloor` therefore survives not knowing
+their grid at all — which is the only property worth having, given r ≈ 0.
+
+### 11.3 The opportunity profile
+
+Minimax alone ties constantly, because their best reply caps our options
+equally: **28 of 31 real boards** open with two or more choices scoring
+identically, and §11.3's companion measurement shows our opening choice is
+worth *exactly zero* on 16 of them. A single number has nothing left to say,
+and "it is a coin flip" is not advice anyone can act on at a table.
+
+The tie is an artifact of asking one statistic to carry more than it can. For
+each of our options, `optionProfile` examines **every reply they have**:
+
+| quantity | meaning |
+|---|---|
+| `guaranteed` | what we hold if they answer perfectly (the minimax value) |
+| `ifTheyErr` | what their *worst* reply gives us |
+| `punishingReplies` | how many of their replies actually hold us to the floor |
+| `upside` | `ifTheyErr − guaranteed` |
+
+`punishingReplies` is the load-bearing one: **one reply in ten is a completely
+different proposition from three in ten**, though minimax scores them alike.
+This separates **24 of the 28** tied boards.
+
+Ranking is **value-first**: upside never buys a lower floor. The profile only
+ever reorders options that were already tied, so it cannot trade away a
+guarantee in pursuit of a gamble.
+
+### 11.4 Choice versus response
+
+Measuring the two halves of a decision separately, in round points on the same
+board (`measure.decompose.test.ts`, 31 boards):
+
+| | mean | median | max |
+|---|---|---|---|
+| our opening choice | 0.48 | **0.00** | 1.0 |
+| their reply | 1.26 | 1.00 | 2.0 |
+
+Their reply outweighs our choice on 20 of 31 boards, and our choice is worth
+nothing at all on 16 of 31.
+
+The consequence is structural, not incremental: **ranking openings cannot be
+the product**, because on the median board there is nothing to rank. What
+remains actionable is the error surface — how much upside is on the table and
+how many of their replies remove it. That is the profile in §11.3, and this
+measurement is an independent argument for it, reached from the opposite
+direction.
+
+### 11.5 Summary
+
+| result | status |
+|---|---|
+| Protocol floor is tighter than the assignment floor | proved by construction; the assignment bound includes unreachable outcomes |
+| Mirror axiom is false | measured, r = -0.049 on 25 shared matchups |
+| Opponent bound survives unknown opponent grids | follows from minimising our total, not modelling theirs |
+| Top openers tie | measured, 28/31 real boards |
+| Opportunity profile separates ties | measured, 24/28 |
+| Their reply outweighs our choice | measured, 2.6x mean, dominates on 20/31 |
+| Our opening choice is worth zero | measured, 16/31 boards |

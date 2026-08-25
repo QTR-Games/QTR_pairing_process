@@ -399,3 +399,90 @@ The mathematics is written up in `docs/SCORING_MATHEMATICS.md` §3.4, where it
 now stands as the fourth and only *external* validation check on the scoring
 engine.
 
+
+---
+
+# Finding 7 — separating what you control from what they do to you
+
+*This is the measurement asked for as "how do we actually address this
+scientifically." It settles the caveat that every earlier number in this
+document carries: the swing was measured across depth-1 nodes, which bundles
+**your opening pick** together with **their reply**, so none of it was
+attributable to either side.*
+
+## The method
+
+Both halves are measured in round points on the same board, so they compare
+directly:
+
+| Quantity | Definition | Whose decision |
+|---|---|---|
+| **Choice range** | spread of guaranteed value across *our* legal openings | ours |
+| **Response range** | spread of value across *their* replies, once we have committed to our best opening | theirs |
+
+Choice range asks: how much does it cost to open badly, if they answer
+perfectly? Response range asks: once we have opened well, how much does their
+answer still move the result?
+
+Measured on all 31 real WTC 2024 boards. Harness:
+`webapp/src/engine/measure.decompose.test.ts`.
+
+## The result
+
+```
+our choice     mean 0.48   median 0.00   max 1.0
+their reply    mean 1.26   median 1.00   max 2.0
+
+Their reply outweighs our choice on 20/31 boards.
+Our choice is worth literally nothing on 16/31 boards.
+```
+
+Three things follow, and the third is the important one.
+
+1. **Their reply is worth about 2.6x your opening choice.** The half of the
+   decision you do not own dominates the half you do.
+
+2. **On 16 of 31 boards your opening choice is worth exactly zero.** Not
+   "nearly zero" — every legal opener guarantees the identical round total. The
+   median board is one of these. This is the honest, quantified version of the
+   "everything ties" complaint.
+
+3. **Therefore ranking openers cannot be the product.** On the median board
+   there is nothing to rank. An app whose central feature is sorting openings by
+   score is, on half its inputs, sorting numbers that are all the same — and
+   presenting the arbitrary winner as a recommendation.
+
+## What this justifies
+
+This is an independent argument for the opportunity profile, arrived at from
+the opposite direction. If our choice is worth 0 and their reply is worth 2.0,
+then the only lever left is **which option gives them the most ways to go
+wrong** — how much upside is on the table, and how many of their replies take
+it away. That is precisely what `optionProfile` reports, and it is why the
+tie-break is not a cosmetic addition: on 16 of 31 boards it is the *only*
+information available.
+
+It also reframes "play to your outs" as measurable rather than folkloric. When
+every opener guarantees the same floor, the choice between them is entirely a
+choice about their error surface. There is no floor left to trade away.
+
+## Caveats, stated plainly
+
+- Measured at the opening only. Later decisions may attribute differently, and
+  this does not claim otherwise.
+- `response` is taken as the upside of the opening the app would actually
+  recommend (the highest-upside option among tied-best openings). Using the
+  worst tied option instead lowers the response figure; the direction of the
+  result does not change, but the 2.6x ratio would.
+- Both quantities are computed against *our* grid, under the bound described in
+  `protocol.ts` — the opponent minimises our total. That bound survives not
+  knowing their grid (Finding 12, the mirror axiom is false), but it is a bound,
+  not a prediction of their preferences.
+
+## Supersedes
+
+The correction block at the top of this document cites a win-probability span
+of roughly 7.6%–70.6% on USA Bison. **That figure predates the threshold fix
+and the protocol-aware engine and should not be quoted.** The points-versus-
+probability argument it was making still stands; the specific numbers do not.
+Finding 7 is the current, re-measured statement of how much a decision matters.
