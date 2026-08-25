@@ -755,3 +755,415 @@ button.ghost {
   color: var(--accent);
   font-weight: 700;
 }
+
+/* ==========================================================================
+   Desktop workspace -- everything below 1024px is untouched by this block.
+   ==========================================================================
+
+   Scoped twice over on purpose: every rule lives inside the media query AND
+   under `.app-wide`, a class App only ever puts on the desktop branch. A phone
+   cannot match these selectors even if the query is later widened by accident.
+   Nothing above this comment was edited to add the desktop layout.
+   ========================================================================== */
+
+@media (min-width: 1024px) {
+  .app-wide {
+    max-width: none;
+    padding: 0 0 2rem;
+  }
+
+  .app-wide .app-head {
+    padding: 0.75rem 1.5rem 0;
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+  }
+
+  .app-wide .app-head h1 {
+    margin: 0;
+    font-size: 1.35rem;
+  }
+
+  .app-wide .tabs {
+    margin-left: auto;
+  }
+
+  .app-wide .tabs button {
+    flex: none;
+    padding: 0.6rem 1.25rem;
+  }
+
+  .app-wide main {
+    padding: 1.25rem 1.5rem;
+  }
+
+  /* Three columns and a full-width strip beneath them. The sheet gets the most
+     room because it is the thing being read across a table. */
+  .desk {
+    display: grid;
+    grid-template-columns: minmax(290px, 1fr) minmax(540px, 1.55fr) minmax(340px, 1.05fr);
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .desk-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-width: 0;
+  }
+
+  .desk-full {
+    grid-column: 1 / -1;
+  }
+
+  .app-wide .panel {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 1rem;
+  }
+
+  .app-wide .panel > h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .app-wide .panel-sub {
+    margin: 0.9rem 0 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+
+  .app-wide .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .app-wide .switch {
+    flex: none;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--dim);
+    cursor: pointer;
+  }
+
+  .app-wide .switch input {
+    accent-color: var(--accent);
+  }
+
+  /* The sheet can breathe: bigger cells, readable names, room for the overlay. */
+  .app-wide .grid th:first-child {
+    width: 8rem;
+  }
+
+  .app-wide .col-head span {
+    font-size: 0.78rem;
+  }
+
+  .app-wide .row-head {
+    font-size: 0.82rem;
+  }
+
+  .app-wide .cell {
+    height: 68px;
+    font-size: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    cursor: pointer;
+  }
+
+  .app-wide .cell:hover {
+    outline: 2px solid rgba(255, 255, 255, 0.5);
+    outline-offset: -2px;
+  }
+
+  /* ---- dodge heat map ---- */
+
+  .heat {
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    line-height: 1;
+    text-shadow: none;
+  }
+
+  .heat.free {
+    color: rgba(255, 255, 255, 0.62);
+    text-transform: uppercase;
+  }
+
+  .heat.pinned {
+    background: rgba(0, 0, 0, 0.55);
+    color: #ffd0d0;
+    border-radius: 3px;
+    padding: 1px 4px;
+    text-transform: uppercase;
+  }
+
+  .heat.cost {
+    position: relative;
+    display: block;
+    width: 82%;
+    background: rgba(0, 0, 0, 0.42);
+    border-radius: 3px;
+    overflow: hidden;
+    padding: 1px 0;
+  }
+
+  .heat-bar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: rgba(255, 255, 255, 0.55);
+  }
+
+  .heat-num {
+    position: relative;
+    display: block;
+    text-align: center;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- reach ---- */
+
+  .reach-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+
+  .reach-table th,
+  .reach-table td {
+    padding: 0.35rem 0.4rem;
+    text-align: left;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .reach-table thead th {
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+
+  .reach-table tbody th {
+    font-weight: 500;
+    max-width: 9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .reach-table tr.gap,
+  .reach-table tr.shield {
+    background: rgba(79, 157, 240, 0.09);
+  }
+
+  .reach-table tr:hover {
+    background: rgba(79, 157, 240, 0.18);
+  }
+
+  .reach-table .muted {
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .reach-table .strike {
+    text-decoration: line-through;
+  }
+
+  .reach-table .via {
+    color: var(--dim);
+    font-size: 0.74rem;
+    max-width: 10rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pip {
+    display: inline-block;
+    min-width: 1.75rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 5px;
+    text-align: center;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- both currencies ---- */
+
+  .cur-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .cur-col {
+    background: var(--panel-2);
+    border-radius: 8px;
+    padding: 0.75rem;
+  }
+
+  .cur-col .panel-sub {
+    margin-top: 0;
+  }
+
+  .cur-big {
+    margin: 0;
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cur-verdict {
+    margin: 0.5rem 0 0;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .cur-verdict.win {
+    color: #6ede97;
+  }
+
+  .cur-verdict.loss {
+    color: #ff8a80;
+  }
+
+  .cur-rows {
+    margin: 0.6rem 0 0;
+    font-size: 0.78rem;
+  }
+
+  .cur-rows > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.15rem 0;
+  }
+
+  .cur-rows dt {
+    color: var(--dim);
+  }
+
+  .cur-rows dd {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .app-wide .insight.warn-row {
+    border-left: 3px solid var(--warn);
+    padding-left: 0.6rem;
+  }
+
+  /* ---- protocol tree ---- */
+
+  .tree-cols {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .tree-col {
+    min-width: 0;
+  }
+
+  .tree-scroll {
+    max-height: 22rem;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+  }
+
+  .tree-node {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    margin-bottom: 0.3rem;
+    padding: 0.45rem 0.6rem;
+    background: var(--panel-2);
+    border: 1px solid transparent;
+    border-left: 3px solid transparent;
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.82rem;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .tree-node:hover {
+    border-color: var(--line);
+  }
+
+  .tree-node.best {
+    border-left-color: var(--accent);
+  }
+
+  .tree-node.on {
+    background: rgba(79, 157, 240, 0.16);
+    border-color: var(--accent);
+  }
+
+  .tree-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tree-val {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    flex: none;
+  }
+
+  .tree-val.win {
+    color: #6ede97;
+  }
+  .tree-val.loss {
+    color: #ff8a80;
+  }
+  .tree-val.draw {
+    color: var(--warn);
+  }
+
+  /* ---- board controls ---- */
+
+  .desk-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+  }
+
+  .desk-controls .field.inline {
+    flex: 1 1 9rem;
+    margin: 0;
+  }
+
+  .desk-controls .field.inline > span {
+    white-space: nowrap;
+  }
+
+  .desk-controls button.primary {
+    flex: none;
+  }
+}

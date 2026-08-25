@@ -56,8 +56,11 @@ describe("worstMatchupDodge", () => {
     expect(matrix[got!.example.ours][got!.example.theirs]).toBe(1);
   });
 
-  // 31 boards through the exhaustive pricer at roughly 207ms each, which is the
-  // whole reason worstMatchupDodge exists. Well past vitest's 5s default.
+  // Explicit timeout: this runs an exhaustive `dodgeMapChance` sweep on all 31
+  // boards, which is the whole reason `worstMatchupDodge` exists. It was already
+  // marginal against the 5 s default and tipped over once another engine test
+  // file competed for a worker, so the limit is stated rather than inherited and
+  // is set well clear of the measured cost.
   it("agrees with the exhaustive price on every real board", { timeout: 120_000 }, () => {
     for (const { opponent, matrix } of FIXTURES) {
       const fast = worstMatchupDodge(matrix, 1, 5);
