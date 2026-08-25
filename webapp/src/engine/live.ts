@@ -271,11 +271,15 @@ export interface PickTieBreak {
   player: number;
   /** The half not taken. */
   other: number;
-  /** Which instrument separated them. */
-  reason: "typical" | "upside" | "pressure";
-  /** The figure that decided it, for the taken half. */
+  /**
+   * Which instrument separated them, or `interchangeable` when nothing did
+   * because nothing could -- see that rung for why it is an answer, not a
+   * shrug.
+   */
+  reason: "typical" | "upside" | "pressure" | "average" | "interchangeable";
+  /** The figure that decided it, for the taken half. Unused when interchangeable. */
   value: number;
-  /** The same figure for the half not taken. */
+  /** The same figure for the half not taken. Unused when interchangeable. */
   otherValue: number;
 }
 
@@ -283,22 +287,48 @@ export interface PickTieBreak {
 const TIEBREAK_TRIALS = 96;
 
 /**
- * Smallest gap in typical value worth printing, set above the worst case of
- * two independent 96-trial errors (0.191 each). Below this the halves are
- * genuinely indistinguishable on this instrument and we say so rather than
- * inventing a reason.
+ * Smallest gap in typical value worth printing, as a fraction of the rating
+ * span. Below this the halves are genuinely indistinguishable on this
+ * instrument and we say so rather than inventing a reason.
  *
- * Only the sampled rung needs a threshold. The upside and pressure rungs are
- * computed exactly from the board, so any difference in them is real.
+ * This is a fraction, not a fixed number of points, because the engine sees
+ * ratings in whatever units are on screen -- a 0-100 board arrives here as
+ * values around 0-100. `measure.tiebreak.test.ts` stretched the same real
+ * boards onto every scale the app offers and measured the sampler's error:
+ *
+ *     scale        | span |  p90 err |  max err | err/span
+ *     stoplight    |    2 |    0.096 |    0.191 |   0.096
+ *     1-5          |    4 |    0.154 |    0.532 |   0.133
+ *     1-10         |    9 |    0.393 |    0.892 |   0.099
+ *     1-20         |   19 |    0.841 |    2.189 |   0.115
+ *     0-100        |  100 |    4.846 |    7.696 |   0.077
+ *
+ * The last column is flat, so the error is proportional to the span and a
+ * fixed threshold cannot be right on more than one scale. Held absolute at
+ * 0.4, a 0-100 board would print half-point "differences" as advice while its
+ * own noise floor is nearly 8 points. 0.2 of the span clears the measured
+ * worst case on every scale and reproduces the old 0.4 exactly on stoplight.
+ *
+ * Only the sampled rung needs a threshold. The upside, pressure and average
+ * rungs are computed exactly from the board, so any difference in them is real
+ * at any scale.
  */
-const MIN_REAL_GAP = 0.4;
+const MIN_REAL_GAP_FRACTION = 0.2;
 
 export function pickTieBreak(
   matrix: Matrix,
   s: LiveState,
   pair: [number, number],
+  /**
+   * Difference between the best and worst rating the current scale allows
+   * (`scale.max - scale.min`). Required rather than defaulted: the only way a
+   * caller gets this wrong is silently, and the failure is noise dressed as
+   * advice.
+   */
+  ratingSpan: number,
 ): PickTieBreak | null {
   if (s.attackerSide !== "our") return null;
+  const minRealGap = MIN_REAL_GAP_FRACTION * ratingSpan;
 
   const picks = pickOptions(matrix, s, pair);
   if (Math.abs(picks[0].value - picks[1].value) > 1e-9) return null;
@@ -312,6 +342,7 @@ export function pickTieBreak(
         player: p.player,
         typical: after.banked,
         ceiling: after.banked,
+        meanReply: after.banked,
         // Nothing left for them to get wrong, so nothing can punish us.
         punishRate: 0,
       };
@@ -339,6 +370,7 @@ export function pickTieBreak(
       player: p.player,
       typical: after.banked + view.expected,
       ceiling: Math.max(...values),
+      meanReply: values.reduce((sum, v) => sum + v, 0) / values.length,
       punishRate: values.filter((v) => Math.abs(v - worst) < 1e-9).length / values.length,
     };
   });
@@ -347,7 +379,7 @@ export function pickTieBreak(
 
   // Rung 2: what it typically plays out to, if they play their own board
   // rather than hunting ours. Sampled, so it must clear the noise floor.
-  if (Math.abs(a.typical - b.typical) >= MIN_REAL_GAP) {
+  if (Math.abs(a.typical - b.typical) >= minRealGap) {
     const [win, lose] = a.typical > b.typical ? [a, b] : [b, a];
     return {
       player: win.player,
@@ -385,7 +417,55 @@ export function pickTieBreak(
     };
   }
 
+  // Rung 5: identical floor, typical, ceiling and punish rate -- so compare the
+  // whole reply space rather than just its ends. Exact. This catches halves
+  // whose extremes match but whose middles do not.
+  if (Math.abs(a.meanReply - b.meanReply) > 1e-9) {
+    const [win, lose] = a.meanReply > b.meanReply ? [a, b] : [b, a];
+    return {
+      player: win.player,
+      other: lose.player,
+      reason: "average",
+      value: win.meanReply,
+      otherValue: lose.meanReply,
+    };
+  }
+
+  // Terminal rung: nothing separated them, so check whether anything *could*.
+  // If the two carry the same ratings against every player we still hold, they
+  // are interchangeable on this board and no instrument will ever split them.
+  //
+  // Measured on the five real WTC boards: 145 of 242 unseparated ties (60%) are
+  // this case. Saying so is an answer -- it tells the user their own grid has
+  // no opinion left, so anything they know off-sheet decides it. Staying silent
+  // implies the app checked and found nothing, which is a different claim.
+  if (sameAgainstOurPool(matrix, s, picks[0].player, picks[1].player)) {
+    return {
+      player: picks[0].player,
+      other: picks[1].player,
+      reason: "interchangeable",
+      value: 0,
+      otherValue: 0,
+    };
+  }
+
   return null;
+}
+
+/**
+ * Do these two of their players carry identical ratings against everyone we
+ * still have, including the player currently put forward?
+ *
+ * The attacker is included because they are about to play one of the two, so
+ * their row is part of what makes the halves comparable.
+ */
+function sameAgainstOurPool(matrix: Matrix, s: LiveState, x: number, y: number): boolean {
+  const live = s.ourPool | (1 << s.attacker);
+  for (let r = 0; r < matrix.length; r++) {
+    if (!(live & (1 << r))) continue;
+    if (Math.abs(matrix[r][x] - matrix[r][y]) > 1e-9) return false;
+  }
+  return true;
 }
 
 /**

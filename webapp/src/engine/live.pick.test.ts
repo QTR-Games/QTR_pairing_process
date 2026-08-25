@@ -63,7 +63,7 @@ describe("pickOptions", () => {
 
 describe("pickTieBreak", () => {
   it("declines when the choice is not ours to make", () => {
-    expect(pickTieBreak(MATRIX, ourAttackerFacing(false), [1, 2])).toBeNull();
+    expect(pickTieBreak(MATRIX, ourAttackerFacing(false), [1, 2], 2)).toBeNull();
   });
 
   it("declines when the floor already separates the halves", () => {
@@ -73,7 +73,7 @@ describe("pickTieBreak", () => {
         const picks = pickOptions(MATRIX, s, [i, j]);
         if (Math.abs(picks[0].value - picks[1].value) > 1e-9) {
           // The floor decided it; there is nothing for a second instrument to add.
-          expect(pickTieBreak(MATRIX, s, [i, j])).toBeNull();
+          expect(pickTieBreak(MATRIX, s, [i, j], 2)).toBeNull();
           return;
         }
       }
@@ -84,7 +84,7 @@ describe("pickTieBreak", () => {
     const s = ourAttackerFacing(true);
     for (let i = 0; i < N; i++) {
       for (let j = i + 1; j < N; j++) {
-        const tb = pickTieBreak(MATRIX, s, [i, j]);
+        const tb = pickTieBreak(MATRIX, s, [i, j], 2);
         if (!tb) continue;
         expect([i, j]).toContain(tb.player);
         expect([i, j]).toContain(tb.other);
@@ -95,18 +95,22 @@ describe("pickTieBreak", () => {
 
   it("only ever names the half its stated reason actually favours", () => {
     // 43% of our picks tie on the floor; the ladder then tries typical value,
-    // then upside, then how much of their reply space punishes us.
+    // then upside, then how much of their reply space punishes us, then the
+    // average over that space -- and finally declares them interchangeable.
     let seen = 0;
     const byReason: Record<string, number> = {};
     for (let a = 0; a < N; a++) {
       const s: LiveState = { ...ourAttackerFacing(true), ourPool: FULL & ~(1 << a), attacker: a };
       for (let i = 0; i < N; i++) {
         for (let j = i + 1; j < N; j++) {
-          const tb = pickTieBreak(MATRIX, s, [i, j]);
+          const tb = pickTieBreak(MATRIX, s, [i, j], 2);
           if (!tb) continue;
           seen++;
           byReason[tb.reason] = (byReason[tb.reason] ?? 0) + 1;
-          if (tb.reason === "pressure") {
+          if (tb.reason === "interchangeable") {
+            // Names neither half as better, so it carries no ordered figure.
+            expect(tb.value).toBe(tb.otherValue);
+          } else if (tb.reason === "pressure") {
             // Fewer punishing replies is better, so this one reads the other way.
             expect(tb.value).toBeLessThan(tb.otherValue);
           } else {
@@ -118,6 +122,25 @@ describe("pickTieBreak", () => {
     expect(seen).toBeGreaterThan(0);
   });
 
+  it("only calls two halves interchangeable when the grid really cannot tell them apart", () => {
+    // The strongest claim the ladder makes, so it gets checked against the
+    // board directly: every player we still hold must rate the two identically.
+    for (let a = 0; a < N; a++) {
+      const s: LiveState = { ...ourAttackerFacing(true), ourPool: FULL & ~(1 << a), attacker: a };
+      for (let i = 0; i < N; i++) {
+        for (let j = i + 1; j < N; j++) {
+          const tb = pickTieBreak(MATRIX, s, [i, j], 2);
+          if (tb?.reason !== "interchangeable") continue;
+          const live = s.ourPool | (1 << s.attacker);
+          for (let r = 0; r < N; r++) {
+            if (!(live & (1 << r))) continue;
+            expect(MATRIX[r][tb.player]).toBe(MATRIX[r][tb.other]);
+          }
+        }
+      }
+    }
+  });
+
   it("never prints a sampled gap smaller than the sampler's own error", () => {
     // Only the `typical` rung is sampled. `measure.tiebreak.test.ts` put the
     // worst case for two 96-trial halves at 0.382; anything under that would be
@@ -127,7 +150,7 @@ describe("pickTieBreak", () => {
       const s: LiveState = { ...ourAttackerFacing(true), ourPool: FULL & ~(1 << a), attacker: a };
       for (let i = 0; i < N; i++) {
         for (let j = i + 1; j < N; j++) {
-          const tb = pickTieBreak(MATRIX, s, [i, j]);
+          const tb = pickTieBreak(MATRIX, s, [i, j], 2);
           if (tb?.reason !== "typical") continue;
           expect(tb.value - tb.otherValue).toBeGreaterThanOrEqual(0.4);
         }
@@ -141,8 +164,8 @@ describe("pickTieBreak", () => {
     const s = ourAttackerFacing(true);
     for (let i = 0; i < N; i++) {
       for (let j = i + 1; j < N; j++) {
-        const a = pickTieBreak(MATRIX, s, [i, j]);
-        const b = pickTieBreak(MATRIX, s, [i, j]);
+        const a = pickTieBreak(MATRIX, s, [i, j], 2);
+        const b = pickTieBreak(MATRIX, s, [i, j], 2);
         expect(a?.player ?? null).toBe(b?.player ?? null);
         expect(a?.reason ?? null).toBe(b?.reason ?? null);
         expect(a?.value ?? null).toBe(b?.value ?? null);
@@ -155,5 +178,70 @@ describe("the opening state", () => {
   it("does not offer pick guidance before an offer exists", () => {
     const s = newRound(N, true);
     expect(currentDecision(s).kind).not.toBe("offer");
+  });
+});
+
+/**
+ * The same board must give the same advice on any scale.
+ *
+ * Ratings are stored as fractions and rendered in whatever units are on screen,
+ * so the engine receives a 0-100 board as values around 0-100 and a stoplight
+ * board as 1-3. The threshold on the sampled rung is therefore a fraction of
+ * the rating span rather than a fixed number of points -- held absolute, a
+ * 0-100 board would print half-point "differences" as advice while its own
+ * measured noise floor is nearly 8 points.
+ *
+ * This is the user-visible contract behind that: switching the scale re-labels
+ * the buttons, it does not change what the app tells you to do.
+ */
+describe("advice does not depend on the scale it is displayed in", () => {
+  const stretch = (m: Matrix, min: number, max: number): Matrix =>
+    m.map((row) => row.map((v) => min + ((v - 1) / 2) * (max - min))) as Matrix;
+
+  const SCALES: [string, number, number][] = [
+    ["1-5", 1, 5],
+    ["1-10", 1, 10],
+    ["1-20", 1, 20],
+    ["0-100", 0, 100],
+  ];
+
+  for (const [label, min, max] of SCALES) {
+    it(`reaches the same verdict on ${label} as on stoplight`, () => {
+      const wide = stretch(MATRIX, min, max);
+      for (let i = 0; i < N; i++) {
+        for (let j = i + 1; j < N; j++) {
+          const s = ourAttackerFacing(true);
+          const base = pickTieBreak(MATRIX, s, [i, j], 2);
+          const scaled = pickTieBreak(wide, s, [i, j], max - min);
+
+          // Either both decline to answer, or both answer the same way for the
+          // same reason. A scale change must not turn silence into advice.
+          if (base === null) {
+            expect(scaled).toBeNull();
+            continue;
+          }
+          expect(scaled).not.toBeNull();
+          expect(scaled!.player).toBe(base.player);
+          expect(scaled!.reason).toBe(base.reason);
+        }
+      }
+    });
+  }
+
+  it("never prints a gap smaller than the sampler's own error, at any scale", () => {
+    // err/span was measured flat at 0.077-0.133 across every scale the app
+    // offers, so a threshold of 0.2 of the span clears the worst case
+    // everywhere. Anything printed below that would be noise.
+    for (const [, min, max] of SCALES) {
+      const span = max - min;
+      const wide = stretch(MATRIX, min, max);
+      for (let i = 0; i < N; i++) {
+        for (let j = i + 1; j < N; j++) {
+          const tb = pickTieBreak(wide, ourAttackerFacing(true), [i, j], span);
+          if (tb?.reason !== "typical") continue;
+          expect(Math.abs(tb.value - tb.otherValue)).toBeGreaterThanOrEqual(0.2 * span);
+        }
+      }
+    }
   });
 });
