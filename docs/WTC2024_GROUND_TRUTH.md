@@ -445,6 +445,158 @@ Two further columns exist in their sheet that this app does not model at all:
 
 ---
 
+## Finding 15 — The decision worth agonising over is not the opening
+
+Every version of this app has put its best analysis on the **opening**: which
+player to lead with. That is the screen the desktop app sorts, and it is the
+question "smart sort" was built to answer.
+
+On real data it is the flattest decision in the round.
+
+`playerLeverage` answers the question asked for most often here — *hold Pete or
+hold Bokur* — by searching the rest of the round twice per player, once
+committing them and once refusing to, and reporting the difference. Measuring
+the **spread** across our five players says whether that panel is telling the
+user anything at all. A spread of zero means every player is worth the same to
+hold, and the panel is confidently reporting noise.
+
+Measured across all 31 WTC 2024 boards:
+
+| Our decision | Boards where players separate | Mean spread | Median | Max |
+|---|---|---|---|---|
+| **Opening** (depth 0) | 15/31 — **48%** | 0.58 | **0.00** | 2.00 |
+| **Second decision** (depth 1) | 26/31 — **84%** | **1.77** | **2.00** | 4.00 |
+
+On the typical board, *who you hold at the opening does not matter* — the median
+spread is literally zero. One decision later, the median is **2 points on a ~17
+point total**, and the mean triples.
+
+This corroborates the choice-versus-response decomposition, which found our
+opening choice worth nothing on 16/31 boards. Same boards, same story, reached
+from a different direction: **the opening is low-information, and the decision
+immediately after their reply is where the round is actually won.**
+
+What it changes:
+
+- The app has been putting its heaviest analysis on its weakest decision.
+- "Which opener?" deserves a small answer. "Now that they have replied, who do
+  you spend and who do you keep?" deserves the screen.
+- It gives a concrete answer to *"it is not clear when those decision points
+  happen"*: they happen at your **second** decision, and on 84% of boards there
+  is a real, measurable difference between holding one player and another.
+
+Structural note: depths 0 and 1 are the only decisions we own. Verified, not
+assumed — all 31 walks complete the full 5 pairings (`stopped by complete
+31/31`). The remaining decisions are theirs or forced.
+
+### A measurement error worth recording
+
+The first version of this walk reported **only depth 0** and I nearly wrote it
+up as "leverage does not deepen." It was wrong. `currentDecision` never returns
+a `pick` — the offered pair lives in component state, not in `LiveState` — so
+the walk hit the first offer, failed to match any branch, and silently stopped
+one decision in. The "no deeper signal" reading was an artifact of my own walker
+giving up, not a property of the game.
+
+The fix was to resolve offers in two steps (the offering side proposes, the
+attacking side takes the half that suits it) and, more importantly, to make the
+walker **report why it stopped** and how many pairings it completed. The finding
+above is only trustworthy because that instrumentation says `complete 31/31`.
+
+Reproduce:
+
+```bash
+cd webapp
+QTR_MEASURE=1 npx vitest run src/engine/measure.leverage.test.ts \
+  --reporter=verbose --disable-console-intercept
+```
+
+---
+
+## Finding 16 — Our "worst-case bound" *is* the mirror axiom, and it costs 1.4 points of pessimism
+
+`protocol.ts:27-40` defends the webapp's opponent model as a bound rather than a
+belief:
+
+> *"The opponent here minimises OUR total on OUR OWN numbers. That is not a claim
+> about their preferences; it is a bound ... `protocolFloor` is a guarantee that
+> survives not knowing their grid at all."*
+
+That defence is sound for the number. It is **not** sound for the advice built on
+it, and the reason is one line of algebra:
+
+```
+a side maximising  O = 1 - M   maximises  sum(1 - M)
+                               which is   minimising sum(M)
+```
+
+"The opponent minimises our total" and "the opponent's grid is our grid mirrored"
+are **the same opponent**. The worst-case model and the mirror axiom that
+Finding 12 refuted (r = −0.049 between two real teams' grids) are one model in two
+sets of clothes.
+
+This is not an argument — it is asserted as a CI test. `measure.opponent.test.ts`
+plays a two-grid general-sum solver with their grid set to `1 − M` and checks it
+reproduces single-grid minimax on **all 31 boards × all 5 openings, to 9 decimal
+places**. It does. That test is not measurement-gated; it runs on every push.
+
+### What the assumption actually costs
+
+The null model Finding 12 supports: their grid is drawn *independently* of ours
+from the same marginal distribution of real ratings. We then play the real
+protocol as a general-sum game — we maximise our grid, they maximise theirs.
+
+200 trials per board, 31 boards, repeated across 4 seeds:
+
+| Quantity | Value | Stable across seeds? |
+|---|---|---|
+| Regret from following the floor ranking | **0.07 pts** | Yes — 0.069–0.074 |
+| Floor understates realised score by | **1.40 pts** | Yes — 1.396–1.403 |
+| Max understatement on a single board | **~2.5 pts** | Yes |
+| "App picked the best opening" agreement | 29–39% | **No — do not quote** |
+
+Two conclusions, and they pull in opposite directions:
+
+- **The advice is safe.** Following the floor ranking costs **0.07 points**. The
+  mirror axiom is theoretically refuted and practically almost harmless *for
+  ranking*. Nothing needs to be ripped out.
+- **The displayed number is not.** The floor runs **1.40 points pessimistic**
+  against an opponent optimising their own board. The app shows 14 where 15.4 is
+  the realistic expectation.
+
+That gap is exactly the distinction asked for at the table — *"must win versus
+must not lose."* The floor is the must-not-lose number. It has never been
+labelled as one, and the must-win number has never been shown at all.
+
+### The number I nearly published
+
+The first run said the app picks a different opening from the trial-best on
+**19 of 31 boards**, and the obvious headline was *"the recommendation is wrong
+61% of the time."* Re-running under three more seeds moved agreement to 29%, 35%,
+29% — the identity of the "best" opening is **not identifiable**, because the
+openings are too close to separate at 200 trials. Regret and floor error did not
+move at all.
+
+The alarming number was the unstable one. This is the same lesson as Finding 15's
+walker bug from the other direction: the harness now prints `SEED-UNSTABLE, do not
+quote` next to it, and re-checking with `QTR_SEED` is a precondition for quoting
+anything from this file.
+
+It also independently corroborates Finding 15 — if the opening mattered, the best
+opening would be identifiable. It isn't.
+
+Reproduce:
+
+```bash
+cd webapp
+QTR_MEASURE=1 npx vitest run src/engine/measure.opponent.test.ts \
+  --reporter=verbose --disable-console-intercept
+QTR_SEED=2 QTR_MEASURE=1 npx vitest run src/engine/measure.opponent.test.ts \
+  --reporter=verbose --disable-console-intercept
+```
+
+---
+
 ## What this changes — revised
 
 | Question originally asked | What the ground truth says |
@@ -453,5 +605,7 @@ Two further columns exist in their sheet that this app does not model at all:
 | *Can the analysis be more purposeful?* | Not from a flat grid. 74% of it is one number (**Finding 8**), and it rated the losing board 14/15 (**Finding 13**). |
 | *Can we beat "smart sort"?* | Better ranking of a low-resolution matrix is not the win. **Resolution itself** is the win (**Findings 13, 14**), plus signals the grid does not contain (**Finding 11**). |
 | *How do we avoid being bussed?* | **Stop modelling them as your mirror** (**Finding 12**). Assume an opponent who *maximises on a grid you cannot see* (**Finding 13**), and score your openings by how bad their best reply can be — not by your own optimistic total. |
+| *Where should the analysis point?* | **Not at the opening.** Who you hold at the opening is worth nothing on the median board; one decision later it is worth 2 points (**Finding 15**). The heaviest analysis has been sitting on the weakest decision. |
+| *Is the current advice actually wrong?* | **No — the ranking is safe** (0.07 pts of regret), but the number beside it is **1.4 pts pessimistic** and unlabelled (**Finding 16**). The fix is presentation — show the floor *as* a floor, and show the expected value next to it. |
 
 ---

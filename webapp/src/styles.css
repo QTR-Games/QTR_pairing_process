@@ -481,6 +481,17 @@ main {
   color: #d6dbe3;
 }
 
+/* A flat readout is the common case at the opening, so it should read as
+   settled information rather than as the loud panel that has something to
+   report. Muted, and no trailing gap since no list follows it. */
+.leverage.flat {
+  opacity: 0.85;
+}
+
+.leverage.flat .leverage-lead {
+  margin-bottom: 0;
+}
+
 .leverage ul,
 .committed ul,
 .result-tables,
