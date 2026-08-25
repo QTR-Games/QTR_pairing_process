@@ -240,15 +240,23 @@ function OptionRow({
     // decision, so it needs the same numbers as any other decision of ours.
     const choiceIsOurs = attackerSide === "our";
     const picks = pickOptions(matrix, state, option.pair);
-    // Only for the row being recommended -- this runs a sampled solve, and the
-    // question it answers ("which half, given the floor ties") is only ever
-    // asked about the option actually being taken.
+    // Every row, not just the recommended one: *they* choose which pair to
+    // offer, so the row the user actually faces is not the row we would have
+    // picked for them. Advising only the recommendation leaves the real
+    // decision unlabelled.
+    //
+    // Affordable because `pickTieBreak` returns before sampling anything unless
+    // the floor ties, and only 43% of rows do. Measured over the five real WTC
+    // boards, the whole list costs a median of 29ms and at worst 92ms.
     const tieBreak =
-      choiceIsOurs && best && Math.abs(picks[0].value - picks[1].value) < 1e-9
+      choiceIsOurs && Math.abs(picks[0].value - picks[1].value) < 1e-9
         ? pickTieBreak(matrix, state, option.pair)
         : null;
     const highlight = (p: PickOption): boolean => {
       if (!choiceIsOurs) return false;
+      // Interchangeable means neither is preferred, so marking one would be a
+      // claim the engine explicitly declined to make.
+      if (tieBreak?.reason === "interchangeable") return false;
       if (tieBreak) return p.player === tieBreak.player;
       return p.best && Math.abs(picks[0].value - picks[1].value) > 1e-9;
     };
@@ -288,10 +296,18 @@ function OptionRow({
             </button>
           ))}
         </div>
-        {choiceIsOurs && best && (
+        {choiceIsOurs && (
           <p className="pick-hint">
             {picks[0].value !== picks[1].value ? (
               <>Take {names(picks.find((p) => p.best)!.player)}.</>
+            ) : tieBreak?.reason === "interchangeable" ? (
+              <>
+                Both hold {fmt(picks[0].value)}, and your grid rates{" "}
+                {names(tieBreak.player)} and {names(tieBreak.other)} the same
+                against everyone you have left &mdash; so this is genuinely
+                yours to call. Pick on what the sheet cannot see: terrain, who
+                wants the table, who is on form.
+              </>
             ) : tieBreak ? (
               <>
                 Both hold {fmt(picks[0].value)}. Take{" "}
@@ -307,6 +323,12 @@ function OptionRow({
                     if they misplay against {fmt(tieBreak.otherValue)}. Play to
                     your outs.
                   </>
+                ) : tieBreak.reason === "average" ? (
+                  <>
+                    floor, ceiling and pressure all match, but across their whole
+                    reply space it averages {fmt(tieBreak.value)} against{" "}
+                    {fmt(tieBreak.otherValue)}.
+                  </>
                 ) : (
                   <>
                     same floor and same upside, but only{" "}
@@ -317,8 +339,10 @@ function OptionRow({
               </>
             ) : (
               <>
-                Both hold {fmt(picks[0].value)} and play out identically all the
-                way down. Take whichever suits the table.
+                Both hold {fmt(picks[0].value)} and every measure this app has
+                comes out level &mdash; but they are not the same players, so
+                there is an edge here the grid is not capturing. Trust what you
+                know about the matchup.
               </>
             )}
           </p>

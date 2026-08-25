@@ -772,3 +772,74 @@ carry values on both halves, which was the substantive fix anyway.
 | *Is the current advice actually wrong?* | **No — the ranking is safe** (0.07 pts of regret), but the number beside it was **1.4 pts pessimistic** and unlabelled (**Finding 16**). **Fixed** — the verdict now shows `GUARANTEED` and `TYPICAL` side by side. |
 
 ---
+
+---
+
+## Finding 18 — the advice was on the wrong row, and 60% of "no answer" was actually an answer
+
+*Method: `webapp/src/engine/measure.tiebreak.test.ts` (QTR_MEASURE-gated), five real WTC
+boards, all 1550 offers where the pick is ours. Verified in a browser at 390px.*
+
+Finding 17 left the tie-break ladder answering **63%** of tied picks, with ~16% of all
+our picks getting no reason at all. Two things were wrong with that, and only one of
+them was a maths problem.
+
+### The maths half: most "unseparable" ties are literally identical
+
+Of the 242 ties nothing could separate:
+
+| | count | share |
+|---|---|---|
+| The two carry **identical ratings** against every player we still hold | **145** | **60%** |
+| They genuinely differ | 97 | 40% |
+
+An identical pair cannot be separated because there is nothing there to separate. That
+is not the app failing — it is the app's one honest *"your call"*, and it is worth
+saying out loud, because it tells the user their **own grid has run out of opinion**,
+so terrain, form, and who wants the table decide it. Staying silent instead implies the
+app looked and found nothing, which is a different and weaker claim.
+
+Of the 97 that genuinely differ, an exact instrument — the **mean over their whole
+reply space**, rather than just its ends — separates 51. Two candidates separated
+**zero**: reply count and our best follow-up after their strongest reply. They were
+measured and dropped rather than shipped on intuition.
+
+Ladder coverage after adding both rungs:
+
+| | before | after |
+|---|---|---|
+| Ties answered | 63% | **93%** |
+| Unanswered, as a share of all our picks | 16% | **3%** |
+
+By instrument: `typical` 204, `pressure` 214, `interchangeable` 145, `average` 51,
+`upside` **0**.
+
+`upside` still never fires on a 1–3 board, because whenever typical value ties the
+ceiling ties too. It is kept deliberately: it is exact and free, and a wider rating
+scale is exactly the condition that would separate ceilings. **Note for the scale
+work:** `MIN_REAL_GAP = 0.4` is in rating units and is calibrated to a 1–3 board. Widen
+the scale and the noise floor must be re-measured with it, or the sampled rung starts
+printing noise.
+
+### The UI half: it was advising the wrong row
+
+Driving the app in a browser showed the offer `T4 or T5` — an interchangeable pair,
+exactly the case above — rendering **no hint at all**. The hint was gated to the
+*recommended* row, on the assumption that the sampled solve was too expensive to run
+for the whole list.
+
+That gate was wrong on both counts:
+
+1. **The opponent chooses which pair to offer.** The row the user actually faces is not
+   the row the app would have picked for them. Advising only the recommendation leaves
+   the real decision unlabelled — the same failure as Finding 17, one level up.
+2. **The cost assumption was never measured.** The estimate was ~540ms for a full list.
+   Measured, it is a **median of 29ms and a worst case of 92ms**, because `pickTieBreak`
+   returns before sampling anything unless the floor ties, and only 43% of rows do.
+
+Every offer now carries its own reason. On the Australia board this turns a list where
+one row in ten had advice into one where all ten do.
+
+The lesson is the recurring one in this file: **the guess was 6x pessimistic in the
+direction that justified doing less work.** Measuring it cost one test and removed the
+whole justification for the gate.

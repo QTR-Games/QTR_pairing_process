@@ -95,7 +95,8 @@ describe("pickTieBreak", () => {
 
   it("only ever names the half its stated reason actually favours", () => {
     // 43% of our picks tie on the floor; the ladder then tries typical value,
-    // then upside, then how much of their reply space punishes us.
+    // then upside, then how much of their reply space punishes us, then the
+    // average over that space -- and finally declares them interchangeable.
     let seen = 0;
     const byReason: Record<string, number> = {};
     for (let a = 0; a < N; a++) {
@@ -106,7 +107,10 @@ describe("pickTieBreak", () => {
           if (!tb) continue;
           seen++;
           byReason[tb.reason] = (byReason[tb.reason] ?? 0) + 1;
-          if (tb.reason === "pressure") {
+          if (tb.reason === "interchangeable") {
+            // Names neither half as better, so it carries no ordered figure.
+            expect(tb.value).toBe(tb.otherValue);
+          } else if (tb.reason === "pressure") {
             // Fewer punishing replies is better, so this one reads the other way.
             expect(tb.value).toBeLessThan(tb.otherValue);
           } else {
@@ -116,6 +120,25 @@ describe("pickTieBreak", () => {
       }
     }
     expect(seen).toBeGreaterThan(0);
+  });
+
+  it("only calls two halves interchangeable when the grid really cannot tell them apart", () => {
+    // The strongest claim the ladder makes, so it gets checked against the
+    // board directly: every player we still hold must rate the two identically.
+    for (let a = 0; a < N; a++) {
+      const s: LiveState = { ...ourAttackerFacing(true), ourPool: FULL & ~(1 << a), attacker: a };
+      for (let i = 0; i < N; i++) {
+        for (let j = i + 1; j < N; j++) {
+          const tb = pickTieBreak(MATRIX, s, [i, j]);
+          if (tb?.reason !== "interchangeable") continue;
+          const live = s.ourPool | (1 << s.attacker);
+          for (let r = 0; r < N; r++) {
+            if (!(live & (1 << r))) continue;
+            expect(MATRIX[r][tb.player]).toBe(MATRIX[r][tb.other]);
+          }
+        }
+      }
+    }
   });
 
   it("never prints a sampled gap smaller than the sampler's own error", () => {
