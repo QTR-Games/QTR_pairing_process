@@ -1,12 +1,14 @@
 import { useMemo } from "react";
 import type { Matrix } from "../engine/boardAnalysis";
 import { evenThreshold } from "../engine/boardAnalysis";
-import type { LiveState, MoveOption, OptionProfile } from "../engine/live";
+import type { LiveState, MoveOption, OptionProfile, PickOption } from "../engine/live";
 import {
   commitPairing,
   currentDecision,
   moveOptions,
   optionProfile,
+  pickOptions,
+  pickTieBreak,
   playerLeverage,
 } from "../engine/live";
 import type { Board } from "../model/board";
@@ -136,6 +138,8 @@ export function LivePanel({ board, state, onState, onReset }: Props) {
                 option={o}
                 profile={p}
                 decision={decision}
+                matrix={matrix}
+                state={state}
                 best={idx === 0}
                 ownerIsUs={ownerIsUs}
                 tau={tau}
@@ -202,6 +206,8 @@ function OptionRow({
   option,
   profile,
   decision,
+  matrix,
+  state,
   best,
   ownerIsUs,
   tau,
@@ -213,6 +219,8 @@ function OptionRow({
   option: MoveOption;
   profile?: OptionProfile;
   decision: ReturnType<typeof currentDecision>;
+  matrix: Matrix;
+  state: LiveState;
   best: boolean;
   ownerIsUs: boolean;
   tau: number;
@@ -228,6 +236,22 @@ function OptionRow({
     // An offer is two taps: what was offered, then which one was taken.
     const attackerSide = "attackerSide" in decision ? decision.attackerSide : "our";
     const names = attackerSide === "our" ? theirName : ourName;
+    // When we hold the attacker, choosing between the two halves is OUR
+    // decision, so it needs the same numbers as any other decision of ours.
+    const choiceIsOurs = attackerSide === "our";
+    const picks = pickOptions(matrix, state, option.pair);
+    // Only for the row being recommended -- this runs a sampled solve, and the
+    // question it answers ("which half, given the floor ties") is only ever
+    // asked about the option actually being taken.
+    const tieBreak =
+      choiceIsOurs && best && Math.abs(picks[0].value - picks[1].value) < 1e-9
+        ? pickTieBreak(matrix, state, option.pair)
+        : null;
+    const highlight = (p: PickOption): boolean => {
+      if (!choiceIsOurs) return false;
+      if (tieBreak) return p.player === tieBreak.player;
+      return p.best && Math.abs(picks[0].value - picks[1].value) > 1e-9;
+    };
     return (
       <li className={"option" + (best ? " best" : "")}>
         <div className="option-main">
@@ -248,12 +272,57 @@ function OptionRow({
           )}
         </div>
         <div className="pick-row">
-          {option.pair.map((p) => (
-            <button key={p} type="button" className="pick" onClick={() => onPick(p)}>
-              {names(p)} played
+          {picks.map((p) => (
+            <button
+              key={p.player}
+              type="button"
+              className={"pick" + (highlight(p) ? " pick-best" : "")}
+              onClick={() => onPick(p.player)}
+            >
+              <span className="pick-name">
+                {names(p.player)} {choiceIsOurs ? "" : "played"}
+              </span>
+              <span className={"pick-value" + (p.value > tau ? " winning" : "")}>
+                {fmt(p.value)}
+              </span>
             </button>
           ))}
         </div>
+        {choiceIsOurs && best && (
+          <p className="pick-hint">
+            {picks[0].value !== picks[1].value ? (
+              <>Take {names(picks.find((p) => p.best)!.player)}.</>
+            ) : tieBreak ? (
+              <>
+                Both hold {fmt(picks[0].value)}. Take{" "}
+                <strong>{names(tieBreak.player)}</strong> &mdash;{" "}
+                {tieBreak.reason === "typical" ? (
+                  <>
+                    if they play their own board it leaves {fmt(tieBreak.value)}{" "}
+                    reachable against {fmt(tieBreak.otherValue)}.
+                  </>
+                ) : tieBreak.reason === "upside" ? (
+                  <>
+                    same floor either way, but it keeps {fmt(tieBreak.value)} alive
+                    if they misplay against {fmt(tieBreak.otherValue)}. Play to
+                    your outs.
+                  </>
+                ) : (
+                  <>
+                    same floor and same upside, but only{" "}
+                    {Math.round(tieBreak.value * 100)}% of their replies hold you
+                    there, against {Math.round(tieBreak.otherValue * 100)}%.
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                Both hold {fmt(picks[0].value)} and play out identically all the
+                way down. Take whichever suits the table.
+              </>
+            )}
+          </p>
+        )}
       </li>
     );
   }

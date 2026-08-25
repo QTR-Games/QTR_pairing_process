@@ -20,6 +20,7 @@
  */
 
 import type { Matrix } from "./boardAnalysis";
+import { outlook } from "./opponent";
 import type { ProtocolResult, ProtocolState, Side } from "./protocol";
 import { solveProtocol } from "./protocol";
 
@@ -165,10 +166,45 @@ function offerValue(
   pair: [number, number],
   memo: Map<string, ProtocolResult>,
 ): number {
-  const attackerIsUs = s.attackerSide === "our";
-  let best = attackerIsUs ? -Infinity : Infinity;
+  // Same search the pick buttons show, minus what is already banked -- one
+  // implementation, so the offer's headline value and the two halves beneath
+  // it can never disagree on screen.
+  const picks = pickOptions(matrix, s, pair, memo);
+  const best = picks.find((p) => p.best)!;
+  return best.value - s.banked;
+}
 
-  for (const picked of pair) {
+/**
+ * The two halves of an offer, valued.
+ *
+ * An offer is resolved by the *attacking* side choosing which of the pair they
+ * face. When that side is us, this is a real decision of ours and the app owes
+ * us a number for it -- the panel used to render two unlabelled buttons that
+ * only said which player "was played", which is the right framing when we are
+ * recording their choice and no help at all when the choice is ours.
+ *
+ * Found by playing a full round in a browser and tapping the first button at
+ * every step: the round finished a point under the guaranteed floor, purely
+ * because nothing on screen said which half to take.
+ */
+export interface PickOption {
+  /** The player from the offered pair. */
+  player: number;
+  /** Final round total if this half is taken and play is perfect after it. */
+  value: number;
+  /** True for the half the attacking side should take. */
+  best: boolean;
+}
+
+export function pickOptions(
+  matrix: Matrix,
+  s: LiveState,
+  pair: [number, number],
+  memo: Map<string, ProtocolResult> = new Map(),
+): PickOption[] {
+  const attackerIsUs = s.attackerSide === "our";
+
+  const out: PickOption[] = pair.map((picked) => {
     const leftover = picked === pair[0] ? pair[1] : pair[0];
     const [ours, theirs] = attackerIsUs ? [s.attacker, picked] : [picked, s.attacker];
     const banked = matrix[ours][theirs];
@@ -192,10 +228,164 @@ function offerValue(
             memo,
           ).value;
 
-    const total = banked + rest;
-    if (attackerIsUs ? total > best : total < best) best = total;
+    return { player: picked, value: s.banked + banked + rest, best: false };
+  });
+
+  const target = attackerIsUs
+    ? Math.max(...out.map((o) => o.value))
+    : Math.min(...out.map((o) => o.value));
+  for (const o of out) o.best = Math.abs(o.value - target) < 1e-9;
+  return out;
+}
+
+/**
+ * When both halves of an offer hold the same floor, what separates them.
+ *
+ * The guaranteed number is a minimax value, so on a tight board it ties
+ * constantly -- and "either one is the same, take your pick" is not advice, it
+ * is the app declining to answer. There is almost always signal underneath: two
+ * halves with an identical floor can differ sharply in what they leave
+ * reachable once the opponent plays their own board rather than hunting ours.
+ *
+ * Returns null when the halves genuinely do not tie (the floor already decided
+ * it) or when the choice is not ours to make.
+ *
+ * The gap has to be *real*. `outlook` averages sampled opponent grids, so it
+ * carries a sampling error, and printing a difference smaller than that error
+ * would dress up noise as advice -- worse than saying nothing, because it looks
+ * authoritative. `measure.tiebreak.test.ts` measured that error against a
+ * 1500-trial reference over 155 real states:
+ *
+ *     trials |  p90 err |  max err | ms per call
+ *         24 |    0.209 |    0.351 |         6.6
+ *         96 |    0.096 |    0.191 |        27.1
+ *        192 |    0.065 |    0.157 |        57.5
+ *        384 |    0.040 |    0.105 |       112.5
+ *
+ * A tie-break runs two of these, so 96 trials keeps a tap near 54ms while
+ * bounding each half's error at 0.191 -- 0.382 for the pair in the worst case.
+ * MIN_REAL_GAP sits just above that, so any gap this prints survived the noise.
+ */
+export interface PickTieBreak {
+  /** The half to take. */
+  player: number;
+  /** The half not taken. */
+  other: number;
+  /** Which instrument separated them. */
+  reason: "typical" | "upside" | "pressure";
+  /** The figure that decided it, for the taken half. */
+  value: number;
+  /** The same figure for the half not taken. */
+  otherValue: number;
+}
+
+/** Sampled grids per half when breaking a tie. See the table above. */
+const TIEBREAK_TRIALS = 96;
+
+/**
+ * Smallest gap in typical value worth printing, set above the worst case of
+ * two independent 96-trial errors (0.191 each). Below this the halves are
+ * genuinely indistinguishable on this instrument and we say so rather than
+ * inventing a reason.
+ *
+ * Only the sampled rung needs a threshold. The upside and pressure rungs are
+ * computed exactly from the board, so any difference in them is real.
+ */
+const MIN_REAL_GAP = 0.4;
+
+export function pickTieBreak(
+  matrix: Matrix,
+  s: LiveState,
+  pair: [number, number],
+): PickTieBreak | null {
+  if (s.attackerSide !== "our") return null;
+
+  const picks = pickOptions(matrix, s, pair);
+  if (Math.abs(picks[0].value - picks[1].value) > 1e-9) return null;
+
+  const scored = picks.map((p) => {
+    const leftover = p.player === pair[0] ? pair[1] : pair[0];
+    const after = commitPairing(matrix, s, s.attacker, p.player, leftover, "their");
+
+    if (currentDecision(after).kind === "done") {
+      return {
+        player: p.player,
+        typical: after.banked,
+        ceiling: after.banked,
+        // Nothing left for them to get wrong, so nothing can punish us.
+        punishRate: 0,
+      };
+    }
+
+    const view = outlook(
+      matrix,
+      {
+        ourPool: after.ourPool,
+        theirPool: after.theirPool,
+        attacker: after.attacker,
+        attackerSide: after.attackerSide,
+      },
+      p.value - after.banked,
+      TIEBREAK_TRIALS,
+    );
+
+    // Deterministic: every reply they could make, valued exactly. `ceiling` is
+    // what we collect if they slip; `punishRate` is how much of their reply
+    // space actually holds us to the floor.
+    const replies = moveOptions(matrix, after);
+    const values = replies.map((r) => r.value);
+    const worst = Math.min(...values);
+    return {
+      player: p.player,
+      typical: after.banked + view.expected,
+      ceiling: Math.max(...values),
+      punishRate: values.filter((v) => Math.abs(v - worst) < 1e-9).length / values.length,
+    };
+  });
+
+  const [a, b] = scored;
+
+  // Rung 2: what it typically plays out to, if they play their own board
+  // rather than hunting ours. Sampled, so it must clear the noise floor.
+  if (Math.abs(a.typical - b.typical) >= MIN_REAL_GAP) {
+    const [win, lose] = a.typical > b.typical ? [a, b] : [b, a];
+    return {
+      player: win.player,
+      other: lose.player,
+      reason: "typical",
+      value: win.typical,
+      otherValue: lose.typical,
+    };
   }
-  return best;
+
+  // Rung 3: play to your outs. Same floor, same typical -- but one half keeps a
+  // bigger prize alive if they misplay. Exact, so any difference counts.
+  if (Math.abs(a.ceiling - b.ceiling) > 1e-9) {
+    const [win, lose] = a.ceiling > b.ceiling ? [a, b] : [b, a];
+    return {
+      player: win.player,
+      other: lose.player,
+      reason: "upside",
+      value: win.ceiling,
+      otherValue: lose.ceiling,
+    };
+  }
+
+  // Rung 4: identical floor, typical and ceiling -- so the separator is how
+  // much of their reply space actually punishes us. Fewer punishing replies
+  // means more of their plausible answers leave us better than the floor.
+  if (Math.abs(a.punishRate - b.punishRate) > 1e-9) {
+    const [win, lose] = a.punishRate < b.punishRate ? [a, b] : [b, a];
+    return {
+      player: win.player,
+      other: lose.player,
+      reason: "pressure",
+      value: win.punishRate,
+      otherValue: lose.punishRate,
+    };
+  }
+
+  return null;
 }
 
 /**
