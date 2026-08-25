@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { Board } from "../model/board";
 import { boardScale, setRating, TEAM_SIZE } from "../model/board";
 import { fromFraction, ratingColor, scaleValues, toFraction } from "../model/scale";
@@ -10,6 +10,15 @@ interface Props {
   locked?: Set<string>;
   /** Cells to outline as the recommendation. */
   highlight?: Set<string>;
+  /**
+   * Extra content to render inside each cell, under the rating.
+   *
+   * Only ever supplied by the desktop workspace, which uses it for the dodge
+   * heat map. Omitted everywhere else, and when omitted this renders nothing at
+   * all -- so the phone grid is byte-identical to what it was before this prop
+   * existed. Returning null for a cell is the normal case even on desktop.
+   */
+  overlay?: (ours: number, theirs: number) => ReactNode;
 }
 
 /**
@@ -20,7 +29,7 @@ interface Props {
  * opens the value picker rather than a keyboard: phone keyboards cover half the
  * screen and typing a number is slower than hitting one of five big targets.
  */
-export function Grid({ board, onChange, locked, highlight }: Props) {
+export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
   const scale = boardScale(board);
   const [editing, setEditing] = useState<{ ours: number; theirs: number } | null>(null);
   const values = scaleValues(scale);
@@ -61,6 +70,7 @@ export function Grid({ board, onChange, locked, highlight }: Props) {
                       aria-label={`${board.ourPlayers[i]} versus ${board.theirPlayers[j]}`}
                     >
                       {fromFraction(f, scale)}
+                      {overlay?.(i, j)}
                     </button>
                   </td>
                 );

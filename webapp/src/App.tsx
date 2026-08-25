@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Grid, Rosters } from "./components/Grid";
 import { LivePanel } from "./components/LivePanel";
 import { Verdict } from "./components/Verdict";
+import { BoardBackup } from "./components/BoardBackup";
 import {
   boardScale,
   deleteBoard,
@@ -18,6 +19,8 @@ import { DODGE_MODES, loadSettings, saveSettings, type DodgeMode } from "./model
 import { newRound, type LiveState } from "./engine/live";
 import { boardMatrix } from "./model/board";
 import { openingChoice } from "./engine/protocol";
+import { DesktopWorkspace } from "./components/desktop/DesktopWorkspace";
+import { useWideViewport } from "./components/desktop/useWideViewport";
 import "./styles.css";
 
 type Tab = "board" | "round" | "boards";
@@ -40,6 +43,26 @@ export default function App() {
   });
   const [highlight, setHighlight] = useState<Set<string>>(new Set());
   const [dodgeMode, setDodgeMode] = useState<DodgeMode>(() => loadSettings().dodgeMode);
+
+  // Set and persist in one call. Both layouts expose this preference, so the
+  // write has to live in one place or one of them will change it without
+  // saving it.
+  const changeDodgeMode = (next: DodgeMode) => {
+    setDodgeMode(next);
+    saveSettings({ dodgeMode: next });
+  };
+
+  /**
+   * Which of the two layouts to render.
+   *
+   * A branch rather than a reflow. The phone tree below is exactly what it was
+   * before the desktop workspace existed, and it is what a 390px viewport gets;
+   * the workspace is a separate component that a phone never mounts. That is
+   * deliberate insurance -- the phone build ships to an event, and a shared
+   * layout that merely restyles itself is one careless selector away from a
+   * regression nobody notices until the venue.
+   */
+  const wide = useWideViewport();
 
   // Persist on every edit. There is no save button, because forgetting to press
   // one between rounds is not a failure mode worth having at an event.
@@ -80,6 +103,59 @@ export default function App() {
   function startRound() {
     setLive(newRound(board.ourPlayers.length, board.ourTeamFirst));
     setTab("round");
+  }
+
+  if (wide) {
+    return (
+      <div className="app app-wide">
+        <header className="app-head">
+          <h1>{board.opponent || "New board"}</h1>
+          <nav className="tabs">
+            {/*
+              Two tabs, not three. Board and Round are the same screen here,
+              which is the whole reason to have a bigger one.
+            */}
+            <button className={tab !== "boards" ? "on" : ""} onClick={() => setTab("board")}>
+              Workspace
+            </button>
+            <button className={tab === "boards" ? "on" : ""} onClick={() => setTab("boards")}>
+              Saved
+            </button>
+          </nav>
+        </header>
+        <main>
+          {tab === "boards" ? (
+            <BoardsPanel
+              boards={boards}
+              scaleId={board.scaleId}
+              onNew={(b) => {
+                setBoard(b);
+                setLive(null);
+                setTab("board");
+              }}
+              onOpen={(b) => {
+                setBoard(b);
+                const resumed = loadLive(b.id);
+                setLive(resumed);
+                setTab("board");
+              }}
+              onDelete={(id) => setBoards(deleteBoard(id))}
+              onRestored={setBoards}
+            />
+          ) : (
+            <DesktopWorkspace
+              board={board}
+              onBoard={setBoard}
+              live={live}
+              onLive={setLive}
+              onStartRound={startRound}
+              dodgeMode={dodgeMode}
+              onDodgeMode={changeDodgeMode}
+            />
+          )}
+        </main>
+      </div>
+    );
   }
 
   return (
@@ -177,11 +253,7 @@ export default function App() {
                 <span>Show the worst-matchup price</span>
                 <select
                   value={dodgeMode}
-                  onChange={(e) => {
-                    const next = e.target.value as DodgeMode;
-                    setDodgeMode(next);
-                    saveSettings({ dodgeMode: next });
-                  }}
+                  onChange={(e) => changeDodgeMode(e.target.value as DodgeMode)}
                 >
                   {DODGE_MODES.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -214,50 +286,76 @@ export default function App() {
           ))}
 
         {tab === "boards" && (
-          <div className="boards">
-            <button
-              className="primary wide"
-              onClick={() => {
-                const b = emptyBoard(board.scaleId);
-                setBoard(b);
-                setLive(null);
-                setTab("board");
-              }}
-            >
-              New board
-            </button>
-            <ul>
-              {boards.map((b) => (
-                <li key={b.id}>
-                  <button
-                    className="board-open"
-                    onClick={() => {
-                      setBoard(b);
-                      // Resume that board's round if it has one, rather than
-                      // silently discarding it just because you looked away.
-                      const resumed = loadLive(b.id);
-                      setLive(resumed);
-                      setTab(resumed ? "round" : "board");
-                    }}
-                  >
-                    <span>{b.opponent || "Untitled"}</span>
-                    <small>{new Date(b.updatedAt).toLocaleDateString()}</small>
-                  </button>
-                  <button
-                    className="ghost"
-                    onClick={() => setBoards(deleteBoard(b.id))}
-                    aria-label={`Delete ${b.opponent}`}
-                  >
-                    Delete
-                  </button>
-                </li>
-              ))}
-              {boards.length === 0 && <p className="hint">Nothing saved yet.</p>}
-            </ul>
-            <InstallNote />
-          </div>
+          <BoardsPanel
+            boards={boards}
+            scaleId={board.scaleId}
+            onNew={(b) => {
+              setBoard(b);
+              setLive(null);
+              setTab("board");
+            }}
+            onOpen={(b) => {
+              setBoard(b);
+              // Resume that board's round if it has one, rather than
+              // silently discarding it just because you looked away.
+              const resumed = loadLive(b.id);
+              setLive(resumed);
+              setTab(resumed ? "round" : "board");
+            }}
+            onDelete={(id) => setBoards(deleteBoard(id))}
+            onRestored={setBoards}
+          />
         )}
       </main>
+    </div>
+  );
+}
+
+interface BoardsPanelProps {
+  boards: Board[];
+  scaleId: string;
+  onNew: (b: Board) => void;
+  onOpen: (b: Board) => void;
+  onDelete: (id: string) => void;
+  /** The restored list, so the caller can re-render against it. */
+  onRestored: (boards: Board[]) => void;
+}
+
+/**
+ * The saved-board list.
+ *
+ * Lifted out of the tab body unchanged so both layouts render the same markup.
+ * The only difference between them is where the caller sends you afterwards:
+ * the phone jumps to the round when one is in progress, because it cannot show
+ * you the board and the round at the same time. The desktop workspace can, so
+ * it always lands on the workspace.
+ */
+function BoardsPanel({ boards, scaleId, onNew, onOpen, onDelete, onRestored }: BoardsPanelProps) {
+  return (
+    <div className="boards">
+      <button className="primary wide" onClick={() => onNew(emptyBoard(scaleId))}>
+        New board
+      </button>
+      <ul>
+        {boards.map((b) => (
+          <li key={b.id}>
+            <button className="board-open" onClick={() => onOpen(b)}>
+              <span>{b.opponent || "Untitled"}</span>
+              <small>{new Date(b.updatedAt).toLocaleDateString()}</small>
+            </button>
+            <button
+              className="ghost"
+              onClick={() => onDelete(b.id)}
+              aria-label={`Delete ${b.opponent}`}
+            >
+              Delete
+            </button>
+          </li>
+        ))}
+        {boards.length === 0 && <p className="hint">Nothing saved yet.</p>}
+      </ul>
+      <BoardBackup onRestored={onRestored} />
+      <InstallNote />
     </div>
   );
 }

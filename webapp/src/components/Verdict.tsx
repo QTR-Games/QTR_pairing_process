@@ -4,6 +4,7 @@ import type { Matrix } from "../engine/boardAnalysis";
 import { decisionReport, evenThreshold, LIVE, SECURED, UNWINNABLE } from "../engine/boardAnalysis";
 import { outlook } from "../engine/opponent";
 import { protocolFloor } from "../engine/protocol";
+import { reachReport } from "../engine/reach";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale, isRated } from "../model/board";
 import type { DodgeMode } from "../model/settings";
@@ -16,6 +17,13 @@ interface Props {
 }
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
+/** "A", "A and B", "A, B and C" -- never a trailing comma before "and". */
+const listNames = (names: string[]): string =>
+  names.length <= 1
+    ? (names[0] ?? "")
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+
 
 /** Probabilities are shown as whole rounds per hundred, never as raw decimals. */
 const pct = (p: number) => `${(p * 100).toFixed(1)}%`;
@@ -97,6 +105,43 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
       wantDodge ? worstMatchupDodge(matrix, scale.min, scale.max, board.ourTeamFirst) : null,
     [wantDodge, matrix, scale.min, scale.max, board.ourTeamFirst],
   );
+
+  /*
+    Who the protocol puts out of reach.
+    
+    Unconditional, unlike the dodge price, because it is ten sorts of five
+    numbers -- 0.008 ms per board -- rather than a search. There is nothing to
+    gate.
+
+    Measured on the 31 saved boards, the two halves earn very different
+    treatment, which is why only one of them is always on screen:
+
+      players who cannot be forced into their own worst matchup
+        per board 0:2  1:6  2:12  3:10  4:1  5:0, mean 2.06 of 5
+        silent on 2/31 boards
+
+      their columns that read better than they play
+        per board 0:15  1:8  2:7  3:1, mean 0.81 of 5
+        silent on 15/31 boards
+
+    The first is a sentence about two of your five players on nearly every
+    board, and it changes what you spend nominations on. The second is absent
+    from half of them, so it appears only when it has something to say rather
+    than holding a permanent slot to say nothing.
+  */
+  const reach = useMemo(
+    () => reachReport(matrix, undefined, board.ourTeamFirst),
+    [matrix, board.ourTeamFirst],
+  );
+
+  const shielded = reach.floors.filter((f) => f.protectedByProtocol);
+  const overstated = reach.ceilings.filter((c) => c.overstated);
+
+  // Rosters are frequently half-typed, so a blank name has to degrade into
+  // something you can still find on the grid rather than an empty gap in a
+  // sentence.
+  const ourName = (i: number) => board.ourPlayers[i]?.trim() || `Your player ${i + 1}`;
+  const theirName = (i: number) => board.theirPlayers[i]?.trim() || `Their list ${i + 1}`;
 
   // An all-even board is arithmetically "unwinnable" -- it lands exactly on the
   // threshold, which needs to be beaten rather than met. Saying so before a
@@ -279,6 +324,58 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
               to weigh. A metric that only ranks by expected value rates it the same as
               pairings that are strictly worse.`}
             onFocus={() => onHighlight?.(new Set([`${dominant.ours}-${dominant.theirs}`]))}
+          />
+        )}
+
+        {shielded.length > 0 && (
+          <Insight
+            title={
+              shielded.length === 1
+                ? `${ourName(shielded[0].ours)} cannot be forced into their worst matchup`
+                : `${listNames(shielded.map((f) => ourName(f.ours)))} cannot be forced into their worst matchups`
+            }
+            body={
+              shielded.length === 1
+                ? `Their worst cell is rated ${fmt(shielded[0].rowWorst)} and it is the only
+                   ${fmt(shielded[0].rowWorst)} in that row -- a single matchup, and a single
+                   matchup can always be refused. The worst they can actually be held to is
+                   ${fmt(shielded[0].level)}. Spending a nomination to protect them buys
+                   nothing.`
+                : `Each of their worst cells is the only one of its rating in that row, and a
+                   lone matchup can always be refused. Their real floors are better than the
+                   grid reads. Spend nominations on the players whose bad matchup is repeated
+                   -- those are the ones that can genuinely be forced.`
+            }
+            onFocus={() =>
+              onHighlight?.(
+                new Set(shielded.flatMap((f) => f.via.map((t) => `${f.ours}-${t}`))),
+              )
+            }
+          />
+        )}
+
+        {overstated.length > 0 && (
+          <Insight
+            title={
+              overstated.length === 1
+                ? `${theirName(overstated[0].theirs)} reads better than they play`
+                : `${listNames(overstated.map((c) => theirName(c.theirs)))} read better than they play`
+            }
+            body={
+              overstated.length === 1
+                ? `Your best cell against them is rated ${fmt(overstated[0].columnBest)}, but it is
+                   the only ${fmt(overstated[0].columnBest)} in that column, so they can refuse it
+                   and you cannot insist. ${overstated[0].level === null ? "" : `Hold them to ${fmt(overstated[0].level)} instead.`}
+                   Do not build a plan around a matchup you cannot force.`
+                : `In each of those columns your best cell is a lone one, which they can refuse.
+                   The grid promises matchups you have no way to insist on, so treat those
+                   columns as worse than they look.`
+            }
+            onFocus={() =>
+              onHighlight?.(
+                new Set(overstated.flatMap((c) => c.via.map((o) => `${o}-${c.theirs}`))),
+              )
+            }
           />
         )}
 
