@@ -1,15 +1,26 @@
-﻿# Publish the phone app.
+# Publish the phone app -- both ways of getting it.
 #
-# The point of this workflow is distribution. An APK has to be sideloaded and
-# re-sent every time something changes; a hosted PWA installs from a link and
-# updates itself. Teammates open the URL once with signal, add it to the home
-# screen, and it works offline from then on.
+# The point of this workflow is distribution. Teammates open one URL with
+# signal, and from there either add the page to their home screen or download
+# the APK; both work offline afterwards.
+#
+# The APK used to ship from a rolling `phone-latest` GitHub release. That does
+# not work here: this repository has immutable releases enabled, so a tag that
+# has been used once can never be reused. The old workflow deleted the release
+# and then re-created it, which meant the first failure destroyed the team's
+# only download link and could not put it back. That is what happened on #52.
+#
+# Pages has no tags and no rulesets, so the same URL can be overwritten forever:
+#
+#   https://qtr-games.github.io/QTR_pairing_process/qtr-pairing.apk
 name: deploy-webapp
 
 on:
   push:
     branches: [main]
-    paths: ['webapp/**', '.github/workflows/deploy-webapp.yml']
+    paths:
+      - 'webapp/**'
+      - '.github/workflows/deploy-webapp.yml'
   workflow_dispatch:
 
 permissions:
@@ -33,9 +44,19 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
+          # Capacitor 8's CLI refuses to run below 22.
           node-version: '22'
           cache: npm
           cache-dependency-path: webapp/package-lock.json
+
+      # Capacitor 8 compiles its Android library at source level 21; JDK 17
+      # gets as far as javac and then fails with "invalid source release: 21".
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
 
       - run: npm ci
         working-directory: webapp
@@ -44,6 +65,33 @@ jobs:
       # the /QTR_pairing_process/ subpath Pages serves it from.
       - run: npm run build
         working-directory: webapp
+
+      # Order matters below. `cap sync` copies dist/ into the native project, so
+      # the APK has to be built before anything is added to dist -- otherwise
+      # the next run would package the previous APK inside the new one.
+      - name: Generate the native project
+        run: npx cap add android
+        working-directory: webapp
+
+      - name: Copy the bundle into it
+        run: npx cap sync android
+        working-directory: webapp
+
+      - name: Assemble the APK
+        run: ./gradlew --no-daemon assembleDebug
+        working-directory: webapp/android
+
+      # Two names for one file. The stable one is what gets shared and what the
+      # in-app link points at; the sha-stamped one lets someone say which build
+      # they are actually running when something looks wrong.
+      - name: Put the APK in the site
+        working-directory: webapp
+        run: |
+          src=android/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$src" || { echo "no APK at $src"; exit 1; }
+          cp "$src" dist/qtr-pairing.apk
+          cp "$src" "dist/qtr-pairing-${GITHUB_SHA:0:7}.apk"
+          ls -lh dist/*.apk
 
       - uses: actions/configure-pages@v5
 

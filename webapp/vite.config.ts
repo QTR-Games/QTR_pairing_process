@@ -41,6 +41,13 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        /*
+         * A tap on the APK link is a navigation request, so without this the
+         * service worker answers it from the precache with index.html and the
+         * download silently produces the app again instead of the installer.
+         * Let it go to the network.
+         */
+        navigateFallbackDenylist: [/\.apk$/],
       },
     }),
   ],

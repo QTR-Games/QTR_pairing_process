@@ -53,15 +53,18 @@ export function LivePanel({ board, state, onState, onReset }: Props) {
    *
    * Options are then ranked by guaranteed value first -- never trade the floor
    * away -- and only among equals by upside, then by how few replies punish it.
+   *
+   * Profiles are computed whether or not anything ties. Finding 20 measured the
+   * two halves of the decision apart across all 31 real boards: the spread our
+   * own choice controls is a median of 0.00 and never exceeds 1.0, while the
+   * spread across their replies runs to 2.0. Their reply is the bigger number
+   * even on boards where our choice does separate, so "up to X if they misstep"
+   * is worth showing on a clear winner too, not only on a coin flip.
    */
   const ranked = useMemo(() => {
     const ours = "owner" in decision && decision.owner === "our";
     const plain = rawOptions.map((o) => ({ o, p: undefined as OptionProfile | undefined }));
-    if (!ours || rawOptions.length < 2) return plain;
-
-    const best = rawOptions[0].value;
-    const tiedCount = rawOptions.filter((o) => Math.abs(o.value - best) < 1e-9).length;
-    if (tiedCount < 2) return plain;
+    if (!ours || rawOptions.length === 0) return plain;
 
     const withProfiles = rawOptions.map((o) => ({
       o,

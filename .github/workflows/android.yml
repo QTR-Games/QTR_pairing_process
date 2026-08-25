@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: android-${{ github.ref }}
@@ -94,35 +94,18 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # An Actions artifact is a login-gated zip, which is a poor way to get an
-      # app onto a teammate's phone. A release asset is a plain .apk on a URL a
-      # phone browser can open directly, so main publishes one and keeps the
-      # tag rolling.
-      - name: Publish it somewhere a phone can reach
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SHA: ${{ steps.name.outputs.sha }}
-          APK: ${{ steps.name.outputs.name }}
-        run: |
-          cat > notes.md <<NOTES
-          Built from $SHA.
-
-          **Android, sideload.** Download the .apk below on the phone and open
-          it. Android asks once for permission to install from this browser.
-
-          Debug-signed, so it will not update over a copy installed from a
-          different source -- uninstall the old one first if it refuses.
-
-          Everything stays on the device: no account, no sync, and it works
-          with no signal.
-
-          If you would rather not sideload, the same build runs in a browser at
-          https://qtr-games.github.io/QTR_pairing_process/ and can be added to
-          the home screen from there.
-          NOTES
-          gh release delete phone-latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create phone-latest "$APK" \
-            --title "QTR Pairing -- phone build" \
-            --prerelease \
-            --notes-file notes.md
+      # This workflow no longer publishes anything. It used to roll a
+      # `phone-latest` release tag, which is incompatible with the immutable
+      # releases this repository has enabled: `gh release delete --cleanup-tag`
+      # removed the old release, and the `create` that followed failed with
+      # "tag_name was used by an immutable release". Because the delete ran
+      # first, the failing run destroyed the team's only download link and
+      # could not put it back -- which is what happened on #52.
+      #
+      # Distribution now happens in deploy-webapp.yml, which drops the APK into
+      # the Pages bundle at a URL that never changes:
+      #
+      #   https://qtr-games.github.io/QTR_pairing_process/qtr-pairing.apk
+      #
+      # What is left here is the check that the phone build still compiles, on
+      # every pull request, before it can reach main.
