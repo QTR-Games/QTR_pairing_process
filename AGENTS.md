@@ -14,6 +14,8 @@ The authoritative repository guide is
 - Ruff is advisory. Do not modify release artifacts, sample data, or PDFs
   without an explicit request.
 - Keep `setup.py` functional because it remains the supported build path.
+- One branch per PR. This repo squash-merges, so after a PR lands, delete the
+  branch and cut a fresh one from `main` rather than reusing it.
 
 Task-focused guidance for reusable work lives in
 [`.github/skills/README.md`](.github/skills/README.md).
