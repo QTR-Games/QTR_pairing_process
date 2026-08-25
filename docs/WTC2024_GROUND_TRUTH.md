@@ -445,6 +445,74 @@ Two further columns exist in their sheet that this app does not model at all:
 
 ---
 
+## Finding 15 — The decision worth agonising over is not the opening
+
+Every version of this app has put its best analysis on the **opening**: which
+player to lead with. That is the screen the desktop app sorts, and it is the
+question "smart sort" was built to answer.
+
+On real data it is the flattest decision in the round.
+
+`playerLeverage` answers the question asked for most often here — *hold Pete or
+hold Bokur* — by searching the rest of the round twice per player, once
+committing them and once refusing to, and reporting the difference. Measuring
+the **spread** across our five players says whether that panel is telling the
+user anything at all. A spread of zero means every player is worth the same to
+hold, and the panel is confidently reporting noise.
+
+Measured across all 31 WTC 2024 boards:
+
+| Our decision | Boards where players separate | Mean spread | Median | Max |
+|---|---|---|---|---|
+| **Opening** (depth 0) | 15/31 — **48%** | 0.58 | **0.00** | 2.00 |
+| **Second decision** (depth 1) | 26/31 — **84%** | **1.77** | **2.00** | 4.00 |
+
+On the typical board, *who you hold at the opening does not matter* — the median
+spread is literally zero. One decision later, the median is **2 points on a ~17
+point total**, and the mean triples.
+
+This corroborates the choice-versus-response decomposition, which found our
+opening choice worth nothing on 16/31 boards. Same boards, same story, reached
+from a different direction: **the opening is low-information, and the decision
+immediately after their reply is where the round is actually won.**
+
+What it changes:
+
+- The app has been putting its heaviest analysis on its weakest decision.
+- "Which opener?" deserves a small answer. "Now that they have replied, who do
+  you spend and who do you keep?" deserves the screen.
+- It gives a concrete answer to *"it is not clear when those decision points
+  happen"*: they happen at your **second** decision, and on 84% of boards there
+  is a real, measurable difference between holding one player and another.
+
+Structural note: depths 0 and 1 are the only decisions we own. Verified, not
+assumed — all 31 walks complete the full 5 pairings (`stopped by complete
+31/31`). The remaining decisions are theirs or forced.
+
+### A measurement error worth recording
+
+The first version of this walk reported **only depth 0** and I nearly wrote it
+up as "leverage does not deepen." It was wrong. `currentDecision` never returns
+a `pick` — the offered pair lives in component state, not in `LiveState` — so
+the walk hit the first offer, failed to match any branch, and silently stopped
+one decision in. The "no deeper signal" reading was an artifact of my own walker
+giving up, not a property of the game.
+
+The fix was to resolve offers in two steps (the offering side proposes, the
+attacking side takes the half that suits it) and, more importantly, to make the
+walker **report why it stopped** and how many pairings it completed. The finding
+above is only trustworthy because that instrumentation says `complete 31/31`.
+
+Reproduce:
+
+```bash
+cd webapp
+QTR_MEASURE=1 npx vitest run src/engine/measure.leverage.test.ts \
+  --reporter=verbose --disable-console-intercept
+```
+
+---
+
 ## What this changes — revised
 
 | Question originally asked | What the ground truth says |
@@ -453,5 +521,6 @@ Two further columns exist in their sheet that this app does not model at all:
 | *Can the analysis be more purposeful?* | Not from a flat grid. 74% of it is one number (**Finding 8**), and it rated the losing board 14/15 (**Finding 13**). |
 | *Can we beat "smart sort"?* | Better ranking of a low-resolution matrix is not the win. **Resolution itself** is the win (**Findings 13, 14**), plus signals the grid does not contain (**Finding 11**). |
 | *How do we avoid being bussed?* | **Stop modelling them as your mirror** (**Finding 12**). Assume an opponent who *maximises on a grid you cannot see* (**Finding 13**), and score your openings by how bad their best reply can be — not by your own optimistic total. |
+| *Where should the analysis point?* | **Not at the opening.** Who you hold at the opening is worth nothing on the median board; one decision later it is worth 2 points (**Finding 15**). The heaviest analysis has been sitting on the weakest decision. |
 
 ---
