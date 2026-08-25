@@ -48,7 +48,21 @@
 import { describe, expect, it } from "vitest";
 import boards from "./__fixtures__/wtc2024Boards.json";
 import type { Matrix } from "./boardAnalysis";
-import { solveProtocol, type ProtocolResult, type Side } from "./protocol";
+// Deliberately the SHIPPED solver, not a copy. The equivalence assertion below
+// is only worth having if it guards the code the app actually runs.
+import { solveJoint } from "./opponent";
+import { solveProtocol, type ProtocolResult } from "./protocol";
+
+/** Two grids: ours[i][j] is points to us, theirs[i][j] is points to them. */
+interface Grids {
+  ours: Matrix;
+  theirs: Matrix;
+}
+
+interface JointValue {
+  us: number;
+  them: number;
+}
 
 interface Fixture {
   opponent: string;
@@ -58,14 +72,6 @@ interface Fixture {
 }
 
 const FIXTURES = boards as Fixture[];
-
-const bits = (mask: number): number[] => {
-  const out: number[] = [];
-  for (let i = 0; mask >> i; i++) if (mask & (1 << i)) out.push(i);
-  return out;
-};
-
-const popcount = (mask: number): number => bits(mask).length;
 
 const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
 
@@ -81,150 +87,6 @@ function rng(seed: number): () => number {
     s = (s * 1664525 + 1013904223) >>> 0;
     return s / 4294967296;
   };
-}
-
-/* ------------------------------------------------------------------ *
- * Two-grid protocol solver.
- *
- * `solveProtocol` gives both sides the same matrix, which forces them to be
- * mirror images. Here each side optimises its OWN grid, so their preferences
- * and ours can disagree -- which is the entire point.
- * ------------------------------------------------------------------ */
-
-interface Grids {
-  /** ours[i][j] = round points to US when our i plays their j. */
-  ours: Matrix;
-  /** theirs[i][j] = round points to THEM for the same pairing. */
-  theirs: Matrix;
-}
-
-interface JointValue {
-  us: number;
-  them: number;
-}
-
-interface JointState {
-  ourPool: number;
-  theirPool: number;
-  attacker: number;
-  attackerSide: Side;
-}
-
-function solveJoint(
-  g: Grids,
-  state: JointState,
-  memo: Map<string, JointValue>,
-): JointValue {
-  const { ourPool, theirPool, attacker, attackerSide } = state;
-  const key = `${ourPool}|${theirPool}|${attacker}|${attackerSide}`;
-  const cached = memo.get(key);
-  if (cached) return cached;
-
-  let result: JointValue;
-
-  if (attacker < 0) {
-    // Opening. The side to move picks the player best for ITSELF.
-    const opener = attackerSide;
-    const pool = opener === "our" ? ourPool : theirPool;
-    let best: JointValue | undefined;
-    for (const p of bits(pool)) {
-      const sub = solveJoint(
-        g,
-        {
-          ourPool: opener === "our" ? ourPool & ~(1 << p) : ourPool,
-          theirPool: opener === "their" ? theirPool & ~(1 << p) : theirPool,
-          attacker: p,
-          attackerSide: opener,
-        },
-        memo,
-      );
-      if (!best || own(sub, opener) > own(best, opener)) best = sub;
-    }
-    result = best ?? { us: 0, them: 0 };
-    memo.set(key, result);
-    return result;
-  }
-
-  const offeringSide: Side = attackerSide === "our" ? "their" : "our";
-  const offeringPool = offeringSide === "our" ? ourPool : theirPool;
-  const candidates = bits(offeringPool);
-
-  if (candidates.length === 0) {
-    result = { us: 0, them: 0 };
-    memo.set(key, result);
-    return result;
-  }
-
-  if (candidates.length === 1) {
-    const other = candidates[0];
-    const [ours, theirs] =
-      attackerSide === "our" ? [attacker, other] : [other, attacker];
-    result = { us: g.ours[ours][theirs], them: g.theirs[ours][theirs] };
-    memo.set(key, result);
-    return result;
-  }
-
-  // The offer belongs to the defending side, and it serves its own interest.
-  let best: JointValue | undefined;
-  for (let a = 0; a < candidates.length; a++) {
-    for (let b = a + 1; b < candidates.length; b++) {
-      const v = resolveOfferJoint(g, state, [candidates[a], candidates[b]], memo);
-      if (!best || own(v, offeringSide) > own(best, offeringSide)) best = v;
-    }
-  }
-
-  result = best ?? { us: 0, them: 0 };
-  memo.set(key, result);
-  return result;
-}
-
-const own = (v: JointValue, side: Side): number => (side === "our" ? v.us : v.them);
-
-function resolveOfferJoint(
-  g: Grids,
-  state: JointState,
-  pair: [number, number],
-  memo: Map<string, JointValue>,
-): JointValue {
-  const { ourPool, theirPool, attacker, attackerSide } = state;
-  const attackerIsUs = attackerSide === "our";
-  let best: JointValue | undefined;
-
-  for (const picked of pair) {
-    const leftover = picked === pair[0] ? pair[1] : pair[0];
-    const [ours, theirs] = attackerIsUs ? [attacker, picked] : [picked, attacker];
-
-    const nextOurPool = attackerIsUs
-      ? ourPool
-      : ourPool & ~(1 << picked) & ~(1 << leftover);
-    const nextTheirPool = attackerIsUs
-      ? theirPool & ~(1 << picked) & ~(1 << leftover)
-      : theirPool;
-
-    const exhausted = popcount(nextOurPool) === 0 && popcount(nextTheirPool) === 0;
-    const rest = exhausted
-      ? { us: 0, them: 0 }
-      : solveJoint(
-          g,
-          {
-            ourPool: nextOurPool,
-            theirPool: nextTheirPool,
-            attacker: leftover,
-            attackerSide: attackerIsUs ? "their" : "our",
-          },
-          memo,
-        );
-
-    const total: JointValue = {
-      us: g.ours[ours][theirs] + rest.us,
-      them: g.theirs[ours][theirs] + rest.them,
-    };
-
-    // The attacking side makes the pick, in its own interest.
-    if (!best || own(total, attackerSide) > own(best, attackerSide)) best = total;
-  }
-
-  return best ?? { us: 0, them: 0 };
 }
 
 /* ------------------------------------------------------------------ */
@@ -341,5 +203,6 @@ describe.skipIf(!process.env.QTR_MEASURE)("opponent model", () => {
         "to separate. Regret (0.069-0.074) and floor error (1.396-1.403) ARE stable.\n" +
         "Re-check with QTR_SEED before quoting any number from this harness.",
     );
-  });
+    // ~6s at the default 200 trials, and QTR_TRIALS can raise that deliberately.
+  }, 120_000);
 });
