@@ -20,8 +20,8 @@ import { protocolFloor, solveProtocol, type ProtocolState, type Side } from "./p
  * for the same board, which is the one failure mode that would matter mid-event.
  */
 
-// Team Irving vs Australia Thorny Devils, scenario 0.
-const WTC_AUSTRALIA: Matrix = [
+// the home team vs Opponent 02, scenario 0.
+const WTC_FLAT_BOARD: Matrix = [
   [3, 3, 3, 2, 3],
   [3, 3, 2, 2, 3],
   [3, 3, 3, 3, 3],
@@ -29,8 +29,8 @@ const WTC_AUSTRALIA: Matrix = [
   [3, 3, 3, 1, 3],
 ];
 
-// Team Irving vs South Africa Tokoloshe, scenario 0.
-const WTC_SOUTH_AFRICA: Matrix = [
+// the home team vs Opponent 23, scenario 0.
+const WTC_TRADEOFF_BOARD: Matrix = [
   [4, 3, 3, 3, 3],
   [2, 3, 3, 3, 3],
   [3, 3, 3, 3, 3],
@@ -121,7 +121,7 @@ describe("hungarianMin", () => {
 
 describe("Outlook", () => {
   it("calls a round unwinnable when the ceiling cannot beat even", () => {
-    const o = boardOutlook(WTC_AUSTRALIA, evenThreshold(5));
+    const o = boardOutlook(WTC_FLAT_BOARD, evenThreshold(5));
     expect(o.ceiling).toBe(15);
     expect(o.tau).toBe(15);
     expect(o.verdict).toBe(UNWINNABLE);
@@ -135,11 +135,11 @@ describe("Outlook", () => {
   });
 
   it("calls a round live when pairing still decides it", () => {
-    expect(boardOutlook(WTC_SOUTH_AFRICA, evenThreshold(5)).verdict).toBe(LIVE);
+    expect(boardOutlook(WTC_TRADEOFF_BOARD, evenThreshold(5)).verdict).toBe(LIVE);
   });
 
   it("reports spread as ceiling minus floor", () => {
-    const o = boardOutlook(WTC_SOUTH_AFRICA, evenThreshold(5));
+    const o = boardOutlook(WTC_TRADEOFF_BOARD, evenThreshold(5));
     expect(o.spread).toBe(o.ceiling - o.floor);
   });
 });
@@ -147,20 +147,20 @@ describe("Outlook", () => {
 describe("cellOutlooks", () => {
   it("brackets every cell inside the board outlook", () => {
     const tau = evenThreshold(5);
-    const board = boardOutlook(WTC_SOUTH_AFRICA, tau);
-    const cells = [...cellOutlooks(WTC_SOUTH_AFRICA, tau).values()];
+    const board = boardOutlook(WTC_TRADEOFF_BOARD, tau);
+    const cells = [...cellOutlooks(WTC_TRADEOFF_BOARD, tau).values()];
     expect(Math.min(...cells.map((c) => c.floor))).toBe(board.floor);
     expect(Math.max(...cells.map((c) => c.ceiling))).toBe(board.ceiling);
   });
 
   it("produces one entry per pairing", () => {
-    expect(cellOutlooks(WTC_AUSTRALIA, evenThreshold(5)).size).toBe(25);
+    expect(cellOutlooks(WTC_FLAT_BOARD, evenThreshold(5)).size).toBe(25);
   });
 });
 
 describe("decisionReport", () => {
   it("matches the Python engine on the Australia board", () => {
-    const r = decisionReport(WTC_AUSTRALIA, evenThreshold(5));
+    const r = decisionReport(WTC_FLAT_BOARD, evenThreshold(5));
     expect(r.board.floor).toBe(10);
     expect(r.board.ceiling).toBe(15);
     expect(r.choiceMatters).toBe(false);
@@ -172,7 +172,7 @@ describe("decisionReport", () => {
   });
 
   it("matches the Python engine on the South Africa board", () => {
-    const r = decisionReport(WTC_SOUTH_AFRICA, evenThreshold(5));
+    const r = decisionReport(WTC_TRADEOFF_BOARD, evenThreshold(5));
     expect(r.board.floor).toBe(12);
     expect(r.board.ceiling).toBe(16);
     expect(r.choiceMatters).toBe(true);
@@ -185,7 +185,7 @@ describe("decisionReport", () => {
   });
 
   it("excludes dominated cells from the frontier", () => {
-    const r = decisionReport(WTC_SOUTH_AFRICA, evenThreshold(5));
+    const r = decisionReport(WTC_TRADEOFF_BOARD, evenThreshold(5));
     expect(r.frontier.length).toBeLessThan(25);
     for (const cell of r.frontier) {
       expect(r.frontier.some((o) => dominates(o, cell))).toBe(false);
@@ -194,9 +194,9 @@ describe("decisionReport", () => {
 
   it("does not depend on row or column order", () => {
     const tau = evenThreshold(5);
-    const first = decisionReport(WTC_SOUTH_AFRICA, tau);
+    const first = decisionReport(WTC_TRADEOFF_BOARD, tau);
     const order = [3, 1, 4, 0, 2];
-    const shuffled = order.map((i) => order.map((j) => WTC_SOUTH_AFRICA[i][j]));
+    const shuffled = order.map((i) => order.map((j) => WTC_TRADEOFF_BOARD[i][j]));
     const second = decisionReport(shuffled, tau);
     expect(second.board.floor).toBe(first.board.floor);
     expect(second.board.ceiling).toBe(first.board.ceiling);
@@ -301,7 +301,7 @@ describe("solveProtocol", () => {
   });
 
   it("never exceeds the assignment ceiling nor falls below the assignment floor", () => {
-    for (const m of [WTC_AUSTRALIA, WTC_SOUTH_AFRICA]) {
+    for (const m of [WTC_FLAT_BOARD, WTC_TRADEOFF_BOARD]) {
       const [lo, hi] = assignmentExtremes(m);
       for (const first of [true, false]) {
         const v = protocolFloor(m, first).value;
@@ -314,22 +314,22 @@ describe("solveProtocol", () => {
   it("is at least as informative as the assignment floor", () => {
     // The protocol restricts what the opponent can reach, so the guaranteed
     // total can only improve on the permutation-only bound.
-    for (const m of [WTC_AUSTRALIA, WTC_SOUTH_AFRICA]) {
+    for (const m of [WTC_FLAT_BOARD, WTC_TRADEOFF_BOARD]) {
       const [lo] = assignmentExtremes(m);
       expect(protocolFloor(m, true).value).toBeGreaterThanOrEqual(lo);
     }
   });
 
   it("gives the opening side an advantage it can measure", () => {
-    const ours = protocolFloor(WTC_SOUTH_AFRICA, true).value;
-    const theirs = protocolFloor(WTC_SOUTH_AFRICA, false).value;
+    const ours = protocolFloor(WTC_TRADEOFF_BOARD, true).value;
+    const theirs = protocolFloor(WTC_TRADEOFF_BOARD, false).value;
     expect(Number.isFinite(ours)).toBe(true);
     expect(Number.isFinite(theirs)).toBe(true);
   });
 
   it("solves a full 5v5 board fast enough for a phone", () => {
     const started = performance.now();
-    protocolFloor(WTC_SOUTH_AFRICA, true);
+    protocolFloor(WTC_TRADEOFF_BOARD, true);
     expect(performance.now() - started).toBeLessThan(500);
   });
 });

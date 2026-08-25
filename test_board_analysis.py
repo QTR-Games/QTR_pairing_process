@@ -151,16 +151,16 @@ def test_board_extremes_are_attained_by_some_cell():
 def test_safe_and_bold_diverge_when_the_safe_choice_forecloses_winning():
     """A real board where playing safe guarantees a draw and gives up the win.
 
-    South Africa Tokoloshe, Team Irving's own scenario-0 ratings. Pairing
-    Stephen into Grymkin pins the round at exactly tau: floor 15.0, ceiling
-    15.0. It cannot be lost and it cannot be won. Pairing Justin into the same
+    Opponent 23, the home team's own scenario-0 ratings. Pairing
+    Echo into their first list pins the round at exactly tau: floor 15.0, ceiling
+    15.0. It cannot be lost and it cannot be won. Pairing Bravo into the same
     opponent is floor 14.0, ceiling 16.0 -- it risks the round to keep the win
     reachable at all.
 
     This is the trade-off the single-number sort collapses, and the reason
     "play to your outs" is a real strategy rather than a slogan.
     """
-    report = decision_report(WTC_SOUTH_AFRICA, even_threshold(5))
+    report = decision_report(WTC_TRADEOFF_BOARD, even_threshold(5))
     assert report.choice_matters
     assert report.safest.outlook.floor > report.boldest.outlook.floor
     assert report.boldest.outlook.ceiling > report.safest.outlook.ceiling
@@ -182,7 +182,7 @@ def test_a_dominating_choice_is_not_reported_as_a_trade_off():
 
 
 def test_dominated_cells_are_excluded_from_the_frontier():
-    report = decision_report(WTC_SOUTH_AFRICA, even_threshold(5))
+    report = decision_report(WTC_TRADEOFF_BOARD, even_threshold(5))
     assert len(report.frontier) < 25
     for cell in report.frontier:
         assert not any(other.dominates(cell) for other in report.frontier)
@@ -191,8 +191,8 @@ def test_dominated_cells_are_excluded_from_the_frontier():
 def test_hidden_floor_cost_is_the_spread_among_ceiling_tied_cells():
     """The number a ceiling-only metric cannot see."""
     tau = even_threshold(5)
-    report = decision_report(WTC_AUSTRALIA, tau)
-    cells = cell_outlooks(WTC_AUSTRALIA, tau).values()
+    report = decision_report(WTC_FLAT_BOARD, tau)
+    cells = cell_outlooks(WTC_FLAT_BOARD, tau).values()
     best_ceiling = max(c.ceiling for c in cells)
     tied = [c.floor for c in cells if c.ceiling == best_ceiling]
     assert report.hidden_floor_cost == pytest.approx(max(tied) - min(tied))
@@ -220,11 +220,11 @@ def test_report_rejects_an_empty_board():
 
 # --- regression: the real WTC 2024 board -------------------------------------
 
-# Team Irving's own pre-event ratings against Australia Thorny Devils, scenario
-# 0, taken from teamIrving2024_FinalDB.db. Rows are Justin, Mike, Rick, Stephen,
-# Jake; columns are Nads, Robin, Pottsie, Aleks, James.
+# the home team's own pre-event ratings against Opponent 02, scenario
+# 0, taken from teamthe home team2024_FinalDB.db. Rows are Bravo, Charlie, Delta, Echo,
+# Alpha; columns are Nads, Robin, Pottsie, Aleks, James.
 # See docs/WTC2024_GROUND_TRUTH.md, Findings 12 and 13.
-WTC_AUSTRALIA = [
+WTC_FLAT_BOARD = [
     [3, 3, 3, 2, 3],
     [3, 3, 2, 2, 3],
     [3, 3, 3, 3, 3],
@@ -232,11 +232,11 @@ WTC_AUSTRALIA = [
     [3, 3, 3, 1, 3],
 ]
 
-# Team Irving vs South Africa Tokoloshe, same database and scenario. Rows are
-# Justin, Mike, Rick, Stephen, Jake; columns are Grymkin, Storm of the North,
-# Dark Operations, House Kallyss, Infernals. This is the one board of 31 that
+# the home team vs Opponent 23, same database and scenario. Rows are
+# Bravo, Charlie, Delta, Echo, Alpha; columns are their first list, their third list,
+# their fourth list, their fifth list, their fifth list. This is the one board of 31 that
 # carries a genuine floor-versus-ceiling trade-off rather than a dominant cell.
-WTC_SOUTH_AFRICA = [
+WTC_TRADEOFF_BOARD = [
     [4, 3, 3, 3, 3],
     [2, 3, 3, 3, 3],
     [3, 3, 3, 3, 3],
@@ -246,13 +246,13 @@ WTC_SOUTH_AFRICA = [
 
 
 def test_australia_board_was_unwinnable_on_our_own_ratings():
-    """The round that ended Team Irving's 2024 run could not be won.
+    """The round that ended the home team's 2024 run could not be won.
 
     The best assignment available scored exactly tau, and a round is won
     strictly above tau. No pairing decision could have changed that, which is
     information the app has never surfaced.
     """
-    outlook = board_outlook(WTC_AUSTRALIA, even_threshold(5))
+    outlook = board_outlook(WTC_FLAT_BOARD, even_threshold(5))
     assert outlook.ceiling == 15.0
     assert outlook.tau == 15.0
     assert outlook.verdict == UNWINNABLE
@@ -260,8 +260,8 @@ def test_australia_board_was_unwinnable_on_our_own_ratings():
 
 
 def test_australia_board_floor_and_ceiling_match_exhaustive_enumeration():
-    assert assignment_extremes(WTC_AUSTRALIA) == pytest.approx(brute_force_extremes(WTC_AUSTRALIA))
-    assert assignment_extremes(WTC_AUSTRALIA) == (10.0, 15.0)
+    assert assignment_extremes(WTC_FLAT_BOARD) == pytest.approx(brute_force_extremes(WTC_FLAT_BOARD))
+    assert assignment_extremes(WTC_FLAT_BOARD) == (10.0, 15.0)
 
 
 def test_australia_board_hides_four_points_of_floor_behind_a_tied_ceiling():
@@ -272,7 +272,7 @@ def test_australia_board_hides_four_points_of_floor_behind_a_tied_ceiling():
     10.0 to 14.0. Four points of downside are invisible, and there is a pairing
     that protects all four of them at zero cost to the upside.
     """
-    report = decision_report(WTC_AUSTRALIA, even_threshold(5))
+    report = decision_report(WTC_FLAT_BOARD, even_threshold(5))
     assert not report.choice_matters
     assert report.hidden_floor_cost == pytest.approx(4.0)
     assert report.safest.outlook.floor == pytest.approx(14.0)

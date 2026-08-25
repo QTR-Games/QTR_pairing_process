@@ -123,10 +123,10 @@ jobs:
       # first, the failing run destroyed the team's only download link and
       # could not put it back -- which is what happened on #52.
       #
-      # Distribution now happens in deploy-webapp.yml, which drops the APK into
-      # the Pages bundle at a URL that never changes:
-      #
-      #   https://qtr-games.github.io/QTR_pairing_process/qtr-pairing.apk
+      # Nothing is published anywhere now. GitHub Pages was switched off on
+      # purpose: this repository is public, and the app is not stable enough to
+      # be publicly usable yet. build-phone-app.yml uploads the APK as a
+      # workflow artifact instead, downloadable from the Actions tab.
       #
       # What is left here is the check that the phone build still compiles, on
       # every pull request, before it can reach main.

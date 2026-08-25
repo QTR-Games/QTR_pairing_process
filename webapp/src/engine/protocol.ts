@@ -22,7 +22,7 @@
  *
  * The leftover-becomes-next-attacker rule is what makes a "bus" possible: a
  * side can offer a pair knowing that whichever one is declined gets to dictate
- * the following matchup. It is the mechanic Team Irving lost to in 2024.
+ * the following matchup. It is the mechanic the home team lost to in 2024.
  *
  * ## How the opponent is modelled
  *

@@ -1,0 +1,118 @@
+# Build the phone app and keep it downloadable, without publishing anything.
+#
+# This workflow used to deploy the web app to GitHub Pages and serve the APK
+# from a public URL. That was removed deliberately: the app is not stable
+# enough to be publicly usable yet, and the repository is public, so anything
+# Pages served was reachable by anyone who found the URL.
+#
+# Nothing here is published now. The APK and the built web bundle are uploaded
+# as workflow artifacts, downloadable from the Actions tab by anyone with
+# access to the repository. To put the app on a phone: download the artifact,
+# unzip it, copy qtr-pairing.apk to the device over USB, and tap it.
+#
+# The installed APK is entirely offline. It bundles the web assets locally and
+# sets no server.url, so it never makes a network request at runtime. Venue
+# wifi cannot affect it.
+name: build-phone-app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'webapp/**'
+      - '.github/workflows/build-phone-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a build midway; let a run finish before the next starts.
+concurrency:
+  group: build-phone-app
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Capacitor 8's CLI refuses to run below 22.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      # Capacitor 8 compiles its Android library at source level 21; JDK 17
+      # gets as far as javac and then fails with "invalid source release: 21".
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - run: npm ci
+        working-directory: webapp
+
+      # vite.config.ts sets base to './', so the bundle resolves from any path,
+      # including the local filesystem and the Capacitor WebView origin.
+      - run: npm run build
+        working-directory: webapp
+
+      # Order matters below. `cap sync` copies dist/ into the native project, so
+      # the APK has to be built before anything is added to dist -- otherwise
+      # the next run would package the previous APK inside the new one.
+      - name: Generate the native project
+        run: npx cap add android
+        working-directory: webapp
+
+      - name: Copy the bundle into it
+        run: npx cap sync android
+        working-directory: webapp
+
+      - name: Assemble the APK
+        working-directory: webapp/android
+        # Maven Central has failed this build twice for reasons unrelated to the
+        # code: a 429 under load, then a sustained 403 that outlasted a flat
+        # three-attempt, 30s retry. Backing off doubles the wait, so five
+        # attempts ride out roughly eight minutes rather than ninety seconds.
+        run: |
+          delay=30
+          for attempt in 1 2 3 4 5; do
+            if ./gradlew --no-daemon assembleDebug; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 5 ]; then break; fi
+            echo "::warning::APK build attempt $attempt failed; retrying in ${delay}s"
+            sleep "$delay"
+            delay=$((delay * 2))
+          done
+          exit 1
+
+      # Two names for one file. The stable one is what gets copied to a phone;
+      # the sha-stamped one lets someone say which build they are running when
+      # something looks wrong.
+      - name: Collect the APK
+        working-directory: webapp
+        run: |
+          src=android/app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p artifact
+          cp "$src" artifact/qtr-pairing.apk
+          cp "$src" "artifact/qtr-pairing-${GITHUB_SHA:0:7}.apk"
+          ls -lh artifact/*.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qtr-pairing-apk
+          path: webapp/artifact/*.apk
+          if-no-files-found: error
+
+      # The web bundle, for running the app locally on a PC without a toolchain:
+      # unzip it and serve the folder with any static file server.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qtr-pairing-web
+          path: webapp/dist
+          if-no-files-found: error

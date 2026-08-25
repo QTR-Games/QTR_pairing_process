@@ -50,7 +50,7 @@ When tournament teams are announced, you'll receive:
 
 - Complete list of all participating teams
 - Player names for each team
-- Army/faction information (e.g., "Sea Raiders - Hor / Sab")
+- Army/faction information (e.g., "List 44")
 
 #### 2. Team Analysis Session
 
@@ -104,8 +104,8 @@ Safe handoff checklist:
 
 ```text
 Army Format: "Faction - Leader1 / Leader2"
-Example: "Sea Raiders - Hor / Sab"
-- Faction: Sea Raiders (overall army type)
+Example: "List 44"
+- Faction: Iron Vanguard (overall army type)
 - Leaders: Hor and Sab (specific commanders/variants)
 ```
 

@@ -1,19 +1,19 @@
 [
  {
-  "opponent": "Australia Spangled Drongo",
+  "opponent": "Opponent 01",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Ravens of War - Lyl3 / Lyl1",
-   "Sea Raiders - Hor / Sab",
-   "Winter Korps - Ekat / Sav",
-   "House Kallyss - Hel / Mor",
-   "Storm Legion - Spark / Wolfe"
+   "List 39",
+   "List 44",
+   "List 63",
+   "List 29",
+   "List 56"
   ],
   "matrix": [
    [
@@ -54,20 +54,20 @@
   ]
  },
  {
-  "opponent": "Australia Thorny Devils",
+  "opponent": "Opponent 02",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "House Kallyss - Scy / Hel",
-   "Sea Raiders - Hor / Sab",
-   "Exalted - Zaal / Xek",
-   "Winter Korps - Ekat / Sav",
-   "Infernals - Omo / Zaat"
+   "List 32",
+   "List 44",
+   "List 22",
+   "List 63",
+   "List 36"
   ],
   "matrix": [
    [
@@ -108,20 +108,20 @@
   ]
  },
  {
-  "opponent": "Brussels from Mussels",
+  "opponent": "Opponent 03",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Storm Legion - Cal / Wolfe",
-   "Brineblood Marauders - Rage / Shadow",
-   "Exalted - Zaal / Xek",
-   "Winter Korps - Ekat / Sav",
-   "Sea Raiders - Hor / Ori"
+   "List 54",
+   "List 09",
+   "List 22",
+   "List 63",
+   "List 43"
   ],
   "matrix": [
    [
@@ -162,20 +162,20 @@
   ]
  },
  {
-  "opponent": "Canada Goose",
+  "opponent": "Opponent 04",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Shadowflame Shard - Kyr / Shy",
-   "Grymkin - Witch / Wand",
-   "Sea Raiders - Hor / Sab",
-   "House Kallyss - Scy / Hel",
-   "Winter Korps - Ekat / Sav"
+   "List 47",
+   "List 26",
+   "List 44",
+   "List 32",
+   "List 63"
   ],
   "matrix": [
    [
@@ -216,20 +216,20 @@
   ]
  },
  {
-  "opponent": "Canada Moose",
+  "opponent": "Opponent 05",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Winter Korps - Sik / Sav",
-   "House Kallyss - Mor / Scry",
-   "Brineblood Marauders - Rage / Shadow",
-   "Dark Operations - Cyph / Thex",
-   "Sea Raiders - Hor / Sab"
+   "List 65",
+   "List 31",
+   "List 09",
+   "List 17",
+   "List 44"
   ],
   "matrix": [
    [
@@ -270,20 +270,20 @@
   ]
  },
  {
-  "opponent": "England Dragons",
+  "opponent": "Opponent 06",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Storm Legion - Hux / Spark",
-   "Crucible Guard - Locke / Gear",
-   "House Kallyss - Tyr / Scy",
-   "Storm of the North - Kol / Borka",
-   "Dark Host - Gor / Scav"
+   "List 55",
+   "List 12",
+   "List 34",
+   "List 58",
+   "List 16"
   ],
   "matrix": [
    [
@@ -324,20 +324,20 @@
   ]
  },
  {
-  "opponent": "England Knights",
+  "opponent": "Opponent 07",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Brineblood Marauders - Boomy / Shadow",
-   "Infernals - Zaat / Aga",
-   "Shadows of the Retribution - Gary / Thyr",
-   "Rhul Guard - Oss / Mad",
-   "Dark Host - Denny 3 / Scav"
+   "List 06",
+   "List 37",
+   "List 50",
+   "List 41",
+   "List 15"
   ],
   "matrix": [
    [
@@ -378,20 +378,20 @@
   ]
  },
  {
-  "opponent": "England Lions",
+  "opponent": "Opponent 08",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Sea Raiders - Hor / Sab",
-   "Winter Korps - Ekat / Sav",
-   "House Kallyss - Mor / Scry",
-   "Shadowflame Shard - Shy / Ras",
-   "Infernals - Omo / Zaat"
+   "List 44",
+   "List 63",
+   "List 31",
+   "List 49",
+   "List 36"
   ],
   "matrix": [
    [
@@ -432,20 +432,20 @@
   ]
  },
  {
-  "opponent": "France Caesar",
+  "opponent": "Opponent 09",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Blackfleet - Rah / Skar1",
-   "Grymkin - Dre / Witch",
-   "Ravens of War - Krys / Lyl1",
-   "Sea Raiders - Ori / Sab",
-   "Brineblood Marauders - Rage / Shadow"
+   "List 04",
+   "List 24",
+   "List 38",
+   "List 45",
+   "List 09"
   ],
   "matrix": [
    [
@@ -486,20 +486,20 @@
   ]
  },
  {
-  "opponent": "France Redbeard",
+  "opponent": "Opponent 10",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Blackfleet - Aik / Rah",
-   "Dark Operations - Cyph / Thex",
-   "Brineblood Marauders - Rage / Boomy",
-   "Shadowflame Shard - Kyr / Shy",
-   "Infernals - Aga / Omo"
+   "List 03",
+   "List 17",
+   "List 08",
+   "List 47",
+   "List 35"
   ],
   "matrix": [
    [
@@ -540,20 +540,20 @@
   ]
  },
  {
-  "opponent": "Germany Eichhornchen",
+  "opponent": "Opponent 11",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Sea Raiders - Hor / Sab",
-   "Shadowflame Shard - Shy / Ras",
-   "Brineblood Marauders - Rage / Shadow",
-   "House Kallyss - Hel / Tyr",
-   "Winter Korps - Ekat / Sav"
+   "List 44",
+   "List 49",
+   "List 09",
+   "List 30",
+   "List 63"
   ],
   "matrix": [
    [
@@ -594,20 +594,20 @@
   ]
  },
  {
-  "opponent": "Germany Fuchs",
+  "opponent": "Opponent 12",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Winter Korps - Ekat / Sav",
-   "Sea Raiders - Hor / Sab",
-   "Dark Host - Denny 3 / Scav",
-   "Infernals - Omo / Zaat",
-   "House Kallyss - Mor / Scry"
+   "List 63",
+   "List 44",
+   "List 15",
+   "List 36",
+   "List 31"
   ],
   "matrix": [
    [
@@ -648,20 +648,20 @@
   ]
  },
  {
-  "opponent": "Germany Rackelhahn",
+  "opponent": "Opponent 13",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Dark Host - Denny 3 / Scav",
-   "Brineblood Marauders - Rage / Boomy",
-   "Storm Legion - Spark / Wolfe",
-   "Dark Operations - Thex / Gaspy",
-   "House Kallyss - Mor / Scry"
+   "List 15",
+   "List 08",
+   "List 56",
+   "List 19",
+   "List 31"
   ],
   "matrix": [
    [
@@ -702,20 +702,20 @@
   ]
  },
  {
-  "opponent": "Iki-Turso",
+  "opponent": "Opponent 14",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Winter Korps - Ekat / Sav",
-   "Shadowflame Shard - Kyr / Shy",
-   "House Kallyss - Mor / Scry",
-   "Storm Legion - Cal / Spark",
-   "Convergence of Cyriss - Ori / Luc"
+   "List 63",
+   "List 47",
+   "List 31",
+   "List 53",
+   "List 10"
   ],
   "matrix": [
    [
@@ -756,20 +756,20 @@
   ]
  },
  {
-  "opponent": "Iku-Turso",
+  "opponent": "Opponent 15",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "House Kallyss - Haz / Scy",
-   "United Kriels - Jarl / Mad",
-   "House Kallyss - Tyr / Mor",
-   "Exalted - Zaal / Xek",
-   "Soldiers of Fortune - Dam / Ash "
+   "List 28",
+   "List 61",
+   "List 33",
+   "List 22",
+   "List 52"
   ],
   "matrix": [
    [
@@ -810,20 +810,20 @@
   ]
  },
  {
-  "opponent": "Little Mermaids",
+  "opponent": "Opponent 16",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Sea Raiders - Hor / Sab",
-   "Winter Korps - Sik / Ekat",
-   "Devourers Host - Wurm / Iona",
-   "Storm Legion - Cal / Spark",
-   "Dark Host - Gor / Scav"
+   "List 44",
+   "List 64",
+   "List 20",
+   "List 53",
+   "List 16"
   ],
   "matrix": [
    [
@@ -864,20 +864,20 @@
   ]
  },
  {
-  "opponent": "Masters of Pizza",
+  "opponent": "Opponent 17",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Winter Korps - Ekat / Sav",
-   "Infernals - Omo / Zaat",
-   "Brineblood Marauders - Rage / Boomy",
-   "Blindwater Congregation - Mae / Jaga",
-   "United Kriels - Mad / Gunn"
+   "List 63",
+   "List 36",
+   "List 08",
+   "List 05",
+   "List 62"
   ],
   "matrix": [
    [
@@ -918,20 +918,20 @@
   ]
  },
  {
-  "opponent": "Mussels from Brussels",
+  "opponent": "Opponent 18",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Dark Host - Denny 3 / Scav",
-   "House Kallyss - Mor / Scry",
-   "House Kallyss - Hel / Tyr",
-   "Sea Raiders - Hor / Sab",
-   "Brineblood Marauders - Rage / Boomy"
+   "List 15",
+   "List 31",
+   "List 30",
+   "List 44",
+   "List 08"
   ],
   "matrix": [
    [
@@ -972,20 +972,20 @@
   ]
  },
  {
-  "opponent": "Netherlands Van Gogh",
+  "opponent": "Opponent 19",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Shadowflame Shard - Shy / Ras",
-   "Grymkin - Her / Wand",
-   "Winter Korps - Ekat / Sav",
-   "Dark Host - Denny 3 / Scav",
-   "House Kallyss - Haz / Hel"
+   "List 49",
+   "List 25",
+   "List 63",
+   "List 15",
+   "List 27"
   ],
   "matrix": [
    [
@@ -1026,20 +1026,20 @@
   ]
  },
  {
-  "opponent": "Norway Hugin",
+  "opponent": "Opponent 20",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Storm Legion - Cal / Spark",
-   "Shadowflame Shard - Shy / Ras",
-   "First Army - Kraye / Caine",
-   "Rhul Guard - Oss / Gort",
-   "Crucible Guard - Ben / Gear"
+   "List 53",
+   "List 49",
+   "List 23",
+   "List 40",
+   "List 11"
   ],
   "matrix": [
    [
@@ -1080,20 +1080,20 @@
   ]
  },
  {
-  "opponent": "Norway Munin",
+  "opponent": "Opponent 21",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Shadows of the Retribution - Kae / Gary",
-   "House Kallyss - Tyr / Scy",
-   "Temple Guardians - Thy / Feo",
-   "Shadowflame Shard - Shy / Ras",
-   "Winter Korps - Ekat / Sav"
+   "List 51",
+   "List 34",
+   "List 60",
+   "List 49",
+   "List 63"
   ],
   "matrix": [
    [
@@ -1134,20 +1134,20 @@
   ]
  },
  {
-  "opponent": "Portugal Prime",
+  "opponent": "Opponent 22",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Exalted - Zaal / Xek",
-   "House Kallyss - Haz / Scy",
-   "Armored Korps - Irusk / Sor3",
-   "Temple Guardians - Amon / Mal",
-   "Dark Host - Aga / Denny3"
+   "List 22",
+   "List 28",
+   "List 02",
+   "List 59",
+   "List 14"
   ],
   "matrix": [
    [
@@ -1188,20 +1188,20 @@
   ]
  },
  {
-  "opponent": "South Africa Tokoloshe",
+  "opponent": "Opponent 23",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Grymkin - Witch / Wand",
-   "Storm of the North - Grim / Borka",
-   "Dark Operations - Mort / Cyph",
-   "House Kallyss - Scy / Hel",
-   "Infernals - Zaat / Aga"
+   "List 26",
+   "List 57",
+   "List 18",
+   "List 32",
+   "List 37"
   ],
   "matrix": [
    [
@@ -1242,20 +1242,20 @@
   ]
  },
  {
-  "opponent": "Spain Rogue",
+  "opponent": "Opponent 24",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Brineblood Marauders - Boomy / Shadow",
-   "Grymkin - Witch / Wand",
-   "Winter Korps - Ekat / Sav",
-   "House Kallyss - Scy / Hel",
-   "Shadowflame Shard - Kyr / Shy"
+   "List 06",
+   "List 26",
+   "List 63",
+   "List 32",
+   "List 47"
   ],
   "matrix": [
    [
@@ -1296,20 +1296,20 @@
   ]
  },
  {
-  "opponent": "Sweden Asgard",
+  "opponent": "Opponent 25",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Winter Korps - Ekat / Sav",
-   "House Kallyss - Mor / Scry",
-   "Dark Operations - Thex / Gaspy",
-   "Sea Raiders - Ori / Sab",
-   "Grymkin - Witch / Wand"
+   "List 63",
+   "List 31",
+   "List 19",
+   "List 45",
+   "List 26"
   ],
   "matrix": [
    [
@@ -1350,20 +1350,20 @@
   ]
  },
  {
-  "opponent": "Sweden Utgard",
+  "opponent": "Opponent 26",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Secret Dominion - Kru / Brad",
-   "House Kallyss - Mor / Scry",
-   "Brineblood Marauders - Fire / Rage",
-   "Brineblood Marauders - Boomy / Shadow",
-   "Infernals - Omo / Zaat"
+   "List 46",
+   "List 31",
+   "List 07",
+   "List 06",
+   "List 36"
   ],
   "matrix": [
    [
@@ -1404,20 +1404,20 @@
   ]
  },
  {
-  "opponent": "Sweden Valhall",
+  "opponent": "Opponent 27",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Storm Legion - Cal / Wolfe",
-   "Exalted - Zaal / Xek",
-   "Shadowflame Shard - Shy / Ras",
-   "Sea Raiders - Ori / Sab",
-   "Devourers Host - Wurm / Iona"
+   "List 54",
+   "List 22",
+   "List 49",
+   "List 45",
+   "List 20"
   ],
   "matrix": [
    [
@@ -1458,20 +1458,20 @@
   ]
  },
  {
-  "opponent": "Team Crichton",
+  "opponent": "Opponent 28",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "House Kallyss - Mor / Scry",
-   "Brineblood Marauders - Rage / Boomy",
-   "Dark Operations - Thex / Gaspy",
-   "Armored Korps - Hark / Irusk",
-   "Shadowflame Shard - Kyr / Shy"
+   "List 31",
+   "List 08",
+   "List 19",
+   "List 01",
+   "List 47"
   ],
   "matrix": [
    [
@@ -1512,20 +1512,20 @@
   ]
  },
  {
-  "opponent": "Team Herbert",
+  "opponent": "Opponent 29",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Sea Raiders - Hor / Sab",
-   "Shadowflame Shard - Ras / Kyr",
-   "Brineblood Marauders - Boomy / Shadow",
-   "House Kallyss - Mor / Scry",
-   "Infernals - Omo / Zaat"
+   "List 44",
+   "List 48",
+   "List 06",
+   "List 31",
+   "List 36"
   ],
   "matrix": [
    [
@@ -1566,20 +1566,20 @@
   ]
  },
  {
-  "opponent": "Team Poland",
+  "opponent": "Opponent 30",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "Winter Korps - Ekat / Sav",
-   "Sea Raiders - Hor / Kish",
-   "House Kallyss - Mor / Scry",
-   "Sea Raiders - Ori / Sab",
-   "Brineblood Marauders - Boomy / Shadow"
+   "List 63",
+   "List 42",
+   "List 31",
+   "List 45",
+   "List 06"
   ],
   "matrix": [
    [
@@ -1620,20 +1620,20 @@
   ]
  },
  {
-  "opponent": "The Italian Job",
+  "opponent": "Opponent 31",
   "ourPlayers": [
-   "Justin",
-   "Mike",
-   "Rick",
-   "Stephen",
-   "Jake"
+   "Bravo",
+   "Charlie",
+   "Delta",
+   "Echo",
+   "Alpha"
   ],
   "theirPlayers": [
-   "House Kallyss - Hel / Tyr",
-   "House Kallyss - Mor / Scry",
-   "Crucible Guard - Luk / Gear",
-   "Grymkin - Witch / Wand",
-   "Exalted - Mord / Zaal"
+   "List 30",
+   "List 31",
+   "List 13",
+   "List 26",
+   "List 21"
   ],
   "matrix": [
    [

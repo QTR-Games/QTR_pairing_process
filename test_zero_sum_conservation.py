@@ -14,7 +14,7 @@ punishes us must produce two root values summing to ``6n``. A rule that lets
 each side assume the other cooperates makes BOTH sides overestimate, so the sum
 comes out high; the excess is the cooperation bias in tournament points.
 
-Measured on real event data (Team Irving 2024, six opponents) by the separate
+Measured on real event data (the home team 2024, six opponents) by the separate
 probe ``probe_cumulative2_bias.py``, the excess is:
 
     optimistic (max at every level)   mean +1.67, never below 0

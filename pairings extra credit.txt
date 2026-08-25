@@ -54,7 +54,7 @@ a 2/5 is orange a 3/5 yell etc
 inverting or sorting descending or ascending after the matchups are generated
 
 
-From Justin Du
+From Bravo Du
 
 logic
 
@@ -135,7 +135,7 @@ If you have more than one pin available,
 If Pinned column is empty, then floor doesn't matter.
 • in that case, you want to look for the 
 
-Rick should go first because he's not bad into the double brinebloods. Everyone else has at least 1 bad matchup into brinebloods.
+Delta should go first because he's not bad into the double brinebloods. Everyone else has at least 1 bad matchup into brinebloods.
 
 Prioritze dropping the player with the best matchups against the lowest columns combined
 

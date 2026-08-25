@@ -49,7 +49,7 @@ const FRACTIONS: number[][] = [
 function board(ourTeamFirst: boolean): Board {
   return {
     id: "e2e",
-    opponent: "Thorny Devils",
+    opponent: "Opponent 02",
     ourPlayers: ["Pete", "Bokur", "Sam", "Ana", "Rue"],
     theirPlayers: ["Kev", "Mo", "Jo", "Tam", "Wes"],
     fractions: FRACTIONS,
