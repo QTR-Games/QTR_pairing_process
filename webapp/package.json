@@ -8,7 +8,13 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "android:sync": "npm run build && cap sync android",
+    "android:build:debug": "npm run android:sync && cd android && gradlew.bat assembleDebug",
+    "android:build:release": "npm run android:sync && cd android && gradlew.bat assembleRelease",
+    "android:install": "cd android && gradlew.bat installDebug",
+    "android:keystore:create": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/New-ReleaseKeystore.ps1",
+    "android:signing:secrets": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/Publish-SigningSecrets.ps1"
   },
   "dependencies": {
     "react": "^19.2.8",

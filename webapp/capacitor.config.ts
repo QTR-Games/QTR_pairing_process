@@ -11,9 +11,14 @@ import type { CapacitorConfig } from "@capacitor/cli";
  * the identical bundle, which is what keeps the phone and the laptop showing
  * the same numbers.
  *
- * The `android/` project is NOT committed. CI regenerates it with `cap add`
- * on every run, because a checked-in Gradle project is a second thing to keep
- * current and it would drift the moment Capacitor updates.
+ * The `android/` project IS committed, under `webapp/android/`. It has to be:
+ * release signing config, versionCode resolution and any native plugin source
+ * all live inside the Gradle project, and a regenerated project throws them
+ * away every run. The cost is that it is a second thing to keep current -- when
+ * Capacitor updates, re-run `npx cap sync android` and review the diff rather
+ * than letting it drift. The generated parts (copied web assets,
+ * `capacitor.config.json`, `.gradle/`, `build/`) stay ignored by
+ * `webapp/android/.gitignore`, so only the parts we author are tracked.
  */
 const config: CapacitorConfig = {
   appId: "com.qtrgames.pairing",
@@ -27,10 +32,10 @@ const config: CapacitorConfig = {
     // Pinned, not inherited. The scheme decides the WebView's origin, and the
     // origin decides which localStorage bucket the boards live in -- so if this
     // default ever moves the way it did between Capacitor 2 and 3, every board
-    // and every round on the phone silently becomes someone else's. CI
-    // regenerates `android/` from scratch on every run, so there is no checked
-    // in project holding the old value. Stating it here is what makes the
-    // stored data survive a Capacitor upgrade.
+    // and every round on the phone silently becomes someone else's. The
+    // committed `android/` project records the current value, but a `cap sync`
+    // after a Capacitor upgrade would rewrite it. Stating it here is what makes
+    // the stored data survive that upgrade.
     androidScheme: "https",
   },
 };

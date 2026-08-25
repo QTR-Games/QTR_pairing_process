@@ -198,9 +198,18 @@ backup_pre_core_worktree.patch
 # Playwright MCP scratch output (screenshots, snapshots, console logs)
 .playwright-mcp/
 
-# Capacitor regenerates the native project in CI; it is never committed.
-webapp/android/
+# The Android native project IS committed (webapp/android/) so that signing
+# config, versionCode resolution and any native plugins survive between builds.
+# Its own webapp/android/.gitignore excludes the generated parts: copied web
+# assets, capacitor.config.json, .gradle/, build/ and local.properties.
+# iOS is still generated on demand and is not committed.
 webapp/ios/
+
+# Android signing material. The keystore and its passwords are never committed;
+# CI reads them from repository secrets instead. See docs/android-build.md.
+webapp/android/keystore.properties
+*.jks
+*.keystore
 
 # Real event data stays out of a public repository. Rosters and ratings are
 # harmless apart; joined together they are scouting material. Keep working

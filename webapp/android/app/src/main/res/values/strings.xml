@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">QTR Pairing</string>
+    <string name="title_activity_main">QTR Pairing</string>
+    <string name="package_name">com.qtrgames.pairing</string>
+    <string name="custom_url_scheme">com.qtrgames.pairing</string>
+</resources>

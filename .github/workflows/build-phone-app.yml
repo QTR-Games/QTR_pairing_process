@@ -65,16 +65,27 @@ jobs:
       # Order matters below. `cap sync` copies dist/ into the native project, so
       # the APK has to be built before anything is added to dist -- otherwise
       # the next run would package the previous APK inside the new one.
-      - name: Generate the native project
-        run: npx cap add android
+      #
+      # The native project is committed now, so there is no `cap add` step. What
+      # `cap sync` regenerates -- capacitor.build.gradle,
+      # capacitor-cordova-android-plugins/ and the assets config -- stays
+      # gitignored and is absent on a fresh checkout, so its directories have to
+      # exist before sync runs.
+      - name: Copy the bundle into the native project
         working-directory: webapp
-
-      - name: Copy the bundle into it
-        run: npx cap sync android
-        working-directory: webapp
+        run: |
+          mkdir -p android/app/src/main/assets android/app/src/main/res/xml
+          npx cap sync android
 
       - name: Assemble the APK
         working-directory: webapp/android
+        # Every debug build gets a distinct, increasing versionCode. Without
+        # this, each APK is versionCode 1, and a phone that already has an
+        # earlier build refuses the install rather than upgrading it. The run
+        # number is monotonic per repository, so it never regresses.
+        env:
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_VERSION_NAME: 0.debug.${{ github.run_number }}
         # Maven Central has failed this build twice for reasons unrelated to the
         # code: a 429 under load, then a sustained 403 that outlasted a flat
         # three-attempt, 30s retry. Backing off doubles the wait, so five
