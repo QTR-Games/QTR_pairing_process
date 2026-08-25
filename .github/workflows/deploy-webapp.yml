@@ -81,17 +81,22 @@ jobs:
         id: apk
         continue-on-error: true
         working-directory: webapp/android
-        # Maven Central returns 429 under load and it has already broken a build
-        # here. Three attempts with a pause clears the transient case. This step
-        # is allowed to fail outright because the web app must still ship -- see
-        # the fallback below.
+        # Maven Central has failed the PR job twice for reasons unrelated to the
+        # code: a 429 under load, then a sustained 403 that outlasted a flat
+        # three-attempt, 30s retry. Backing off doubles the wait, so five
+        # attempts ride out roughly eight minutes rather than ninety seconds.
+        # This step is allowed to fail outright regardless, because the web app
+        # must still ship -- see the fallback below.
         run: |
-          for attempt in 1 2 3; do
+          delay=30
+          for attempt in 1 2 3 4 5; do
             if ./gradlew --no-daemon assembleDebug; then
               exit 0
             fi
-            echo "::warning::APK build attempt $attempt failed; retrying in 30s"
-            sleep 30
+            if [ "$attempt" -eq 5 ]; then break; fi
+            echo "::warning::APK build attempt $attempt failed; retrying in ${delay}s"
+            sleep "$delay"
+            delay=$((delay * 2))
           done
           exit 1
 
