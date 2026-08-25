@@ -1,122 +1,163 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useEffect, useMemo, useState } from "react";
+import { Grid, Rosters } from "./components/Grid";
+import { LivePanel } from "./components/LivePanel";
+import { Verdict } from "./components/Verdict";
+import {
+  boardScale,
+  deleteBoard,
+  emptyBoard,
+  isRated,
+  loadBoards,
+  saveBoard,
+  type Board,
+} from "./model/board";
+import { SCALES } from "./model/scale";
+import { newRound, type LiveState } from "./engine/live";
+import "./styles.css";
 
-function App() {
-  const [count, setCount] = useState(0)
+type Tab = "board" | "round" | "boards";
+
+export default function App() {
+  const [board, setBoard] = useState<Board>(() => loadBoards()[0] ?? emptyBoard());
+  const [boards, setBoards] = useState<Board[]>(() => loadBoards());
+  const [tab, setTab] = useState<Tab>("board");
+  const [live, setLive] = useState<LiveState | null>(null);
+  const [highlight, setHighlight] = useState<Set<string>>(new Set());
+
+  // Persist on every edit. There is no save button, because forgetting to press
+  // one between rounds is not a failure mode worth having at an event.
+  useEffect(() => {
+    if (board.opponent || isRated(board)) setBoards(saveBoard(board));
+  }, [board]);
+
+  const scale = boardScale(board);
+
+  const lockedCells = useMemo(() => {
+    const s = new Set<string>();
+    live?.committed.forEach((c) => s.add(`${c.ours}-${c.theirs}`));
+    return s;
+  }, [live]);
+
+  function startRound() {
+    setLive(newRound(board.ourPlayers.length, board.ourTeamFirst));
+    setTab("round");
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="app">
+      <header className="app-head">
+        <h1>{board.opponent || "New board"}</h1>
+        <nav className="tabs">
+          <button className={tab === "board" ? "on" : ""} onClick={() => setTab("board")}>
+            Board
+          </button>
+          <button className={tab === "round" ? "on" : ""} onClick={() => setTab("round")}>
+            Round
+          </button>
+          <button className={tab === "boards" ? "on" : ""} onClick={() => setTab("boards")}>
+            Saved
+          </button>
+        </nav>
+      </header>
 
-      <div className="ticks"></div>
+      <main>
+        {tab === "board" && (
+          <>
+            <Verdict board={board} onHighlight={setHighlight} />
+            <Grid board={board} onChange={setBoard} highlight={highlight} locked={lockedCells} />
+            <div className="controls">
+              <label className="field inline">
+                <span>Scale</span>
+                <select
+                  value={board.scaleId}
+                  onChange={(e) => setBoard({ ...board, scaleId: e.target.value })}
+                >
+                  {SCALES.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="hint">{scale.hint}</p>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
+              <label className="field inline">
+                <span>Who puts a player up first?</span>
+                <select
+                  value={board.ourTeamFirst ? "us" : "them"}
+                  onChange={(e) => setBoard({ ...board, ourTeamFirst: e.target.value === "us" })}
                 >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+                  <option value="us">We do</option>
+                  <option value="them">They do</option>
+                </select>
+              </label>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+              <button className="primary wide" onClick={startRound}>
+                Start the round
+              </button>
+            </div>
+            <Rosters board={board} onChange={setBoard} />
+          </>
+        )}
+
+        {tab === "round" &&
+          (live ? (
+            <LivePanel
+              board={board}
+              state={live}
+              onState={setLive}
+              onReset={() => setLive(newRound(board.ourPlayers.length, board.ourTeamFirst))}
+            />
+          ) : (
+            <div className="empty">
+              <p>No round in progress.</p>
+              <button className="primary" onClick={startRound}>
+                Start the round
+              </button>
+            </div>
+          ))}
+
+        {tab === "boards" && (
+          <div className="boards">
+            <button
+              className="primary wide"
+              onClick={() => {
+                const b = emptyBoard(board.scaleId);
+                setBoard(b);
+                setLive(null);
+                setTab("board");
+              }}
+            >
+              New board
+            </button>
+            <ul>
+              {boards.map((b) => (
+                <li key={b.id}>
+                  <button
+                    className="board-open"
+                    onClick={() => {
+                      setBoard(b);
+                      setLive(null);
+                      setTab("board");
+                    }}
+                  >
+                    <span>{b.opponent || "Untitled"}</span>
+                    <small>{new Date(b.updatedAt).toLocaleDateString()}</small>
+                  </button>
+                  <button
+                    className="ghost"
+                    onClick={() => setBoards(deleteBoard(b.id))}
+                    aria-label={`Delete ${b.opponent}`}
+                  >
+                    Delete
+                  </button>
+                </li>
+              ))}
+              {boards.length === 0 && <p className="hint">Nothing saved yet.</p>}
+            </ul>
+          </div>
+        )}
+      </main>
+    </div>
+  );
 }
-
-export default App
