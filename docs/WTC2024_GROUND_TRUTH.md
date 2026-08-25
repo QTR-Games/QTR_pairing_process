@@ -513,6 +513,90 @@ QTR_MEASURE=1 npx vitest run src/engine/measure.leverage.test.ts \
 
 ---
 
+## Finding 16 — Our "worst-case bound" *is* the mirror axiom, and it costs 1.4 points of pessimism
+
+`protocol.ts:27-40` defends the webapp's opponent model as a bound rather than a
+belief:
+
+> *"The opponent here minimises OUR total on OUR OWN numbers. That is not a claim
+> about their preferences; it is a bound ... `protocolFloor` is a guarantee that
+> survives not knowing their grid at all."*
+
+That defence is sound for the number. It is **not** sound for the advice built on
+it, and the reason is one line of algebra:
+
+```
+a side maximising  O = 1 - M   maximises  sum(1 - M)
+                               which is   minimising sum(M)
+```
+
+"The opponent minimises our total" and "the opponent's grid is our grid mirrored"
+are **the same opponent**. The worst-case model and the mirror axiom that
+Finding 12 refuted (r = −0.049 between two real teams' grids) are one model in two
+sets of clothes.
+
+This is not an argument — it is asserted as a CI test. `measure.opponent.test.ts`
+plays a two-grid general-sum solver with their grid set to `1 − M` and checks it
+reproduces single-grid minimax on **all 31 boards × all 5 openings, to 9 decimal
+places**. It does. That test is not measurement-gated; it runs on every push.
+
+### What the assumption actually costs
+
+The null model Finding 12 supports: their grid is drawn *independently* of ours
+from the same marginal distribution of real ratings. We then play the real
+protocol as a general-sum game — we maximise our grid, they maximise theirs.
+
+200 trials per board, 31 boards, repeated across 4 seeds:
+
+| Quantity | Value | Stable across seeds? |
+|---|---|---|
+| Regret from following the floor ranking | **0.07 pts** | Yes — 0.069–0.074 |
+| Floor understates realised score by | **1.40 pts** | Yes — 1.396–1.403 |
+| Max understatement on a single board | **~2.5 pts** | Yes |
+| "App picked the best opening" agreement | 29–39% | **No — do not quote** |
+
+Two conclusions, and they pull in opposite directions:
+
+- **The advice is safe.** Following the floor ranking costs **0.07 points**. The
+  mirror axiom is theoretically refuted and practically almost harmless *for
+  ranking*. Nothing needs to be ripped out.
+- **The displayed number is not.** The floor runs **1.40 points pessimistic**
+  against an opponent optimising their own board. The app shows 14 where 15.4 is
+  the realistic expectation.
+
+That gap is exactly the distinction asked for at the table — *"must win versus
+must not lose."* The floor is the must-not-lose number. It has never been
+labelled as one, and the must-win number has never been shown at all.
+
+### The number I nearly published
+
+The first run said the app picks a different opening from the trial-best on
+**19 of 31 boards**, and the obvious headline was *"the recommendation is wrong
+61% of the time."* Re-running under three more seeds moved agreement to 29%, 35%,
+29% — the identity of the "best" opening is **not identifiable**, because the
+openings are too close to separate at 200 trials. Regret and floor error did not
+move at all.
+
+The alarming number was the unstable one. This is the same lesson as Finding 15's
+walker bug from the other direction: the harness now prints `SEED-UNSTABLE, do not
+quote` next to it, and re-checking with `QTR_SEED` is a precondition for quoting
+anything from this file.
+
+It also independently corroborates Finding 15 — if the opening mattered, the best
+opening would be identifiable. It isn't.
+
+Reproduce:
+
+```bash
+cd webapp
+QTR_MEASURE=1 npx vitest run src/engine/measure.opponent.test.ts \
+  --reporter=verbose --disable-console-intercept
+QTR_SEED=2 QTR_MEASURE=1 npx vitest run src/engine/measure.opponent.test.ts \
+  --reporter=verbose --disable-console-intercept
+```
+
+---
+
 ## What this changes — revised
 
 | Question originally asked | What the ground truth says |
@@ -522,5 +606,6 @@ QTR_MEASURE=1 npx vitest run src/engine/measure.leverage.test.ts \
 | *Can we beat "smart sort"?* | Better ranking of a low-resolution matrix is not the win. **Resolution itself** is the win (**Findings 13, 14**), plus signals the grid does not contain (**Finding 11**). |
 | *How do we avoid being bussed?* | **Stop modelling them as your mirror** (**Finding 12**). Assume an opponent who *maximises on a grid you cannot see* (**Finding 13**), and score your openings by how bad their best reply can be — not by your own optimistic total. |
 | *Where should the analysis point?* | **Not at the opening.** Who you hold at the opening is worth nothing on the median board; one decision later it is worth 2 points (**Finding 15**). The heaviest analysis has been sitting on the weakest decision. |
+| *Is the current advice actually wrong?* | **No — the ranking is safe** (0.07 pts of regret), but the number beside it is **1.4 pts pessimistic** and unlabelled (**Finding 16**). The fix is presentation — show the floor *as* a floor, and show the expected value next to it. |
 
 ---
