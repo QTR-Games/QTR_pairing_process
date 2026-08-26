@@ -8,9 +8,9 @@
  *   - the primary action, which picks one of three labels and one of two
  *     callbacks from the live round and the saved list. Getting this wrong
  *     sends someone mid-round to a fresh grid.
- *   - the links, one of which is deliberately absent. `LINKS.beer` has no URL
- *     yet, and a button that goes nowhere is worse at a table than no button,
- *     so the empty case is a feature and is pinned here.
+ *   - the links, one of which used to be deliberately absent. `LINKS.beer` now
+ *     has a real Ko-fi URL, but the assertions stay pinned to the constants so
+ *     that blanking either one in brand.ts still exercises the hidden path.
  *
  * Copy is asserted loosely -- by the opponent's name, not by the sentence
  * around it -- so rewording the labels does not fail this file.
@@ -113,16 +113,23 @@ describe("HomeMenu primary action", () => {
 
 describe("HomeMenu links", () => {
   /*
-    Pinned to the constant rather than to "" so that supplying a URL later
-    turns this test into a passing one, not a failing one to go and delete.
+    Still pinned to the constant rather than to a hard-coded true, so that
+    blanking either link in brand.ts keeps this file honest instead of turning
+    it into a failure to go and delete.
   */
-  it("hides the beer link while there is nowhere for it to go", () => {
+  it("offers the beer link, opened away from the app", () => {
     renderMenu();
 
     const links = Array.from(document.querySelectorAll(".home-links a"));
-    expect(links.some((a) => /beer/i.test(a.textContent ?? ""))).toBe(
-      Boolean(LINKS.beer),
-    );
+    const beer = links.find((a) => /beer/i.test(a.textContent ?? "")) ?? null;
+
+    expect(Boolean(beer)).toBe(Boolean(LINKS.beer));
+    if (!beer) return;
+
+    expect(beer.getAttribute("href")).toBe(LINKS.beer);
+    // A round in progress lives in memory; navigating this tab away loses it.
+    expect(beer.getAttribute("target")).toBe("_blank");
+    expect(beer.getAttribute("rel")).toContain("noreferrer");
   });
 
   it("offers the bug link, opened away from the app", () => {

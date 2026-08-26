@@ -28,12 +28,16 @@ export const BRAND = {
 /**
  * Outbound links.
  *
- * `bugs` points at the real issue tracker and works today. `beer` is a
- * placeholder: until it is a real address the menu hides that item rather than
- * showing a button that goes nowhere, because a dead control at a table is
- * worse than a missing one.
+ * Both point at real addresses today. `beer` is the same Ko-fi page the sibling
+ * app (QTR_CorvidGrudge) links to, so the two share one destination rather than
+ * splitting supporters across two.
+ *
+ * The menu still guards on the value being non-empty. That guard is not dead
+ * code: it is what lets either link be blanked here, in one place, without
+ * shipping a control that goes nowhere -- and a dead button at a table is worse
+ * than a missing one.
  */
 export const LINKS = {
   bugs: "https://github.com/QTR-Games/QTR_pairing_process/issues/new",
-  beer: "",
+  beer: "https://ko-fi.com/quotemyname",
 } as const;
