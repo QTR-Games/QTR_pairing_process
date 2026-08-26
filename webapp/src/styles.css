@@ -440,6 +440,22 @@ main {
   color: var(--good, #4ade80);
 }
 
+/* Raw matchup rating from our grid, shown on each pick tile and forced row so
+   the captain can pivot off the projected score when a player rates a matchup
+   very high or very low. Mirrors the .pip treatment: white text + shadow keeps
+   the number legible across the full red-amber-green range. */
+.pick-rating {
+  min-width: 1.6rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 5px;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  font-variant-numeric: tabular-nums;
+}
+
 .pick-hint {
   margin: 0.45rem 0 0;
   font-size: 0.8rem;

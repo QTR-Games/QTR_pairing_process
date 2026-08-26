@@ -14,6 +14,7 @@ import {
 import { solveCache, type SolveCache } from "../engine/protocol";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale } from "../model/board";
+import { ratingColor, toFraction, type Scale } from "../model/scale";
 
 interface Props {
   board: Board;
@@ -166,6 +167,7 @@ export function LivePanel({ board, state, onState, onReset }: Props) {
                 ownerIsUs={ownerIsUs}
                 tau={tau}
                 ratingSpan={scale.max - scale.min}
+                scale={scale}
                 ourName={ourName}
                 theirName={theirName}
                 onChoose={() => {
@@ -236,6 +238,7 @@ function OptionRow({
   ownerIsUs,
   tau,
   ratingSpan,
+  scale,
   ourName,
   theirName,
   onChoose,
@@ -253,6 +256,8 @@ function OptionRow({
   tau: number;
   /** `scale.max - scale.min`; the tie-break threshold is a fraction of it. */
   ratingSpan: number;
+  /** The board scale, for colouring raw matchup-rating chips on each tile. */
+  scale: Scale;
   ourName: (i: number) => string;
   theirName: (i: number) => string;
   onChoose: () => void;
@@ -269,6 +274,15 @@ function OptionRow({
     // decision, so it needs the same numbers as any other decision of ours.
     const choiceIsOurs = attackerSide === "our";
     const picks = pickOptions(matrix, state, option.pair, cache);
+    // The raw matchup rating for a tile: what OUR grid scored this exact pairing.
+    // When we hold the attacker, our fixed player faces each of their offered
+    // two, so the rating is our attacker's row against that column. When they
+    // hold the attacker, each tile is one of our players against their fixed
+    // attacker. Either way it is the number the captain wrote, surfaced so he
+    // can decide to pivot off the projected score when a player rates the
+    // matchup very high or very low.
+    const ratingFor = (player: number) =>
+      choiceIsOurs ? matrix[state.attacker][player] : matrix[player][state.attacker];
     // Every row, not just the recommended one: *they* choose which pair to
     // offer, so the row the user actually faces is not the row we would have
     // picked for them. Advising only the recommendation leaves the real
@@ -318,6 +332,13 @@ function OptionRow({
             >
               <span className="pick-name">
                 {names(p.player)} {choiceIsOurs ? "" : "played"}
+              </span>
+              <span
+                className="pick-rating"
+                style={{ background: ratingColor(toFraction(ratingFor(p.player), scale)) }}
+                title={choiceIsOurs ? "Our rating of this matchup" : "Their rating of this matchup"}
+              >
+                {fmt(ratingFor(p.player))}
               </span>
               <span className={"pick-value" + (p.value > tau ? " winning" : "")}>
                 {fmt(p.value)}
@@ -387,6 +408,13 @@ function OptionRow({
         ? ourName(option.ours)
         : theirName(option.theirs!);
 
+  // A forced pairing has both sides fixed, so it has one concrete matchup
+  // rating from our grid. Open moves (one side only) have no fixed opponent yet.
+  const concreteRating =
+    option.ours !== undefined && option.theirs !== undefined
+      ? matrix[option.ours][option.theirs]
+      : null;
+
   return (
     <li className={"option" + (best ? " best" : "")}>
       <button type="button" className="option-main tappable" onClick={onChoose}>
@@ -400,6 +428,15 @@ function OptionRow({
           <span className="tag cost">-{fmt(cost)}</span>
         ) : (
           <span className="tag cost">same floor</span>
+        )}
+        {concreteRating !== null && (
+          <span
+            className="pick-rating"
+            style={{ background: ratingColor(toFraction(concreteRating, scale)) }}
+            title="Our rating of this matchup"
+          >
+            {fmt(concreteRating)}
+          </span>
         )}
         {profile && <ProfileBar profile={profile} />}
       </div>

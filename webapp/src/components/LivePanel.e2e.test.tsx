@@ -188,4 +188,36 @@ describe("playing a round by tapping", () => {
     expect(screen.getByText(/0 of 5 tables set/)).toBeTruthy();
     expect(container.querySelector(".committed")).toBeNull();
   });
+
+  it("shows each pairing's raw matchup rating as a chip drawn from our grid", () => {
+    // Them-first, so the very first decision is an offer whose two halves are
+    // fixed pairings -- exactly the tiles the captain reads a rating off. Every
+    // rating shown must be a real cell of our grid formatted the way the panel
+    // formats scores, or the chip is decorative at best and wrong at worst.
+    const b = board(false);
+    const { container } = render(<Harness b={b} onState={() => {}} />);
+
+    const matrix = boardMatrix(b, boardScale(b));
+    const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+    const gridValues = new Set(matrix.flat().map(fmt));
+
+    // Walk until a screen that carries rating chips appears (an offer's pick
+    // tiles or a forced pairing), the same way a user taps into the round.
+    let taps = 0;
+    let chips = container.querySelectorAll<HTMLElement>(".pick-rating");
+    while (taps < 20 && chips.length === 0) {
+      if (!tapSomething(container)) break;
+      taps++;
+      chips = container.querySelectorAll<HTMLElement>(".pick-rating");
+    }
+
+    expect(chips.length).toBeGreaterThan(0);
+    for (const chip of chips) {
+      const text = chip.textContent ?? "";
+      expect(Number.isFinite(Number(text))).toBe(true);
+      // The number is a real matchup rating from our grid, not a projected
+      // score or an index -- membership catches a wrong source or wrong scale.
+      expect(gridValues.has(text)).toBe(true);
+    }
+  });
 });
