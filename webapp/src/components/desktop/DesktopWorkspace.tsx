@@ -258,7 +258,14 @@ export function DesktopWorkspace({
             <label className="field inline">
               <span>Scale</span>
               <select
-                value={board.scaleId}
+                // Resolved id, not the stored one. Everything else on screen goes
+                // through scaleById, which falls back to 1-5 for an id it does not
+                // recognise -- so a board carrying a legacy or hand-edited scaleId
+                // renders a 1-5 grid while this select, matching no option, silently
+                // displays the first one instead. That reads as "Stoplight", a 1-3
+                // scale, over a grid full of 4s and 5s. Binding to the same resolver
+                // the grid uses makes the two incapable of disagreeing.
+                value={boardScale(board).id}
                 onChange={(e) => onBoard({ ...board, scaleId: e.target.value })}
               >
                 {SCALES.map((s) => (

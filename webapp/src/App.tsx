@@ -289,7 +289,10 @@ export default function App() {
               <label className="field inline">
                 <span>Scale</span>
                 <select
-                  value={board.scaleId}
+                  // Resolved id, not the stored one -- see the matching note in
+                  // DesktopWorkspace. An unrecognised scaleId falls back to 1-5
+                  // everywhere except here, where it would show "Stoplight".
+                  value={scale.id}
                   onChange={(e) => setBoard({ ...board, scaleId: e.target.value })}
                 >
                   {SCALES.map((s) => (
