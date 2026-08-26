@@ -199,6 +199,20 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
     ),
   );
 
+  // A protocol-shielded player whose forced floor is still below the midpoint is
+  // shieldable, not safe: refusing their lone worst only concedes the next-worst.
+  // Splitting here keeps the "protecting them buys nothing" message off a player
+  // the captain still has to sequence around.
+  const trulySafe = shielded.filter((f) => f.level >= protect.mid);
+  const shieldableFloors = shielded.filter((f) => f.level < protect.mid);
+  const shieldableCells = new Set(
+    shieldableFloors.flatMap((f) =>
+      matrix[f.ours].flatMap((v, theirs) =>
+        v === f.rowWorst || v === f.level ? [`${f.ours}-${theirs}`] : [],
+      ),
+    ),
+  );
+
   // Rosters are frequently half-typed, so a blank name has to degrade into
   // something you can still find on the grid rather than an empty gap in a
   // sentence.
@@ -474,19 +488,44 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
           />
         )}
 
-        {shielded.length > 0 && (
+        {shieldableFloors.length > 0 && (
           <Insight
             title={
-              shielded.length === 1
-                ? `${ourName(shielded[0].ours)} cannot be forced into their worst matchup`
-                : `${listNames(shielded.map((f) => ourName(f.ours)))} cannot be forced into their worst matchups`
+              shieldableFloors.length === 1
+                ? `${ourName(shieldableFloors[0].ours)} can be shielded from their worst, but not into a good matchup`
+                : `${listNames(shieldableFloors.map((f) => ourName(f.ours)))} can be shielded from their worst, but not into a good matchup`
             }
             body={
-              shielded.length === 1
-                ? `Their worst cell is rated ${fmt(shielded[0].rowWorst)} and it is the only
-                   ${fmt(shielded[0].rowWorst)} in that row -- a single matchup, and a single
+              shieldableFloors.length === 1
+                ? `Their worst cell is a lone ${fmt(shieldableFloors[0].rowWorst)}, so it can be
+                   refused -- but the next matchup they can be forced into is a
+                   ${fmt(shieldableFloors[0].level)}, still below the midpoint. You keep
+                   ${ourName(shieldableFloors[0].ours)} out of the ${fmt(shieldableFloors[0].rowWorst)}
+                   only by conceding the ${fmt(shieldableFloors[0].level)}, so a nomination here buys
+                   the smaller hit, not safety. Sequence them ahead of the players who are genuinely
+                   fine.`
+                : `Each has a lone worst cell that can be refused, but the next cell they can be
+                   forced into is still below the midpoint. Refusing the worst only concedes the
+                   next-worst, so they are protectable, not safe -- weigh them after the exposed
+                   players and ahead of the genuinely fine ones.`
+            }
+            onFocus={() => onHighlight?.(shieldableCells)}
+          />
+        )}
+
+        {trulySafe.length > 0 && (
+          <Insight
+            title={
+              trulySafe.length === 1
+                ? `${ourName(trulySafe[0].ours)} cannot be forced into their worst matchup`
+                : `${listNames(trulySafe.map((f) => ourName(f.ours)))} cannot be forced into their worst matchups`
+            }
+            body={
+              trulySafe.length === 1
+                ? `Their worst cell is rated ${fmt(trulySafe[0].rowWorst)} and it is the only
+                   ${fmt(trulySafe[0].rowWorst)} in that row -- a single matchup, and a single
                    matchup can always be refused. The worst they can actually be held to is
-                   ${fmt(shielded[0].level)}. Spending a nomination to protect them buys
+                   ${fmt(trulySafe[0].level)}. Spending a nomination to protect them buys
                    nothing.`
                 : `Each of their worst cells is the only one of its rating in that row, and a
                    lone matchup can always be refused. Their real floors are better than the
@@ -495,7 +534,7 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
             }
             onFocus={() =>
               onHighlight?.(
-                new Set(shielded.flatMap((f) => f.via.map((t) => `${f.ours}-${t}`))),
+                new Set(trulySafe.flatMap((f) => f.via.map((t) => `${f.ours}-${t}`))),
               )
             }
           />
