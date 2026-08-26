@@ -26,6 +26,14 @@ export interface Board {
   scaleId: string;
   ourTeamFirst: boolean;
   updatedAt: number;
+  /**
+   * Set the first time a rating is written.
+   *
+   * Optional because boards saved before this field existed do not carry it;
+   * `isRated` falls back to inspecting the fractions for those, so nothing in
+   * localStorage needs migrating.
+   */
+  touched?: boolean;
 }
 
 const uid = (): string =>
@@ -54,11 +62,28 @@ export function boardMatrix(board: Board, scale: Scale): Matrix {
 export function setRating(board: Board, ours: number, theirs: number, value: number, scale: Scale): Board {
   const fractions = board.fractions.map((row) => [...row]);
   fractions[ours][theirs] = toFraction(value, scale);
-  return { ...board, fractions, updatedAt: Date.now() };
+  return { ...board, fractions, touched: true, updatedAt: Date.now() };
 }
 
-/** True once the board carries information beyond the all-even default. */
+/**
+ * True once the board carries information beyond the all-even default.
+ *
+ * This gates three real behaviours: whether the board is autosaved, how the
+ * screen orders itself, and whether the verdict says anything at all.
+ *
+ * The fractions alone cannot answer the question. A mid rating maps to exactly
+ * 0.5 -- 3 on the 1-5 scale, amber on the stoplight -- which is also the value
+ * an untouched board is seeded with. So a board deliberately rated all-even was
+ * indistinguishable from one nobody had opened, and being read as untouched it
+ * was never saved. Amber-across-the-board is a natural first pass, so that lost
+ * real work rather than being a curiosity.
+ *
+ * `touched` records the act of rating instead of trying to infer it from the
+ * result. The fraction check stays as the fallback for boards saved before the
+ * flag existed, where it remains the best available signal.
+ */
 export function isRated(board: Board): boolean {
+  if (board.touched) return true;
   return board.fractions.some((row) => row.some((f) => Math.abs(f - 0.5) > 1e-9));
 }
 
