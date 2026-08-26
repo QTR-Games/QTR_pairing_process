@@ -19,8 +19,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'QTR Pairing',
-        short_name: 'QTR',
+        name: 'KLIK KLAK',
+        short_name: 'KLIK KLAK',
         description: 'Team pairing decisions, offline, at the table.',
         theme_color: '#14161a',
         background_color: '#14161a',
@@ -32,7 +32,13 @@ export default defineConfig({
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
           {
-            src: 'icon-512.png',
+            /*
+              A separate file, not icon-512 reused. Android crops maskable icons
+              to a circle or squircle and only guarantees the centre 80%, so the
+              raven is inset to 60% here. Pointing this at the full-bleed icon
+              clipped the beak and crest on a round mask.
+            */
+            src: 'icon-maskable-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
