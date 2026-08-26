@@ -31,13 +31,25 @@ import { DEFAULTS, loadSettings, saveSettings, type Settings } from "./settings"
 /**
  * Marks the file as ours, so a wrong file chosen in a hurry fails clearly.
  *
- * Deliberately still reads `qtr.pairing` after the app was renamed to KLIK
- * KLAK. This string is written *inside* every backup file already exported, and
- * `parseBackup` rejects anything that does not match it. Renaming it for tidiness
- * would make every existing backup unreadable by the app that wrote it, which is
- * the exact failure a backup exists to prevent.
+ * This is the tag written into every backup this build exports. It is *not* the
+ * only tag the reader accepts -- see `READABLE_KINDS`.
  */
-export const BACKUP_KIND = "qtr.pairing.backup";
+export const BACKUP_KIND = "klikklak.backup";
+
+/**
+ * Every tag this app has ever written, newest first.
+ *
+ * Renaming the tag is cosmetic on its own; what makes the rename safe is that
+ * the reader never narrowed. A backup is the thing you reach for on the morning
+ * something has gone wrong, and a reader that refuses a file it wrote last year
+ * because the product was renamed in between has failed at its only job.
+ *
+ * So the writer moves forward and the reader stays permissive: anything in this
+ * list is accepted, and `parseBackup` normalises what it returns to
+ * `BACKUP_KIND`, so nothing downstream has to know which vintage it came from.
+ * Add to this list, never remove from it.
+ */
+const READABLE_KINDS: readonly string[] = [BACKUP_KIND, "qtr.pairing.backup"];
 
 /** Bumped only for a shape change that an older reader could misread. */
 export const BACKUP_VERSION = 1;
@@ -114,7 +126,7 @@ export function parseBackup(text: string): Backup {
   if (!b || typeof b !== "object") {
     throw new BackupError("That file does not contain a backup.");
   }
-  if (b.kind !== BACKUP_KIND) {
+  if (typeof b.kind !== "string" || !READABLE_KINDS.includes(b.kind)) {
     throw new BackupError("That file is not a KLIK KLAK backup.");
   }
   if (typeof b.version !== "number" || b.version > BACKUP_VERSION) {

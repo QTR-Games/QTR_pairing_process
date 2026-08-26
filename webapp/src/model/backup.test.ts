@@ -73,6 +73,52 @@ describe("a backup survives the round trip", () => {
   });
 });
 
+describe("the tag on the file", () => {
+  /*
+   * The app was renamed from QTR Pairing to KLIK KLAK. The writer moved to the
+   * new tag; the reader must not, or a file exported before the rename becomes
+   * unreadable by the app that wrote it.
+   */
+  it("writes the current name, not the old one", () => {
+    expect(BACKUP_KIND).toBe("klikklak.backup");
+    write([board("a", "Sweden", 100)]);
+    expect(serializeBackup()).toContain('"kind": "klikklak.backup"');
+  });
+
+  it("still reads a backup written before the rename", () => {
+    const legacy = JSON.stringify({
+      kind: "qtr.pairing.backup",
+      version: BACKUP_VERSION,
+      teamSize: 5,
+      boards: [board("a", "Sweden", 100)],
+    });
+
+    const restored = parseBackup(legacy);
+
+    expect(restored.boards.map((b) => b.opponent)).toEqual(["Sweden"]);
+  });
+
+  it("hands back the current tag whatever vintage went in, so callers need not care", () => {
+    const legacy = JSON.stringify({
+      kind: "qtr.pairing.backup",
+      version: BACKUP_VERSION,
+      boards: [],
+    });
+
+    expect(parseBackup(legacy).kind).toBe(BACKUP_KIND);
+  });
+
+  it("still refuses a tag it has never written", () => {
+    const alien = JSON.stringify({
+      kind: "some.other.app.backup",
+      version: BACKUP_VERSION,
+      boards: [],
+    });
+
+    expect(() => parseBackup(alien)).toThrow(/not a KLIK KLAK backup/);
+  });
+});
+
 describe("a bad file fails where someone can see it", () => {
   it("rejects text that is not JSON", () => {
     expect(() => parseBackup("not a file")).toThrow(BackupError);
