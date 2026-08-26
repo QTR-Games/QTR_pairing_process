@@ -186,7 +186,11 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
   // that keeps both clear. A column that merely dips several players below the
   // midpoint is common and near-silent; this is the one that forces a choice.
   const sharedTrap =
-    protect.joint.find((j) => j.ours.filter((o) => exposedSet.has(o)).length >= 2) ?? null;
+    protect.joint
+      .map((j) => ({ j, exposed: j.ours.filter((o) => exposedSet.has(o)).length }))
+      .filter((x) => x.exposed >= 2)
+      .sort((a, b) => b.exposed - a.exposed || a.j.worst - b.j.worst || a.j.theirs - b.j.theirs)[0]
+      ?.j ?? null;
   const focusLevel =
     protect.focus === null ? 0 : protect.players[protect.focus].forcedLevel;
   const exposedCells = new Set(
