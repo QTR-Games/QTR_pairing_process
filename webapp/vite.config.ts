@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -57,4 +58,18 @@ export default defineConfig({
       },
     }),
   ],
+
+  /*
+   * The engine tests are genuinely CPU-bound: they run exhaustive searches over
+   * thousands of generated boards. Alone each takes a couple of seconds, but
+   * vitest runs files in parallel across every core, so under contention a test
+   * that normally finishes in 2.6s can drift past vitest's 5s default and fail
+   * as a timeout -- a red suite that says nothing about the code. Raising the
+   * ceiling makes that class of false failure go away while still being far
+   * below anything a genuine hang would take.
+   */
+  test: {
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
+  },
 })

@@ -87,7 +87,15 @@ export function isRated(board: Board): boolean {
   return board.fractions.some((row) => row.some((f) => Math.abs(f - 0.5) > 1e-9));
 }
 
-/** The storage key. Exported so the backup path cannot drift from the load path. */
+/**
+ * The storage key. Exported so the backup path cannot drift from the load path.
+ *
+ * Keeps the `qtr.` prefix on purpose, after the app was renamed to KLIK KLAK.
+ * This is the address every saved board already lives at in localStorage.
+ * Renaming it for consistency would not move the data -- it would point the app
+ * at an empty shelf, and every board on the device would read as gone. The same
+ * is true of the live-round and settings keys below.
+ */
 export const BOARDS_KEY = "qtr.boards.v1";
 const KEY = BOARDS_KEY;
 

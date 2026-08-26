@@ -28,7 +28,15 @@
 import { BOARDS_KEY, isValidBoard, loadBoards, TEAM_SIZE, type Board } from "./board";
 import { DEFAULTS, loadSettings, saveSettings, type Settings } from "./settings";
 
-/** Marks the file as ours, so a wrong file chosen in a hurry fails clearly. */
+/**
+ * Marks the file as ours, so a wrong file chosen in a hurry fails clearly.
+ *
+ * Deliberately still reads `qtr.pairing` after the app was renamed to KLIK
+ * KLAK. This string is written *inside* every backup file already exported, and
+ * `parseBackup` rejects anything that does not match it. Renaming it for tidiness
+ * would make every existing backup unreadable by the app that wrote it, which is
+ * the exact failure a backup exists to prevent.
+ */
 export const BACKUP_KIND = "qtr.pairing.backup";
 
 /** Bumped only for a shape change that an older reader could misread. */
@@ -82,7 +90,7 @@ export function backupFilename(at: Date = new Date()): string {
   const stamp =
     `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}` +
     `-${pad(at.getHours())}${pad(at.getMinutes())}`;
-  return `qtr-boards-${stamp}.json`;
+  return `klikklak-boards-${stamp}.json`;
 }
 
 export class BackupError extends Error {}
@@ -107,7 +115,7 @@ export function parseBackup(text: string): Backup {
     throw new BackupError("That file does not contain a backup.");
   }
   if (b.kind !== BACKUP_KIND) {
-    throw new BackupError("That file is not a QTR pairing backup.");
+    throw new BackupError("That file is not a KLIK KLAK backup.");
   }
   if (typeof b.version !== "number" || b.version > BACKUP_VERSION) {
     throw new BackupError(
