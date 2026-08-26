@@ -169,12 +169,12 @@ jobs:
         run: |
           mkdir -p artifact
           cp android/app/build/outputs/apk/release/app-release.apk \
-             "artifact/qtr-pairing-${{ steps.version.outputs.name }}.apk"
+             "artifact/klikklak-${{ steps.version.outputs.name }}.apk"
           ls -lh artifact/*.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: qtr-pairing-release-${{ steps.version.outputs.name }}-${{ steps.version.outputs.code }}
+          name: klikklak-release-${{ steps.version.outputs.name }}-${{ steps.version.outputs.code }}
           path: webapp/artifact/*.apk
           if-no-files-found: error
           retention-days: 90

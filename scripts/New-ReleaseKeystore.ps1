@@ -28,9 +28,9 @@
 param(
     [string]$KeystorePath,
     [string]$PropertiesPath,
-    [string]$Alias = 'qtr-pairing-release',
+    [string]$Alias = 'klikklak',
     [int]$ValidityDays = 10000,
-    [string]$DistinguishedName = 'CN=QTR Pairing, O=QTR-Games, C=US',
+    [string]$DistinguishedName = 'CN=GronkSoft, OU=KLIK KLAK, O=GronkSoft, C=US',
     [switch]$Force
 )
 

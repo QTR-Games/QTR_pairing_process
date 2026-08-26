@@ -79,7 +79,7 @@ describe("a bad file fails where someone can see it", () => {
   });
 
   it("rejects a JSON file that is not ours", () => {
-    expect(() => parseBackup('{"hello":"world"}')).toThrow(/not a QTR pairing backup/);
+    expect(() => parseBackup('{"hello":"world"}')).toThrow(/not a KLIK KLAK backup/);
   });
 
   it("rejects a backup from a newer app", () => {
@@ -211,6 +211,6 @@ describe("restoring onto a phone that already has boards", () => {
 describe("the filename", () => {
   it("sorts by date and names the app", () => {
     const name = backupFilename(new Date(2026, 7, 31, 9, 5));
-    expect(name).toBe("qtr-boards-2026-08-31-0905.json");
+    expect(name).toBe("klikklak-boards-2026-08-31-0905.json");
   });
 });

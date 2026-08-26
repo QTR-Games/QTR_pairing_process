@@ -466,7 +466,7 @@ function InstallNote() {
     <section className="install-note">
       <h2>Put this on a phone</h2>
       <p>
-        <a href="./qtr-pairing.apk">Download the Android app</a> — open the file
+        <a href="./klikklak.apk">Download the Android app</a> — open the file
         and allow the install when the phone asks.
       </p>
       <p className="hint">

@@ -3,7 +3,7 @@
 # This is the normal path. The APK and the built web bundle are uploaded as
 # workflow artifacts, downloadable from the Actions tab by anyone with access to
 # the repository. To put the app on a phone: download the artifact, unzip it,
-# copy qtr-pairing.apk to the device over USB, and tap it.
+# copy klikklak.apk to the device over USB, and tap it.
 #
 # This workflow used to deploy to GitHub Pages. It no longer does, because the
 # app is not stable enough to be publicly usable yet and this repository is
@@ -127,8 +127,8 @@ jobs:
         run: |
           src=android/app/build/outputs/apk/debug/app-debug.apk
           mkdir -p artifact
-          cp "$src" artifact/qtr-pairing.apk
-          cp "$src" "artifact/qtr-pairing-${SHA:0:7}.apk"
+          cp "$src" artifact/klikklak.apk
+          cp "$src" "artifact/klikklak-${SHA:0:7}.apk"
           ls -lh artifact/*.apk
 
       # Read the version back out of the finished APK rather than trusting that
@@ -143,7 +143,7 @@ jobs:
           EXPECTED: ${{ github.run_number }}
         run: |
           aapt2=$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -1)
-          badging=$("$aapt2" dump badging artifact/qtr-pairing.apk | head -1)
+          badging=$("$aapt2" dump badging artifact/klikklak.apk | head -1)
           echo "$badging"
           actual=$(echo "$badging" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p")
           if [ "$actual" != "$EXPECTED" ]; then
@@ -156,7 +156,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: qtr-pairing-apk
+          name: klikklak-apk
           path: webapp/artifact/*.apk
           if-no-files-found: error
 
@@ -164,6 +164,6 @@ jobs:
       # unzip it and serve the folder with any static file server.
       - uses: actions/upload-artifact@v4
         with:
-          name: qtr-pairing-web
+          name: klikklak-web
           path: webapp/dist
           if-no-files-found: error

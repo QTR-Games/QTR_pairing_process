@@ -7,7 +7,7 @@ showing the same numbers.
 
 You do not need any of this to get an APK. **CI builds one on every push to
 `main` and on every pull request**, downloadable from the Actions tab as the
-`qtr-pairing-apk` artifact. This document is for building locally, and for
+`klikklak-apk` artifact. This document is for building locally, and for
 setting up release signing.
 
 ## The two workflows, and which one you want

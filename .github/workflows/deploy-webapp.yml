@@ -25,7 +25,7 @@
 #
 # Pages has no tags and no rulesets, so the same URL can be overwritten forever:
 #
-#   https://qtr-games.github.io/QTR_pairing_process/qtr-pairing.apk
+#   https://qtr-games.github.io/QTR_pairing_process/klikklak.apk
 name: deploy-webapp
 
 on:
@@ -117,23 +117,32 @@ jobs:
       # delete the installer and break the download link for everyone -- over a
       # transient dependency mirror error. A stale APK beats a missing one, and
       # the web app ships either way.
+      #
+      # Two names are tried because the installer was renamed from
+      # qtr-pairing.apk to klikklak.apk. Until a successful build publishes the
+      # new name, the only copy live on the site still carries the old one, and
+      # a fallback that only knew the new name would fail exactly when it was
+      # needed. The old name can be dropped once a build has published the new.
       - name: Put the APK in the site
         working-directory: webapp
         run: |
           src=android/app/build/outputs/apk/debug/app-debug.apk
           if [ ! -f "$src" ]; then
             echo "::warning::APK build failed; keeping the one already published"
-            live=https://qtr-games.github.io/QTR_pairing_process/qtr-pairing.apk
-            if curl -fsSL "$live" -o dist/qtr-pairing.apk; then
-              cp dist/qtr-pairing.apk "dist/qtr-pairing-${GITHUB_SHA:0:7}.apk"
-              ls -lh dist/*.apk
-              exit 0
-            fi
+            base=https://qtr-games.github.io/QTR_pairing_process
+            for name in klikklak.apk qtr-pairing.apk; do
+              if curl -fsSL "$base/$name" -o dist/klikklak.apk; then
+                echo "recovered the published installer from $name"
+                cp dist/klikklak.apk "dist/klikklak-${GITHUB_SHA:0:7}.apk"
+                ls -lh dist/*.apk
+                exit 0
+              fi
+            done
             echo "no APK built and none published to fall back to"
             exit 1
           fi
-          cp "$src" dist/qtr-pairing.apk
-          cp "$src" "dist/qtr-pairing-${GITHUB_SHA:0:7}.apk"
+          cp "$src" dist/klikklak.apk
+          cp "$src" "dist/klikklak-${GITHUB_SHA:0:7}.apk"
           ls -lh dist/*.apk
 
       - uses: actions/configure-pages@v5
