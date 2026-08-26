@@ -21,10 +21,14 @@ import type { CapacitorConfig } from "@capacitor/cli";
  * `webapp/android/.gitignore`, so only the parts we author are tracked.
  */
 const config: CapacitorConfig = {
-  appId: "com.qtrgames.pairing",
-  // The launcher name only. `appId` deliberately stays `com.qtrgames.pairing`:
-  // it is the Android package identity, so changing it would orphan every
-  // existing install and force a manual uninstall before the next APK.
+  appId: "com.gronksoft.klikklak",
+  // The Android package identity, and effectively permanent: changing it
+  // orphans every existing install rather than upgrading it, so the app has to
+  // be uninstalled first and its saved boards go with it. It was changed from
+  // `com.qtrgames.pairing` exactly once, at the same moment the app moved from
+  // debug signing to a real release key -- that switch already forced a
+  // one-time uninstall, so the rename rode along for free. Do not change it
+  // again without a comparably good reason.
   appName: "KLIK KLAK",
   webDir: "dist",
   android: {

@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">KLIK KLAK</string>
     <string name="title_activity_main">KLIK KLAK</string>
-    <string name="package_name">com.qtrgames.pairing</string>
-    <string name="custom_url_scheme">com.qtrgames.pairing</string>
+    <string name="package_name">com.gronksoft.klikklak</string>
+    <string name="custom_url_scheme">com.gronksoft.klikklak</string>
 </resources>

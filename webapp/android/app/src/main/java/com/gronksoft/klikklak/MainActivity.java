@@ -1,4 +1,4 @@
-package com.qtrgames.pairing;
+package com.gronksoft.klikklak;
 
 import com.getcapacitor.BridgeActivity;
 
