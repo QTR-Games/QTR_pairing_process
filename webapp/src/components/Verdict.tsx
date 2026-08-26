@@ -251,7 +251,7 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
           />
         )}
 
-        {initiative !== 0 && (
+        {initiative !== 0 ? (
           <Insight
             title={
               initiative < 0
@@ -266,6 +266,31 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
                 : `Guaranteed ${fmt(pWe)} opening, ${fmt(pThey)} if they open. Unusually, this
                    board rewards committing first.`
             }
+          />
+        ) : (
+          /*
+            The dice-off is free on this board, and saying nothing about that is
+            not the same as saying so. Silence here reads as "not calculated",
+            which is the one thing it never is -- `initiative` exists on every
+            render from two protocolFloor calls the panel already makes.
+
+            Measured over the 31 saved event boards the gap takes exactly one
+            non-zero value, 1.000 points, and is exactly zero on 13 of them. So
+            this branch fires on more than a third of real boards, and on those
+            boards losing the roll costs nothing at all. That is worth a line:
+            it frees you from spending any thought on an outcome you cannot
+            control.
+
+            Deliberately phrased in points and not in round-win chance. The
+            probability version of this gap is also a single constant, 7.96875
+            percentage points, and it costs 17-36 ms of winChanceFloor to
+            recover a number that carries no board-specific information.
+          */
+          <Insight
+            title="The dice-off does not matter here"
+            body={`Guaranteed ${fmt(pWe)} either way -- ${fmt(pWe)} if you put a player up first,
+                   ${fmt(pThey)} if they do. Win or lose the roll, this board hands you the same
+                   floor, so there is nothing to plan around and nothing to regret.`}
           />
         )}
 

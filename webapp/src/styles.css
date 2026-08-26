@@ -961,6 +961,30 @@ button.ghost {
     text-transform: uppercase;
   }
 
+  /*
+    The tied-best openings under the exposure overlay. Deliberately the only
+    positive colour in the grid: measured over the saved boards only about 3 of
+    the 25 cells earn it, so it reads as a shortlist rather than decoration.
+  */
+  .heat.best {
+    background: rgba(64, 200, 140, 0.22);
+    color: #b6f5d8;
+    border-radius: 3px;
+    padding: 1px 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  .app-wide .switch select {
+    background: rgba(255, 255, 255, 0.06);
+    color: inherit;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 6px;
+    padding: 2px 6px;
+    font: inherit;
+    cursor: pointer;
+  }
+
   .heat.pinned {
     background: rgba(0, 0, 0, 0.55);
     color: #ffd0d0;
