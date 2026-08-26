@@ -42,7 +42,7 @@ def resolvedVersionName = System.getenv('ANDROID_VERSION_NAME')
 println "QTR: building versionCode ${resolvedVersionCode}, versionName ${resolvedVersionName}"
 
 android {
-    namespace = "com.qtrgames.pairing"
+    namespace = "com.gronksoft.klikklak"
     compileSdk = rootProject.ext.compileSdkVersion
     signingConfigs {
         if (hasReleaseSigning) {
@@ -55,7 +55,7 @@ android {
         }
     }
     defaultConfig {
-        applicationId "com.qtrgames.pairing"
+        applicationId "com.gronksoft.klikklak"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode resolvedVersionCode
