@@ -4,6 +4,7 @@ import type { Matrix } from "../engine/boardAnalysis";
 import { decisionReport, evenThreshold, LIVE, SECURED, UNWINNABLE } from "../engine/boardAnalysis";
 import { outlook } from "../engine/opponent";
 import { protocolFloor } from "../engine/protocol";
+import { protectionFocus } from "../engine/protection";
 import { reachReport } from "../engine/reach";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale, isRated } from "../model/board";
@@ -159,6 +160,45 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
   const shielded = reach.floors.filter((f) => f.protectedByProtocol);
   const overstated = reach.ceilings.filter((c) => c.overstated);
 
+  /*
+    Who can they trap, and what did the board just cost us?
+
+    Unconditional, like `reach` above and for the same reason: the exposed/safe
+    split is reach's measured "a tied worst is forceable, a unique worst is not"
+    rule, which is ten sorts of five numbers, not a search. The one solve here
+    is `winChanceFloor` for `base`, and the panel already runs `outlook` -- two
+    dozen sampled solves -- on every render, so one more is inside the noise.
+
+    This exists because the old worst-matchup chip named a single cheap cell and
+    went silent when a player picked up a SECOND bad matchup, which is exactly
+    when protection gets hard. `protectionFocus` names the exposed players
+    instead, and carries the round-win chance so a worsening board is visible
+    rather than silent -- the delta a captain driving the app could not see.
+  */
+  const protect = useMemo(
+    () => protectionFocus(matrix, scale.min, scale.max, board.ourTeamFirst),
+    [matrix, scale.min, scale.max, board.ourTeamFirst],
+  );
+
+  const exposedSet = new Set(protect.exposed.map((p) => p.ours));
+  // The sharp version of the shared-column trap: one of their nominations that
+  // pressures two players who are BOTH already forceable, so there is no line
+  // that keeps both clear. A column that merely dips several players below the
+  // midpoint is common and near-silent; this is the one that forces a choice.
+  const sharedTrap =
+    protect.joint
+      .map((j) => ({ j, exposed: j.ours.filter((o) => exposedSet.has(o)).length }))
+      .filter((x) => x.exposed >= 2)
+      .sort((a, b) => b.exposed - a.exposed || a.j.worst - b.j.worst || a.j.theirs - b.j.theirs)[0]
+      ?.j ?? null;
+  const focusLevel =
+    protect.focus === null ? 0 : protect.players[protect.focus].forcedLevel;
+  const exposedCells = new Set(
+    protect.exposed.flatMap((p) =>
+      matrix[p.ours].flatMap((v, theirs) => (v === p.rowWorst ? [`${p.ours}-${theirs}`] : [])),
+    ),
+  );
+
   // Rosters are frequently half-typed, so a blank name has to degrade into
   // something you can still find on the grid rather than an empty gap in a
   // sentence.
@@ -208,6 +248,11 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
           strong
         />
         <Stat label="Ceiling" value={fmt(o.ceiling)} note="best still reachable" />
+        <Stat
+          label="Round odds"
+          value={pct(protect.base)}
+          note="chance you take it -- updates as you rate"
+        />
       </div>
 
       <p className="reading">
@@ -380,6 +425,52 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
               to weigh. A metric that only ranks by expected value rates it the same as
               pairings that are strictly worse.`}
             onFocus={() => onHighlight?.(new Set([`${dominant.ours}-${dominant.theirs}`]))}
+          />
+        )}
+
+        {protect.exposed.length > 0 && (
+          <Insight
+            title={
+              protect.exposed.length === 1
+                ? `${ourName(protect.exposed[0].ours)} can be forced into their worst matchup`
+                : `${listNames(protect.exposed.map((p) => ourName(p.ours)))} can be forced into their worst matchups`
+            }
+            body={
+              protect.exposed.length === 1
+                ? `Their ${fmt(protect.exposed[0].rowWorst)} is repeated in the row
+                   (${protect.exposed[0].floorCount} of them), and a repeated worst cell cannot be
+                   refused -- the opponent picks the moment to spring it. You cannot dodge them
+                   clear, so do not spend nominations trying: sequence so the hit lands in the
+                   least bad of those cells, and protect where refusing actually works. The round
+                   odds above fall as this gets worse.`
+                : `Each has a repeated worst cell, and a repeated worst cannot be refused -- one
+                   nomination is enough to spring it. ${ourName(protect.focus ?? protect.exposed[0].ours)}
+                   is the deepest at ${fmt(focusLevel)}, so weigh sequencing around them first.
+                   Protecting all of them is not on the table; aim each into the least bad of
+                   their tied cells. The round odds above fall as any of these deepen.`
+            }
+            onFocus={() => onHighlight?.(exposedCells)}
+          />
+        )}
+
+        {sharedTrap && (
+          <Insight
+            title={`${theirName(sharedTrap.theirs)} squeezes ${listNames(
+              sharedTrap.ours.filter((o) => exposedSet.has(o)).map((o) => ourName(o)),
+            )} at once`}
+            body={`Both are below the midpoint against them and both have a repeated worst cell,
+              so a single nomination pressures two players you already cannot fully protect.
+              There is no line that keeps both clear -- decide now which one eats it rather than
+              discovering the choice was made for you.`}
+            onFocus={() =>
+              onHighlight?.(
+                new Set(
+                  sharedTrap.ours
+                    .filter((o) => exposedSet.has(o))
+                    .map((o) => `${o}-${sharedTrap.theirs}`),
+                ),
+              )
+            }
           />
         )}
 
