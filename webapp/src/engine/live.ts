@@ -21,8 +21,8 @@
 
 import type { Matrix } from "./boardAnalysis";
 import { outlook } from "./opponent";
-import type { ProtocolResult, ProtocolState, Side } from "./protocol";
-import { solveProtocol } from "./protocol";
+import type { ProtocolState, Side, SolveCache } from "./protocol";
+import { memoFor, solveCache, solveProtocol } from "./protocol";
 
 const bits = (mask: number): number[] => {
   const out: number[] = [];
@@ -110,9 +110,15 @@ export function currentDecision(s: LiveState): Decision {
  * Values are final round totals, so they already include everything banked.
  * That means the numbers on screen are directly comparable to the threshold,
  * with no mental arithmetic at the table.
+ *
+ * Pass a `cache` to share the search with everything else drawing the same
+ * board. Without one this allocates a fresh memo and re-derives subtrees the
+ * caller has very likely just paid for -- see `playerLeverage`, which asks this
+ * exact question again, and `optionProfile`, which asks it once per option.
  */
-export function moveOptions(matrix: Matrix, s: LiveState): MoveOption[] {
-  const memo = new Map<string, ProtocolResult>();
+export function moveOptions(matrix: Matrix, s: LiveState, cache?: SolveCache): MoveOption[] {
+  const shared = cache ?? solveCache(matrix);
+  const memo = memoFor(matrix, shared);
   const raw: MoveOption[] = [];
   const decision = currentDecision(s);
 
@@ -137,7 +143,7 @@ export function moveOptions(matrix: Matrix, s: LiveState): MoveOption[] {
     for (let a = 0; a < pool.length; a++) {
       for (let b = a + 1; b < pool.length; b++) {
         const pair: [number, number] = [pool[a], pool[b]];
-        const v = offerValue(matrix, s, pair, memo);
+        const v = offerValue(matrix, s, pair, shared);
         raw.push({ pair, value: s.banked + v, regret: 0 });
       }
     }
@@ -164,12 +170,12 @@ function offerValue(
   matrix: Matrix,
   s: LiveState,
   pair: [number, number],
-  memo: Map<string, ProtocolResult>,
+  cache: SolveCache,
 ): number {
   // Same search the pick buttons show, minus what is already banked -- one
   // implementation, so the offer's headline value and the two halves beneath
   // it can never disagree on screen.
-  const picks = pickOptions(matrix, s, pair, memo);
+  const picks = pickOptions(matrix, s, pair, cache);
   const best = picks.find((p) => p.best)!;
   return best.value - s.banked;
 }
@@ -200,8 +206,9 @@ export function pickOptions(
   matrix: Matrix,
   s: LiveState,
   pair: [number, number],
-  memo: Map<string, ProtocolResult> = new Map(),
+  cache?: SolveCache,
 ): PickOption[] {
+  const memo = memoFor(matrix, cache);
   const attackerIsUs = s.attackerSide === "our";
 
   const out: PickOption[] = pair.map((picked) => {
@@ -326,11 +333,12 @@ export function pickTieBreak(
    * advice.
    */
   ratingSpan: number,
+  cache?: SolveCache,
 ): PickTieBreak | null {
   if (s.attackerSide !== "our") return null;
   const minRealGap = MIN_REAL_GAP_FRACTION * ratingSpan;
 
-  const picks = pickOptions(matrix, s, pair);
+  const picks = pickOptions(matrix, s, pair, cache);
   if (Math.abs(picks[0].value - picks[1].value) > 1e-9) return null;
 
   const scored = picks.map((p) => {
@@ -363,7 +371,7 @@ export function pickTieBreak(
     // Deterministic: every reply they could make, valued exactly. `ceiling` is
     // what we collect if they slip; `punishRate` is how much of their reply
     // space actually holds us to the floor.
-    const replies = moveOptions(matrix, after);
+    const replies = moveOptions(matrix, after, cache);
     const values = replies.map((r) => r.value);
     const worst = Math.min(...values);
     return {
@@ -524,8 +532,11 @@ export interface Leverage {
  * opportunities later that do not exist now. A player with a negative gain is
  * a player whose moment is this one.
  */
-export function playerLeverage(matrix: Matrix, s: LiveState): Leverage[] {
-  const options = moveOptions(matrix, s);
+export function playerLeverage(matrix: Matrix, s: LiveState, cache?: SolveCache): Leverage[] {
+  // This asks the solver the exact question the panel has already asked. With a
+  // shared cache the second ask is a walk over cached values; without one it is
+  // a second full search of the same tree.
+  const options = moveOptions(matrix, s, cache);
   if (options.length === 0) return [];
 
   const out: Leverage[] = [];
@@ -585,11 +596,14 @@ export function optionProfile(
   matrix: Matrix,
   s: LiveState,
   opt: MoveOption,
+  cache?: SolveCache,
 ): OptionProfile | null {
   const next = stateAfterOption(s, opt, matrix);
   if (!next) return null;
 
-  const replies = moveOptions(matrix, next);
+  // `next` is a child of the state the caller just searched, so with a shared
+  // cache almost every subtree below it is already known.
+  const replies = moveOptions(matrix, next, cache);
   if (replies.length === 0) return null;
 
   const values = replies.map((r) => r.value);

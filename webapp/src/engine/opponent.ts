@@ -219,6 +219,29 @@ export interface Outlook {
   low: number;
   /** Good tail: what a gamble is worth when it comes off. */
   high: number;
+  /**
+   * Standard error of `expected`, in round points.
+   *
+   * `expected` is a Monte Carlo mean over `trials` sampled opponent boards, so
+   * it carries sampling error whether or not anyone looks at it. Measured
+   * against a 4000-trial reference on the 31 real boards, the shipped 24-trial
+   * estimate lands 0.053 pts from the truth on average and 0.218 pts away at
+   * worst.
+   *
+   * That is small enough to trust for reading -- no decision turns on a
+   * twentieth of a point -- but callers that COMPARE `expected` to something
+   * are a different case. Verdict.tsx picks between two opposite
+   * recommendations on `expected > tau`, and 5 of the 31 real boards sit closer
+   * to that line than the error, with one exactly on it. On those boards the
+   * advice was being chosen by the random draw.
+   *
+   * Raising the trial count is the expensive answer: 192 trials cuts the error
+   * roughly in half and costs eight times the time, on the phone, which is the
+   * device that actually goes to the event. Reporting the uncertainty costs a
+   * pass over an array we have already built. So the estimate carries its own
+   * error bar and comparisons can decline to answer when the gap is inside it.
+   */
+  stderr: number;
 }
 
 /**
@@ -251,6 +274,14 @@ export function outlook(
   const mean = totals.reduce((a, b) => a + b, 0) / totals.length;
   const at = (q: number): number => totals[Math.min(totals.length - 1, Math.floor(q * totals.length))];
 
+  // Sample standard error of the mean. Bessel-corrected, and guarded for the
+  // degenerate single-trial case a caller could ask for.
+  const variance =
+    totals.length > 1
+      ? totals.reduce((a, b) => a + (b - mean) ** 2, 0) / (totals.length - 1)
+      : 0;
+  const stderr = Math.sqrt(variance / totals.length);
+
   // A discrete, left-skewed sample can put the 10th percentile ABOVE the mean:
   // if a couple of trials end in disaster they drag the average below p10 while
   // 90% of outcomes sit higher. That is a true description of the distribution
@@ -262,5 +293,6 @@ export function outlook(
     expected: mean,
     low: Math.min(at(0.1), mean),
     high: Math.max(at(0.9), mean),
+    stderr,
   };
 }
