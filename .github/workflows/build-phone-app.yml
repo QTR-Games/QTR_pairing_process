@@ -5,11 +5,17 @@
 # the repository. To put the app on a phone: download the artifact, unzip it,
 # copy klikklak.apk to the device over USB, and tap it.
 #
-# This workflow used to deploy to GitHub Pages. It no longer does, because the
-# app is not stable enough to be publicly usable yet and this repository is
-# public, so anything Pages served was reachable by anyone who found the URL.
-# That capability still exists in deploy-webapp.yml, which is manual-dispatch
-# only and is kept as the event fallback.
+# This workflow used to deploy to GitHub Pages, and a second manual-dispatch
+# workflow was kept alongside it as an event-day fallback. Both are
+# retired. This repository is private and the organisation is on the GitHub Free
+# plan, where Pages cannot publish from a private repository at all -- so the
+# fallback would have failed on the one day it existed for. Repairing it would
+# take a paid plan and would then serve the app publicly anyway, since Pages
+# sites are public regardless of repository visibility below Enterprise Cloud.
+#
+# To get a build onto a phone, use `scripts/Install-ToPhone.ps1` (`cd webapp;
+# npm run phone:install`), which installs the latest CI APK over wireless
+# debugging in one command. See docs/android-build.md.
 #
 # The installed APK is entirely offline. It bundles the web assets locally and
 # sets no server.url, so it never makes a network request at runtime. Venue
