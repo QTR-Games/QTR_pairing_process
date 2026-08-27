@@ -7,14 +7,13 @@ name: tests
 #   native there, no display server needed).
 # - A fresh --basetemp avoids pytest's shared per-user temp cleanup bug on Windows
 #   (WinError 5 on pytest-current), which is infrastructure noise, not a test failure.
-# The final `tests` job was the single required status check. It is not enforced
-# any more: this repository is private and the organisation is on the GitHub
-# Free plan, where rulesets, branch protection and required status checks are
-# all unavailable (the API returns 403 "Upgrade to GitHub Pro or make this
-# repository public"). `main` is therefore unprotected and this suite can be
-# bypassed, so treat a red run as blocking by convention rather than by
-# machinery. Moving to GitHub Team, or making the repository public again,
-# would restore enforcement.
+# The final `tests` job is a required status check, enforced by the `protect-main`
+# ruleset along with `skills-schema`. That ruleset only applies while the
+# repository is public: on the GitHub Free plan, rulesets and required status
+# checks are unavailable for private repositories, and going private silently
+# stops them being enforced rather than reporting an error. If this repository is
+# ever made private again, re-check that protection is still in force instead of
+# assuming it survived.
 
 on:
   push:

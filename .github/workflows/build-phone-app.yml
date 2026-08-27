@@ -6,12 +6,18 @@
 # copy klikklak.apk to the device over USB, and tap it.
 #
 # This workflow used to deploy to GitHub Pages, and a second manual-dispatch
-# workflow was kept alongside it as an event-day fallback. Both are
-# retired. This repository is private and the organisation is on the GitHub Free
-# plan, where Pages cannot publish from a private repository at all -- so the
-# fallback would have failed on the one day it existed for. Repairing it would
-# take a paid plan and would then serve the app publicly anyway, since Pages
-# sites are public regardless of repository visibility below Enterprise Cloud.
+# workflow was kept alongside it as an event-day fallback. Pages publishing now
+# lives in deploy-webapp.yml, which publishes the web app only -- no APK. That
+# site exists mainly so an iPhone has somewhere to install from: iOS has no
+# sideloading, so "Add to Home Screen" from a real HTTPS URL is the only route.
+# The APK deliberately does not ship there; Android installs come from
+# scripts/Install-ToPhone.ps1 instead.
+#
+# Note that a Pages site is public regardless of repository visibility, on every
+# plan below Enterprise Cloud. Publishing is therefore a deliberate decision, not
+# an incidental one -- and on the Free plan Pages cannot publish from a private
+# repository at all, so this stops working entirely if the repository goes
+# private again.
 #
 # To get a build onto a phone, use `scripts/Install-ToPhone.ps1` (`cd webapp;
 # npm run phone:install`), which installs the latest CI APK over wireless

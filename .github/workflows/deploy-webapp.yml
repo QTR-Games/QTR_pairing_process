@@ -1,0 +1,88 @@
+# Publish the web app to GitHub Pages.
+#
+# This exists for iPhones. iOS has no sideloading, so the only way onto a home
+# screen is "Add to Home Screen" from a real HTTPS URL -- a laptop-served
+# http://192.168.x.x will not do, because service workers require HTTPS and
+# without one there is no offline cache, which is the whole point. Android does
+# not need this: scripts/Install-ToPhone.ps1 installs the APK directly.
+#
+# NO APK IS PUBLISHED HERE, deliberately. An earlier version of this workflow
+# shipped a release-signed klikklak.apk alongside the site, which put an
+# installer on a public URL for anyone to download. Android installs go through
+# phone:install instead, which needs the laptop and a paired phone.
+#
+# A Pages site is PUBLIC on every plan below Enterprise Cloud, regardless of
+# repository visibility, and there is no password or access control available at
+# this plan level. Anything published here is world-readable. That is acceptable
+# only because the repository is public too: the app is entirely client-side, so
+# its logic is already readable by anyone who wants it. No event data is
+# involved -- rosters and ratings live in the browser's localStorage on each
+# device and are never part of the build.
+#
+# Manual dispatch only, and that is on purpose. Publishing and unpublishing are
+# both deliberate acts: a push-triggered deploy would silently republish the
+# site after it had been taken down before an event. See "Taking the site
+# offline" in docs/android-build.md.
+#
+#   https://qtr-games.github.io/QTR_pairing_process/
+name: deploy-webapp
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a deploy midway; let a run finish before the next starts.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the other workflows. Nothing here needs the Capacitor CLI,
+          # the Android SDK or a JDK: this publishes the web bundle only.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - run: npm ci
+        working-directory: webapp
+
+      # vite.config.ts sets base to './', so the bundle resolves correctly from
+      # the /QTR_pairing_process/ subpath Pages serves it from.
+      - run: npm run build
+        working-directory: webapp
+
+      # The APK must never reappear in the published output. dist/ is built
+      # fresh above so this should always be a no-op, but it is cheap insurance
+      # against a stray copy step being reintroduced later.
+      - name: Assert no APK is being published
+        working-directory: webapp
+        run: |
+          if find dist -name '*.apk' | grep -q .; then
+            echo "::error::An APK is present in dist/. This workflow publishes the web app only."
+            find dist -name '*.apk'
+            exit 1
+          fi
+          echo "No APK in dist/, as expected."
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: webapp/dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
