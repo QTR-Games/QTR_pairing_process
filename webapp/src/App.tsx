@@ -16,7 +16,13 @@ import {
   type Board,
 } from "./model/board";
 import { SCALES } from "./model/scale";
-import { loadSettings, saveSettings, type DodgeMode, type AdviceLevel } from "./model/settings";
+import {
+  loadSettings,
+  saveSettings,
+  type DodgeMode,
+  type AdviceLevel,
+  type SurpriseMode,
+} from "./model/settings";
 import { newRound, type LiveState } from "./engine/live";
 import { boardMatrix } from "./model/board";
 import { openingChoice } from "./engine/protocol";
@@ -59,6 +65,10 @@ export default function App() {
   const [adviceLevel, setAdviceLevel] = useState<AdviceLevel>(
     () => loadSettings().adviceLevel,
   );
+  const [surpriseMode, setSurpriseMode] = useState<SurpriseMode>(() => loadSettings().surpriseMode);
+  const [surpriseRegretThreshold, setSurpriseRegretThreshold] = useState<number>(
+    () => loadSettings().surpriseRegretThreshold,
+  );
   const [screen, setScreen] = useState<Screen>("splash");
 
   // Set and persist in one call. Both layouts expose this preference, so the
@@ -67,12 +77,23 @@ export default function App() {
   // hand the other's current value back or a save would wipe it.
   const changeDodgeMode = (next: DodgeMode) => {
     setDodgeMode(next);
-    saveSettings({ dodgeMode: next, adviceLevel });
+    saveSettings({ dodgeMode: next, adviceLevel, surpriseMode, surpriseRegretThreshold });
   };
 
   const changeAdviceLevel = (next: AdviceLevel) => {
     setAdviceLevel(next);
-    saveSettings({ dodgeMode, adviceLevel: next });
+    saveSettings({ dodgeMode, adviceLevel: next, surpriseMode, surpriseRegretThreshold });
+  };
+
+  const changeSurpriseMode = (next: SurpriseMode) => {
+    setSurpriseMode(next);
+    saveSettings({ dodgeMode, adviceLevel, surpriseMode: next, surpriseRegretThreshold });
+  };
+
+  const changeSurpriseRegretThreshold = (next: number) => {
+    const clamped = Number.isFinite(next) && next >= 0 ? next : 0;
+    setSurpriseRegretThreshold(clamped);
+    saveSettings({ dodgeMode, adviceLevel, surpriseMode, surpriseRegretThreshold: clamped });
   };
 
   /**
@@ -178,6 +199,10 @@ export default function App() {
           onDodgeMode={changeDodgeMode}
           adviceLevel={adviceLevel}
           onAdviceLevel={changeAdviceLevel}
+          surpriseMode={surpriseMode}
+          onSurpriseMode={changeSurpriseMode}
+          surpriseRegretThreshold={surpriseRegretThreshold}
+          onSurpriseRegretThreshold={changeSurpriseRegretThreshold}
           onResume={() => enter("round")}
           onContinue={() => {
             /*
@@ -253,6 +278,10 @@ export default function App() {
               onDodgeMode={changeDodgeMode}
               adviceLevel={adviceLevel}
               onAdviceLevel={changeAdviceLevel}
+              surpriseMode={surpriseMode}
+              onSurpriseMode={changeSurpriseMode}
+              surpriseRegretThreshold={surpriseRegretThreshold}
+              onSurpriseRegretThreshold={changeSurpriseRegretThreshold}
             />
           )}
         </main>
@@ -367,6 +396,8 @@ export default function App() {
               state={live}
               onState={setLive}
               adviceLevel={adviceLevel}
+              surpriseMode={surpriseMode}
+              surpriseRegretThreshold={surpriseRegretThreshold}
               onReset={() => setLive(newRound(board.ourPlayers.length, board.ourTeamFirst))}
             />
           ) : (
@@ -497,4 +528,3 @@ function InstallNote() {
     </section>
   );
 }
-

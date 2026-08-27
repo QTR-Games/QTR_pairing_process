@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Matrix } from "../engine/boardAnalysis";
 import { evenThreshold } from "../engine/boardAnalysis";
 import type { LiveState, MoveOption, OptionProfile, PickOption } from "../engine/live";
 import {
   commitPairing,
   currentDecision,
+  liveWinChance,
   moveOptions,
   optionProfile,
   pickOptions,
@@ -15,7 +16,7 @@ import { solveCache, type SolveCache } from "../engine/protocol";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale } from "../model/board";
 import { ratingColor, toFraction, type Scale } from "../model/scale";
-import type { AdviceLevel } from "../model/settings";
+import type { AdviceLevel, SurpriseMode } from "../model/settings";
 
 interface Props {
   board: Board;
@@ -28,9 +29,24 @@ interface Props {
    * exactly as before, which is what the live-round tests rely on.
    */
   adviceLevel?: AdviceLevel;
+  surpriseMode?: SurpriseMode;
+  surpriseRegretThreshold?: number;
 }
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+const pct = (p: number) => `${(p * 100).toFixed(1)}%`;
+
+interface SurpriseNotice {
+  regret: number;
+  valueDelta: number;
+  chanceBest: number;
+  chanceAfter: number;
+  priorityBefore: number | null;
+  priorityAfter: number | null;
+}
+
+const priorityNow = (leverage: ReturnType<typeof playerLeverage>): number | null =>
+  leverage.length > 0 ? leverage[leverage.length - 1].player : null;
 
 /**
  * The round, as it happens.
@@ -45,7 +61,15 @@ const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
  * making a move that looks bad on this pairing and good on the next three. The
  * search sees the next three.
  */
-export function LivePanel({ board, state, onState, onReset, adviceLevel = "full" }: Props) {
+export function LivePanel({
+  board,
+  state,
+  onState,
+  onReset,
+  adviceLevel = "full",
+  surpriseMode = "off",
+  surpriseRegretThreshold = 0,
+}: Props) {
   const scale = boardScale(board);
   const matrix: Matrix = useMemo(() => boardMatrix(board, scale), [board, scale]);
   const tau = evenThreshold(board.ourPlayers.length, scale.min, scale.max);
@@ -119,25 +143,109 @@ export function LivePanel({ board, state, onState, onReset, adviceLevel = "full"
   const theirName = (i: number) => board.theirPlayers[i] ?? `Them ${i + 1}`;
 
   const ownerIsUs = "owner" in decision && decision.owner === "our";
+  const [surprise, setSurprise] = useState<SurpriseNotice | null>(null);
+
+  const surpriseEnabled = surpriseMode === "on";
+  const surpriseThreshold = Math.max(0, surpriseRegretThreshold);
+
+  const checkSurprise = (
+    before: LiveState,
+    after: LiveState,
+    bestAfter: LiveState,
+    chosenValue: number,
+    bestValue: number,
+    regretLoss: number,
+  ) => {
+    if (!surpriseEnabled || regretLoss <= 1e-9 || regretLoss < surpriseThreshold) {
+      setSurprise(null);
+      return;
+    }
+    const chanceBest = liveWinChance(matrix, bestAfter, scale.min, scale.max);
+    const chanceAfter = liveWinChance(matrix, after, scale.min, scale.max);
+    const beforePriority = priorityNow(playerLeverage(matrix, before, cache));
+    const afterPriority = priorityNow(playerLeverage(matrix, after, cache));
+    setSurprise({
+      regret: regretLoss,
+      valueDelta: chosenValue - bestValue,
+      chanceBest,
+      chanceAfter,
+      priorityBefore: beforePriority,
+      priorityAfter: afterPriority,
+    });
+  };
 
   function applyOpen(playerIndex: number, owner: "our" | "their") {
-    onState({
+    const next = {
       ...state,
       ourPool: owner === "our" ? state.ourPool & ~(1 << playerIndex) : state.ourPool,
       theirPool: owner === "their" ? state.theirPool & ~(1 << playerIndex) : state.theirPool,
       attacker: playerIndex,
       attackerSide: owner,
-    });
+    };
+    if (owner === "their") {
+      const chosen = rawOptions.find((o) => o.theirs === playerIndex);
+      const best = rawOptions[0];
+      const bestNext =
+        best?.theirs !== undefined
+          ? {
+              ...state,
+              theirPool: state.theirPool & ~(1 << best.theirs),
+              attacker: best.theirs,
+              attackerSide: "their" as const,
+            }
+          : null;
+      if (chosen && best && bestNext) {
+        checkSurprise(state, next, bestNext, chosen.value, best.value, Math.abs(chosen.regret));
+      } else {
+        setSurprise(null);
+      }
+    } else {
+      setSurprise(null);
+    }
+    onState(next);
   }
 
   /** Record which of an offered pair was taken. */
-  function applyPick(pair: [number, number], picked: number) {
+  function applyPick(pair: [number, number], picked: number, offer: MoveOption) {
     const leftover = picked === pair[0] ? pair[1] : pair[0];
     const attackerIsUs = state.attackerSide === "our";
     const [ours, theirs] = attackerIsUs
       ? [state.attacker, picked]
       : [picked, state.attacker];
-    onState(commitPairing(matrix, state, ours, theirs, leftover, attackerIsUs ? "their" : "our"));
+    const next = commitPairing(matrix, state, ours, theirs, leftover, attackerIsUs ? "their" : "our");
+    if (decision.kind === "offer" && decision.owner === "their") {
+      const best = rawOptions[0];
+      const bestPair = best?.pair;
+      if (bestPair) {
+        const bestPicks = pickOptions(matrix, state, bestPair, cache);
+        const bestPicked = bestPicks.reduce((acc, p) => (p.value > acc.value ? p : acc), bestPicks[0]);
+        const bestLeftover = bestPicked.player === bestPair[0] ? bestPair[1] : bestPair[0];
+        const bestAfter = commitPairing(
+          matrix,
+          state,
+          state.attacker,
+          bestPicked.player,
+          bestLeftover,
+          "their",
+        );
+        checkSurprise(state, next, bestAfter, offer.value, best.value, Math.abs(offer.regret));
+      } else setSurprise(null);
+    } else if (decision.kind === "offer" && decision.attackerSide === "their") {
+      const picks = pickOptions(matrix, state, pair, cache);
+      const chosen = picks.find((p) => p.player === picked);
+      const bestValue = Math.min(...picks.map((p) => p.value));
+      const bestPick = picks.reduce((acc, p) => (p.value < acc.value ? p : acc), picks[0]);
+      const bestLeftover = bestPick.player === pair[0] ? pair[1] : pair[0];
+      const bestAfter = commitPairing(matrix, state, bestPick.player, state.attacker, bestLeftover, "our");
+      if (chosen) {
+        checkSurprise(state, next, bestAfter, chosen.value, bestValue, Math.abs(chosen.value - bestValue));
+      } else {
+        setSurprise(null);
+      }
+    } else {
+      setSurprise(null);
+    }
+    onState(next);
   }
 
   return (
@@ -164,6 +272,23 @@ export function LivePanel({ board, state, onState, onReset, adviceLevel = "full"
             <div className="tiebreak">
               <p className="tiebreak-lead">{tieBreak.lead}</p>
               <p className="tiebreak-body">{tieBreak.body}</p>
+            </div>
+          )}
+          {surprise && (
+            <div className="surprise-flag" role="alert">
+              <p className="surprise-lead">
+                !!! Opponent previous choice is suspiciously outside expectations. Be careful!
+              </p>
+              <p className="surprise-body">
+                They gave up {fmt(surprise.regret)} points against your model ({fmt(surprise.valueDelta)} to
+                the floor), moving your projected round-win chance from {pct(surprise.chanceBest)} to{" "}
+                {pct(surprise.chanceAfter)}. Why might they choose this line?
+                {surprise.priorityAfter === null && surprise.priorityBefore === null
+                  ? ""
+                  : surprise.priorityBefore !== surprise.priorityAfter
+                    ? ` Recheck priority now: ${ourName(surprise.priorityAfter ?? surprise.priorityBefore!)} moved into the commit-now seat.`
+                    : ` Priority still points at ${ourName(surprise.priorityAfter!)}.`}
+              </p>
             </div>
           )}
 
@@ -193,10 +318,11 @@ export function LivePanel({ board, state, onState, onReset, adviceLevel = "full"
                       decision.owner,
                     );
                   } else if (decision.kind === "forced") {
+                    setSurprise(null);
                     onState(commitPairing(matrix, state, o.ours!, o.theirs!, null, null));
                   }
                 }}
-                onPick={(picked) => applyPick(o.pair!, picked)}
+                onPick={(picked) => applyPick(o.pair!, picked, o)}
               />
             ))}
           </ol>

@@ -64,9 +64,20 @@ export const ADVICE_LEVELS: { id: AdviceLevel; label: string }[] = [
   { id: "off", label: "No advice" },
 ];
 
+/** Experimental: flag unusual opponent moves during a live round. */
+export type SurpriseMode = "off" | "on";
+
+export const SURPRISE_MODES: { id: SurpriseMode; label: string }[] = [
+  { id: "off", label: "Off" },
+  { id: "on", label: "On (experimental)" },
+];
+
 export interface Settings {
   dodgeMode: DodgeMode;
   adviceLevel: AdviceLevel;
+  surpriseMode: SurpriseMode;
+  /** Minimum points of opponent regret before we raise a surprise flag. */
+  surpriseRegretThreshold: number;
 }
 
 /**
@@ -79,6 +90,8 @@ export interface Settings {
 export const DEFAULTS: Settings = {
   dodgeMode: "onDemand",
   adviceLevel: "full",
+  surpriseMode: "off",
+  surpriseRegretThreshold: 0,
 };
 
 const KEY = "qtr.settings.v1";
@@ -88,6 +101,13 @@ const isDodgeMode = (v: unknown): v is DodgeMode =>
 
 const isAdviceLevel = (v: unknown): v is AdviceLevel =>
   v === "full" || v === "brief" || v === "off";
+
+const isSurpriseMode = (v: unknown): v is SurpriseMode => v === "off" || v === "on";
+
+const asNonNegativeNumber = (v: unknown): number | null => {
+  if (typeof v !== "number" || !Number.isFinite(v) || v < 0) return null;
+  return v;
+};
 
 export function loadSettings(): Settings {
   try {
@@ -101,6 +121,11 @@ export function loadSettings(): Settings {
       adviceLevel: isAdviceLevel(parsed?.adviceLevel)
         ? parsed.adviceLevel
         : DEFAULTS.adviceLevel,
+      surpriseMode: isSurpriseMode(parsed?.surpriseMode)
+        ? parsed.surpriseMode
+        : DEFAULTS.surpriseMode,
+      surpriseRegretThreshold:
+        asNonNegativeNumber(parsed?.surpriseRegretThreshold) ?? DEFAULTS.surpriseRegretThreshold,
     };
   } catch {
     return { ...DEFAULTS };
