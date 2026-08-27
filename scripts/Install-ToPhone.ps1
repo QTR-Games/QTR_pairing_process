@@ -18,6 +18,15 @@
     ANDROID_HOME, ANDROID_SDK_ROOT, the standard per-user SDK location, and
     finally PATH, because a stock Android Studio install sets none of them.
 
+    Fetching a CI build additionally needs the GitHub CLI (`gh`), which is found
+    the same way: PATH first, then the locations winget, scoop and chocolatey
+    install into. A plain PATH lookup is not enough on its own, because a PATH
+    entry added by an installer does not reach already-open terminals, and
+    because some applications ship a private `gh` that is only visible to the
+    processes they spawn -- which makes the command look installed from inside
+    that application and missing from an ordinary shell. -ApkPath needs no `gh`
+    at all.
+
 .PARAMETER PairAddress
     host:port from the phone's "Pair device with pairing code" dialog. Only
     needed once per phone. Note this is a DIFFERENT port from the one used to
@@ -99,6 +108,32 @@ It ships with the Android SDK "platform-tools" package. Install it through
 Android Studio (SDK Manager -> SDK Tools -> Android SDK Platform-Tools), or set
 ANDROID_HOME to an existing SDK.
 '@
+}
+
+function Find-Gh {
+    # PATH first, so that a caller who has put a particular gh ahead of the
+    # others gets the one they chose.
+    $onPath = Get-Command gh -ErrorAction SilentlyContinue
+    if ($onPath) { return $onPath.Source }
+
+    # An installer that appends to PATH does not reach terminals that were
+    # already open, and some tools ship a private gh that is only on the PATH of
+    # processes they spawn themselves -- so a plain PATH lookup can miss a gh
+    # that is genuinely installed. Check where the usual installers put it.
+    $probes = @()
+    foreach ($candidate in @(
+            @($env:ProgramFiles, 'GitHub CLI\gh.exe'),
+            @(${env:ProgramFiles(x86)}, 'GitHub CLI\gh.exe'),
+            @($env:LOCALAPPDATA, 'Microsoft\WinGet\Links\gh.exe'),
+            @($env:USERPROFILE, 'scoop\shims\gh.exe'),
+            @($env:ProgramData, 'chocolatey\bin\gh.exe'))) {
+        if ($candidate[0]) { $probes += (Join-Path $candidate[0] $candidate[1]) }
+    }
+    foreach ($probe in $probes) {
+        if (Test-Path $probe) { return $probe }
+    }
+
+    return $null
 }
 
 # adb reports many failures on stdout while still exiting 0, so the exit code
@@ -229,16 +264,29 @@ elseif ($Local) {
     if (-not $resolvedApk) { throw "The build reported success but no APK was found under $built." }
 }
 else {
-    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-        throw 'The GitHub CLI (gh) is required to fetch a CI build. Install it, or pass -ApkPath, or use -Local.'
+    $gh = Find-Gh
+    if (-not $gh) {
+        throw @'
+The GitHub CLI (gh) was not found, and it is what downloads the CI build.
+
+Install it with:
+
+    winget install --id GitHub.cli
+
+then open a new terminal and run `gh auth login` once. (A gh that only exists
+inside another application does not count -- it is not on this terminal's PATH.)
+
+Or skip CI entirely: -ApkPath <file.apk> installs an APK you already have, and
+-Local builds one from the working tree.
+'@
     }
 
     Write-Host 'Finding the latest successful Release APK run...' -ForegroundColor Cyan
     # The --json list must be a single argument: PowerShell would otherwise split
     # `databaseId, createdAt` on the space and pass `createdAt` to gh as a bare
     # command, which fails with `unknown command "createdAt"`.
-    $runJson = & gh run list --repo $repoSlug --workflow=release-apk.yml --status=success --limit 1 --json 'databaseId,createdAt' 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "gh run list failed: $runJson" }
+    $runJson = & $gh run list --repo $repoSlug --workflow=release-apk.yml --status=success --limit 1 --json 'databaseId,createdAt' 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "gh run list failed (if it mentions authentication, run ``gh auth login``): $runJson" }
 
     $runs = @($runJson | ConvertFrom-Json)
     if ($runs.Count -eq 0) {
@@ -255,7 +303,7 @@ else {
         Remove-Item $downloadDir -Recurse -Force -ErrorAction SilentlyContinue
         New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
         Write-Host 'Downloading the artifact...' -ForegroundColor Cyan
-        $downloadResult = & gh run download $run.databaseId --repo $repoSlug --dir $downloadDir 2>&1
+        $downloadResult = & $gh run download $run.databaseId --repo $repoSlug --dir $downloadDir 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw @"
 gh run download failed: $downloadResult

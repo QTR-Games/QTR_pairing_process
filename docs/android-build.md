@@ -187,6 +187,27 @@ installs it over wireless debugging, and launches the app. The download is
 cached per run id, so reinstalling the same build costs nothing while a new
 build is picked up automatically.
 
+### What it needs installed
+
+Two tools, both looked up in the usual install locations as well as on `PATH`:
+
+- **adb**, from the Android SDK platform-tools (see [Android SDK](#android-sdk)).
+- **the GitHub CLI (`gh`)**, which is what downloads the CI artifact:
+
+  ```powershell
+  winget install --id GitHub.cli
+  gh auth login
+  ```
+
+  Open a new terminal afterwards -- a PATH change does not reach terminals that
+  were already running. Note that a `gh` bundled inside some other application
+  does not count: those are on the PATH of that application's own child
+  processes only, so the command can appear to work in one window and be missing
+  in another. `gh --version` in the terminal you actually use is the check that
+  matters.
+
+Neither tool is needed for `-ApkPath`, and only adb is needed for `-Local`.
+
 ### One-time pairing
 
 On the phone, enable *Developer options -> Wireless debugging*. That screen
@@ -277,6 +298,15 @@ Failing that, check that the phone allows installing from unknown sources for
 whichever app is opening the APK (usually the file manager or browser). This
 does not apply to `Install-ToPhone.ps1`, which installs through adb and so never
 goes through the unknown-sources prompt at all.
+
+**"The GitHub CLI (gh) was not found."** `Install-ToPhone.ps1` uses `gh` to
+download the CI artifact, and it is not installed by default. See
+[What it needs installed](#what-it-needs-installed). The trap worth knowing: a
+`gh` that ships inside another application is only on the PATH of that
+application's own child processes, so the same script can work when launched one
+way and fail when launched from an ordinary terminal. Run `gh --version` in the
+terminal you are actually using. To install the app without `gh` at all, pass
+`-ApkPath` with an APK you already have.
 
 **`adb pair` fails with "failed to authenticate".** The `-PairAddress` port is
 almost certainly the one from the main wireless debugging screen rather than the
