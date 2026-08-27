@@ -35,9 +35,9 @@ opponent's view of a pairing is the exact complement `6 - r` and the game is
 genuinely zero-sum.
 
 The source workbook is no longer committed. It named real players alongside
-this team's private ratings of them, which is scouting material in a public
-repository; the measurements below are unaffected, because none of them
-depended on who anyone was.
+this team's private ratings of them, which is scouting material regardless of
+who can see the repository; the measurements below are unaffected, because none
+of them depended on who anyone was.
 
 Scripts (session artifacts, not committed): `real_data_sensitivity.py`,
 `leverage_by_depth.py`, `upside_among_ties.py`.

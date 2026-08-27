@@ -229,6 +229,24 @@ The script detects that case and explains it.
 `ANDROID_SDK_ROOT`, then `%LOCALAPPDATA%\Android\Sdk`, because a stock Android
 Studio install sets none of them.
 
+## Before an event
+
+Install on every phone that needs it **ahead of time**, from a laptop, with
+`npm run phone:install`. Once installed the app is entirely offline: it bundles
+its own web assets, sets no `server.url`, makes no network request at runtime,
+and keeps boards in `localStorage` on the device. Venue wifi cannot affect it,
+and neither can the venue not having any.
+
+There is deliberately no URL-based fallback any more. There used to be one -- a
+manual GitHub Pages deploy that served the bundle and the APK from a public
+Pages URL on the day. It is gone and should not be re-added. This
+repository is private and the organisation is on the GitHub Free plan, where
+Pages cannot publish from a private repository at all, so the fallback would
+have failed at exactly the moment it was needed. Restoring it would mean paying
+for a plan *and* accepting that Pages sites are public regardless of repository
+visibility, which would put the team's rosters and ratings on a guessable URL.
+Installing ahead of time costs one command per phone and has none of that.
+
 ## Troubleshooting
 
 **`:app:validateSigningDebug` fails.** The debug keystore is missing; it is not

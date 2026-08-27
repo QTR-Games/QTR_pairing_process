@@ -459,10 +459,18 @@ function BoardsPanel({ boards, scaleId, onNew, onOpen, onDelete }: BoardsPanelPr
 /*
  * How a teammate gets this onto their own phone.
  *
- * Two ways in, because Android and iOS disagree about what an app is. Android
- * takes the APK, which behaves like anything else installed on the device. iOS
- * has no sideloading, so it gets the home-screen route -- which is the same
- * bundle, offline-capable once opened, just launched differently.
+ * This used to lead with `./klikklak.apk`, a relative link that only ever
+ * resolved on the GitHub Pages site. Pages cannot serve a private repository on
+ * the Free plan, the site is gone, and it is not coming back -- so that link
+ * pointed at a file that can no longer exist anywhere. It is removed rather
+ * than repointed: Android installs now come off a laptop with
+ * `npm run phone:install` (scripts/Install-ToPhone.ps1), which is a thing the
+ * person holding the phone cannot do from the page they are reading.
+ *
+ * The iOS half survives, because it is still true and still the only iOS route
+ * -- there is no sideloading, so "Add to Home Screen" from whatever URL this
+ * page was opened from is how an iPhone gets it, and the result is the same
+ * offline-capable bundle.
  *
  * It hides once the app is installed. Someone reading this inside the installed
  * app has already done the thing it is asking them to do.
@@ -480,12 +488,13 @@ function InstallNote() {
     <section className="install-note">
       <h2>Put this on a phone</h2>
       <p>
-        <a href="./klikklak.apk">Download the Android app</a> — open the file
-        and allow the install when the phone asks.
+        On iPhone, use Share, then “Add to Home Screen”. It works with no signal
+        after the first open.
       </p>
       <p className="hint">
-        On iPhone there is no download. Use Share, then “Add to Home Screen”.
-        Either way it works with no signal after the first open.
+        On Android, ask whoever is running the laptop to install it —{" "}
+        <code>npm run phone:install</code> puts the app on a paired phone over
+        Wi-Fi. There is no download link here on purpose.
       </p>
     </section>
   );
