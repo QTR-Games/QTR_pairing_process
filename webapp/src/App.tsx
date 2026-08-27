@@ -322,7 +322,7 @@ export default function App() {
               fills in, with nothing to toggle at an event.
             */}
             {rated ? (
-              <Verdict board={board} onHighlight={setHighlight} dodgeMode={dodgeMode} />
+              <Verdict board={board} onHighlight={setHighlight} onBoardChange={setBoard} dodgeMode={dodgeMode} />
             ) : (
               <Rosters board={board} onChange={setBoard} />
             )}
