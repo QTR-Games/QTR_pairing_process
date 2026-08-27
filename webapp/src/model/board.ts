@@ -16,6 +16,28 @@ import { fromFraction, scaleById, toFraction, type Scale } from "./scale";
 
 export const TEAM_SIZE = 5;
 
+/**
+ * What is known about one opposing player, beyond their name.
+ *
+ * This is the roster detail an import pulls from Longshanks -- the faction they
+ * are playing and the lists (leader + army) they registered -- carried alongside
+ * a board so it can be surfaced at pairing time without another lookup. It is
+ * reference material for the captain, not an engine input: nothing here feeds the
+ * pairing maths, it only answers "who am I actually looking at across the table".
+ *
+ * Every field is optional. A name is all a board needs; faction and lists are
+ * present only when the import found them, which for a pre-event roster it often
+ * has not (see the roster types in `longshanks/types.ts`).
+ */
+export interface OpponentDetail {
+  /** The opposing player's name, matching the entry in `theirPlayers`. */
+  name: string;
+  /** Their faction / army, when known. */
+  faction?: string;
+  /** The lists they are bringing, each a leader + army pair. */
+  lists?: { army?: string; leader?: string }[];
+}
+
 export interface Board {
   id: string;
   opponent: string;
@@ -56,6 +78,22 @@ export interface Board {
    * player.
    */
   protectPriority?: number | null;
+
+  /**
+   * Roster detail for the opposing players, index-aligned to `theirPlayers`.
+   *
+   * Populated when a board is built from a Longshanks import; absent on boards
+   * created by hand or before this field existed, so -- like `touched` and
+   * `protectPriority` -- nothing in localStorage needs migrating and it rides
+   * backup/restore for free as part of the JSON board.
+   *
+   * Index-aligned rather than keyed by name because names on a blank board get
+   * edited: `theirDetails[i]` describes whoever the import put in
+   * `theirPlayers[i]`, and a consumer should treat a name change as "this is no
+   * longer that rostered player" rather than trying to re-match. It is display
+   * material only and never read by the engine.
+   */
+  theirDetails?: OpponentDetail[];
 }
 
 const uid = (): string =>
@@ -180,6 +218,32 @@ export function saveBoard(board: Board): Board[] {
     localStorage.setItem(KEY, JSON.stringify(boards));
   } catch {
     // Out of quota. The in-memory board still works for this round.
+  }
+  return boards;
+}
+
+/**
+ * Save several new boards in one write, returning the full list.
+ *
+ * The Longshanks import creates a board per opposing team, and saving them one
+ * at a time would rewrite localStorage ~30 times and re-sort on every step.
+ * This prepends them all, newest first in import order, then persists once --
+ * matching saveBoard's recency ordering so the freshly imported boards sit on
+ * top of the saved list.
+ */
+export function saveBoards(newBoards: Board[]): Board[] {
+  const boards = loadBoards();
+  const stamp = Date.now();
+  newBoards.forEach((b, i) => {
+    // Decrement so the first imported team keeps the highest timestamp and
+    // therefore sorts to the top, preserving the order buildBoards produced.
+    boards.unshift({ ...b, updatedAt: stamp - i });
+  });
+  boards.sort((a, b) => b.updatedAt - a.updatedAt);
+  try {
+    localStorage.setItem(KEY, JSON.stringify(boards));
+  } catch {
+    // Out of quota. The returned in-memory list still drives this session.
   }
   return boards;
 }
