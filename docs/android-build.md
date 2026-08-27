@@ -172,6 +172,63 @@ rather than assumption. The decoded keystore is deleted in an `always()` step.
 so PR CI and a fresh clone can still assemble an unsigned APK. The workflow is
 where the hard check lives.
 
+## Installing on a phone over Wi-Fi
+
+`scripts/Install-ToPhone.ps1` puts the latest CI build on a phone in one
+command, with no cable and without moving the APK through cloud storage:
+
+```powershell
+cd webapp
+npm run phone:install
+```
+
+It finds the most recent successful **Release APK** run, downloads the artifact,
+installs it over wireless debugging, and launches the app. The download is
+cached per run id, so reinstalling the same build costs nothing while a new
+build is picked up automatically.
+
+### One-time pairing
+
+On the phone, enable *Developer options -> Wireless debugging*. That screen
+shows a `host:port`, and tapping **Pair device with pairing code** shows a
+*different* `host:port` plus a six-digit code. Both are needed the first time:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Install-ToPhone.ps1 `
+  -PairAddress 192.168.1.50:37021 -PairCode 123456 -Device 192.168.1.50:41234
+```
+
+The two ports being different is the single most common cause of a failed pair.
+The pairing port is one-time and the code expires within a few minutes.
+
+The connect address is then remembered in
+`%LOCALAPPDATA%\KlikKlak\phone-device.json` -- machine-local configuration
+rather than project configuration, since another laptop pairs with a different
+phone on a different network -- and later runs need no arguments.
+
+Android issues a **new port** every time wireless debugging is toggled off and
+on, and after most reboots. Pairing survives that; the port does not. When a
+remembered address stops connecting, pass the current one with `-Device`.
+
+### Other sources
+
+| Flag | Installs |
+| --- | --- |
+| *(none)* | Latest successful CI **Release APK** run |
+| `-Local` | A release build from the working tree |
+| `-Local -DebugVariant` | A debug build from the working tree |
+| `-ApkPath <file>` | A specific APK |
+| `-Usb` | Same, over a cable instead of Wi-Fi |
+
+`-DebugVariant` is off by default on purpose. A debug APK is signed with a
+throwaway key, so Android refuses to install it over the release build already
+on the phone and reports a signature mismatch that says nothing about the cause.
+The script detects that case and explains it.
+
+`adb` does not need to be on PATH. It is discovered from `ANDROID_HOME`,
+`ANDROID_SDK_ROOT`, then `%LOCALAPPDATA%\Android\Sdk`, because a stock Android
+Studio install sets none of them.
+
 ## Troubleshooting
 
 **`:app:validateSigningDebug` fails.** The debug keystore is missing; it is not
@@ -199,4 +256,20 @@ run it again.
 
 **"App not installed" on the phone.** Almost always versionCode -- see above.
 Failing that, check that the phone allows installing from unknown sources for
-whichever app is opening the APK (usually the file manager or browser).
+whichever app is opening the APK (usually the file manager or browser). This
+does not apply to `Install-ToPhone.ps1`, which installs through adb and so never
+goes through the unknown-sources prompt at all.
+
+**`adb pair` fails with "failed to authenticate".** The `-PairAddress` port is
+almost certainly the one from the main wireless debugging screen rather than the
+one in the pairing dialog. They are different, and only the dialog's port pairs.
+The code also expires within a few minutes.
+
+**A previously working `-Device` address stops connecting.** Android issues a new
+port whenever wireless debugging is toggled or the phone reboots. Read the
+current `host:port` off the phone and pass it once with `-Device`; the pairing
+itself is still intact.
+
+**`adb devices` shows the phone as `unauthorized`.** The "Allow debugging?"
+prompt on the phone was dismissed or has not been answered yet. Accept it and
+rerun.
