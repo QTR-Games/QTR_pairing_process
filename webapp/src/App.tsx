@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Grid, Rosters } from "./components/Grid";
+import { BoardTab } from "./components/BoardTab";
 import { LivePanel } from "./components/LivePanel";
-import { Verdict } from "./components/Verdict";
 import { HomeMenu } from "./components/HomeMenu";
 import { Splash } from "./components/Splash";
 import {
-  boardScale,
   deleteBoard,
   emptyBoard,
   isRated,
@@ -15,7 +13,6 @@ import {
   saveLive,
   type Board,
 } from "./model/board";
-import { SCALES } from "./model/scale";
 import {
   loadSettings,
   saveSettings,
@@ -24,8 +21,6 @@ import {
   type SurpriseMode,
 } from "./model/settings";
 import { newRound, type LiveState } from "./engine/live";
-import { boardMatrix } from "./model/board";
-import { openingChoice } from "./engine/protocol";
 import { DesktopWorkspace } from "./components/desktop/DesktopWorkspace";
 import { useWideViewport } from "./components/desktop/useWideViewport";
 import "./styles.css";
@@ -119,30 +114,29 @@ export default function App() {
     saveLive(board.id, live);
   }, [board.id, live]);
 
-  const scale = boardScale(board);
-  const rated = isRated(board);
+  // The phone Board tab pins the grid with position: sticky, and it needs to
+  // sit just below the fixed header. The header height is not a constant -- a
+  // long opponent name wraps to a second line -- so measure it into a CSS var
+  // rather than hard-coding a top offset that would tuck the grid under a tall
+  // header or leave a gap under a short one. Writing a CSS var (not React state)
+  // keeps this out of the render path.
+  useEffect(() => {
+    const setHeadH = () => {
+      const head = document.querySelector(".app-head");
+      if (head instanceof HTMLElement) {
+        document.documentElement.style.setProperty("--head-h", `${head.offsetHeight}px`);
+      }
+    };
+    setHeadH();
+    window.addEventListener("resize", setHeadH);
+    return () => window.removeEventListener("resize", setHeadH);
+  }, [screen, wide]);
 
   const lockedCells = useMemo(() => {
     const s = new Set<string>();
     live?.committed.forEach((c) => s.add(`${c.ours}-${c.theirs}`));
     return s;
   }, [live]);
-
-  /**
-   * Step 1 of the protocol -- who nominates first -- is decided by a dice-off
-   * before any player is named, and it is the one decision on this screen that
-   * cannot be walked back later in the round. It is also the cheapest: it costs
-   * nothing to get right and, measured across all 31 saved boards, receiving is
-   * worth a mean 0.58 points over opening and never less than zero.
-   *
-   * The engine still computes it per board rather than printing a fixed answer,
-   * because the rule is a parity effect rather than a law -- see the note above
-   * `openingChoice` in engine/protocol.ts.
-   */
-  const opening = useMemo(
-    () => (rated ? openingChoice(boardMatrix(board, scale)) : null),
-    [board, scale, rated],
-  );
 
   function startRound() {
     setLive(newRound(board.ourPlayers.length, board.ourTeamFirst));
@@ -313,80 +307,15 @@ export default function App() {
 
       <main>
         {tab === "board" && (
-          <>
-            {/*
-              Setup and reading want opposite orders. On a fresh board you are
-              typing names, so the rosters belong at the top; once anything is
-              rated you are reading the position, so the verdict does. Keying
-              this off isRated means the screen reorders itself as the board
-              fills in, with nothing to toggle at an event.
-            */}
-            {rated ? (
-              <Verdict board={board} onHighlight={setHighlight} onBoardChange={setBoard} dodgeMode={dodgeMode} />
-            ) : (
-              <Rosters board={board} onChange={setBoard} />
-            )}
-            <Grid board={board} onChange={setBoard} highlight={highlight} locked={lockedCells} />
-            <div className="controls">
-              <label className="field inline">
-                <span>Scale</span>
-                <select
-                  // Resolved id, not the stored one -- see the matching note in
-                  // DesktopWorkspace. An unrecognised scaleId falls back to 1-5
-                  // everywhere except here, where it would show "Stoplight".
-                  value={scale.id}
-                  onChange={(e) => setBoard({ ...board, scaleId: e.target.value })}
-                >
-                  {SCALES.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className="hint">{scale.hint}</p>
-
-              <label className="field inline">
-                <span>Who puts a player up first?</span>
-                <select
-                  value={board.ourTeamFirst ? "us" : "them"}
-                  onChange={(e) => setBoard({ ...board, ourTeamFirst: e.target.value === "us" })}
-                >
-                  <option value="us">We do</option>
-                  <option value="them">They do</option>
-                </select>
-              </label>
-              {/*
-                Silent when the two floors are level, because a recommendation
-                worth nothing is just one more thing to read at a table. Shown
-                as a button when it disagrees with the dropdown so the fix is
-                one tap rather than a second decision.
-              */}
-              {opening && opening.gain >= 0.005 && (
-                opening.weOpen === board.ourTeamFirst ? (
-                  <p className="hint">
-                    If you win the dice-off, {opening.weOpen ? "go first" : "make them go first"}
-                    {" "}-- worth {opening.gain.toFixed(2)} here. Already set.
-                  </p>
-                ) : (
-                  <button
-                    className="ghost wide"
-                    onClick={() => setBoard({ ...board, ourTeamFirst: opening.weOpen })}
-                  >
-                    Win the dice-off and{" "}
-                    {opening.weOpen ? "go first" : "make them go first"} -- worth{" "}
-                    {opening.gain.toFixed(2)}. Tap to set.
-                  </button>
-                )
-              )}
-
-              <button className="primary wide" onClick={startRound}>
-                Start the round
-              </button>
-            </div>
-            {/* Whichever of the two did not lead goes here, so neither is lost. */}
-            {rated && <Rosters board={board} onChange={setBoard} />}
-          </>
+          <BoardTab
+            board={board}
+            onBoardChange={setBoard}
+            highlight={highlight}
+            onHighlight={setHighlight}
+            lockedCells={lockedCells}
+            dodgeMode={dodgeMode}
+            onStartRound={startRound}
+          />
         )}
 
         {tab === "round" &&

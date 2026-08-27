@@ -78,7 +78,15 @@ const listNames = (names: string[]): string =>
  * Everything else on this screen exists to answer "so what do I do", and is
  * driven by the measured findings rather than by a single ranking number.
  */
-export function Verdict({ board, onHighlight, onBoardChange, dodgeMode = "onDemand" }: Props) {
+export function useVerdictModel({
+  board,
+  onBoardChange,
+  dodgeMode = "onDemand",
+}: {
+  board: Board;
+  onBoardChange?: (b: Board) => void;
+  dodgeMode?: DodgeMode;
+}) {
   const scale = boardScale(board);
   const matrix: Matrix = useMemo(() => boardMatrix(board, scale), [board, scale]);
   const tau = evenThreshold(board.ourPlayers.length, scale.min, scale.max);
@@ -332,15 +340,7 @@ export function Verdict({ board, onHighlight, onBoardChange, dodgeMode = "onDema
   // threshold, which needs to be beaten rather than met. Saying so before a
   // single matchup has been rated is technically true and completely useless.
   if (!isRated(board)) {
-    return (
-      <section className="verdict">
-        <div className="chip live">Not rated yet</div>
-        <p className="reading">
-          Every matchup is sitting on dead even, so there is nothing to read yet.
-          Tap a cell to rate it. The numbers here update as you go.
-        </p>
-      </section>
-    );
+    return { rated: false as const };
   }
 
   const verdictLabel =
@@ -353,8 +353,73 @@ export function Verdict({ board, onHighlight, onBoardChange, dodgeMode = "onDema
   const dominant =
     report.frontier.length === 1 && !report.choiceMatters ? report.frontier[0] : null;
 
+  return {
+    rated: true as const,
+    board,
+    onBoardChange,
+    dodgeMode,
+    o,
+    verdictLabel,
+    dominant,
+    report,
+    guaranteed,
+    initiative,
+    most,
+    pWe,
+    pThey,
+    typical,
+    chance,
+    chanceCeiling,
+    protect,
+    tooCloseToCall,
+    asked,
+    setAsked,
+    wantDodge,
+    worstDodge,
+    exposedSet,
+    sharedTrap,
+    focusLevel,
+    exposedCells,
+    shieldableFloors,
+    shieldableCells,
+    trulySafe,
+    overstated,
+    activePriority,
+    priorityTied,
+    priorityNames,
+    ourName,
+    theirName,
+    winPct,
+  };
+}
+
+type VerdictModel = ReturnType<typeof useVerdictModel>;
+
+export function VerdictHeadline({ model }: { model: VerdictModel }) {
+  if (!model.rated) {
+    return (
+      <>
+        <div className="chip live">Not rated yet</div>
+        <p className="reading">
+          Every matchup is sitting on dead even, so there is nothing to read yet.
+          Tap a cell to rate it. The numbers here update as you go.
+        </p>
+      </>
+    );
+  }
+  const {
+    o,
+    verdictLabel,
+    protect,
+    chance,
+    chanceCeiling,
+    guaranteed,
+    most,
+    typical,
+    tooCloseToCall,
+  } = model;
   return (
-    <section className="verdict">
+    <>
       <div className={`chip ${o.verdict}`}>{verdictLabel}</div>
 
       <div className="numbers">
@@ -428,7 +493,51 @@ export function Verdict({ board, onHighlight, onBoardChange, dodgeMode = "onDema
         rating-to-probability slope that has never been fitted against results. Read them
         as an ordering between options, not as a forecast for this round.
       </p>
+    </>
+  );
+}
 
+export function VerdictCards({
+  model,
+  onHighlight,
+}: {
+  model: VerdictModel;
+  onHighlight?: (cells: Set<string>) => void;
+}) {
+  if (!model.rated) return null;
+  const {
+    board,
+    onBoardChange,
+    dodgeMode,
+    o,
+    report,
+    guaranteed,
+    initiative,
+    pWe,
+    pThey,
+    typical,
+    dominant,
+    asked,
+    setAsked,
+    wantDodge,
+    worstDodge,
+    protect,
+    exposedSet,
+    sharedTrap,
+    focusLevel,
+    exposedCells,
+    shieldableFloors,
+    shieldableCells,
+    trulySafe,
+    overstated,
+    activePriority,
+    priorityTied,
+    priorityNames,
+    ourName,
+    theirName,
+    winPct,
+  } = model;
+  return (
       <div className="insight-list">
         {/*
           The permutation floor counts outcomes the pairing protocol can never
@@ -730,6 +839,15 @@ export function Verdict({ board, onHighlight, onBoardChange, dodgeMode = "onDema
           />
         )}
       </div>
+  );
+}
+
+export function Verdict({ board, onHighlight, onBoardChange, dodgeMode = "onDemand" }: Props) {
+  const model = useVerdictModel({ board, onBoardChange, dodgeMode });
+  return (
+    <section className="verdict">
+      <VerdictHeadline model={model} />
+      <VerdictCards model={model} onHighlight={onHighlight} />
     </section>
   );
 }
