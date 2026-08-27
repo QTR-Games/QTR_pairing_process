@@ -10,7 +10,12 @@ import { SCALES } from "../../model/scale";
 
 /** Which analysis, if any, is drawn inside the 25 cells. */
 type OverlayMode = "none" | "exposure" | "dodge";
-import { DODGE_MODES, type DodgeMode } from "../../model/settings";
+import {
+  ADVICE_LEVELS,
+  DODGE_MODES,
+  type AdviceLevel,
+  type DodgeMode,
+} from "../../model/settings";
 import { Grid, Rosters } from "../Grid";
 import { LivePanel } from "../LivePanel";
 import { Verdict } from "../Verdict";
@@ -26,6 +31,8 @@ interface Props {
   onStartRound: () => void;
   dodgeMode: DodgeMode;
   onDodgeMode: (m: DodgeMode) => void;
+  adviceLevel: AdviceLevel;
+  onAdviceLevel: (l: AdviceLevel) => void;
 }
 
 /**
@@ -53,6 +60,8 @@ export function DesktopWorkspace({
   onStartRound,
   dodgeMode,
   onDodgeMode,
+  adviceLevel,
+  onAdviceLevel,
 }: Props) {
   const scale = boardScale(board);
   const rated = isRated(board);
@@ -239,7 +248,13 @@ export function DesktopWorkspace({
       <div className="desk-col desk-analysis">
         {live ? (
           <section className="panel">
-            <LivePanel board={board} state={live} onState={onLive} onReset={onStartRound} />
+            <LivePanel
+              board={board}
+              state={live}
+              onState={onLive}
+              adviceLevel={adviceLevel}
+              onReset={onStartRound}
+            />
           </section>
         ) : null}
 
@@ -299,6 +314,21 @@ export function DesktopWorkspace({
                 onChange={(e) => onDodgeMode(e.target.value as DodgeMode)}
               >
                 {DODGE_MODES.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {/* Same preference, same mirror requirement as the dodge price. */}
+            <label className="field inline">
+              <span>Round advice</span>
+              <select
+                value={adviceLevel}
+                onChange={(e) => onAdviceLevel(e.target.value as AdviceLevel)}
+              >
+                {ADVICE_LEVELS.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.label}
                   </option>

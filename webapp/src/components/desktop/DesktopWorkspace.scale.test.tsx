@@ -32,6 +32,8 @@ function renderWorkspace(board: Board) {
       onStartRound={noop}
       dodgeMode="onDemand"
       onDodgeMode={noop}
+      adviceLevel="full"
+      onAdviceLevel={noop}
     />,
   );
 }

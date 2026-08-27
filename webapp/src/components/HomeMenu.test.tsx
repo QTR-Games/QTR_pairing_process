@@ -35,6 +35,8 @@ function renderMenu(over: Partial<Parameters<typeof HomeMenu>[0]> = {}) {
     boardCount: 0,
     dodgeMode: "onDemand" as const,
     onDodgeMode: vi.fn(),
+    adviceLevel: "full" as const,
+    onAdviceLevel: vi.fn(),
     onResume: vi.fn(),
     onContinue: vi.fn(),
     onBoards: vi.fn(),
