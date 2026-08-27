@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from "react";
 import type { Board } from "../model/board";
 import { boardScale, setRating, TEAM_SIZE } from "../model/board";
-import { fromFraction, ratingColor, scaleValues, toFraction } from "../model/scale";
+import { ratingColor, scaleValues, toFraction } from "../model/scale";
+import { winProbabilityFromFraction } from "../engine/winProbability";
 
 interface Props {
   board: Board;
@@ -39,7 +40,9 @@ export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
       <table className="grid">
         <thead>
           <tr>
-            <th className="corner" aria-label="Our players down, theirs across" />
+            <th className="corner" aria-label="Our players down, theirs across">
+              <span className="corner-unit">win %</span>
+            </th>
             {board.theirPlayers.map((name, j) => (
               <th key={j} className="col-head" title={name}>
                 <span>{name}</span>
@@ -69,7 +72,7 @@ export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
                       onClick={() => setEditing({ ours: i, theirs: j })}
                       aria-label={`${board.ourPlayers[i]} versus ${board.theirPlayers[j]}`}
                     >
-                      {fromFraction(f, scale)}
+                      {Math.round(winProbabilityFromFraction(f) * 100)}
                       {overlay?.(i, j)}
                     </button>
                   </td>
@@ -115,6 +118,7 @@ export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
             </div>
             <p className="sheet-hint">
               Worst matchup on the left, best on the right. The midpoint is an even game.
+              The grid reads each cell back as that player's per-game win chance.
             </p>
             <button type="button" className="ghost wide" onClick={() => setEditing(null)}>
               Close

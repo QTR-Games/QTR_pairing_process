@@ -67,6 +67,22 @@ export function toWinProbability(rating: number, ratingMin = 1, ratingMax = 5): 
   return Math.min(1 - EPS, Math.max(EPS, p));
 }
 
+/**
+ * A stored fraction (0 at the worst matchup, 1 at the best) straight to a win
+ * probability, without routing through a scale.
+ *
+ * `(rating - mid) / span` in {@link toWinProbability} is exactly `fraction -
+ * 0.5`, so this is the same line expressed in the unit a board is actually
+ * stored in (`model/scale.ts`). Using it keeps a displayed percentage
+ * scale-independent -- a board entered on 1-5 and re-read on 1-20 shows the
+ * same number -- and matches `ratingColor`, which is also driven straight off
+ * the fraction rather than the snapped scale value.
+ */
+export function winProbabilityFromFraction(fraction: number): number {
+  const p = 0.5 + SPREAD * (fraction - 0.5);
+  return Math.min(1 - EPS, Math.max(EPS, p));
+}
+
 /** A whole board of ratings, as win probabilities. */
 export function probabilityMatrix(
   matrix: readonly (readonly number[])[],

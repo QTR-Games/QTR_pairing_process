@@ -6,7 +6,7 @@ import { chanceOutlook, outlook } from "../engine/opponent";
 import { protocolFloor } from "../engine/protocol";
 import { protectionFocus } from "../engine/protection";
 import { reachReport } from "../engine/reach";
-import { assignmentChanceExtremes, probabilityMatrix } from "../engine/winProbability";
+import { assignmentChanceExtremes, probabilityMatrix, toWinProbability } from "../engine/winProbability";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale, isRated } from "../model/board";
 import { pct } from "../model/format";
@@ -291,6 +291,12 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
   const ourName = (i: number) => board.ourPlayers[i]?.trim() || `Your player ${i + 1}`;
   const theirName = (i: number) => board.theirPlayers[i]?.trim() || `Their list ${i + 1}`;
 
+  // A single matchup's rating, read as the chance our player wins that one game.
+  // The prose speaks the grid's own unit (#82): a bare "2" means nothing without
+  // the scale, which is a dropdown three sections down; "about 25% a game" does
+  // not. Same mapping the solver reasons in, and scale-independent.
+  const winPct = (rating: number) => pct(toWinProbability(rating, scale.min, scale.max));
+
   // Who leads the protect-first decision, and whether it is even a decision the
   // engine can make: a 2+ tie means the free fields rank them equal, so the
   // honest thing is to hand the choice back rather than name one.
@@ -493,20 +499,20 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
             }
             body={
               worstDodge.cheapest === null
-                ? `Rated ${fmt(worstDodge.rating)}, and no line of play escapes it -- they can force
+                ? `Worth about ${winPct(worstDodge.rating)} a game, and no line of play escapes it -- they can force
                    it whatever you do. Plan the other four around eating this one rather than
                    spending decisions trying to dodge what cannot be dodged.`
                 : worstDodge.cheapest.free
                   ? `${board.ourPlayers[worstDodge.cheapest.cell.ours]} into
-                     ${board.theirPlayers[worstDodge.cheapest.cell.theirs]} is rated
-                     ${fmt(worstDodge.rating)}, and refusing it costs nothing measurable -- your
+                     ${board.theirPlayers[worstDodge.cheapest.cell.theirs]} is worth about
+                     ${winPct(worstDodge.rating)} a game, and refusing it costs nothing measurable -- your
                      chance of taking the round is the same either way. Take the dodge.`
                   : `${board.ourPlayers[worstDodge.cheapest.cell.ours]} into
-                     ${board.theirPlayers[worstDodge.cheapest.cell.theirs]} is rated
-                     ${fmt(worstDodge.rating)}. Staying out of it drops your chance of taking the
+                     ${board.theirPlayers[worstDodge.cheapest.cell.theirs]} is worth about
+                     ${winPct(worstDodge.rating)} a game. Staying out of it drops your chance of taking the
                      round from ${pct(worstDodge.cheapest.base)} to
                      ${pct(worstDodge.cheapest.avoided ?? 0)}. That is the price of the dodge --
-                     worth paying only if you think the rating understates how bad it is.`
+                     worth paying only if you think that number understates how bad it is.`
             }
             onFocus={() => {
               const c = worstDodge.cheapest ? worstDodge.cheapest.cell : worstDodge.example;
@@ -534,7 +540,7 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
             }
             body={
               protect.exposed.length === 1
-                ? `Their ${fmt(protect.exposed[0].rowWorst)} is repeated in the row
+                ? `A matchup worth about ${winPct(protect.exposed[0].rowWorst)} a game is repeated in their row
                    (${protect.exposed[0].floorCount} of them), and a repeated worst cell cannot be
                    refused -- the opponent picks the moment to spring it. You cannot dodge them
                    clear, so do not spend nominations trying: sequence so the hit lands in the
@@ -543,11 +549,11 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
                 : `Each has a repeated worst cell, and a repeated worst cannot be refused -- one
                    nomination is enough to spring it. ${
                      priorityTied
-                       ? `${priorityNames} are equally exposed at ${fmt(focusLevel)} -- same forced floor,
+                       ? `${priorityNames} are equally exposed at about ${winPct(focusLevel)} a game -- same forced floor,
                    same number of ways to force it -- so there is no protect-first here: decide which
                    one eats it before the opponent decides for you.`
                        : `${ourName(protect.focus ?? protect.exposed[0].ours)}
-                   is the deepest at ${fmt(focusLevel)}, so weigh sequencing around them first.`
+                   is the deepest at about ${winPct(focusLevel)} a game, so weigh sequencing around them first.`
                    } Protecting all of them is not on the table; aim each into the least bad of
                    their tied cells. The guaranteed chance above falls as any of these deepen.`
             }
@@ -585,11 +591,11 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
             }
             body={
               shieldableFloors.length === 1
-                ? `Their worst cell is a lone ${fmt(shieldableFloors[0].rowWorst)}, so it can be
-                   refused -- but the next matchup they can be forced into is a
-                   ${fmt(shieldableFloors[0].level)}, still below the midpoint. You keep
-                   ${ourName(shieldableFloors[0].ours)} out of the ${fmt(shieldableFloors[0].rowWorst)}
-                   only by conceding the ${fmt(shieldableFloors[0].level)}, so a nomination here buys
+                ? `Their worst cell is a lone matchup worth about ${winPct(shieldableFloors[0].rowWorst)} a
+                   game, so it can be refused -- but the next matchup they can be forced into is only
+                   about ${winPct(shieldableFloors[0].level)} a game, still below the midpoint. You keep
+                   ${ourName(shieldableFloors[0].ours)} out of that about-${winPct(shieldableFloors[0].rowWorst)}
+                   game only by conceding the about-${winPct(shieldableFloors[0].level)} one, so a nomination here buys
                    the smaller hit, not safety. Sequence them ahead of the players who are genuinely
                    fine.`
                 : `Each has a lone worst cell that can be refused, but the next cell they can be
@@ -610,11 +616,10 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
             }
             body={
               trulySafe.length === 1
-                ? `Their worst cell is rated ${fmt(trulySafe[0].rowWorst)} and it is the only
-                   ${fmt(trulySafe[0].rowWorst)} in that row -- a single matchup, and a single
-                   matchup can always be refused. The worst they can actually be held to is
-                   ${fmt(trulySafe[0].level)}. Spending a nomination to protect them buys
-                   nothing.`
+                ? `Their worst cell is worth about ${winPct(trulySafe[0].rowWorst)} a game and it is the
+                   only matchup that low in that row -- a single cell, and a single cell can always be
+                   refused. The worst they can actually be held to is about ${winPct(trulySafe[0].level)}
+                   a game. Spending a nomination to protect them buys nothing.`
                 : `Each of their worst cells is the only one of its rating in that row, and a
                    lone matchup can always be refused. Their real floors are better than the
                    grid reads. Spend nominations on the players whose bad matchup is repeated
@@ -637,9 +642,9 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
             }
             body={
               overstated.length === 1
-                ? `Your best cell against them is rated ${fmt(overstated[0].columnBest)}, but it is
-                   the only ${fmt(overstated[0].columnBest)} in that column, so they can refuse it
-                   and you cannot insist. ${overstated[0].level === null ? "" : `Hold them to ${fmt(overstated[0].level)} instead.`}
+                ? `Your best cell against them is worth about ${winPct(overstated[0].columnBest)} a game, but
+                   it is the only cell that good in that column, so they can refuse it
+                   and you cannot insist. ${overstated[0].level === null ? "" : `Settle for about ${winPct(overstated[0].level)} a game instead.`}
                    Do not build a plan around a matchup you cannot force.`
                 : `In each of those columns your best cell is a lone one, which they can refuse.
                    The grid promises matchups you have no way to insist on, so treat those
