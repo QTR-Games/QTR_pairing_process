@@ -394,6 +394,45 @@ main {
   margin: 0.75rem 0;
 }
 
+/* ---------- opponent roster popup ---------- */
+
+/* The opponent's name turned into a hold-to-open target. It has to look like
+   the plain header text it replaces -- the grid is dense enough -- so the only
+   affordance is a dotted underline. `user-select`/`touch-callout` off so a
+   long-press opens the popup instead of selecting the name or raising the iOS
+   copy callout. */
+.col-head button.opp-name {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.opp-faction {
+  margin: 0 0 0.5rem;
+  color: var(--dim);
+  font-weight: 600;
+}
+
+.opp-lists {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.opp-lists li {
+  margin: 0.15rem 0;
+}
+
 /* ---------- live ---------- */
 
 .live-head {
