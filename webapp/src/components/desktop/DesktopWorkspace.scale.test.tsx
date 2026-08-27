@@ -34,6 +34,10 @@ function renderWorkspace(board: Board) {
       onDodgeMode={noop}
       adviceLevel="full"
       onAdviceLevel={noop}
+      surpriseMode="off"
+      onSurpriseMode={noop}
+      surpriseRegretThreshold={0}
+      onSurpriseRegretThreshold={noop}
     />,
   );
 }

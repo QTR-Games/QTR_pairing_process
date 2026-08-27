@@ -31,7 +31,14 @@ class MemoryStorage {
 const store = new MemoryStorage();
 (globalThis as unknown as { localStorage: MemoryStorage }).localStorage = store;
 
-const { loadSettings, saveSettings, DEFAULTS, DODGE_MODES, ADVICE_LEVELS } =
+const {
+  loadSettings,
+  saveSettings,
+  DEFAULTS,
+  DODGE_MODES,
+  ADVICE_LEVELS,
+  SURPRISE_MODES,
+} =
   await import("./settings");
 
 const KEY = "qtr.settings.v1";
@@ -56,14 +63,24 @@ describe("app settings", () => {
 
   it("remembers every mode across a reload", () => {
     for (const mode of DODGE_MODES) {
-      saveSettings({ dodgeMode: mode.id, adviceLevel: DEFAULTS.adviceLevel });
+      saveSettings({
+        dodgeMode: mode.id,
+        adviceLevel: DEFAULTS.adviceLevel,
+        surpriseMode: DEFAULTS.surpriseMode,
+        surpriseRegretThreshold: DEFAULTS.surpriseRegretThreshold,
+      });
       expect(loadSettings().dodgeMode).toBe(mode.id);
     }
   });
 
   it("remembers every advice level across a reload", () => {
     for (const level of ADVICE_LEVELS) {
-      saveSettings({ dodgeMode: DEFAULTS.dodgeMode, adviceLevel: level.id });
+      saveSettings({
+        dodgeMode: DEFAULTS.dodgeMode,
+        adviceLevel: level.id,
+        surpriseMode: DEFAULTS.surpriseMode,
+        surpriseRegretThreshold: DEFAULTS.surpriseRegretThreshold,
+      });
       expect(loadSettings().adviceLevel).toBe(level.id);
     }
   });
@@ -80,6 +97,34 @@ describe("app settings", () => {
     expect(ids).toHaveLength(3);
   });
 
+  it("keeps surprise detection off by default", () => {
+    expect(loadSettings().surpriseMode).toBe("off");
+    expect(DEFAULTS.surpriseMode).toBe("off");
+    expect(loadSettings().surpriseRegretThreshold).toBe(0);
+  });
+
+  it("remembers every surprise mode across a reload", () => {
+    for (const mode of SURPRISE_MODES) {
+      saveSettings({
+        dodgeMode: DEFAULTS.dodgeMode,
+        adviceLevel: DEFAULTS.adviceLevel,
+        surpriseMode: mode.id,
+        surpriseRegretThreshold: DEFAULTS.surpriseRegretThreshold,
+      });
+      expect(loadSettings().surpriseMode).toBe(mode.id);
+    }
+  });
+
+  it("remembers a non-negative surprise threshold across a reload", () => {
+    saveSettings({
+      dodgeMode: DEFAULTS.dodgeMode,
+      adviceLevel: DEFAULTS.adviceLevel,
+      surpriseMode: DEFAULTS.surpriseMode,
+      surpriseRegretThreshold: 1.5,
+    });
+    expect(loadSettings().surpriseRegretThreshold).toBe(1.5);
+  });
+
   it("falls back to defaults rather than throwing on rubbish", () => {
     for (const junk of [
       "",
@@ -89,11 +134,15 @@ describe("app settings", () => {
       "42",
       '{"dodgeMode":"banana"}',
       '{"adviceLevel":"banana"}',
+      '{"surpriseMode":"banana"}',
+      '{"surpriseRegretThreshold":-1}',
     ]) {
       store.setItem(KEY, junk);
       expect(() => loadSettings()).not.toThrow();
       expect(loadSettings().dodgeMode).toBe(DEFAULTS.dodgeMode);
       expect(loadSettings().adviceLevel).toBe(DEFAULTS.adviceLevel);
+      expect(loadSettings().surpriseMode).toBe(DEFAULTS.surpriseMode);
+      expect(loadSettings().surpriseRegretThreshold).toBe(DEFAULTS.surpriseRegretThreshold);
     }
   });
 
@@ -104,15 +153,26 @@ describe("app settings", () => {
     expect(loadSettings().dodgeMode).toBe("always");
     // And a missing sibling field takes its default rather than undefined.
     expect(loadSettings().adviceLevel).toBe(DEFAULTS.adviceLevel);
+    expect(loadSettings().surpriseMode).toBe(DEFAULTS.surpriseMode);
   });
 
   it("keeps each preference independent of the other", () => {
     // The two toggles share one storage key; setting one must not reset the
     // other back to its default on the next read.
-    store.setItem(KEY, JSON.stringify({ dodgeMode: "always", adviceLevel: "off" }));
+    store.setItem(
+      KEY,
+      JSON.stringify({
+        dodgeMode: "always",
+        adviceLevel: "off",
+        surpriseMode: "on",
+        surpriseRegretThreshold: 1,
+      }),
+    );
     const loaded = loadSettings();
     expect(loaded.dodgeMode).toBe("always");
     expect(loaded.adviceLevel).toBe("off");
+    expect(loaded.surpriseMode).toBe("on");
+    expect(loaded.surpriseRegretThreshold).toBe(1);
   });
 
   it("still applies the setting when storage refuses to write", () => {
@@ -126,10 +186,17 @@ describe("app settings", () => {
     const real = (globalThis as unknown as { localStorage: unknown }).localStorage;
     (globalThis as unknown as { localStorage: unknown }).localStorage = broken;
     try {
-      const next = { dodgeMode: "off" as const, adviceLevel: "brief" as const };
+      const next = {
+        dodgeMode: "off" as const,
+        adviceLevel: "brief" as const,
+        surpriseMode: "on" as const,
+        surpriseRegretThreshold: 0.5,
+      };
       expect(() => saveSettings(next)).not.toThrow();
       expect(saveSettings(next).dodgeMode).toBe("off");
       expect(saveSettings(next).adviceLevel).toBe("brief");
+      expect(saveSettings(next).surpriseMode).toBe("on");
+      expect(saveSettings(next).surpriseRegretThreshold).toBe(0.5);
     } finally {
       (globalThis as unknown as { localStorage: unknown }).localStorage = real;
     }

@@ -11,10 +11,12 @@
 import { describe, expect, it } from "vitest";
 import boards from "./__fixtures__/wtc2024Boards.json";
 import type { Matrix } from "./boardAnalysis";
+import { winChanceFloor } from "./avoidance";
 import { protocolFloor } from "./protocol";
 import {
   commitPairing,
   currentDecision,
+  liveWinChance,
   moveOptions,
   newRound,
   playerLeverage,
@@ -165,5 +167,49 @@ describe("live advisor", () => {
     }
     // If this were zero the feature would be telling the user nothing.
     expect(separating).toBeGreaterThan(0);
+  });
+
+  it("matches the full-round chance solver at the start of a round", () => {
+    for (const b of REAL) {
+      for (const ourTeamFirst of [true, false]) {
+        const start = newRound(b.matrix.length, ourTeamFirst);
+        expect(liveWinChance(b.matrix, start, 1, 5)).toBeCloseTo(
+          winChanceFloor(b.matrix, 1, 5, ourTeamFirst),
+          9,
+        );
+      }
+    }
+  });
+
+  it("moves in our favour when they take a worse-than-best pick", () => {
+    const matrix = REAL[0].matrix;
+    const start: LiveState = {
+      ourPool: (1 << 2) | (1 << 3),
+      theirPool: (1 << 0) | (1 << 4),
+      attacker: 1,
+      attackerSide: "their",
+      banked: 0,
+      committed: [],
+    };
+    const offers = moveOptions(matrix, start);
+    expect(offers).toHaveLength(1);
+    const offer = offers[0];
+    expect(offer.pair).toBeDefined();
+    const pair = offer.pair!;
+
+    const picks = [pair[0], pair[1]].map((picked) => {
+      const leftover = picked === pair[0] ? pair[1] : pair[0];
+      const after = commitPairing(matrix, start, picked, start.attacker, leftover, "our");
+      return { picked, chance: liveWinChance(matrix, after, 1, 5) };
+    });
+    picks.sort((a, b) => a.chance - b.chance);
+    const bestForThem = picks[0];
+    const offModel = picks[picks.length - 1];
+    expect(offModel.chance).toBeGreaterThanOrEqual(bestForThem.chance);
+    expect(offModel.picked).not.toBe(bestForThem.picked);
+
+    expect(offModel.chance).toBeGreaterThanOrEqual(
+      bestForThem.chance,
+    );
   });
 });

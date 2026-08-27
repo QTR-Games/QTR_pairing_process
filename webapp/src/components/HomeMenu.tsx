@@ -18,7 +18,14 @@
 */
 import { BoardBackup } from "./BoardBackup";
 import { BRAND, LINKS } from "../brand";
-import { ADVICE_LEVELS, DODGE_MODES, type AdviceLevel, type DodgeMode } from "../model/settings";
+import {
+  ADVICE_LEVELS,
+  DODGE_MODES,
+  SURPRISE_MODES,
+  type AdviceLevel,
+  type DodgeMode,
+  type SurpriseMode,
+} from "../model/settings";
 import type { Board } from "../model/board";
 
 interface HomeMenuProps {
@@ -31,6 +38,10 @@ interface HomeMenuProps {
   onDodgeMode: (mode: DodgeMode) => void;
   adviceLevel: AdviceLevel;
   onAdviceLevel: (level: AdviceLevel) => void;
+  surpriseMode: SurpriseMode;
+  onSurpriseMode: (mode: SurpriseMode) => void;
+  surpriseRegretThreshold: number;
+  onSurpriseRegretThreshold: (threshold: number) => void;
   /** Resume the live round. Only called when `liveOpponent` is set. */
   onResume: () => void;
   /** Open the most recent board on the pairing screen. */
@@ -48,6 +59,10 @@ export function HomeMenu({
   onDodgeMode,
   adviceLevel,
   onAdviceLevel,
+  surpriseMode,
+  onSurpriseMode,
+  surpriseRegretThreshold,
+  onSurpriseRegretThreshold,
   onResume,
   onContinue,
   onBoards,
@@ -120,6 +135,33 @@ export function HomeMenu({
             much the round explains itself. <em>Just the picks</em> drops the
             reasoning for a faster read; <em>No advice</em> shows the bare
             options.
+          </p>
+          <label className="field inline">
+            <span>Surprise-pick alerts</span>
+            <select
+              value={surpriseMode}
+              onChange={(e) => onSurpriseMode(e.target.value as SurpriseMode)}
+            >
+              {SURPRISE_MODES.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field inline">
+            <span>Surprise threshold (regret)</span>
+            <input
+              type="number"
+              min={0}
+              step={0.1}
+              value={Number.isFinite(surpriseRegretThreshold) ? surpriseRegretThreshold : 0}
+              onChange={(e) => onSurpriseRegretThreshold(Number(e.target.value))}
+            />
+          </label>
+          <p className="hint">
+            Experimental. Alerts fire when an opponent move gives up at least this
+            many points versus your grid&apos;s expected best move.
           </p>
         </div>
       </details>

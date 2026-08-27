@@ -23,6 +23,7 @@ import type { Matrix } from "./boardAnalysis";
 import { outlook } from "./opponent";
 import type { ProtocolState, Side, SolveCache } from "./protocol";
 import { memoFor, solveCache, solveProtocol } from "./protocol";
+import { atLeast, extendDistribution, probabilityMatrix, winsNeeded } from "./winProbability";
 
 const bits = (mask: number): number[] => {
   const out: number[] = [];
@@ -620,6 +621,117 @@ export function optionProfile(
   };
 }
 
+const chanceDistKey = (dist: readonly number[]): string => dist.map((v) => v.toFixed(9)).join(",");
+
+/**
+ * Guaranteed round-win chance from the current live state.
+ *
+ * The points engine (`moveOptions`) and this probability view search the same
+ * decision tree. This only changes the currency used for valuation.
+ */
+export function liveWinChance(
+  matrix: Matrix,
+  s: LiveState,
+  ratingMin = 1,
+  ratingMax = 5,
+): number {
+  const probs = probabilityMatrix(matrix, ratingMin, ratingMax);
+  const need = winsNeeded(matrix.length);
+  let dist: number[] = [1];
+  for (const c of s.committed) dist = extendDistribution(dist, probs[c.ours][c.theirs]);
+  const memo = new Map<string, number>();
+  return solveLiveChance(probs, s, need, dist, memo);
+}
+
+function solveLiveChance(
+  probs: Matrix,
+  s: LiveState,
+  need: number,
+  dist: readonly number[],
+  memo: Map<string, number>,
+): number {
+  const key = `${s.ourPool}|${s.theirPool}|${s.attacker}|${s.attackerSide}|${chanceDistKey(dist)}`;
+  const cached = memo.get(key);
+  if (cached !== undefined) return cached;
+
+  const d = currentDecision(s);
+  if (d.kind === "done") {
+    const terminal = atLeast(dist, need);
+    memo.set(key, terminal);
+    return terminal;
+  }
+
+  if (d.kind === "forced") {
+    const nextDist = extendDistribution(dist, probs[d.ours][d.theirs]);
+    const value = atLeast(nextDist, need);
+    memo.set(key, value);
+    return value;
+  }
+
+  if (d.kind === "open") {
+    const pool = d.owner === "our" ? bits(s.ourPool) : bits(s.theirPool);
+    let best = d.owner === "our" ? -Infinity : Infinity;
+    for (const p of pool) {
+      const next: LiveState = {
+        ...s,
+        ourPool: d.owner === "our" ? s.ourPool & ~(1 << p) : s.ourPool,
+        theirPool: d.owner === "their" ? s.theirPool & ~(1 << p) : s.theirPool,
+        attacker: p,
+        attackerSide: d.owner,
+      };
+      const value = solveLiveChance(probs, next, need, dist, memo);
+      if (d.owner === "our" ? value > best : value < best) best = value;
+    }
+    memo.set(key, best);
+    return best;
+  }
+
+  const offeringPool = d.owner === "our" ? bits(s.ourPool) : bits(s.theirPool);
+  const attackerIsUs = d.attackerSide === "our";
+  const defenderIsUs = d.attackerSide === "their";
+  let chosen = defenderIsUs ? -Infinity : Infinity;
+
+  for (let a = 0; a < offeringPool.length; a++) {
+    for (let b = a + 1; b < offeringPool.length; b++) {
+      const pair: [number, number] = [offeringPool[a], offeringPool[b]];
+      let bestPick = attackerIsUs ? -Infinity : Infinity;
+
+      for (const picked of pair) {
+        const leftover = picked === pair[0] ? pair[1] : pair[0];
+        const [ours, theirs] = attackerIsUs ? [s.attacker, picked] : [picked, s.attacker];
+        const nextDist = extendDistribution(dist, probs[ours][theirs]);
+        const nextOur = attackerIsUs ? s.ourPool : s.ourPool & ~(1 << picked) & ~(1 << leftover);
+        const nextTheir = attackerIsUs
+          ? s.theirPool & ~(1 << picked) & ~(1 << leftover)
+          : s.theirPool;
+        const value =
+          nextOur === 0 && nextTheir === 0
+            ? atLeast(nextDist, need)
+            : solveLiveChance(
+                probs,
+                {
+                  ...s,
+                  ourPool: nextOur,
+                  theirPool: nextTheir,
+                  attacker: leftover,
+                  attackerSide: attackerIsUs ? "their" : "our",
+                  committed: s.committed,
+                },
+                need,
+                nextDist,
+                memo,
+              );
+        if (attackerIsUs ? value > bestPick : value < bestPick) bestPick = value;
+      }
+
+      if (defenderIsUs ? bestPick > chosen : bestPick < chosen) chosen = bestPick;
+    }
+  }
+
+  memo.set(key, chosen);
+  return chosen;
+}
+
 /**
  * The state we hand them after taking `opt`.
  *
@@ -655,4 +767,3 @@ function stateAfterOption(s: LiveState, opt: MoveOption, matrix: Matrix): LiveSt
 
   return null;
 }
-
