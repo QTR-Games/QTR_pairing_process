@@ -1,8 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { Board } from "../model/board";
 import { boardScale, setRating, TEAM_SIZE } from "../model/board";
-import { ratingColor, scaleValues, toFraction } from "../model/scale";
-import { winProbabilityFromFraction } from "../engine/winProbability";
+import { fromFraction, ratingColor, scaleValues, toFraction } from "../model/scale";
 
 interface Props {
   board: Board;
@@ -50,7 +49,7 @@ export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
         <thead>
           <tr>
             <th className="corner" aria-label="Our players down, theirs across">
-              <span className="corner-unit">win %</span>
+              <span className="corner-unit">rating</span>
             </th>
             {board.theirPlayers.map((name, j) => (
               <th key={j} className="col-head" title={name}>
@@ -84,7 +83,7 @@ export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
                       onClick={() => setEditing({ ours: i, theirs: j })}
                       aria-label={`${board.ourPlayers[i]} versus ${board.theirPlayers[j]}`}
                     >
-                      {Math.round(winProbabilityFromFraction(f) * 100)}
+                      {fromFraction(f, scale)}
                       {overlay?.(i, j)}
                     </button>
                   </td>
@@ -130,7 +129,7 @@ export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
             </div>
             <p className="sheet-hint">
               Worst matchup on the left, best on the right. The midpoint is an even game.
-              The grid reads each cell back as that player's per-game win chance.
+              Each cell shows the rating you picked, on this board's scale.
             </p>
             <button type="button" className="ghost wide" onClick={() => setEditing(null)}>
               Close
