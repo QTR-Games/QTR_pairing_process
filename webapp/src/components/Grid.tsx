@@ -35,6 +35,15 @@ export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
   const [editing, setEditing] = useState<{ ours: number; theirs: number } | null>(null);
   const values = scaleValues(scale);
 
+  // The captain's protect-first pick, marked on that player's row so the call
+  // made on the reading screen is visible while looking at the sheet. Trusted
+  // raw with only a range guard: Verdict owns the invariant that this field is
+  // null or a live, exposed index, and it is co-mounted wherever the grid shows.
+  const marked =
+    board.protectPriority != null && board.protectPriority < board.ourPlayers.length
+      ? board.protectPriority
+      : null;
+
   return (
     <div className="grid-wrap">
       <table className="grid">
@@ -55,6 +64,9 @@ export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
             <tr key={i}>
               <th className="row-head" title={name}>
                 <span>{name}</span>
+                {marked === i && (
+                  <span className="protect-mark" title="Protect first" aria-label="Protect first" />
+                )}
               </th>
               {board.theirPlayers.map((_, j) => {
                 const f = board.fractions[i][j];

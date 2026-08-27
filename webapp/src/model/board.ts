@@ -34,6 +34,28 @@ export interface Board {
    * localStorage needs migrating.
    */
   touched?: boolean;
+  /**
+   * Which of our players the captain has chosen to protect first when two or
+   * more are equally exposed -- an index into `ourPlayers`.
+   *
+   * Optional and nullable: absent or null means "no preference", which is what
+   * every board created before this field existed reads as, so nothing in
+   * localStorage needs migrating (same pattern as `touched`). It rides backup
+   * and restore for free because the whole board is JSON-serialised.
+   *
+   * This is a recorded decision, not an engine input. It is marked back on the
+   * grid and persisted with the board, but it does NOT steer the pairing
+   * suggestions -- feeding a protect preference into the live tiebreak is its
+   * own piece of work (issue #90), because the only seam that could consume it
+   * does not exist yet.
+   *
+   * Never trust the raw value: a stored index can outlive the exposure that
+   * motivated it. Read it through `activeProtectPriority`, which returns null
+   * for an index that is out of range or names a player who is no longer
+   * exposed, so a stale choice is inert rather than silently marking the wrong
+   * player.
+   */
+  protectPriority?: number | null;
 }
 
 const uid = (): string =>
@@ -63,6 +85,29 @@ export function setRating(board: Board, ours: number, theirs: number, value: num
   const fractions = board.fractions.map((row) => [...row]);
   fractions[ours][theirs] = toFraction(value, scale);
   return { ...board, fractions, touched: true, updatedAt: Date.now() };
+}
+
+/**
+ * The captain's protect-first choice, but only when it still describes a real,
+ * current decision. Returns the stored index when it is an in-range index into
+ * `ourPlayers` AND that player is currently exposed; otherwise null.
+ *
+ * A board outlives its preference: re-rate it and the player the captain wanted
+ * to protect can stop being exposed, or a roster slot can go away. Rather than
+ * let a marker silently point at someone the choice no longer applies to, every
+ * reader routes through here, so one stale index reads as "no preference"
+ * everywhere at once.
+ *
+ * `exposed` is supplied by the caller -- the protection engine computes it --
+ * so this stays a pure model helper with no engine dependency.
+ */
+export function activeProtectPriority(board: Board, exposed: Iterable<number>): number | null {
+  const i = board.protectPriority;
+  if (i == null || !Number.isInteger(i) || i < 0 || i >= board.ourPlayers.length) {
+    return null;
+  }
+  for (const o of exposed) if (o === i) return i;
+  return null;
 }
 
 /**

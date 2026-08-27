@@ -195,7 +195,7 @@ export function DesktopWorkspace({
     <div className="desk">
       <div className="desk-col desk-read">
         <Currencies board={board} scale={scale} matrix={matrix} tau={tau} />
-        <Verdict board={board} onHighlight={setHighlight} dodgeMode={dodgeMode} />
+        <Verdict board={board} onHighlight={setHighlight} onBoardChange={onBoard} dodgeMode={dodgeMode} />
       </div>
 
       <div className="desk-col desk-sheet">

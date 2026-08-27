@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { worstMatchupDodge } from "../engine/avoidance";
 import type { Matrix } from "../engine/boardAnalysis";
 import { decisionReport, evenThreshold, LIVE, SECURED, UNWINNABLE } from "../engine/boardAnalysis";
@@ -8,13 +8,20 @@ import { protectionFocus } from "../engine/protection";
 import { reachReport } from "../engine/reach";
 import { assignmentChanceExtremes, probabilityMatrix, toWinProbability } from "../engine/winProbability";
 import type { Board } from "../model/board";
-import { boardMatrix, boardScale, isRated } from "../model/board";
+import { boardMatrix, boardScale, isRated, activeProtectPriority } from "../model/board";
 import { pct } from "../model/format";
 import type { DodgeMode } from "../model/settings";
 
 interface Props {
   board: Board;
   onHighlight?: (cells: Set<string>) => void;
+  /**
+   * Persist an edit to the board. Optional: when omitted the verdict is a
+   * pure read (as in every unit test and any read-only embedding), and the
+   * protect-first control is not offered. Both real callers pass their
+   * `setBoard`, so the choice is saved the moment it is made.
+   */
+  onBoardChange?: (b: Board) => void;
   /** How much to say about the worst matchup. Defaults to asking first. */
   dodgeMode?: DodgeMode;
 }
@@ -71,7 +78,7 @@ const listNames = (names: string[]): string =>
  * Everything else on this screen exists to answer "so what do I do", and is
  * driven by the measured findings rather than by a single ranking number.
  */
-export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
+export function Verdict({ board, onHighlight, onBoardChange, dodgeMode = "onDemand" }: Props) {
   const scale = boardScale(board);
   const matrix: Matrix = useMemo(() => boardMatrix(board, scale), [board, scale]);
   const tau = evenThreshold(board.ourPlayers.length, scale.min, scale.max);
@@ -302,6 +309,24 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
   // honest thing is to hand the choice back rather than name one.
   const priorityNames = listNames(protect.priorityTie.map((o) => ourName(o)));
   const priorityTied = protect.priorityTie.length >= 2;
+
+  // The captain's protect-first choice, validated against the current board: an
+  // index that is out of range or names a player who is no longer exposed reads
+  // as no preference. This is what the control shows and what the grid marks --
+  // neither ever points at a stale pick.
+  const activePriority = activeProtectPriority(board, exposedSet);
+
+  // Normalise a dead choice out of storage. A stored index survives re-rating
+  // the board, so once the named player stops being exposed (or their slot is
+  // gone) clear it, leaving the field either null or a live, exposed index.
+  // Verdict is the only component that computes exposure and is co-mounted with
+  // the grid on every screen that shows it, so this is the single writer of that
+  // invariant -- the grid can then trust the raw field with a range check.
+  useEffect(() => {
+    if (onBoardChange && board.protectPriority != null && activePriority === null) {
+      onBoardChange({ ...board, protectPriority: null });
+    }
+  }, [board, activePriority, onBoardChange]);
 
   // An all-even board is arithmetically "unwinnable" -- it lands exactly on the
   // threshold, which needs to be beaten rather than met. Saying so before a
@@ -561,6 +586,24 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
           />
         )}
 
+        {/*
+          The one unforced call on this screen. When two or more players are
+          equally exposed the engine has nothing left to separate them -- the
+          prose above says so -- so the choice is handed back to the captain
+          here rather than guessed. Recorded and marked on the grid; explicitly
+          NOT wired into the pairing suggestions (that is issue #90), and the
+          note says so, because a control that silently did nothing would be
+          worse than none.
+        */}
+        {priorityTied && onBoardChange && (
+          <ProtectChoice
+            candidates={protect.priorityTie}
+            nameOf={ourName}
+            selected={activePriority !== null && protect.priorityTie.includes(activePriority) ? activePriority : null}
+            onSelect={(i) => onBoardChange({ ...board, protectPriority: i })}
+          />
+        )}
+
         {sharedTrap && (
           <Insight
             title={`${theirName(sharedTrap.theirs)} squeezes ${listNames(
@@ -724,6 +767,61 @@ function Insight({
     <div className="insight" onClick={onFocus} role={onFocus ? "button" : undefined}>
       <p className="insight-title">{title}</p>
       <p className="insight-body">{body}</p>
+    </div>
+  );
+}
+
+/**
+ * The protect-first control for a genuine tie.
+ *
+ * Deliberately plain radios: the whole value is that the captain's call is
+ * captured and kept, and the honesty of the note under it. The note is
+ * load-bearing -- it promises exactly what the field delivers today (saved and
+ * marked) and no more (it does not move the pairing suggestions), so the
+ * control cannot read as an engine input it is not yet. Default is "No
+ * preference", so a board nobody has touched claims nothing.
+ */
+function ProtectChoice({
+  candidates,
+  nameOf,
+  selected,
+  onSelect,
+}: {
+  candidates: number[];
+  nameOf: (i: number) => string;
+  selected: number | null;
+  onSelect: (i: number | null) => void;
+}) {
+  return (
+    <div className="protect-choice">
+      <p className="protect-choice-label">Protect first, if you have to choose:</p>
+      <div className="protect-choice-options" role="radiogroup" aria-label="Protect first">
+        <label className="protect-choice-option">
+          <input
+            type="radio"
+            name="protect-first"
+            checked={selected === null}
+            onChange={() => onSelect(null)}
+          />
+          <span>No preference</span>
+        </label>
+        {candidates.map((o) => (
+          <label key={o} className="protect-choice-option">
+            <input
+              type="radio"
+              name="protect-first"
+              checked={selected === o}
+              onChange={() => onSelect(o)}
+            />
+            <span>{nameOf(o)}</span>
+          </label>
+        ))}
+      </div>
+      <p className="protect-choice-note">
+        Saved with this board and marked on the grid, so the call is not lost
+        between rounds. It is a note to yourself -- it does not change the pairing
+        suggestions yet.
+      </p>
     </div>
   );
 }
