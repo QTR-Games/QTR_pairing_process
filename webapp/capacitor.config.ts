@@ -3,12 +3,10 @@ import type { CapacitorConfig } from "@capacitor/cli";
 /**
  * Native shell configuration.
  *
- * The web build already sets `base: './'`, so `dist` loads unmodified inside
- * the WebView regardless of where it sits, which Capacitor serves from a local
- * `https://localhost` origin rather than over the network. Nothing is fetched
- * at runtime, so the app works in a hall with no signal. (That relative base
- * was originally there to suit a GitHub Pages subpath; Pages is retired, but
- * the setting still matters for the local origin.)
+ * The web build already sets `base: './'`, so the same `dist` that ships to
+ * GitHub Pages loads unmodified inside the WebView, which Capacitor serves from
+ * a local `https://localhost` origin rather than over the network. Nothing is
+ * fetched at runtime, so the app works in a hall with no signal.
  * There is no separate native build of the app -- the APK is a wrapper around
  * the identical bundle, which is what keeps the phone and the laptop showing
  * the same numbers.

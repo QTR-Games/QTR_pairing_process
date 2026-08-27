@@ -211,11 +211,11 @@ webapp/android/keystore.properties
 *.jks
 *.keystore
 
-# Real event data stays out of the repository. The repository is private now, so
-# this is no longer about strangers finding it -- rosters and ratings are
-# harmless apart, but joined together they are scouting material, and a clone,
-# a fork or a future change of visibility carries whatever is committed with it.
-# Keep working copies outside the repo, or anonymise before committing.
+# Real event data stays out of the repository. This repository is public, so
+# anything committed here is world-readable and stays that way in the history and
+# in every fork -- rosters and ratings are harmless apart, but joined together
+# they are scouting material. Keep working copies outside the repo, or anonymise
+# before committing.
 import_logs/
 *_Import.csv
 *_Import.txt

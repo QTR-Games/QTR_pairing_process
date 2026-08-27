@@ -258,15 +258,61 @@ its own web assets, sets no `server.url`, makes no network request at runtime,
 and keeps boards in `localStorage` on the device. Venue wifi cannot affect it,
 and neither can the venue not having any.
 
-There is deliberately no URL-based fallback any more. There used to be one -- a
-manual GitHub Pages deploy that served the bundle and the APK from a public
-Pages URL on the day. It is gone and should not be re-added. This
-repository is private and the organisation is on the GitHub Free plan, where
-Pages cannot publish from a private repository at all, so the fallback would
-have failed at exactly the moment it was needed. Restoring it would mean paying
-for a plan *and* accepting that Pages sites are public regardless of repository
-visibility, which would put the team's rosters and ratings on a guessable URL.
-Installing ahead of time costs one command per phone and has none of that.
+Do not rely on the Pages site on the day. It is a way to *install* on an iPhone,
+not a way to run the app at an event -- it needs signal for the first load, and
+it is public. Get every phone installed beforehand and the network stops
+mattering.
+
+## The Pages site, and iPhones
+
+`.github/workflows/deploy-webapp.yml` publishes the web app to
+<https://qtr-games.github.io/QTR_pairing_process/>. Run it manually from the
+Actions tab; there is no push trigger, so the site only changes when someone
+decides it should.
+
+It exists for iOS. There is no sideloading on iPhone, so "Add to Home Screen"
+from a real HTTPS URL is the only route onto the device -- serving the bundle
+off a laptop at `http://192.168.x.x` does not work, because service workers
+require HTTPS and without one there is no offline cache. Once added to the home
+screen the app is durable: the seven-day storage eviction that Safari applies to
+ordinary browser tabs does not apply to installed home-screen web apps, so saved
+boards survive between events.
+
+**No APK is published there**, deliberately. That would put a working installer
+on a public URL. Android goes through `phone:install` instead, which needs the
+laptop and a paired phone.
+
+### What is and is not exposed
+
+A Pages site is public on every plan below Enterprise Cloud, regardless of
+repository visibility, and there is no password or access-control option at this
+plan level. A passcode prompt in the page would be theatre: the site is static,
+so any check runs in the visitor's own browser and can be skipped by fetching
+the file directly.
+
+That is acceptable here because the repository is public anyway -- the app is
+entirely client-side, so its logic is already readable by anyone who wants it,
+and a gate would protect nothing that is not already open. **No event data is
+involved either way**: rosters and ratings live in `localStorage` on each device
+and are never part of the build, so publishing the site does not publish them.
+
+### Taking the site offline
+
+Worth doing before an event if you would rather opponents not have the tool to
+hand. Deleting the site is immediate and reversible:
+
+```powershell
+gh api -X DELETE repos/QTR-Games/QTR_pairing_process/pages
+```
+
+Re-run the `deploy-webapp` workflow to bring it back. Because the workflow is
+manual-only, nothing will silently republish it in the meantime -- which is the
+reason it has no push trigger.
+
+One caveat: this removes the site, not the app. Anyone who has already added it
+to their home screen keeps a working offline copy, because that is precisely
+what the service worker cache is for. Taking the site down stops *new* installs;
+it does not reach back to existing ones.
 
 ## Troubleshooting
 
