@@ -9,6 +9,8 @@ with the repository [README](../README.md) for product setup and
 - [Architecture](architecture.md): launcher, UI, data, and dependency boundaries.
 - [Testing](testing.md): local test commands and the Tk-aware CI model.
 - [Releasing](releasing.md): the exact behavior of `scripts/build_release.ps1`.
+- [GronkSoft shared platform](gronksoft-shared-platform.md): what is shared with
+  the sibling apps, and where that shared code lives.
 - [Copilot guide](../.github/copilot-instructions.md): repository-specific agent guidance.
 
 Run the Windows-first task runner from the repository root:
