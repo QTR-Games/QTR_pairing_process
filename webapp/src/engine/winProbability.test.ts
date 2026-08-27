@@ -20,6 +20,7 @@ import {
   roundWinChance,
   toWinProbability,
   winDistribution,
+  winProbabilityFromFraction,
   winsNeeded,
 } from "./winProbability";
 
@@ -64,6 +65,41 @@ describe("toWinProbability", () => {
 
   it("survives a degenerate scale without dividing by zero", () => {
     expect(Number.isFinite(toWinProbability(4, 4, 4))).toBe(true);
+  });
+});
+
+describe("winProbabilityFromFraction", () => {
+  it("agrees cell-for-cell with toWinProbability, on any scale", () => {
+    // The two must never drift: the grid prints a cell straight from its stored
+    // fraction while the card prose prints the same cell through the rating, and
+    // a reader comparing the two would catch a gap of a single point.
+    const scales: [number, number][] = [
+      [1, 5],
+      [1, 10],
+      [0, 100],
+    ];
+    for (const [min, max] of scales) {
+      for (let step = 0; step <= 10; step++) {
+        const fraction = step / 10;
+        const rating = min + fraction * (max - min);
+        expect(winProbabilityFromFraction(fraction)).toBeCloseTo(
+          toWinProbability(rating, min, max),
+          12,
+        );
+      }
+    }
+  });
+
+  it("puts the midpoint fraction at a coin flip", () => {
+    expect(winProbabilityFromFraction(0.5)).toBeCloseTo(0.5, 12);
+  });
+
+  it("hits the same anchors and never a certainty", () => {
+    expect(winProbabilityFromFraction(0)).toBeCloseTo(0.5 - SPREAD / 2, 12);
+    expect(winProbabilityFromFraction(1)).toBeCloseTo(0.5 + SPREAD / 2, 12);
+    // Off the ends of the stored range it still clamps, matching toWinProbability.
+    expect(winProbabilityFromFraction(-1)).toBe(EPS);
+    expect(winProbabilityFromFraction(2)).toBeCloseTo(1 - EPS, 12);
   });
 });
 
