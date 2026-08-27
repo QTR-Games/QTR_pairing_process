@@ -16,7 +16,7 @@ import {
   type Board,
 } from "./model/board";
 import { SCALES } from "./model/scale";
-import { loadSettings, saveSettings, type DodgeMode } from "./model/settings";
+import { loadSettings, saveSettings, type DodgeMode, type AdviceLevel } from "./model/settings";
 import { newRound, type LiveState } from "./engine/live";
 import { boardMatrix } from "./model/board";
 import { openingChoice } from "./engine/protocol";
@@ -56,14 +56,23 @@ export default function App() {
   });
   const [highlight, setHighlight] = useState<Set<string>>(new Set());
   const [dodgeMode, setDodgeMode] = useState<DodgeMode>(() => loadSettings().dodgeMode);
+  const [adviceLevel, setAdviceLevel] = useState<AdviceLevel>(
+    () => loadSettings().adviceLevel,
+  );
   const [screen, setScreen] = useState<Screen>("splash");
 
   // Set and persist in one call. Both layouts expose this preference, so the
   // write has to live in one place or one of them will change it without
-  // saving it.
+  // saving it. Both toggles share one storage record, so each writer has to
+  // hand the other's current value back or a save would wipe it.
   const changeDodgeMode = (next: DodgeMode) => {
     setDodgeMode(next);
-    saveSettings({ dodgeMode: next });
+    saveSettings({ dodgeMode: next, adviceLevel });
+  };
+
+  const changeAdviceLevel = (next: AdviceLevel) => {
+    setAdviceLevel(next);
+    saveSettings({ dodgeMode, adviceLevel: next });
   };
 
   /**
@@ -167,6 +176,8 @@ export default function App() {
           boardCount={boards.length}
           dodgeMode={dodgeMode}
           onDodgeMode={changeDodgeMode}
+          adviceLevel={adviceLevel}
+          onAdviceLevel={changeAdviceLevel}
           onResume={() => enter("round")}
           onContinue={() => {
             /*
@@ -240,6 +251,8 @@ export default function App() {
               onStartRound={startRound}
               dodgeMode={dodgeMode}
               onDodgeMode={changeDodgeMode}
+              adviceLevel={adviceLevel}
+              onAdviceLevel={changeAdviceLevel}
             />
           )}
         </main>
@@ -353,6 +366,7 @@ export default function App() {
               board={board}
               state={live}
               onState={setLive}
+              adviceLevel={adviceLevel}
               onReset={() => setLive(newRound(board.ourPlayers.length, board.ourTeamFirst))}
             />
           ) : (

@@ -31,7 +31,8 @@ class MemoryStorage {
 const store = new MemoryStorage();
 (globalThis as unknown as { localStorage: MemoryStorage }).localStorage = store;
 
-const { loadSettings, saveSettings, DEFAULTS, DODGE_MODES } = await import("./settings");
+const { loadSettings, saveSettings, DEFAULTS, DODGE_MODES, ADVICE_LEVELS } =
+  await import("./settings");
 
 const KEY = "qtr.settings.v1";
 
@@ -46,10 +47,24 @@ describe("app settings", () => {
     expect(DEFAULTS.dodgeMode).toBe("onDemand");
   });
 
+  it("explains in full by default", () => {
+    // The newer captain is the one who cannot yet tell a safe silence from a
+    // missed trap, so the reasoning is on until a veteran turns it down.
+    expect(loadSettings().adviceLevel).toBe("full");
+    expect(DEFAULTS.adviceLevel).toBe("full");
+  });
+
   it("remembers every mode across a reload", () => {
     for (const mode of DODGE_MODES) {
-      saveSettings({ dodgeMode: mode.id });
+      saveSettings({ dodgeMode: mode.id, adviceLevel: DEFAULTS.adviceLevel });
       expect(loadSettings().dodgeMode).toBe(mode.id);
+    }
+  });
+
+  it("remembers every advice level across a reload", () => {
+    for (const level of ADVICE_LEVELS) {
+      saveSettings({ dodgeMode: DEFAULTS.dodgeMode, adviceLevel: level.id });
+      expect(loadSettings().adviceLevel).toBe(level.id);
     }
   });
 
@@ -59,11 +74,26 @@ describe("app settings", () => {
     expect(ids).toHaveLength(3);
   });
 
+  it("offers exactly the three advice levels, once each", () => {
+    const ids = ADVICE_LEVELS.map((m) => m.id);
+    expect(new Set(ids)).toEqual(new Set(["full", "brief", "off"]));
+    expect(ids).toHaveLength(3);
+  });
+
   it("falls back to defaults rather than throwing on rubbish", () => {
-    for (const junk of ["", "not json", "null", "[]", "42", '{"dodgeMode":"banana"}']) {
+    for (const junk of [
+      "",
+      "not json",
+      "null",
+      "[]",
+      "42",
+      '{"dodgeMode":"banana"}',
+      '{"adviceLevel":"banana"}',
+    ]) {
       store.setItem(KEY, junk);
       expect(() => loadSettings()).not.toThrow();
       expect(loadSettings().dodgeMode).toBe(DEFAULTS.dodgeMode);
+      expect(loadSettings().adviceLevel).toBe(DEFAULTS.adviceLevel);
     }
   });
 
@@ -72,6 +102,17 @@ describe("app settings", () => {
     // parts this version understands.
     store.setItem(KEY, JSON.stringify({ dodgeMode: "always", somethingNew: true }));
     expect(loadSettings().dodgeMode).toBe("always");
+    // And a missing sibling field takes its default rather than undefined.
+    expect(loadSettings().adviceLevel).toBe(DEFAULTS.adviceLevel);
+  });
+
+  it("keeps each preference independent of the other", () => {
+    // The two toggles share one storage key; setting one must not reset the
+    // other back to its default on the next read.
+    store.setItem(KEY, JSON.stringify({ dodgeMode: "always", adviceLevel: "off" }));
+    const loaded = loadSettings();
+    expect(loaded.dodgeMode).toBe("always");
+    expect(loaded.adviceLevel).toBe("off");
   });
 
   it("still applies the setting when storage refuses to write", () => {
@@ -85,8 +126,10 @@ describe("app settings", () => {
     const real = (globalThis as unknown as { localStorage: unknown }).localStorage;
     (globalThis as unknown as { localStorage: unknown }).localStorage = broken;
     try {
-      expect(() => saveSettings({ dodgeMode: "off" })).not.toThrow();
-      expect(saveSettings({ dodgeMode: "off" }).dodgeMode).toBe("off");
+      const next = { dodgeMode: "off" as const, adviceLevel: "brief" as const };
+      expect(() => saveSettings(next)).not.toThrow();
+      expect(saveSettings(next).dodgeMode).toBe("off");
+      expect(saveSettings(next).adviceLevel).toBe("brief");
     } finally {
       (globalThis as unknown as { localStorage: unknown }).localStorage = real;
     }

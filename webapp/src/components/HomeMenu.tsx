@@ -18,7 +18,7 @@
 */
 import { BoardBackup } from "./BoardBackup";
 import { BRAND, LINKS } from "../brand";
-import { DODGE_MODES, type DodgeMode } from "../model/settings";
+import { ADVICE_LEVELS, DODGE_MODES, type AdviceLevel, type DodgeMode } from "../model/settings";
 import type { Board } from "../model/board";
 
 interface HomeMenuProps {
@@ -29,6 +29,8 @@ interface HomeMenuProps {
   boardCount: number;
   dodgeMode: DodgeMode;
   onDodgeMode: (mode: DodgeMode) => void;
+  adviceLevel: AdviceLevel;
+  onAdviceLevel: (level: AdviceLevel) => void;
   /** Resume the live round. Only called when `liveOpponent` is set. */
   onResume: () => void;
   /** Open the most recent board on the pairing screen. */
@@ -44,6 +46,8 @@ export function HomeMenu({
   boardCount,
   dodgeMode,
   onDodgeMode,
+  adviceLevel,
+  onAdviceLevel,
   onResume,
   onContinue,
   onBoards,
@@ -97,6 +101,25 @@ export function HomeMenu({
             Pricing a dodge takes a solve, so <em>When I ask</em> and{" "}
             <em>Never</em> both skip the work rather than computing it and hiding
             the answer.
+          </p>
+          <label className="field inline">
+            <span>Advice during a round</span>
+            <select
+              value={adviceLevel}
+              onChange={(e) => onAdviceLevel(e.target.value as AdviceLevel)}
+            >
+              {ADVICE_LEVELS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="hint">
+            The picks and their numbers never change &mdash; this only sets how
+            much the round explains itself. <em>Just the picks</em> drops the
+            reasoning for a faster read; <em>No advice</em> shows the bare
+            options.
           </p>
         </div>
       </details>

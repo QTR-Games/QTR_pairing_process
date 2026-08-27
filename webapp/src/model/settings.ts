@@ -37,8 +37,36 @@ export const DODGE_MODES: { id: DodgeMode; label: string }[] = [
   { id: "off", label: "Never" },
 ];
 
+/**
+ * How much the live round explains itself.
+ *
+ * The engine prices every decision the same way regardless of this setting --
+ * the toggle changes what the screen says, never what it computes. It exists
+ * because the two captains this app is for want opposite things from the same
+ * position. A newer captain distrusts a silent recommendation with a weekend on
+ * the line and wants the reasoning behind every pick; a WTC veteran already
+ * knows the theory and wants the grid, the numbers and nothing in the way.
+ *
+ *  - `full`  -- every "why": the tie-break reasoning, the hold-or-play read,
+ *               the upside-if-they-err line, and a note on forced pairings
+ *  - `brief` -- the recommendation only ("take X"), the value and the raw
+ *               rating chip; none of the explanatory prose
+ *  - `off`   -- just the tappable options and their numbers, no advice at all
+ *
+ * Unlike the dodge price, none of these skip a solve: the round is already
+ * searched for the options themselves, so the prose is free to render or hide.
+ */
+export type AdviceLevel = "full" | "brief" | "off";
+
+export const ADVICE_LEVELS: { id: AdviceLevel; label: string }[] = [
+  { id: "full", label: "Full explanations" },
+  { id: "brief", label: "Just the picks" },
+  { id: "off", label: "No advice" },
+];
+
 export interface Settings {
   dodgeMode: DodgeMode;
+  adviceLevel: AdviceLevel;
 }
 
 /**
@@ -50,12 +78,16 @@ export interface Settings {
  */
 export const DEFAULTS: Settings = {
   dodgeMode: "onDemand",
+  adviceLevel: "full",
 };
 
 const KEY = "qtr.settings.v1";
 
 const isDodgeMode = (v: unknown): v is DodgeMode =>
   v === "off" || v === "onDemand" || v === "always";
+
+const isAdviceLevel = (v: unknown): v is AdviceLevel =>
+  v === "full" || v === "brief" || v === "off";
 
 export function loadSettings(): Settings {
   try {
@@ -66,6 +98,9 @@ export function loadSettings(): Settings {
     // a future version should degrade to defaults, not crash the app.
     return {
       dodgeMode: isDodgeMode(parsed?.dodgeMode) ? parsed.dodgeMode : DEFAULTS.dodgeMode,
+      adviceLevel: isAdviceLevel(parsed?.adviceLevel)
+        ? parsed.adviceLevel
+        : DEFAULTS.adviceLevel,
     };
   } catch {
     return { ...DEFAULTS };

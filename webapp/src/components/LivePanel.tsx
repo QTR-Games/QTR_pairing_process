@@ -14,12 +14,20 @@ import {
 import { solveCache, type SolveCache } from "../engine/protocol";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale } from "../model/board";
+import { ratingColor, toFraction, type Scale } from "../model/scale";
+import type { AdviceLevel } from "../model/settings";
 
 interface Props {
   board: Board;
   state: LiveState;
   onState: (s: LiveState) => void;
   onReset: () => void;
+  /**
+   * How much the round explains itself. Defaults to full: the engine does the
+   * same search either way, so a caller that never sets this gets every "why"
+   * exactly as before, which is what the live-round tests rely on.
+   */
+  adviceLevel?: AdviceLevel;
 }
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
@@ -37,10 +45,17 @@ const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
  * making a move that looks bad on this pairing and good on the next three. The
  * search sees the next three.
  */
-export function LivePanel({ board, state, onState, onReset }: Props) {
+export function LivePanel({ board, state, onState, onReset, adviceLevel = "full" }: Props) {
   const scale = boardScale(board);
   const matrix: Matrix = useMemo(() => boardMatrix(board, scale), [board, scale]);
   const tau = evenThreshold(board.ourPlayers.length, scale.min, scale.max);
+
+  // The toggle draws two lines through the same computed advice. `showProse` is
+  // the paragraphs -- tie-break reasoning, hold-or-play, upside-if-they-err;
+  // `showHints` is the one-line recommendation and the tags. Full shows both,
+  // brief keeps only the hints, off shows neither and leaves the bare options.
+  const showProse = adviceLevel === "full";
+  const showHints = adviceLevel !== "off";
 
   const decision = useMemo(() => currentDecision(state), [state]);
 
@@ -145,7 +160,7 @@ export function LivePanel({ board, state, onState, onReset }: Props) {
         <Result state={state} tau={tau} ourName={ourName} theirName={theirName} />
       ) : (
         <>
-          {tieBreak && (
+          {showProse && tieBreak && (
             <div className="tiebreak">
               <p className="tiebreak-lead">{tieBreak.lead}</p>
               <p className="tiebreak-body">{tieBreak.body}</p>
@@ -166,6 +181,9 @@ export function LivePanel({ board, state, onState, onReset }: Props) {
                 ownerIsUs={ownerIsUs}
                 tau={tau}
                 ratingSpan={scale.max - scale.min}
+                scale={scale}
+                showProse={showProse}
+                showHints={showHints}
                 ourName={ourName}
                 theirName={theirName}
                 onChoose={() => {
@@ -183,7 +201,9 @@ export function LivePanel({ board, state, onState, onReset }: Props) {
             ))}
           </ol>
 
-          {leverage.length > 1 && <Leverage leverage={leverage} ourName={ourName} />}
+          {showProse && leverage.length > 1 && (
+            <Leverage leverage={leverage} ourName={ourName} />
+          )}
         </>
       )}
 
@@ -236,6 +256,9 @@ function OptionRow({
   ownerIsUs,
   tau,
   ratingSpan,
+  scale,
+  showProse,
+  showHints,
   ourName,
   theirName,
   onChoose,
@@ -253,6 +276,12 @@ function OptionRow({
   tau: number;
   /** `scale.max - scale.min`; the tie-break threshold is a fraction of it. */
   ratingSpan: number;
+  /** The board scale, for colouring raw matchup-rating chips on each tile. */
+  scale: Scale;
+  /** Show the explanatory paragraphs (full only). */
+  showProse: boolean;
+  /** Show the one-line recommendation and the tags (full and brief). */
+  showHints: boolean;
   ourName: (i: number) => string;
   theirName: (i: number) => string;
   onChoose: () => void;
@@ -269,6 +298,15 @@ function OptionRow({
     // decision, so it needs the same numbers as any other decision of ours.
     const choiceIsOurs = attackerSide === "our";
     const picks = pickOptions(matrix, state, option.pair, cache);
+    // The raw matchup rating for a tile: what OUR grid scored this exact pairing.
+    // When we hold the attacker, our fixed player faces each of their offered
+    // two, so the rating is our attacker's row against that column. When they
+    // hold the attacker, each tile is one of our players against their fixed
+    // attacker. Either way it is the number the captain wrote, surfaced so he
+    // can decide to pivot off the projected score when a player rates the
+    // matchup very high or very low.
+    const ratingFor = (player: number) =>
+      choiceIsOurs ? matrix[state.attacker][player] : matrix[player][state.attacker];
     // Every row, not just the recommended one: *they* choose which pair to
     // offer, so the row the user actually faces is not the row we would have
     // picked for them. Advising only the recommendation leaves the real
@@ -298,26 +336,34 @@ function OptionRow({
           <span className={"option-value" + (wins ? " winning" : "")}>{fmt(option.value)}</span>
         </div>
         <div className="option-meta">
-          {best ? (
-            <span className="tag">
-              {ownerIsUs ? "best offer" : "their strongest"}
-            </span>
-          ) : cost > 1e-9 ? (
-            <span className="tag cost">-{fmt(cost)}</span>
-          ) : (
-            <span className="tag cost">same floor</span>
-          )}
+          {showHints &&
+            (best ? (
+              <span className="tag">
+                {ownerIsUs ? "best offer" : "their strongest"}
+              </span>
+            ) : cost > 1e-9 ? (
+              <span className="tag cost">-{fmt(cost)}</span>
+            ) : (
+              <span className="tag cost">same floor</span>
+            ))}
         </div>
         <div className="pick-row">
           {picks.map((p) => (
             <button
               key={p.player}
               type="button"
-              className={"pick" + (highlight(p) ? " pick-best" : "")}
+              className={"pick" + (showHints && highlight(p) ? " pick-best" : "")}
               onClick={() => onPick(p.player)}
             >
               <span className="pick-name">
                 {names(p.player)} {choiceIsOurs ? "" : "played"}
+              </span>
+              <span
+                className="pick-rating"
+                style={{ background: ratingColor(toFraction(ratingFor(p.player), scale)) }}
+                title={choiceIsOurs ? "Our rating of this matchup" : "Their rating of this matchup"}
+              >
+                {fmt(ratingFor(p.player))}
               </span>
               <span className={"pick-value" + (p.value > tau ? " winning" : "")}>
                 {fmt(p.value)}
@@ -325,10 +371,21 @@ function OptionRow({
             </button>
           ))}
         </div>
-        {choiceIsOurs && (
+        {choiceIsOurs && showHints && (
           <p className="pick-hint">
             {picks[0].value !== picks[1].value ? (
               <>Take {names(picks.find((p) => p.best)!.player)}.</>
+            ) : !showProse ? (
+              tieBreak?.reason === "interchangeable" ? (
+                <>Level on the numbers &mdash; genuinely your call.</>
+              ) : tieBreak ? (
+                <>
+                  Level on the numbers; edge to{" "}
+                  <strong>{names(tieBreak.player)}</strong>.
+                </>
+              ) : (
+                <>Level on the numbers &mdash; your call.</>
+              )
             ) : tieBreak?.reason === "interchangeable" ? (
               <>
                 Both hold {fmt(picks[0].value)}, and your grid rates{" "}
@@ -387,6 +444,13 @@ function OptionRow({
         ? ourName(option.ours)
         : theirName(option.theirs!);
 
+  // A forced pairing has both sides fixed, so it has one concrete matchup
+  // rating from our grid. Open moves (one side only) have no fixed opponent yet.
+  const concreteRating =
+    option.ours !== undefined && option.theirs !== undefined
+      ? matrix[option.ours][option.theirs]
+      : null;
+
   return (
     <li className={"option" + (best ? " best" : "")}>
       <button type="button" className="option-main tappable" onClick={onChoose}>
@@ -394,15 +458,34 @@ function OptionRow({
         <span className={"option-value" + (wins ? " winning" : "")}>{fmt(option.value)}</span>
       </button>
       <div className="option-meta">
-        {best ? (
-          <span className="tag">{ownerIsUs ? "best" : "their strongest"}</span>
-        ) : cost > 1e-9 ? (
-          <span className="tag cost">-{fmt(cost)}</span>
-        ) : (
-          <span className="tag cost">same floor</span>
+        {showHints &&
+          (best ? (
+            <span className="tag">{ownerIsUs ? "best" : "their strongest"}</span>
+          ) : cost > 1e-9 ? (
+            <span className="tag cost">-{fmt(cost)}</span>
+          ) : (
+            <span className="tag cost">same floor</span>
+          ))}
+        {concreteRating !== null && (
+          <span
+            className="pick-rating"
+            style={{ background: ratingColor(toFraction(concreteRating, scale)) }}
+            title="Our rating of this matchup"
+          >
+            {fmt(concreteRating)}
+          </span>
         )}
-        {profile && <ProfileBar profile={profile} />}
+        {showProse && profile && <ProfileBar profile={profile} />}
       </div>
+      {showHints && decision.kind === "forced" && (
+        <p className="pick-hint forced-why">
+          No choice here &mdash; {label} is the only legal pairing, so the engine
+          plays it and moves on.
+          {concreteRating !== null && (
+            <> Your grid rates the matchup {fmt(concreteRating)}.</>
+          )}
+        </p>
+      )}
     </li>
   );
 }
