@@ -90,6 +90,22 @@ main {
   gap: 1.25rem;
 }
 
+/*
+  Phone Board tab only (BoardTab is never rendered in the desktop workspace).
+  Pins the rating grid just below the fixed header so the sheet you are tapping
+  stays on screen while the reading cards below it scroll. The top offset is the
+  measured header height (--head-h, written by App.tsx); the opaque background
+  is load-bearing -- the grid's border-spacing leaves transparent gaps, and
+  without a fill the cards would show through as they slide underneath. Header
+  z-index is 20 and this is 5, but the offset means they never actually overlap.
+*/
+.board-grid-sticky {
+  position: sticky;
+  top: var(--head-h, 5.5rem);
+  z-index: 5;
+  background: var(--bg);
+}
+
 /* ---------- verdict ---------- */
 
 .verdict {
