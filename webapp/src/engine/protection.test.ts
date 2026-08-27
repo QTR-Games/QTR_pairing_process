@@ -103,6 +103,34 @@ describe("protectionFocus", () => {
     // Rose and Amber are both exposed; Rose's floor (2) is deeper than Amber's
     // (4), so she is where sequencing matters most.
     expect(pf.focus).toBe(ROSE);
+    // And she is unambiguously deepest -- Amber sits a whole tier higher -- so
+    // the priority tie is just Rose. The captain is told who, not "you choose".
+    expect(pf.priorityTie).toEqual([ROSE]);
+  });
+
+  it("hands back a genuine tie when two are equally exposed", () => {
+    // 1-5 scale, midpoint 3, 4s filler so the only bad cells are the doubled 2s
+    // under test. Players 0 and 1 each carry a tied worst of 2 (forced floor 2,
+    // two ways to force it); the free (forcedLevel, floorCount) key cannot rank
+    // one above the other, so the engine must not pretend it can.
+    const tie: Matrix = [
+      [4, 2, 4, 2, 4],
+      [2, 4, 2, 4, 4],
+      [4, 4, 4, 4, 4],
+      [4, 4, 4, 4, 4],
+      [4, 4, 4, 4, 4],
+    ];
+    const pf = protectionFocus(tie, 1, 5);
+
+    expect(pf.exposed.map((p) => p.ours).sort((a, b) => a - b)).toEqual([0, 1]);
+    for (const i of [0, 1]) {
+      expect(pf.players[i].forcedLevel).toBe(2);
+      expect(pf.players[i].floorCount).toBe(2);
+    }
+    // Both share the top of the risk order, so the tie carries both -- and the
+    // UI reads "you choose" off a length of 2, not a named deepest player.
+    expect(pf.priorityTie.slice().sort((a, b) => a - b)).toEqual([0, 1]);
+    expect(pf.focus).toBe(0); // still a stable leader for back-compat call sites
   });
 
   it("finds the columns that squeeze more than one of our players", () => {
@@ -148,6 +176,7 @@ describe("protectionFocus", () => {
     expect(pf.exposed).toHaveLength(0);
     expect(pf.shieldable).toHaveLength(0);
     expect(pf.focus).toBeNull();
+    expect(pf.priorityTie).toEqual([]);
     expect(pf.joint).toHaveLength(0);
   });
 
@@ -171,6 +200,8 @@ describe("protectionFocus", () => {
     expect(pf.players[1].floorCount).toBe(2);
     expect(pf.focus).toBe(1);
     expect(pf.exposed.map((p) => p.ours)).toEqual([1]);
+    // One exposed player, so the priority tie is just him -- a clear leader.
+    expect(pf.priorityTie).toEqual([1]);
 
     // The remaining three are held at or above the midpoint -- genuinely safe.
     expect(pf.safe.map((p) => p.ours).sort((a, b) => a - b)).toEqual([2, 3, 4]);

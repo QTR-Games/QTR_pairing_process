@@ -121,6 +121,20 @@ export interface ProtectionFocus {
    * whose sequencing matters most.
    */
   focus: number | null;
+  /**
+   * The exposed players tied at the very top of the risk order -- same forced
+   * floor and the same number of ways to force it -- so no free field can rank
+   * one above another. `focus` is the first of them.
+   *
+   * Length tells the captain which decision he is in:
+   *  - 0: nobody is exposed, there is no protect-first call to make.
+   *  - 1: one player is unambiguously the deepest trap; protect around them.
+   *  - 2+: a genuine tie. The engine cannot say who to spend on because they
+   *    are equally exposed -- this is the owner's "I have to choose" moment,
+   *    and naming one as "deepest" would be inventing a distinction that the
+   *    numbers do not contain.
+   */
+  priorityTie: number[];
 }
 
 /**
@@ -194,5 +208,21 @@ export function protectionFocus(
 
   const focus = exposed.length > 0 ? exposed[0].ours : null;
 
-  return { base, mid, players, exposed, shieldable, safe, joint, focus };
+  // The tie the free fields cannot break: everyone exposed who shares the
+  // leader's forced floor AND trap width. Within the exposed set a player's
+  // worst IS their forced floor, so (forcedLevel, floorCount) is the whole of
+  // the measured priority key -- if two match on both, the ranking is a coin
+  // flip and the UI must say "you choose" rather than pick for him.
+  const priorityTie =
+    exposed.length > 0
+      ? exposed
+          .filter(
+            (p) =>
+              p.forcedLevel === exposed[0].forcedLevel &&
+              p.floorCount === exposed[0].floorCount,
+          )
+          .map((p) => p.ours)
+      : [];
+
+  return { base, mid, players, exposed, shieldable, safe, joint, focus, priorityTie };
 }

@@ -219,6 +219,12 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
   const ourName = (i: number) => board.ourPlayers[i]?.trim() || `Your player ${i + 1}`;
   const theirName = (i: number) => board.theirPlayers[i]?.trim() || `Their list ${i + 1}`;
 
+  // Who leads the protect-first decision, and whether it is even a decision the
+  // engine can make: a 2+ tie means the free fields rank them equal, so the
+  // honest thing is to hand the choice back rather than name one.
+  const priorityNames = listNames(protect.priorityTie.map((o) => ourName(o)));
+  const priorityTied = protect.priorityTie.length >= 2;
+
   // An all-even board is arithmetically "unwinnable" -- it lands exactly on the
   // threshold, which needs to be beaten rather than met. Saying so before a
   // single matchup has been rated is technically true and completely useless.
@@ -458,9 +464,14 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
                    least bad of those cells, and protect where refusing actually works. The round
                    odds above fall as this gets worse.`
                 : `Each has a repeated worst cell, and a repeated worst cannot be refused -- one
-                   nomination is enough to spring it. ${ourName(protect.focus ?? protect.exposed[0].ours)}
-                   is the deepest at ${fmt(focusLevel)}, so weigh sequencing around them first.
-                   Protecting all of them is not on the table; aim each into the least bad of
+                   nomination is enough to spring it. ${
+                     priorityTied
+                       ? `${priorityNames} are equally exposed at ${fmt(focusLevel)} -- same forced floor,
+                   same number of ways to force it -- so there is no protect-first here: decide which
+                   one eats it before the opponent decides for you.`
+                       : `${ourName(protect.focus ?? protect.exposed[0].ours)}
+                   is the deepest at ${fmt(focusLevel)}, so weigh sequencing around them first.`
+                   } Protecting all of them is not on the table; aim each into the least bad of
                    their tied cells. The round odds above fall as any of these deepen.`
             }
             onFocus={() => onHighlight?.(exposedCells)}
