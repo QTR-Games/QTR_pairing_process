@@ -459,18 +459,16 @@ function BoardsPanel({ boards, scaleId, onNew, onOpen, onDelete }: BoardsPanelPr
 /*
  * How a teammate gets this onto their own phone.
  *
- * This used to lead with `./klikklak.apk`, a relative link that only ever
- * resolved on the GitHub Pages site. Pages cannot serve a private repository on
- * the Free plan, the site is gone, and it is not coming back -- so that link
- * pointed at a file that can no longer exist anywhere. It is removed rather
- * than repointed: Android installs now come off a laptop with
- * `npm run phone:install` (scripts/Install-ToPhone.ps1), which is a thing the
- * person holding the phone cannot do from the page they are reading.
+ * This used to lead with `./klikklak.apk`, a relative link to an installer
+ * published alongside the Pages site. The site is back, but the APK is not: an
+ * installer on a public URL is downloadable by anyone, and Pages has no access
+ * control below Enterprise Cloud. Android installs come off a laptop instead,
+ * with `npm run phone:install` (scripts/Install-ToPhone.ps1) -- which is
+ * deliberately not something the person reading this page can do themselves.
  *
- * The iOS half survives, because it is still true and still the only iOS route
- * -- there is no sideloading, so "Add to Home Screen" from whatever URL this
- * page was opened from is how an iPhone gets it, and the result is the same
- * offline-capable bundle.
+ * The iOS half is the reason the site exists at all: there is no sideloading, so
+ * "Add to Home Screen" from this page is the only route onto an iPhone, and it
+ * yields the same offline-capable bundle the APK wraps.
  *
  * It hides once the app is installed. Someone reading this inside the installed
  * app has already done the thing it is asking them to do.
