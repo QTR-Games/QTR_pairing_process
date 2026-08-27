@@ -51,7 +51,7 @@
 
 import type { Matrix } from "./boardAnalysis";
 import type { ProtocolState, Side } from "./protocol";
-import { atLeast, extendDistribution, probabilityMatrix, winsNeeded } from "./winProbability";
+import { atLeast, distributionKey, extendDistribution, probabilityMatrix, winsNeeded } from "./winProbability";
 
 /** A single matchup: OUR player `ours` against THEIR player `theirs`. */
 export interface Cell {
@@ -544,11 +544,7 @@ export function pinReport(
  */
 
 /** Distribution signature for the memo key. Rounded to keep float noise out. */
-const distKey = (dist: readonly number[]): string => {
-  let out = "";
-  for (let i = 0; i < dist.length; i++) out += (i ? "," : "") + dist[i].toFixed(9);
-  return out;
-};
+const distKey = distributionKey;
 
 /**
  * Minimax P(>= `need` wins) among strategies that never reach a forbidden cell.

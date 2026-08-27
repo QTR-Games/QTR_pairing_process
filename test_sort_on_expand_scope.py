@@ -29,6 +29,12 @@ from golden_master_scenarios import SCENARIOS
 from qtr_pairing_process.tree_generator import TreeGenerator
 from qtr_pairing_process.ui_manager_v2 import UiManager
 
+# The Tk dependency is in the fixture, not in any test body, so the preflight's
+# source scan cannot see it -- same shape as test_lazy_tree_projection.py, which
+# already carries this marker. Without it these two error out rather than skip
+# wherever there is no display.
+pytestmark = pytest.mark.requires_tk
+
 PRIMARY_MODE = "confidence"
 
 

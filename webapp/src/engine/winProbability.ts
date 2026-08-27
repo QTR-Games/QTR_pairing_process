@@ -123,6 +123,23 @@ export function atLeast(dist: readonly number[], k: number): number {
 }
 
 /**
+ * Signature of a win distribution, for use in a memo key.
+ *
+ * P(>= k) does not accumulate, so any search over pairings that values itself
+ * in round-win chance has to carry the distribution of wins so far and key its
+ * memo on it. That makes this function the hot path of every such search, and
+ * it is genuinely hot: writing it with `toFixed(9)` -- the obvious way -- took
+ * the 24-trial chance outlook from 161 ms to 338 ms per board, measured over
+ * the 31 saved boards. Integer rounding at the same nine places carries exactly
+ * the same information and keeps the number formatting out of the inner loop.
+ */
+export function distributionKey(dist: readonly number[]): string {
+  let out = "";
+  for (let i = 0; i < dist.length; i++) out += (i ? "," : "") + Math.round(dist[i] * 1e9);
+  return out;
+}
+
+/**
  * Probability of taking the round outright, given each game's win chance.
  *
  * The decision currency of this app, and the thing a captain is actually
@@ -130,4 +147,56 @@ export function atLeast(dist: readonly number[], k: number): number {
  */
 export function roundWinChance(probs: readonly number[]): number {
   return atLeast(winDistribution(probs), winsNeeded(probs.length));
+}
+
+/**
+ * Worst and best round-win chance over every perfect assignment of a board.
+ *
+ * The probability-valued twin of `assignmentExtremes`, and it has to be a
+ * different algorithm rather than the same one with different numbers.
+ * `assignmentExtremes` is a Hungarian solve, which works because a points total
+ * is a SUM over the assignment: fixing one pair leaves the value of the rest
+ * unchanged. P(>= 3 of 5) is not a sum, so there is no cost matrix to hand to
+ * an assignment solver, for the same reason `solveAvoidingChance` cannot
+ * memoise on pools alone.
+ *
+ * So it enumerates. That is affordable precisely because a round is five games:
+ * the recursion visits 326 nodes on a 5x5 and the whole call is 0.24 ms
+ * measured, against 16.7 ms for one `winChanceFloor` solve on the same board.
+ * It is the cheapest number on the panel, not the dearest.
+ *
+ * Returns `[floor, ceiling]`: the chance if the pairings fall as badly as they
+ * possibly can, and the chance if they fall as well as they possibly can.
+ * Neither is a prediction -- the floor ignores that half the pairing decisions
+ * are ours, and the ceiling ignores that the opponent gets a say -- they bound
+ * what is still reachable.
+ */
+export function assignmentChanceExtremes(
+  probs: readonly (readonly number[])[],
+): [number, number] {
+  const n = probs.length;
+  if (n === 0) return [0, 0];
+  const need = winsNeeded(n);
+
+  let lo = Infinity;
+  let hi = -Infinity;
+  const used = new Array<boolean>(probs[0].length).fill(false);
+
+  const walk = (ours: number, dist: readonly number[]): void => {
+    if (ours === n) {
+      const v = atLeast(dist, need);
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+      return;
+    }
+    for (let theirs = 0; theirs < used.length; theirs++) {
+      if (used[theirs]) continue;
+      used[theirs] = true;
+      walk(ours + 1, extendDistribution(dist, probs[ours][theirs]));
+      used[theirs] = false;
+    }
+  };
+
+  walk(0, [1]);
+  return [lo, hi];
 }

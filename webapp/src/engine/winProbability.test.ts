@@ -7,10 +7,14 @@
  * test that looks like it is about dodges.
  */
 import { describe, expect, it } from "vitest";
+import boards from "./__fixtures__/wtc2024Boards.json";
+import { assignmentExtremes, type Matrix } from "./boardAnalysis";
 import {
   EPS,
   SPREAD,
+  assignmentChanceExtremes,
   atLeast,
+  distributionKey,
   extendDistribution,
   probabilityMatrix,
   roundWinChance,
@@ -18,6 +22,8 @@ import {
   winDistribution,
   winsNeeded,
 } from "./winProbability";
+
+const FIXTURES = boards as { opponent: string; matrix: Matrix }[];
 
 describe("toWinProbability", () => {
   it("puts the midpoint of any scale at a coin flip", () => {
@@ -179,5 +185,86 @@ describe("roundWinChance", () => {
     const base = [0.4, 0.4, 0.4, 0.4, 0.4];
     const better = [0.9, 0.4, 0.4, 0.4, 0.4];
     expect(roundWinChance(better)).toBeGreaterThan(roundWinChance(base));
+  });
+});
+
+describe("distributionKey", () => {
+  it("separates distributions that differ and joins ones that do not", () => {
+    const a = winDistribution([0.3, 0.6]);
+    const b = winDistribution([0.6, 0.3]);
+    const c = winDistribution([0.3, 0.7]);
+    // Folding the same two games in either order is the same distribution, and
+    // the searches that memoise on this key depend on it collapsing to one
+    // entry rather than two.
+    expect(distributionKey(a)).toBe(distributionKey(b));
+    expect(distributionKey(a)).not.toBe(distributionKey(c));
+  });
+
+  it("does not let float noise open a new memo entry", () => {
+    // 0.1 + 0.2 is not 0.3 in binary, and a key that noticed would double the
+    // size of every memo in the chance-valued searches for no gain.
+    expect(distributionKey([0.1 + 0.2])).toBe(distributionKey([0.3]));
+  });
+});
+
+describe("assignmentChanceExtremes", () => {
+  it("brackets every assignment on the board", () => {
+    // The bounds are only worth showing if nothing can fall outside them, so
+    // this checks them against the assignments themselves rather than against
+    // a second implementation of the same bound.
+    for (const f of FIXTURES.slice(0, 6)) {
+      const probs = probabilityMatrix(f.matrix, 1, 5);
+      const [lo, hi] = assignmentChanceExtremes(probs);
+      const n = probs.length;
+      const seen: number[] = [];
+      const used = new Array<boolean>(n).fill(false);
+      const walk = (i: number, picked: number[]): void => {
+        if (i === n) {
+          seen.push(roundWinChance(picked));
+          return;
+        }
+        for (let j = 0; j < n; j++) {
+          if (used[j]) continue;
+          used[j] = true;
+          walk(i + 1, [...picked, probs[i][j]]);
+          used[j] = false;
+        }
+      };
+      walk(0, []);
+      expect(lo).toBeCloseTo(Math.min(...seen), 12);
+      expect(hi).toBeCloseTo(Math.max(...seen), 12);
+    }
+  });
+
+  it("orders the pair, and puts a dead-even board on the flip", () => {
+    const even = Array.from({ length: 5 }, () => Array<number>(5).fill(3));
+    const [lo, hi] = assignmentChanceExtremes(probabilityMatrix(even, 1, 5));
+    expect(lo).toBeCloseTo(0.5, 12);
+    expect(hi).toBeCloseTo(0.5, 12);
+  });
+
+  it("separates assignments a points total cannot tell apart at all", () => {
+    // Why this is not a Hungarian solve on converted numbers.
+    //
+    // Every cell here is `3 + a[row] + b[col]` with both offsets summing to
+    // zero, so EVERY perfect assignment totals exactly 15: in points this board
+    // contains no decision whatsoever, floor and ceiling alike. It still
+    // contains a decision, because three wins of five is not a sum -- the
+    // all-threes assignment is a coin flip and the ones that trade a 2 for a 4
+    // are not.
+    const a = [0, 1, -1, 0, 0];
+    const b = [0, -1, 1, 0, 0];
+    const board = a.map((ai) => b.map((bj) => 3 + ai + bj));
+
+    const [pointsFloor, pointsCeiling] = assignmentExtremes(board);
+    expect(pointsFloor).toBe(15);
+    expect(pointsCeiling).toBe(15);
+
+    const [lo, hi] = assignmentChanceExtremes(probabilityMatrix(board, 1, 5));
+    expect(hi).toBeGreaterThan(lo);
+  });
+
+  it("survives an empty board", () => {
+    expect(assignmentChanceExtremes([])).toEqual([0, 0]);
   });
 });
