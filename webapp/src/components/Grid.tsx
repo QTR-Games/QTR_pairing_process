@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import type { Board } from "../model/board";
+import { useRef, useState, type ReactNode } from "react";
+import type { Board, OpponentDetail } from "../model/board";
 import { boardScale, setRating, TEAM_SIZE } from "../model/board";
 import { ratingColor, scaleValues, toFraction } from "../model/scale";
 import { winProbabilityFromFraction } from "../engine/winProbability";
@@ -33,6 +33,10 @@ interface Props {
 export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
   const scale = boardScale(board);
   const [editing, setEditing] = useState<{ ours: number; theirs: number } | null>(null);
+  // Which opponent's roster popup is open, as an index into `theirPlayers`.
+  // Opened by a long-press (or keyboard) on that name, and only offered for
+  // players an import gave detail for -- see `OppName`.
+  const [info, setInfo] = useState<number | null>(null);
   const values = scaleValues(scale);
 
   // The captain's protect-first pick, marked on that player's row so the call
@@ -54,7 +58,7 @@ export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
             </th>
             {board.theirPlayers.map((name, j) => (
               <th key={j} className="col-head" title={name}>
-                <span>{name}</span>
+                <OppName name={name} detail={board.theirDetails?.[j]} onOpen={() => setInfo(j)} />
               </th>
             ))}
           </tr>
@@ -137,6 +141,117 @@ export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
             </button>
           </div>
         </div>
+      )}
+
+      {/*
+        The opponent's roster, shown on a long-press of their name. Reference
+        material for the captain at pairing time -- who is across the table, what
+        they registered -- and nothing the engine reads. Only reachable for names
+        an import carried detail for; a hand-entered board never opens this.
+      */}
+      {info != null && (
+        <div className="sheet-backdrop" onClick={() => setInfo(null)} role="presentation">
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <p className="sheet-title">{board.theirPlayers[info]}</p>
+            <OpponentDetailView detail={board.theirDetails?.[info]} />
+            <button type="button" className="ghost wide" onClick={() => setInfo(null)}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Press-and-hold, as a set of handlers to spread onto an element.
+ *
+ * A long-press rather than a tap because the opponent's name sits on the grid
+ * header the captain is reading past constantly; a tap-to-open would fire by
+ * accident every time a thumb brushed it. The keyboard has no "hold", so
+ * Enter/Space opens immediately -- the accessible equivalent of the gesture.
+ */
+function useLongPress(onLongPress: () => void, ms = 450) {
+  const timer = useRef<number | null>(null);
+  const clear = () => {
+    if (timer.current !== null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  };
+  return {
+    onPointerDown: (e: React.PointerEvent) => {
+      // Ignore anything but the primary button; a right-click is the context
+      // menu, not a hold.
+      if (e.button !== 0) return;
+      clear();
+      timer.current = window.setTimeout(() => {
+        timer.current = null;
+        onLongPress();
+      }, ms);
+    },
+    onPointerUp: clear,
+    onPointerLeave: clear,
+    onPointerCancel: clear,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onLongPress();
+      }
+    },
+  };
+}
+
+/**
+ * One opponent's name in the grid header.
+ *
+ * Plain text when the board carries no roster detail for that player -- which is
+ * every hand-entered board -- so the header is byte-identical to what it was.
+ * When an import did carry detail, the name becomes a hold target that opens the
+ * roster popup.
+ */
+function OppName({
+  name,
+  detail,
+  onOpen,
+}: {
+  name: string;
+  detail?: OpponentDetail;
+  onOpen: () => void;
+}) {
+  const press = useLongPress(onOpen);
+  const hasInfo = !!(detail && (detail.faction || detail.lists?.length));
+  if (!hasInfo) return <span>{name}</span>;
+  return (
+    <button
+      type="button"
+      className="opp-name"
+      title={`${name} -- hold for roster`}
+      aria-label={`${name}. Hold for roster.`}
+      onContextMenu={(e) => e.preventDefault()}
+      {...press}
+    >
+      <span>{name}</span>
+    </button>
+  );
+}
+
+/** The roster popup body: the faction and the lists an opponent registered. */
+function OpponentDetailView({ detail }: { detail?: OpponentDetail }) {
+  const lists = detail?.lists ?? [];
+  return (
+    <div className="opp-detail">
+      {detail?.faction ? <p className="opp-faction">{detail.faction}</p> : null}
+      {lists.length > 0 ? (
+        <ul className="opp-lists">
+          {lists.map((l, k) => {
+            const label = [l.leader, l.army].filter(Boolean).join(" -- ");
+            return <li key={k}>{label || `List ${k + 1}`}</li>;
+          })}
+        </ul>
+      ) : (
+        <p className="sheet-hint">No lists recorded for this player.</p>
       )}
     </div>
   );
