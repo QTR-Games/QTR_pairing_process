@@ -17,6 +17,26 @@
 # Note: triggering this recreates the Pages site. To take it down again:
 #   gh api -X DELETE repos/QTR-Games/QTR_pairing_process/pages
 #
+# The APK published here is RELEASE-SIGNED, the same identity release-apk.yml
+# uses. It used to be assembleDebug, which was a silent trap: a debug APK is
+# signed with a throwaway key, so Android refuses to install it over the release
+# build teammates are already carrying. The fallback would have failed on the
+# one day it exists for, with "App not installed" and no explanation.
+#
+# The APK is now OPT-IN, because getting it wrong is worse than not shipping it:
+#   * Leave version_code blank -> no APK is built. The web app still publishes
+#     and the installer already on the site is preserved untouched. This is the
+#     one-click emergency path and it cannot make anything worse.
+#   * Supply version_code -> a signed APK is built and published. It MUST be
+#     higher than the last build anyone installed or the sideload fails with
+#     INSTALL_FAILED_VERSION_DOWNGRADE. Release codes are small hand-picked
+#     integers; 1.0.1 shipped as code 2.
+#
+# If the signing secrets are missing the APK is skipped rather than built
+# unsigned. build.gradle only WARNS when signing material is absent and emits an
+# unsigned apk, which no phone will install at all -- strictly worse than the
+# debug apk this replaced. Never let that reach the site.
+#
 # The APK used to ship from a rolling `phone-latest` GitHub release. That does
 # not work here: this repository has immutable releases enabled, so a tag that
 # has been used once can never be reused. The old workflow deleted the release
@@ -30,6 +50,15 @@ name: deploy-webapp
 
 on:
   workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'APK version name (e.g. 1.0.2). Blank = do not build an APK.'
+        required: false
+        type: string
+      version_code:
+        description: 'APK version code -- MUST exceed the last build installed (1.0.1 was 2). Blank = do not build an APK.'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -85,10 +114,57 @@ jobs:
         run: npx cap sync android
         working-directory: webapp
 
-      - name: Assemble the APK
+      # Decide whether an APK is built at all. Both conditions must hold, and
+      # neither failing is an error: the web app is the primary payload and it
+      # ships regardless. Publishing a debug-signed or unsigned APK would be a
+      # silent event-day failure, so the only safe default is to build nothing
+      # and leave the installer already on the site in place.
+      - name: Decide whether to build an APK
+        id: gate
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "${{ inputs.version_code }}" ] || [ -z "${{ inputs.version_name }}" ]; then
+            echo "::notice::No version supplied; skipping the APK. The published installer is kept."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          missing=""
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              missing="$missing ANDROID_$name"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::Missing signing secret(s):$missing -- skipping the APK rather than publishing an unsigned one. Run scripts/Publish-SigningSecrets.ps1."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "build=true" >> "$GITHUB_OUTPUT"
+
+      # Written outside the workspace so no later step can pick it up, and the
+      # runner is destroyed after the job.
+      - name: Decode keystore
+        if: steps.gate.outputs.build == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+
+      - name: Assemble the signed APK
         id: apk
+        if: steps.gate.outputs.build == 'true'
         continue-on-error: true
         working-directory: webapp/android
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_VERSION_NAME: ${{ inputs.version_name }}
+          ANDROID_VERSION_CODE: ${{ inputs.version_code }}
         # Maven Central has failed the PR job twice for reasons unrelated to the
         # code: a 429 under load, then a sustained 403 that outlasted a flat
         # three-attempt, 30s retry. Backing off doubles the wait, so five
@@ -98,7 +174,7 @@ jobs:
         run: |
           delay=30
           for attempt in 1 2 3 4 5; do
-            if ./gradlew --no-daemon assembleDebug; then
+            if ./gradlew --no-daemon assembleRelease; then
               exit 0
             fi
             if [ "$attempt" -eq 5 ]; then break; fi
@@ -108,15 +184,45 @@ jobs:
           done
           exit 1
 
+      # Proof rather than assumption. build.gradle only warns when signing
+      # material is missing, so an unsigned apk is a real possible output of the
+      # step above. If it is not properly signed, discard it and let the
+      # fallback keep the installer already on the site.
+      - name: Verify the APK is signed
+        if: steps.gate.outputs.build == 'true'
+        run: |
+          APK=webapp/android/app/build/outputs/apk/release/app-release.apk
+          if [ ! -f "$APK" ]; then
+            echo "::warning::No APK produced; the published installer will be kept"
+            exit 0
+          fi
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
+          if ! "$APKSIGNER" verify --print-certs "$APK"; then
+            echo "::warning::APK is not properly signed; discarding it rather than publishing it"
+            rm -f "$APK"
+          fi
+
+      - name: Remove the decoded keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
+
       # Two names for one file. The stable one is what gets shared and what the
       # in-app link points at; the sha-stamped one lets someone say which build
       # they are actually running when something looks wrong.
       #
-      # If the APK could not be built, fall back to the copy already live on the
-      # site. A Pages deploy replaces the whole site, so doing nothing here would
-      # delete the installer and break the download link for everyone -- over a
-      # transient dependency mirror error. A stale APK beats a missing one, and
-      # the web app ships either way.
+      # If no APK was built -- skipped, failed, or discarded as unsigned -- fall
+      # back to the copy already live on the site. A Pages deploy replaces the
+      # whole site, so doing nothing here would delete the installer and break
+      # the download link for everyone. A stale APK beats a missing one, and it
+      # beats an uninstallable one.
+      #
+      # This step NEVER fails the run. The web app is the primary payload and
+      # the whole point of this workflow is to put it back behind a URL; failing
+      # the deploy because no installer could be recovered would throw away the
+      # thing we came for. It used to `exit 1` here, which meant the documented
+      # one-click path -- dispatch with no version, publish the web app -- would
+      # have aborted the deploy outright, because the Pages site is currently
+      # deleted and there is nothing to recover.
       #
       # Two names are tried because the installer was renamed from
       # qtr-pairing.apk to klikklak.apk. Until a successful build publishes the
@@ -126,20 +232,20 @@ jobs:
       - name: Put the APK in the site
         working-directory: webapp
         run: |
-          src=android/app/build/outputs/apk/debug/app-debug.apk
+          src=android/app/build/outputs/apk/release/app-release.apk
           if [ ! -f "$src" ]; then
-            echo "::warning::APK build failed; keeping the one already published"
             base=https://qtr-games.github.io/QTR_pairing_process
             for name in klikklak.apk qtr-pairing.apk; do
               if curl -fsSL "$base/$name" -o dist/klikklak.apk; then
-                echo "recovered the published installer from $name"
+                echo "::warning::No APK built; recovered the published installer from $name"
                 cp dist/klikklak.apk "dist/klikklak-${GITHUB_SHA:0:7}.apk"
                 ls -lh dist/*.apk
                 exit 0
               fi
             done
-            echo "no APK built and none published to fall back to"
-            exit 1
+            rm -f dist/klikklak.apk
+            echo "::warning::No APK built and none published to recover. Publishing the web app only; the in-app download link will not resolve until a build supplies one."
+            exit 0
           fi
           cp "$src" dist/klikklak.apk
           cp "$src" "dist/klikklak-${GITHUB_SHA:0:7}.apk"
