@@ -37,6 +37,10 @@ function renderMenu(over: Partial<Parameters<typeof HomeMenu>[0]> = {}) {
     onDodgeMode: vi.fn(),
     adviceLevel: "full" as const,
     onAdviceLevel: vi.fn(),
+    surpriseMode: "off" as const,
+    onSurpriseMode: vi.fn(),
+    surpriseRegretThreshold: 0,
+    onSurpriseRegretThreshold: vi.fn(),
     onResume: vi.fn(),
     onContinue: vi.fn(),
     onBoards: vi.fn(),
@@ -169,5 +173,26 @@ describe("HomeMenu settings", () => {
 
     fireEvent.click(saved);
     expect(props.onBoards).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports changes to surprise mode and threshold", () => {
+    const props = renderMenu({ surpriseMode: "on", surpriseRegretThreshold: 1.2 });
+    const settings = document.querySelector(".home-body");
+    expect(settings).toBeTruthy();
+
+    const mode = Array.from(settings!.querySelectorAll("select")).find((s) =>
+      s.textContent?.includes("experimental"),
+    ) as HTMLSelectElement | undefined;
+    expect(mode).toBeTruthy();
+    expect(mode!.value).toBe("on");
+    fireEvent.change(mode!, { target: { value: "off" } });
+    expect(props.onSurpriseMode).toHaveBeenCalledWith("off");
+
+    const threshold = settings!.querySelector(
+      'input[type="number"][step="0.1"]',
+    ) as HTMLInputElement;
+    expect(threshold.value).toBe("1.2");
+    fireEvent.change(threshold, { target: { value: "2.5" } });
+    expect(props.onSurpriseRegretThreshold).toHaveBeenCalledWith(2.5);
   });
 });

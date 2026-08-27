@@ -15,6 +15,8 @@ import {
   DODGE_MODES,
   type AdviceLevel,
   type DodgeMode,
+  SURPRISE_MODES,
+  type SurpriseMode,
 } from "../../model/settings";
 import { Grid, Rosters } from "../Grid";
 import { LivePanel } from "../LivePanel";
@@ -33,6 +35,10 @@ interface Props {
   onDodgeMode: (m: DodgeMode) => void;
   adviceLevel: AdviceLevel;
   onAdviceLevel: (l: AdviceLevel) => void;
+  surpriseMode: SurpriseMode;
+  onSurpriseMode: (m: SurpriseMode) => void;
+  surpriseRegretThreshold: number;
+  onSurpriseRegretThreshold: (threshold: number) => void;
 }
 
 /**
@@ -62,6 +68,10 @@ export function DesktopWorkspace({
   onDodgeMode,
   adviceLevel,
   onAdviceLevel,
+  surpriseMode,
+  onSurpriseMode,
+  surpriseRegretThreshold,
+  onSurpriseRegretThreshold,
 }: Props) {
   const scale = boardScale(board);
   const rated = isRated(board);
@@ -253,6 +263,8 @@ export function DesktopWorkspace({
               state={live}
               onState={onLive}
               adviceLevel={adviceLevel}
+              surpriseMode={surpriseMode}
+              surpriseRegretThreshold={surpriseRegretThreshold}
               onReset={onStartRound}
             />
           </section>
@@ -334,6 +346,31 @@ export function DesktopWorkspace({
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label className="field inline">
+              <span>Surprise-pick alerts</span>
+              <select
+                value={surpriseMode}
+                onChange={(e) => onSurpriseMode(e.target.value as SurpriseMode)}
+              >
+                {SURPRISE_MODES.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field inline">
+              <span>Surprise threshold</span>
+              <input
+                type="number"
+                min={0}
+                step={0.1}
+                value={Number.isFinite(surpriseRegretThreshold) ? surpriseRegretThreshold : 0}
+                onChange={(e) => onSurpriseRegretThreshold(Number(e.target.value))}
+              />
             </label>
           </div>
           <p className="hint">{scale.hint}</p>
