@@ -202,9 +202,9 @@ The two ports being different is the single most common cause of a failed pair.
 The pairing port is one-time and the code expires within a few minutes.
 
 The connect address is then remembered in
-`%LOCALAPPDATA%\KlikKlak\phone-device.json` -- outside the repository, so a
-developer's LAN address can never be committed to a public history -- and later
-runs need no arguments.
+`%LOCALAPPDATA%\KlikKlak\phone-device.json` -- machine-local configuration
+rather than project configuration, since another laptop pairs with a different
+phone on a different network -- and later runs need no arguments.
 
 Android issues a **new port** every time wireless debugging is toggled off and
 on, and after most reboots. Pairing survives that; the port does not. When a

@@ -76,9 +76,10 @@ $appId = 'com.gronksoft.klikklak'
 $repoSlug = 'QTR-Games/QTR_pairing_process'
 
 # The remembered device address lives outside the repository rather than in it.
-# A repo-local state file would need a .gitignore entry to stay uncommitted, and
-# a developer's LAN address is exactly the kind of thing that should not be one
-# `git add -A` away from a public history.
+# It is machine-local configuration, not project configuration: a second
+# developer, or the same developer on another laptop, has a different phone on a
+# different network. Keeping it out of the tree also means a home LAN address is
+# never one `git add -A` away from the history.
 $stateDir = Join-Path $env:LOCALAPPDATA 'KlikKlak'
 $statePath = Join-Path $stateDir 'phone-device.json'
 
