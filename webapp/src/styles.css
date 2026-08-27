@@ -898,6 +898,13 @@ button.ghost {
   margin: 0.5rem 0;
 }
 
+/* Let the event-id field and the team picker take the row, button beside them. */
+.backup .controls .grow {
+  flex: 1 1 12rem;
+  min-width: 0;
+  width: auto;
+}
+
 .backup-text {
   background: var(--bg);
   border: 1px solid var(--line);

@@ -17,6 +17,7 @@
   and the whole screen remains one scrollable thing on a phone.
 */
 import { BoardBackup } from "./BoardBackup";
+import { LongshanksImport } from "./LongshanksImport";
 import { BRAND, LINKS } from "../brand";
 import {
   ADVICE_LEVELS,
@@ -169,6 +170,7 @@ export function HomeMenu({
       <details className="home-item">
         <summary>Back up and restore</summary>
         <div className="home-body">
+          <LongshanksImport onImported={onRestored} />
           <BoardBackup onRestored={onRestored} />
         </div>
       </details>
