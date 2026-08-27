@@ -9,6 +9,7 @@ import { reachReport } from "../engine/reach";
 import { assignmentChanceExtremes, probabilityMatrix } from "../engine/winProbability";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale, isRated } from "../model/board";
+import { pct } from "../model/format";
 import type { DodgeMode } from "../model/settings";
 
 interface Props {
@@ -25,17 +26,6 @@ const listNames = (names: string[]): string =>
   names.length <= 1
     ? (names[0] ?? "")
     : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-
-
-/** Probabilities are shown as whole rounds per hundred, never as raw decimals. */
-const pct = (p: number) =>
-  // A tenth of a percentage point here is fabricated precision. `SPREAD` in
-  // winProbability.ts is an anchoring choice that has never been fitted against
-  // results, so "62.4%" claims a resolution the model does not have while "62%"
-  // says the same true thing. Rounding down to a bare "0%" would be a different
-  // lie -- a dodge that costs something is not a dodge that costs nothing -- so
-  // a real but sub-half-point figure is named rather than printed.
-  p > 0 && p < 0.005 ? "under 1%" : `${Math.round(p * 100)}%`;
 
 /**
  * What the round is actually worth.

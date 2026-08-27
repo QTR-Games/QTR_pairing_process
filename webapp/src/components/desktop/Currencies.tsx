@@ -3,6 +3,7 @@ import { winChanceFloor } from "../../engine/avoidance";
 import type { Matrix } from "../../engine/boardAnalysis";
 import { protocolFloor } from "../../engine/protocol";
 import type { Board } from "../../model/board";
+import { pct } from "../../model/format";
 import type { Scale } from "../../model/scale";
 
 interface Props {
@@ -13,7 +14,6 @@ interface Props {
 }
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-const pct = (p: number) => `${(p * 100).toFixed(1)}%`;
 
 /**
  * The two currencies, side by side, instead of one of them.
