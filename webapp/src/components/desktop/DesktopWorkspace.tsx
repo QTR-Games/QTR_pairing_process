@@ -6,6 +6,7 @@ import type { Matrix } from "../../engine/boardAnalysis";
 import type { LiveState } from "../../engine/live";
 import { openingChoice } from "../../engine/protocol";
 import { boardMatrix, boardScale, isRated, type Board } from "../../model/board";
+import { pct } from "../../model/format";
 import { SCALES } from "../../model/scale";
 
 /** Which analysis, if any, is drawn inside the 25 cells. */
@@ -162,7 +163,7 @@ export function DesktopWorkspace({
         return (
           <span className="heat cost">
             <span className="heat-bar" style={{ width: `${Math.round(share * 100)}%` }} />
-            <span className="heat-num">{(p.price * 100).toFixed(1)}%</span>
+            <span className="heat-num">{pct(p.price)}</span>
           </span>
         );
       }

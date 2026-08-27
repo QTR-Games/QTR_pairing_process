@@ -15,6 +15,7 @@ import {
 import { solveCache, type SolveCache } from "../engine/protocol";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale } from "../model/board";
+import { pct } from "../model/format";
 import { ratingColor, toFraction, type Scale } from "../model/scale";
 import type { AdviceLevel, SurpriseMode } from "../model/settings";
 
@@ -34,7 +35,6 @@ interface Props {
 }
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
-const pct = (p: number) => `${(p * 100).toFixed(1)}%`;
 
 interface SurpriseNotice {
   regret: number;
