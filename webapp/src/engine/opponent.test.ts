@@ -10,8 +10,10 @@
 import { describe, expect, it } from "vitest";
 import boards from "./__fixtures__/wtc2024Boards.json";
 import type { Matrix } from "./boardAnalysis";
-import { outlook } from "./opponent";
+import { chanceOutlook, outlook } from "./opponent";
 import { solveProtocol } from "./protocol";
+import { winChanceFloor } from "./avoidance";
+import { assignmentChanceExtremes, probabilityMatrix } from "./winProbability";
 
 interface Fixture {
   opponent: string;
@@ -153,5 +155,95 @@ describe("outlook", () => {
     const m = FIXTURES[0].matrix;
     const o = outlook(m, openingState(m.length), 12.5);
     expect(o.floor).toBe(12.5);
+  });
+});
+
+/**
+ * The same read in the currency that actually decides the round.
+ *
+ * Same shape of guard as `outlook` above and for the same reason: a sampled
+ * estimate cannot be pinned to a value without the test becoming a restatement
+ * of the RNG. What matters is that the number is safe to put on a screen next
+ * to the guaranteed one -- ordered, bounded, and stable between renders.
+ */
+describe("chanceOutlook", () => {
+  it("is deterministic for the same board", () => {
+    const m = FIXTURES[0].matrix;
+    const s = openingState(m.length);
+    expect(chanceOutlook(m, s, 0, 1, 5)).toEqual(chanceOutlook(m, s, 0, 1, 5));
+  });
+
+  it("stays a probability, and never beats the best assignment on the board", () => {
+    // The ceiling is the best any remaining pairing can reach, so a typical
+    // case above it would mean one of the two is wrong. On screen they sit in
+    // the same row of boxes, where that would be plainly visible.
+    for (const f of FIXTURES) {
+      const s = openingState(f.matrix.length);
+      const ceiling = assignmentChanceExtremes(probabilityMatrix(f.matrix, 1, 5))[1];
+      const o = chanceOutlook(f.matrix, s, 0, 1, 5);
+      for (const v of [o.expected, o.low, o.high]) {
+        expect(v).toBeGreaterThanOrEqual(0);
+        expect(v).toBeLessThanOrEqual(1);
+      }
+      expect(o.low).toBeLessThanOrEqual(o.expected);
+      expect(o.expected).toBeLessThanOrEqual(o.high);
+      expect(o.high).toBeLessThanOrEqual(ceiling + 1e-9);
+    }
+  });
+
+  it("never claims a typical chance below the guaranteed one", () => {
+    // The chance-valued twin of the points invariant above, and the reading the
+    // Board tab prints: guaranteed is what we hold if they hunt us, typical is
+    // what happens when they do not, so typical below guaranteed is nonsense.
+    for (const f of FIXTURES) {
+      const s = openingState(f.matrix.length);
+      const guaranteed = winChanceFloor(f.matrix, 1, 5, true);
+      const o = chanceOutlook(f.matrix, s, guaranteed, 1, 5);
+      expect(o.expected).toBeGreaterThanOrEqual(guaranteed - 1e-9);
+    }
+  });
+
+  it("scores the same sampled opponents as the points read", () => {
+    // Not an implementation detail: the Board tab prints both currencies in the
+    // same box, one as the value and one in the note. If they were drawn
+    // separately those two numbers would describe different opponents, and the
+    // note would quietly stop explaining the figure above it.
+    const m = FIXTURES[0].matrix;
+    const s = openingState(m.length);
+    // One trial, so the two readings are of a single shared sampled board and
+    // any difference in the draw would show up as an unrelated pair.
+    const pts = outlook(m, s, 0, 1);
+    const chance = chanceOutlook(m, s, 0, 1, 5, 1);
+    expect(pts.stderr).toBe(0);
+    expect(chance.stderr).toBe(0);
+    // Both are the single trial's own value, and neither is degenerate.
+    expect(pts.expected).toBe(pts.low);
+    expect(chance.expected).toBe(chance.low);
+    expect(chance.expected).toBeGreaterThan(0);
+  });
+
+  it("reads a dead-even board as a coin flip", () => {
+    const even = Array.from({ length: 5 }, () => Array<number>(5).fill(3));
+    const o = chanceOutlook(even, openingState(5), 0.5, 1, 5);
+    expect(o.expected).toBeCloseTo(0.5, 12);
+    expect(o.stderr).toBe(0);
+  });
+
+  it("is scale-independent, like everything else priced in chance", () => {
+    // The same board typed on 1-5 and on 1-10 is the same board. A percentage
+    // that moved with the labels would be a bug the scale picker could expose
+    // at an event.
+    const m = FIXTURES[3].matrix;
+    const stretched = m.map((row) => row.map((v) => 1 + (v - 1) * (9 / 4)));
+    const s = openingState(m.length);
+    expect(chanceOutlook(m, s, 0, 1, 5).expected).toBeCloseTo(
+      chanceOutlook(stretched, s, 0, 1, 10).expected,
+      9,
+    );
+  });
+
+  it("carries the passed-in floor through untouched", () => {
+    const m = FIXTURES[0].matrix;
+    expect(chanceOutlook(m, openingState(m.length), 0.42, 1, 5).floor).toBe(0.42);
   });
 });

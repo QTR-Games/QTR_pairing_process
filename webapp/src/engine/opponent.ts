@@ -38,6 +38,13 @@
 
 import type { Matrix } from "./boardAnalysis";
 import type { Side } from "./protocol";
+import {
+  atLeast,
+  distributionKey,
+  extendDistribution,
+  probabilityMatrix,
+  winsNeeded,
+} from "./winProbability";
 
 /** Enough to converge: the estimate is stable to ±0.02 pts by 10 trials. */
 const DEFAULT_TRIALS = 24;
@@ -190,6 +197,163 @@ function resolveOfferJoint(
   return best ?? { us: 0, them: 0 };
 }
 
+/**
+ * The same general-sum solve, valued in the chance of taking the round.
+ *
+ * `solveJoint` above adds ratings up, which is what lets it memoise on the
+ * pools alone: a total does not care how the wins are distributed. P(>= 3 of 5)
+ * does, so this carries each side's distribution of wins so far and evaluates
+ * only at a complete assignment -- the same structure, and for the same reason,
+ * as `solveAvoidingChance`.
+ *
+ * Both distributions have to be carried, not one. Their grid is sampled
+ * independently of ours, so their chance of winning a game is not one minus
+ * ours; that independence is the whole premise of this module. Each side
+ * maximises its own P(>= 3) and neither is minimising the other.
+ *
+ * The cheap alternative -- solve in points as before, then convert the
+ * resulting assignment to probabilities -- was rejected rather than
+ * overlooked. It optimises the wrong thing, and the way it is wrong is exactly
+ * the failure `winProbability.ts` was written to fix: a points solve is
+ * indifferent between a 9 and a 1 and two 5s, so it will happily hand back the
+ * assignment that reads better as a total and worse as a round.
+ */
+export function solveJointChance(
+  g: Grids,
+  state: JointState,
+  need: number,
+  ourDist: readonly number[],
+  theirDist: readonly number[],
+  memo: Map<string, JointValue>,
+): JointValue {
+  const { ourPool, theirPool, attacker, attackerSide } = state;
+  const key =
+    `${ourPool}|${theirPool}|${attacker}|${attackerSide}|` +
+    `${distributionKey(ourDist)}|${distributionKey(theirDist)}`;
+  const cached = memo.get(key);
+  if (cached) return cached;
+
+  let result: JointValue;
+
+  if (attacker < 0) {
+    const opener = attackerSide;
+    const pool = opener === "our" ? ourPool : theirPool;
+    let best: JointValue | undefined;
+    for (const p of bits(pool)) {
+      const sub = solveJointChance(
+        g,
+        {
+          ourPool: opener === "our" ? ourPool & ~(1 << p) : ourPool,
+          theirPool: opener === "their" ? theirPool & ~(1 << p) : theirPool,
+          attacker: p,
+          attackerSide: opener,
+        },
+        need,
+        ourDist,
+        theirDist,
+        memo,
+      );
+      if (!best || own(sub, opener) > own(best, opener)) best = sub;
+    }
+    result = best ?? { us: 0, them: 0 };
+    memo.set(key, result);
+    return result;
+  }
+
+  const offeringSide: Side = attackerSide === "our" ? "their" : "our";
+  const offeringPool = offeringSide === "our" ? ourPool : theirPool;
+  const candidates = bits(offeringPool);
+
+  if (candidates.length === 0) {
+    result = { us: atLeast(ourDist, need), them: atLeast(theirDist, need) };
+    memo.set(key, result);
+    return result;
+  }
+
+  if (candidates.length === 1) {
+    const other = candidates[0];
+    const [ours, theirs] =
+      attackerSide === "our" ? [attacker, other] : [other, attacker];
+    result = {
+      us: atLeast(extendDistribution(ourDist, g.ours[ours][theirs]), need),
+      them: atLeast(extendDistribution(theirDist, g.theirs[ours][theirs]), need),
+    };
+    memo.set(key, result);
+    return result;
+  }
+
+  let best: JointValue | undefined;
+  for (let a = 0; a < candidates.length; a++) {
+    for (let b = a + 1; b < candidates.length; b++) {
+      const v = resolveOfferChance(
+        g,
+        state,
+        [candidates[a], candidates[b]],
+        need,
+        ourDist,
+        theirDist,
+        memo,
+      );
+      if (!best || own(v, offeringSide) > own(best, offeringSide)) best = v;
+    }
+  }
+
+  result = best ?? { us: 0, them: 0 };
+  memo.set(key, result);
+  return result;
+}
+
+/** Value of one offer, in round-win chance. Mirrors `resolveOfferJoint`. */
+function resolveOfferChance(
+  g: Grids,
+  state: JointState,
+  pair: [number, number],
+  need: number,
+  ourDist: readonly number[],
+  theirDist: readonly number[],
+  memo: Map<string, JointValue>,
+): JointValue {
+  const { ourPool, theirPool, attacker, attackerSide } = state;
+  const attackerIsUs = attackerSide === "our";
+  let best: JointValue | undefined;
+
+  for (const picked of pair) {
+    const leftover = picked === pair[0] ? pair[1] : pair[0];
+    const [ours, theirs] = attackerIsUs ? [attacker, picked] : [picked, attacker];
+
+    const nextOurPool = attackerIsUs
+      ? ourPool
+      : ourPool & ~(1 << picked) & ~(1 << leftover);
+    const nextTheirPool = attackerIsUs
+      ? theirPool & ~(1 << picked) & ~(1 << leftover)
+      : theirPool;
+
+    const nextOurDist = extendDistribution(ourDist, g.ours[ours][theirs]);
+    const nextTheirDist = extendDistribution(theirDist, g.theirs[ours][theirs]);
+
+    const exhausted = popcount(nextOurPool) === 0 && popcount(nextTheirPool) === 0;
+    const total: JointValue = exhausted
+      ? { us: atLeast(nextOurDist, need), them: atLeast(nextTheirDist, need) }
+      : solveJointChance(
+          g,
+          {
+            ourPool: nextOurPool,
+            theirPool: nextTheirPool,
+            attacker: leftover,
+            attackerSide: attackerIsUs ? "their" : "our",
+          },
+          need,
+          nextOurDist,
+          nextTheirDist,
+          memo,
+        );
+
+    if (!best || own(total, attackerSide) > own(best, attackerSide)) best = total;
+  }
+
+  return best ?? { us: 0, them: 0 };
+}
+
 /** Seeded from the board so the displayed figure never moves on its own. */
 function seedFrom(matrix: Matrix): number {
   let h = 2166136261;
@@ -220,7 +384,7 @@ export interface Outlook {
   /** Good tail: what a gamble is worth when it comes off. */
   high: number;
   /**
-   * Standard error of `expected`, in round points.
+   * Standard error of `expected`, in whatever units `expected` carries.
    *
    * `expected` is a Monte Carlo mean over `trials` sampled opponent boards, so
    * it carries sampling error whether or not anyone looks at it. Measured
@@ -256,21 +420,86 @@ export function outlook(
   floorValue: number,
   trials: number = DEFAULT_TRIALS,
 ): Outlook {
+  return summarise(
+    sampleOpponentBoards(matrix, state, trials).map(
+      (theirs) => solveJoint({ ours: matrix, theirs }, state, new Map()).us,
+    ),
+    floorValue,
+  );
+}
+
+/**
+ * The same read, in the chance of actually taking the round.
+ *
+ * Deliberately the same sampled opponents as `outlook`: the seed depends only
+ * on the board and the state, so a screen showing both currencies is showing
+ * two readings of one set of two dozen opponents rather than two unrelated
+ * draws that happen to sit next to each other.
+ *
+ * ## Cost, because it is not free
+ *
+ * Measured over the 31 saved boards on a desktop: 161 ms per board at 24
+ * trials, 187 ms at worst, against 33 ms for the points version. It is now the
+ * most expensive thing the verdict panel does, ahead of the single
+ * `winChanceFloor` solve at 17 ms.
+ *
+ * That is the price of solving in the currency that decides the round rather
+ * than converting a points answer afterwards, and it buys a real difference:
+ * see the note on `solveJointChance`. It is paid on a board tab that also runs
+ * the points outlook, a protocol floor for each side and a reach report, so it
+ * is a large share of a small total rather than a new order of magnitude.
+ */
+export function chanceOutlook(
+  matrix: Matrix,
+  state: JointState,
+  floorValue: number,
+  ratingMin = 1,
+  ratingMax = 5,
+  trials: number = DEFAULT_TRIALS,
+): Outlook {
+  const ours = probabilityMatrix(matrix, ratingMin, ratingMax);
+  const need = winsNeeded(matrix.length);
+
+  return summarise(
+    sampleOpponentBoards(matrix, state, trials).map(
+      (theirs) =>
+        solveJointChance(
+          { ours, theirs: probabilityMatrix(theirs, ratingMin, ratingMax) },
+          state,
+          need,
+          [1],
+          [1],
+          new Map(),
+        ).us,
+    ),
+    floorValue,
+  );
+}
+
+/**
+ * The opponent boards both readings are scored against.
+ *
+ * Their grid is drawn cell by cell from the pool of ratings on our own board,
+ * which is the only structure Finding 12 supports: near-zero correlation, same
+ * marginal.
+ */
+function sampleOpponentBoards(matrix: Matrix, state: JointState, trials: number): Matrix[] {
   const n = matrix.length;
   const pool: number[] = [];
   for (const row of matrix) for (const v of row) pool.push(v);
 
   const rand = rng(seedFrom(matrix) ^ (state.ourPool * 31 + state.theirPool));
-  const totals: number[] = [];
 
-  for (let t = 0; t < trials; t++) {
-    const theirs: Matrix = Array.from({ length: n }, () =>
+  return Array.from({ length: trials }, () =>
+    Array.from({ length: n }, () =>
       Array.from({ length: n }, () => pool[Math.floor(rand() * pool.length)]),
-    );
-    totals.push(solveJoint({ ours: matrix, theirs }, state, new Map()).us);
-  }
+    ),
+  );
+}
 
-  totals.sort((a, b) => a - b);
+/** Mean, tails and error bar of a set of trial results, in their own units. */
+function summarise(values: number[], floorValue: number): Outlook {
+  const totals = [...values].sort((a, b) => a - b);
   const mean = totals.reduce((a, b) => a + b, 0) / totals.length;
   const at = (q: number): number => totals[Math.min(totals.length - 1, Math.floor(q * totals.length))];
 

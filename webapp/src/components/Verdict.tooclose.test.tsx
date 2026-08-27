@@ -2,31 +2,46 @@
 /**
  * "Too close to call", on the screen rather than in the engine.
  *
- * `typical.expected` is a Monte Carlo mean over 24 sampled opponent boards, and
- * Verdict branches on it: `expected > tau` chooses between "this is a round you
+ * `chance.expected` is a Monte Carlo mean over 24 sampled opponent boards, and
+ * Verdict branches on it: `expected > 0.5` chooses between "this is a round you
  * take by playing for the win" and "the win has to come from the ceiling -- it
  * needs them to give you something". Those are opposite instructions.
  *
  * measure.outlookNoise priced that comparison against a 4000-trial reference on
- * the 31 saved boards: 5 sit closer to the line than the sampling error and one
- * sits exactly on it at 0.000. So on roughly a board in six, which instruction
- * the app gave was decided by the random draw.
+ * the 31 saved boards, back when the screen read in points: 5 sat closer to the
+ * line than the sampling error and one sat exactly on it at 0.000. So on
+ * roughly a board in six, which instruction the app gave was decided by the
+ * random draw.
  *
  * The fix is for the estimate to carry its own error bar and for the comparison
  * to decline when the gap is inside it. This file asserts the screen actually
  * declines -- and, just as importantly, that it still commits everywhere else,
  * because a guard that fires too often is its own failure.
  *
+ * ## Why a constructed board sits alongside the saved ones
+ *
+ * Moving the reading into round-win chance made the guard fire LESS, not more:
+ * none of the 31 saved boards now lands inside its own error bar, where one did
+ * in points. That is the currency doing its job -- a total is nearly
+ * indifferent to which cells make it up, so boards that points could not
+ * separate from an even round are separated by three-of-five -- but it leaves
+ * the guard untested by real data, and an untested guard is indistinguishable
+ * from a dead one.
+ *
+ * So ON_THE_LINE is a board built to sit there, and the file asserts both
+ * halves: the constructed board hedges, and all 31 real ones get a straight
+ * answer.
+ *
  * The engine is used as an oracle for the PRECONDITION only. Which boards are
- * close is read from `outlook`; what the screen says about them is asserted
- * against the rendered text.
+ * close is read from `chanceOutlook`; what the screen says about them is
+ * asserted against the rendered text.
  */
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import boards from "../engine/__fixtures__/wtc2024Boards.json";
+import { winChanceFloor } from "../engine/avoidance";
 import { evenThreshold, decisionReport, SECURED, UNWINNABLE, type Matrix } from "../engine/boardAnalysis";
-import { outlook } from "../engine/opponent";
-import { protocolFloor } from "../engine/protocol";
+import { chanceOutlook } from "../engine/opponent";
 import { boardMatrix, boardScale, type Board } from "../model/board";
 import { Verdict } from "./Verdict";
 
@@ -37,7 +52,27 @@ interface Fixture {
   matrix: Matrix;
 }
 
-const FIXTURES = boards as Fixture[];
+/**
+ * A board that genuinely sits on the line, found by search rather than guessed.
+ *
+ * Its typical round-win chance lands well inside its own two-error band, while
+ * the guaranteed reading is 34%, so the screen reaches the hedge rather than
+ * short-circuiting on "guaranteed wins it" above. It is a plausible board, not
+ * a pathological one: mostly 2s and 3s with a couple of good matchups, which is
+ * what half the sheets at an event look like.
+ */
+const ON_THE_LINE: Fixture = {
+  opponent: "On the line",
+  matrix: [
+    [2, 4, 3, 2, 2],
+    [4, 3, 2, 2, 2],
+    [3, 3, 3, 3, 3],
+    [2, 3, 3, 2, 2],
+    [3, 2, 2, 3, 2],
+  ],
+};
+
+const FIXTURES = [...(boards as Fixture[]), ON_THE_LINE];
 
 /**
  * The saved fixtures are rating matrices; a Board stores fractions. On the
@@ -64,9 +99,9 @@ const toBoard = (f: Fixture): Board => ({
  * engine. Verdict resolves three questions before it ever consults the typical
  * case, and each of them settles the round outright:
  *
- *   UNWINNABLE     the ceiling cannot reach the round
- *   SECURED        the floor already takes it
- *   floor > tau    playing properly takes it whatever they do
+ *   UNWINNABLE        the ceiling cannot reach the round
+ *   SECURED           the floor already takes it
+ *   guaranteed > 50%  playing properly takes it whatever they do
  *
  * On any of those there is nothing to be uncertain about, so the hedge must not
  * fire however close the Monte Carlo mean happens to land. Mirroring the real
@@ -75,21 +110,23 @@ const toBoard = (f: Fixture): Board => ({
  */
 function edgeDistance(f: Fixture): { gap: number; band: number; reachable: boolean } {
   const b = toBoard(f);
-  const matrix = boardMatrix(b, boardScale(b));
-  const n = matrix.length;
   const scale = boardScale(b);
-  const floor = protocolFloor(matrix, true).value;
+  const matrix = boardMatrix(b, scale);
+  const n = matrix.length;
+  const guaranteed = winChanceFloor(matrix, scale.min, scale.max, true);
   const tau = evenThreshold(b.ourPlayers.length, scale.min, scale.max);
   const verdict = decisionReport(matrix, tau).board.verdict;
-  const o = outlook(
+  const o = chanceOutlook(
     matrix,
     { ourPool: (1 << n) - 1, theirPool: (1 << n) - 1, attacker: -1, attackerSide: "our" },
-    floor,
+    guaranteed,
+    scale.min,
+    scale.max,
   );
   return {
-    gap: Math.abs(o.expected - tau),
+    gap: Math.abs(o.expected - 0.5),
     band: 2 * o.stderr,
-    reachable: verdict !== UNWINNABLE && verdict !== SECURED && floor <= tau,
+    reachable: verdict !== UNWINNABLE && verdict !== SECURED && guaranteed <= 0.5,
   };
 }
 
@@ -136,5 +173,13 @@ describe("Verdict declines to guess when the estimate cannot tell", () => {
     // being useful. If it swallowed most boards it would be a worse failure
     // than the one it fixes.
     expect(onTheLine.length).toBeLessThan(FIXTURES.length / 3);
+  });
+
+  it("gives a straight answer on all 31 real boards", () => {
+    // Recorded rather than assumed. Chance separates boards that points could
+    // not, so nothing saved lands on the line any more; if a change to the
+    // model or the trial count starts pulling real boards back onto it, this is
+    // where it shows up and the docstring above stops being true.
+    expect(onTheLine.map((s) => s.f.opponent)).toEqual([ON_THE_LINE.opponent]);
   });
 });

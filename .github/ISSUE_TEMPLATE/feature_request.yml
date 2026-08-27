@@ -27,6 +27,7 @@ body:
         - CSV/XLSX import or export
         - Database / persistence (SQLite)
         - UI / Tkinter window
+        - Web app (phone / browser)
         - Settings
         - Packaging / release build
         - Other

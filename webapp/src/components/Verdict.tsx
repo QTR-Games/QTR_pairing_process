@@ -2,10 +2,11 @@ import { useMemo, useState } from "react";
 import { worstMatchupDodge } from "../engine/avoidance";
 import type { Matrix } from "../engine/boardAnalysis";
 import { decisionReport, evenThreshold, LIVE, SECURED, UNWINNABLE } from "../engine/boardAnalysis";
-import { outlook } from "../engine/opponent";
+import { chanceOutlook, outlook } from "../engine/opponent";
 import { protocolFloor } from "../engine/protocol";
 import { protectionFocus } from "../engine/protection";
 import { reachReport } from "../engine/reach";
+import { assignmentChanceExtremes, probabilityMatrix } from "../engine/winProbability";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale, isRated } from "../model/board";
 import type { DodgeMode } from "../model/settings";
@@ -27,23 +28,55 @@ const listNames = (names: string[]): string =>
 
 
 /** Probabilities are shown as whole rounds per hundred, never as raw decimals. */
-const pct = (p: number) => `${(p * 100).toFixed(1)}%`;
+const pct = (p: number) =>
+  // A tenth of a percentage point here is fabricated precision. `SPREAD` in
+  // winProbability.ts is an anchoring choice that has never been fitted against
+  // results, so "62.4%" claims a resolution the model does not have while "62%"
+  // says the same true thing. Rounding down to a bare "0%" would be a different
+  // lie -- a dodge that costs something is not a dodge that costs nothing -- so
+  // a real but sub-half-point figure is named rather than printed.
+  p > 0 && p < 0.005 ? "under 1%" : `${Math.round(p * 100)}%`;
 
 /**
  * What the round is actually worth.
  *
- * Four numbers matter and the desktop app shows none of them plainly:
+ * Three numbers matter, and each is the chance of taking the round rather than
+ * a total:
  *
- *  - the guaranteed total, which is what we hold if they hunt us perfectly
- *  - the typical total, which is what happens when they play their own board
+ *  - guaranteed, which is what we hold if they hunt us perfectly
+ *  - typical, which is what happens when they play their own board
  *  - the ceiling, which is the best still reachable
- *  - the threshold, which is the line between winning the round and not
  *
  * The first two are the must-not-lose and must-win readings of the same
- * position, and they are frequently more than a point apart. Showing only
- * the guaranteed number -- as this screen used to -- silently hands every
- * decision to the pessimistic one. See Finding 16 in
- * docs/WTC2024_GROUND_TRUTH.md.
+ * position, and they are frequently a long way apart. Showing only the
+ * guaranteed number -- as this screen used to -- silently hands every decision
+ * to the pessimistic one. See Finding 16 in docs/WTC2024_GROUND_TRUTH.md.
+ *
+ * ## Why the threshold is not on this screen
+ *
+ * There used to be a fourth number: `evenThreshold`, the total a round has to
+ * beat. It is a dead constant -- 15 on a 1-5 board and 27.5 on 1-10, for every
+ * board, forever -- so a captain reading "the round needs 27.5" was reading a
+ * property of the scale rather than a property of the position, and paying a
+ * beat at the table to do it.
+ *
+ * It is gone rather than reformatted. In points the question "does this win the
+ * round" is `total > tau`, and `tau` has to be printed for the comparison to
+ * parse. In round-win chance the same question is `chance > 50%`, and 50% needs
+ * no explaining, so every sentence built around the threshold collapses into a
+ * number that is already self-evidently above or below the line.
+ *
+ * The totals have not been thrown away, because plenty of captains have years
+ * of habit in "we're on 15": each box carries its points reading in the note
+ * underneath. It costs nothing at the table and strands nobody.
+ *
+ * ## What these percentages are, and are not
+ *
+ * An ordering, not a forecast. `SPREAD` in winProbability.ts is an anchoring
+ * choice that has never been fitted against results, so the claim supported
+ * here is "this board is better than that one", not "you will win 63% of the
+ * time". Two guards, both cheap: whole percentage points only (see `pct`), and
+ * the caveat said once, in the hint under the reading.
  *
  * Everything else on this screen exists to answer "so what do I do", and is
  * driven by the measured findings rather than by a single ranking number.
@@ -52,6 +85,11 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
   const scale = boardScale(board);
   const matrix: Matrix = useMemo(() => boardMatrix(board, scale), [board, scale]);
   const tau = evenThreshold(board.ourPlayers.length, scale.min, scale.max);
+  // A perfect round, in points. `tau` still drives the verdict, but neither it
+  // nor this is printed on its own -- they are the denominators the note lines
+  // under each box read against, so the old totals stay legible without a
+  // constant having to be parsed to make sense of them.
+  const most = board.ourPlayers.length * scale.max;
 
   const report = useMemo(() => decisionReport(matrix, tau), [matrix, tau]);
   const pWe = useMemo(() => protocolFloor(matrix, true).value, [matrix]);
@@ -79,28 +117,6 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
       ),
     [matrix, board.ourTeamFirst, guaranteed],
   );
-
-  /*
-    `typical.expected` is a Monte Carlo mean over 24 sampled opponent boards, so
-    comparing it to `tau` with a bare `>` hands the choice of advice to the
-    random draw whenever the two are close.
-
-    That is not hypothetical. Measured against a 4000-trial reference on the 31
-    saved boards, 5 of them sit closer to this line than the observed sampling
-    error, and one sits exactly on it at 0.000. On those boards the app was
-    confidently recommending "play for the win" or "you need them to give you
-    something" -- opposite instructions -- on a coin flip.
-
-    Two standard errors is the band, checked rather than assumed: the true error
-    fell inside 2 stderr on 29 of 31 boards and never exceeded it. The reply is
-    to say so, because "too close to call" is a real answer and the wrong half
-    of a confident answer is not.
-
-    Raising the trial count was the alternative and it is the wrong trade: 192
-    trials roughly halves the error for eight times the compute, on the phone,
-    which is the device that goes to the event.
-  */
-  const tooCloseToCall = Math.abs(typical.expected - tau) < 2 * typical.stderr;
 
   // The matchup on this board we would least like to play, and whether the
   // pairing protocol actually lets us refuse it.
@@ -180,6 +196,72 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
     [matrix, scale.min, scale.max, board.ourTeamFirst],
   );
 
+  /*
+    The three headline numbers, in the currency that decides the round.
+
+    `protect.base` is already the guaranteed figure: `winChanceFloor` and
+    `protocolFloor` run the same minimax over the same protocol from the same
+    side, and differ only in what they add up at the end. So the "Round odds"
+    box that used to sit beside "Guaranteed" was the same reading twice, and
+    the two are now one box. Checked rather than assumed -- Verdict.currency
+    asserts the pair never disagree about who is ahead, on all 31 saved boards.
+
+    The other two needed probability-valued twins:
+
+      typical  the sampled-opponent read, solved in round-win chance rather
+               than converted from a points answer afterwards. See
+               `chanceOutlook` for why the conversion was rejected and what the
+               honest version costs.
+      ceiling  the best chance any remaining assignment can still reach, which
+               is an enumeration rather than a Hungarian solve because P(>= 3)
+               is not a sum. 0.24 ms; the cheapest number on the panel.
+  */
+  const chanceCeiling = useMemo(
+    () => assignmentChanceExtremes(probabilityMatrix(matrix, scale.min, scale.max))[1],
+    [matrix, scale.min, scale.max],
+  );
+
+  const chance = useMemo(
+    () =>
+      chanceOutlook(
+        matrix,
+        {
+          ourPool: (1 << matrix.length) - 1,
+          theirPool: (1 << matrix.length) - 1,
+          attacker: -1,
+          attackerSide: board.ourTeamFirst ? "our" : "their",
+        },
+        protect.base,
+        scale.min,
+        scale.max,
+      ),
+    [matrix, board.ourTeamFirst, protect.base, scale.min, scale.max],
+  );
+
+  /*
+    `chance.expected` is a Monte Carlo mean over 24 sampled opponent boards, so
+    comparing it to even money with a bare `>` hands the choice of advice to the
+    random draw whenever the two are close.
+
+    That is not hypothetical. In the points currency this screen used to read
+    in, 5 of the 31 saved boards sat closer to the line than the observed
+    sampling error and one sat exactly on it, so the app was confidently
+    recommending "play for the win" or "you need them to give you something" --
+    opposite instructions -- on a coin flip.
+
+    Two standard errors is the band, checked rather than assumed: against a
+    4000-trial reference the true error fell inside 2 stderr on 29 of 31 boards
+    and never exceeded it. The reply is to say so, because "too close to call"
+    is a real answer and the wrong half of a confident answer is not.
+
+    Worth recording that the move to round-win chance made this rarer rather
+    than commoner: no saved board now lands inside its own band, where one did
+    in points. That is not the guard becoming decorative, it is the currency
+    separating boards that a total could not tell apart -- and it is why
+    Verdict.tooclose has to construct a board on the line to test it.
+  */
+  const tooCloseToCall = Math.abs(chance.expected - 0.5) < 2 * chance.stderr;
+
   const exposedSet = new Set(protect.exposed.map((p) => p.ours));
   // The sharp version of the shared-column trap: one of their nominations that
   // pressures two players who are BOTH already forceable, so there is no line
@@ -257,68 +339,73 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
       <div className="numbers">
         <Stat
           label="Guaranteed"
-          value={fmt(guaranteed)}
-          note="if they hunt you perfectly"
+          value={pct(protect.base)}
+          note={`${fmt(guaranteed)} of ${fmt(most)} if they hunt you perfectly`}
           strong
         />
         <Stat
           label="Typical"
-          value={fmt(typical.expected)}
-          note="if they play their own board"
+          value={pct(chance.expected)}
+          note={`${fmt(typical.expected)} of ${fmt(most)} if they play their own board`}
           strong
         />
-        <Stat label="Ceiling" value={fmt(o.ceiling)} note="best still reachable" />
         <Stat
-          label="Round odds"
-          value={pct(protect.base)}
-          note="chance you take it -- updates as you rate"
+          label="Ceiling"
+          value={pct(chanceCeiling)}
+          note={`${fmt(o.ceiling)} of ${fmt(most)} best still reachable`}
         />
       </div>
 
       <p className="reading">
         {o.verdict === UNWINNABLE ? (
           <>
-            Every remaining pairing loses this round. The ceiling is {fmt(o.ceiling)} and
-            the round needs more than {fmt(tau)}. Play for the points you can still bank,
-            not for the win.
+            Every remaining pairing loses this round. The best still reachable is{" "}
+            {pct(chanceCeiling)}, and a round is won by being better than even. Play for
+            the points you can still bank, not for the win.
           </>
         ) : o.verdict === SECURED ? (
           <>
-            The round is already won at {fmt(o.floor)}, whatever they do next. Anything
-            further is bonus.
+            The round is already won, whatever they do next -- every pairing left on the
+            board is the right side of a coin flip. Anything further is bonus.
           </>
-        ) : guaranteed > tau ? (
+        ) : protect.base > 0.5 ? (
           <>
-            Playing this out properly guarantees {fmt(guaranteed)}, which takes the round
-            outright. It cannot be taken away from you.
+            Playing this out properly guarantees {pct(protect.base)} of taking the round,
+            and that cannot be taken away from you.
           </>
         ) : tooCloseToCall ? (
           <>
-            The safe reading is {fmt(guaranteed)} and the round needs {fmt(tau)}. Playing
-            their own board they land you around {fmt(typical.expected)} -- which is on the
-            line, not over it. This one is genuinely too close to call: the typical case and
-            the round requirement are the same number to within the accuracy of the estimate,
-            so treat it as a coin flip that the ceiling at {fmt(o.ceiling)} can still win for
-            you.
+            The safe reading is {pct(protect.base)}. Playing their own board they leave you
+            around {pct(chance.expected)}, which is on the line rather than over it. This
+            one is genuinely too close to call: the typical case and a coin flip are the
+            same number to within the accuracy of the estimate, so treat it as one, and as
+            a board the ceiling at {pct(chanceCeiling)} can still win for you.
           </>
-        ) : typical.expected > tau ? (
+        ) : chance.expected > 0.5 ? (
           <>
-            The safe reading is {fmt(guaranteed)}
-            {tau - guaranteed < 0.05
-              ? ` -- dead level with the round, and level does not win it -- `
-              : ` -- ${fmt(tau - guaranteed)} short of the round -- `}
-            but that credits them with knowing exactly which matchups hurt you most.
-            Playing their own board they land you nearer {fmt(typical.expected)}, which
-            wins it. This is a round you take by playing for the win, not by protecting
-            the floor.
+            The safe reading is {pct(protect.base)}, but that credits them with knowing
+            exactly which matchups hurt you most. Playing their own board they leave you
+            nearer {pct(chance.expected)}, which is the right side of the flip. This is a
+            round you take by playing for the win, not by protecting the floor.
           </>
         ) : (
           <>
-            Guaranteed {fmt(guaranteed)}, typically {fmt(typical.expected)}, and the round
-            needs {fmt(tau)}. Neither reading gets there on its own, so the win has to come
-            from the ceiling at {fmt(o.ceiling)} -- it needs them to give you something.
+            Guaranteed {pct(protect.base)}, typically {pct(chance.expected)} -- both the
+            wrong side of a coin flip. The win has to come from the ceiling at{" "}
+            {pct(chanceCeiling)}, so it needs them to give you something.
           </>
         )}
+      </p>
+
+      {/*
+        Said once, where the numbers are, and not repeated beside each of them.
+        The percentages rank options honestly and forecast nothing, and a reader
+        who does not know that will over-trust them.
+      */}
+      <p className="hint">
+        Percentages are the chance of winning three of the five games, from a fixed
+        rating-to-probability slope that has never been fitted against results. Read them
+        as an ordering between options, not as a forecast for this round.
       </p>
 
       <div className="insight-list">
@@ -461,8 +548,8 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
                    (${protect.exposed[0].floorCount} of them), and a repeated worst cell cannot be
                    refused -- the opponent picks the moment to spring it. You cannot dodge them
                    clear, so do not spend nominations trying: sequence so the hit lands in the
-                   least bad of those cells, and protect where refusing actually works. The round
-                   odds above fall as this gets worse.`
+                   least bad of those cells, and protect where refusing actually works. The
+                   guaranteed chance above falls as this gets worse.`
                 : `Each has a repeated worst cell, and a repeated worst cannot be refused -- one
                    nomination is enough to spring it. ${
                      priorityTied
@@ -472,7 +559,7 @@ export function Verdict({ board, onHighlight, dodgeMode = "onDemand" }: Props) {
                        : `${ourName(protect.focus ?? protect.exposed[0].ours)}
                    is the deepest at ${fmt(focusLevel)}, so weigh sequencing around them first.`
                    } Protecting all of them is not on the table; aim each into the least bad of
-                   their tied cells. The round odds above fall as any of these deepen.`
+                   their tied cells. The guaranteed chance above falls as any of these deepen.`
             }
             onFocus={() => onHighlight?.(exposedCells)}
           />
