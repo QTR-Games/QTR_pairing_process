@@ -24,3 +24,5 @@ log = "0.4"
 tauri = { version = "2.11.3" }
 tauri-plugin-log = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-window-state = "2"

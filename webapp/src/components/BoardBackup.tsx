@@ -8,6 +8,7 @@ import {
   type ImportMode,
 } from "../model/backup";
 import type { Board } from "../model/board";
+import { getDesktopFiles } from "../desktop/platform";
 
 interface Props {
   /** Called with the restored list so the app re-renders against it. */
@@ -43,6 +44,24 @@ export function BoardBackup({ onRestored }: Props) {
 
   const download = () => {
     const json = serializeBackup();
+
+    // On the desktop a native Save dialog puts the file where the user chooses,
+    // and reports the real path back. The browser routes below never run there.
+    const desktop = getDesktopFiles();
+    if (desktop) {
+      desktop
+        .saveBackup(json, backupFilename())
+        .then((path) => {
+          if (path) setNote({ tone: "ok", text: `Saved as ${path}.` });
+          // A cancel is not a failure; leave the last note as it was.
+        })
+        .catch(() => {
+          setText(json);
+          setNote({ tone: "bad", text: "That file could not be saved. Copy the text instead." });
+        });
+      return;
+    }
+
     try {
       const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
       const a = document.createElement("a");
@@ -97,6 +116,25 @@ export function BoardBackup({ onRestored }: Props) {
       .catch(() => setNote({ tone: "bad", text: "That file could not be opened." }));
   };
 
+  // "Choose a file" opens a native dialog on the desktop and the hidden input
+  // everywhere else. Both land in the same `restore`, so a chosen file behaves
+  // identically to a pasted one.
+  const openFromFile = () => {
+    const desktop = getDesktopFiles();
+    if (!desktop) {
+      fileInput.current?.click();
+      return;
+    }
+    desktop
+      .openBackup()
+      .then((raw) => {
+        if (!raw) return;
+        setText(raw);
+        restore(raw, "merge");
+      })
+      .catch(() => setNote({ tone: "bad", text: "That file could not be opened." }));
+  };
+
   return (
     <section className="backup">
       <h2>Save your boards</h2>
@@ -127,7 +165,7 @@ export function BoardBackup({ onRestored }: Props) {
       />
 
       <div className="controls">
-        <button className="ghost" onClick={() => fileInput.current?.click()}>
+        <button className="ghost" onClick={openFromFile}>
           Choose a file
         </button>
         <button className="ghost" onClick={() => restore(text, "merge")}>

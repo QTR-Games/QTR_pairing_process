@@ -23,6 +23,7 @@ import {
 import { newRound, type LiveState } from "./engine/live";
 import { DesktopWorkspace } from "./components/desktop/DesktopWorkspace";
 import { useWideViewport } from "./components/desktop/useWideViewport";
+import { BOARDS_RESTORED_EVENT } from "./desktop/platform";
 import "./styles.css";
 
 type Tab = "board" | "round" | "boards";
@@ -141,6 +142,20 @@ export default function App() {
   useEffect(() => {
     saveLive(board.id, live);
   }, [board.id, live]);
+
+  // A restore driven from the native menu has no React callback to reach -- the
+  // menu lives in Rust, not in the backup screen. The desktop bootstrap runs the
+  // restore and announces the new boards on this window event; picking them up
+  // here re-renders the app without a reload. Inert on the web, where the event
+  // is never fired.
+  useEffect(() => {
+    const onRestored = (e: Event) => {
+      const boards = (e as CustomEvent<Board[]>).detail;
+      if (Array.isArray(boards)) setBoards(boards);
+    };
+    window.addEventListener(BOARDS_RESTORED_EVENT, onRestored);
+    return () => window.removeEventListener(BOARDS_RESTORED_EVENT, onRestored);
+  }, []);
 
   // The phone Board tab pins the grid with position: sticky, and it needs to
   // sit just below the fixed header. The header height is not a constant -- a

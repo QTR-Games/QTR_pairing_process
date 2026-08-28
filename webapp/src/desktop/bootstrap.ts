@@ -10,12 +10,21 @@
  * SQLite lives in `sqliteStore.ts`; this file is only the Tauri wiring.
  */
 import Database from "@tauri-apps/plugin-sql";
+import { listen } from "@tauri-apps/api/event";
 import { setStore } from "../model/store";
+import {
+  applyBackup,
+  backupFilename,
+  parseBackup,
+  serializeBackup,
+} from "../model/backup";
 import {
   collectLegacyRows,
   createMemoryMirrorStore,
   type KvDatabase,
 } from "../model/sqliteStore";
+import { createDesktopFiles } from "./files";
+import { BOARDS_RESTORED_EVENT, setDesktopFiles } from "./platform";
 
 /** The database file, resolved by the SQL plugin under the app data dir. */
 const DB_URL = "sqlite:klikklak.db";
@@ -83,4 +92,42 @@ async function seedFromLegacy(db: {
   for (const [key, value] of collectLegacyRows(localStorage)) {
     await db.execute(UPSERT_KV, [key, value]);
   }
+}
+
+/**
+ * Install the desktop file bridge and connect the native menu.
+ *
+ * The bridge lets the backup screen's own buttons open native save/open dialogs
+ * instead of a browser download and a file input. The menu items live in Rust
+ * and work from anywhere in the app, not only the backup screen; they arrive
+ * here as `menu://…` events and run the very same save/open flow. On a menu
+ * restore there is no React callback to reach, so the new boards are announced
+ * on a window event that {@link ../App} listens for -- the app re-renders
+ * without a reload.
+ *
+ * Wiring failures are the caller's to swallow: a missing menu must not cost the
+ * SQLite store or the render.
+ */
+export async function initDesktopAffordances(): Promise<void> {
+  const files = createDesktopFiles();
+  setDesktopFiles(files);
+
+  await listen("menu://backup-save", () => {
+    void files.saveBackup(serializeBackup(), backupFilename());
+  });
+
+  await listen("menu://backup-open", () => {
+    void (async () => {
+      try {
+        const text = await files.openBackup();
+        if (!text) return;
+        const { boards } = applyBackup(parseBackup(text), "merge");
+        window.dispatchEvent(
+          new CustomEvent(BOARDS_RESTORED_EVENT, { detail: boards }),
+        );
+      } catch (err) {
+        console.error("menu open backup failed", err);
+      }
+    })();
+  });
 }
