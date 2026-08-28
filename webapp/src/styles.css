@@ -477,6 +477,34 @@ main {
   margin: 0.15rem 0;
 }
 
+/* ---------- per-cell info popup (phone long-press) ---------- */
+
+.cell-info {
+  text-align: left;
+}
+
+.cell-info-rating {
+  margin: 0 0 0.75rem;
+}
+
+.cell-info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0.5rem 0;
+}
+
+.cell-info-label {
+  color: var(--dim);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cell-info-value {
+  font-size: 0.95rem;
+}
+
 /* ---------- live ---------- */
 
 .live-head {

@@ -95,3 +95,67 @@ describe("Grid opponent roster popup", () => {
     expect(screen.queryByRole("button", { name: /Hold for roster/ })).toBeNull();
   });
 });
+
+describe("Grid cell info popup", () => {
+  const cells = () => screen.getAllByRole("button", { name: /versus/ });
+
+  it("opens the cell info popup on a hold and swallows the tap that follows", () => {
+    vi.useFakeTimers();
+    try {
+      render(
+        <Grid
+          board={emptyBoard()}
+          onChange={() => {}}
+          cellInfo={(ours, theirs) => (
+            <p>
+              held {ours}-{theirs}
+            </p>
+          )}
+        />,
+      );
+      const cell = cells()[0];
+
+      // A hold: press and wait -> the info popup opens.
+      fireEvent.pointerDown(cell, { button: 0 });
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+      expect(screen.getByText("held 0-0")).toBeTruthy();
+
+      // The click the browser fires after the release must NOT also open the
+      // value editor on top of it.
+      fireEvent.click(cell);
+      expect(screen.queryByText(/Worst matchup on the left/)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("opens the value editor on a quick tap even when cell info is available", () => {
+    vi.useFakeTimers();
+    try {
+      render(<Grid board={emptyBoard()} onChange={() => {}} cellInfo={() => <p>held</p>} />);
+      const cell = cells()[0];
+
+      // A tap: press then release before the hold elapses, then the click.
+      fireEvent.pointerDown(cell, { button: 0 });
+      fireEvent.pointerUp(cell);
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+      fireEvent.click(cell);
+
+      expect(screen.getByText(/Worst matchup on the left/)).toBeTruthy();
+      expect(screen.queryByText("held")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("has no hold gesture when no cell info is supplied", () => {
+    render(<Grid board={emptyBoard()} onChange={() => {}} />);
+    fireEvent.click(cells()[0]);
+    // Tapping still opens the value editor, exactly as before this prop existed.
+    expect(screen.getByText(/Worst matchup on the left/)).toBeTruthy();
+  });
+});
