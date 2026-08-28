@@ -95,3 +95,19 @@ describe("Grid opponent roster popup", () => {
     expect(screen.queryByRole("button", { name: /Hold for roster/ })).toBeNull();
   });
 });
+
+describe("Grid cell values", () => {
+  it.each([
+    ["five", 0.75, "4"],
+    ["fiveHalf", 0.625, "3.5"],
+  ])("displays the picked scale value on the %s scale", (scaleId, fraction, expected) => {
+    const board = emptyBoard(scaleId);
+    board.fractions[0][0] = fraction;
+
+    render(<Grid board={board} onChange={() => {}} />);
+
+    expect(screen.getByRole("button", { name: "Player 1 versus Opponent 1" }).textContent).toBe(
+      expected,
+    );
+  });
+});
