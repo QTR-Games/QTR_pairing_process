@@ -14,6 +14,7 @@ import {
   SPREAD,
   assignmentChanceExtremes,
   atLeast,
+  committedChanceExtremes,
   distributionKey,
   extendDistribution,
   probabilityMatrix,
@@ -302,5 +303,73 @@ describe("assignmentChanceExtremes", () => {
 
   it("survives an empty board", () => {
     expect(assignmentChanceExtremes([])).toEqual([0, 0]);
+  });
+});
+
+describe("committedChanceExtremes", () => {
+  it("brackets every assignment that keeps the fixed pairing", () => {
+    // The chance twin of cellOutlooks, checked the same way its sibling above
+    // is: against the assignments themselves, not a second copy of the bound.
+    // For each fixable cell we enumerate only the assignments that keep it and
+    // confirm the returned [floor, ceiling] is exactly their min and max.
+    for (const f of FIXTURES.slice(0, 4)) {
+      const probs = probabilityMatrix(f.matrix, 1, 5);
+      const n = probs.length;
+      for (let fi = 0; fi < n; fi++) {
+        for (let fj = 0; fj < n; fj++) {
+          const [lo, hi] = committedChanceExtremes(probs, fi, fj);
+          const seen: number[] = [];
+          const used = new Array<boolean>(n).fill(false);
+          used[fj] = true;
+          const walk = (i: number, picked: number[]): void => {
+            if (i === n) {
+              seen.push(roundWinChance(picked));
+              return;
+            }
+            if (i === fi) {
+              walk(i + 1, [...picked, probs[fi][fj]]);
+              return;
+            }
+            for (let j = 0; j < n; j++) {
+              if (used[j]) continue;
+              used[j] = true;
+              walk(i + 1, [...picked, probs[i][j]]);
+              used[j] = false;
+            }
+          };
+          walk(0, []);
+          expect(lo).toBeCloseTo(Math.min(...seen), 12);
+          expect(hi).toBeCloseTo(Math.max(...seen), 12);
+        }
+      }
+    }
+  });
+
+  it("majority still counts the whole board, not the sub-board", () => {
+    // Fixing one game does not lower the bar to take the round: three of five
+    // wins, even once one pairing is banked. A dead-even board with one game
+    // pinned to a coin flip is therefore still a coin flip overall, not the
+    // 2-of-4 majority the remaining games alone would imply.
+    const even = Array.from({ length: 5 }, () => Array<number>(5).fill(3));
+    const [lo, hi] = committedChanceExtremes(probabilityMatrix(even, 1, 5), 0, 0);
+    expect(lo).toBeCloseTo(0.5, 12);
+    expect(hi).toBeCloseTo(0.5, 12);
+  });
+
+  it("agrees with the free bound when the fixed cell is the average game", () => {
+    // With every game an identical coin flip, banking one of them can neither
+    // help nor hurt, so the committed bounds must land on the same 0.5 the free
+    // enumeration gives -- a cross-check that the seed fold is not double- or
+    // under-counting the pinned game.
+    const even = Array.from({ length: 5 }, () => Array<number>(5).fill(3));
+    const probs = probabilityMatrix(even, 1, 5);
+    const [freeLo, freeHi] = assignmentChanceExtremes(probs);
+    const [lo, hi] = committedChanceExtremes(probs, 2, 4);
+    expect(lo).toBeCloseTo(freeLo, 12);
+    expect(hi).toBeCloseTo(freeHi, 12);
+  });
+
+  it("survives an empty board", () => {
+    expect(committedChanceExtremes([], 0, 0)).toEqual([0, 0]);
   });
 });

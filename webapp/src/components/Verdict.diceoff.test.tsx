@@ -21,9 +21,12 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { boardMatrix, boardScale, type Board } from "../model/board";
 import { protocolFloor } from "../engine/protocol";
+import { winChanceFloor } from "../engine/avoidance";
+import { pct } from "../model/format";
 import { Verdict } from "./Verdict";
 
 afterEach(cleanup);
+afterEach(() => localStorage.clear());
 
 const board = (fractions: number[][], over: Partial<Board> = {}): Board => ({
   id: "diceoff-ui",
@@ -104,5 +107,45 @@ describe("the dice-off insight", () => {
     // GUARANTEED stat sitting a few lines above it.
     const body = screen.getByText(/dice-off does not matter/i).closest("div");
     expect(body?.textContent).toContain(shown);
+  });
+});
+
+/**
+ * The same card, in the other currency (owner-chosen option B).
+ *
+ * Points is the default because the points gap is often exactly zero; in
+ * round-win chance it never is -- opening carries a board-independent ~8pp edge
+ * even on a board the points floor calls free. So chance mode drops the
+ * gains/costs verb entirely and just prints both side floors, which is the whole
+ * point of option B: two numbers to read, not one "cost" to name.
+ *
+ * The card only shows chance when a captain has flipped it, so the test seeds
+ * that choice through the real settings key rather than reaching past the model.
+ */
+describe("the dice-off insight in round-win chance", () => {
+  const seedChance = () =>
+    localStorage.setItem("qtr.settings.v1", JSON.stringify({ cardUnits: { diceOff: "chance" } }));
+
+  it("prints the side floors as chance and drops the gains/costs verb, even on a free board", () => {
+    seedChance();
+    const b = board(FLAT);
+    expect(initiativeOf(b)).toBe(0); // free in points, so points would say "does not matter"...
+
+    const scale = boardScale(b);
+    const matrix = boardMatrix(b, scale);
+    const pWe = winChanceFloor(matrix, scale.min, scale.max, true);
+    const pThey = winChanceFloor(matrix, scale.min, scale.max, false);
+
+    render(<Verdict board={b} dodgeMode="off" onHighlight={() => {}} />);
+
+    // ...yet chance still names both side floors as percentages rather than
+    // collapsing to a single "free" line -- that is the whole of option B.
+    const card = screen.getByText(/dice-off, in round-win chance/i).closest("div");
+    expect(card?.textContent).toContain(pct(pWe));
+    expect(card?.textContent).toContain(pct(pThey));
+    expect(card?.textContent).toMatch(/%/);
+    // No verb, and never the points-mode "does not matter" line.
+    expect(screen.queryByText(/Going first (costs|gains)/i)).toBeNull();
+    expect(screen.queryByText(/dice-off does not matter/i)).toBeNull();
   });
 });

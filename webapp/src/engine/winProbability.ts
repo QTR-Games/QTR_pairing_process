@@ -216,3 +216,59 @@ export function assignmentChanceExtremes(
   walk(0, [1]);
   return [lo, hi];
 }
+
+/**
+ * Worst and best round-win chance over every assignment that KEEPS one pairing.
+ *
+ * The chance-valued twin of `cellOutlooks`: fix our player `fixOurs` against
+ * their player `fixTheirs`, then enumerate the remaining pairings and bound the
+ * round-win chance over them. `cellOutlooks` can do this with a Hungarian solve
+ * on the submatrix because a points total is a SUM -- banking one cell just adds
+ * a constant. P(>= 3 of 5) is not a sum, so, exactly as `assignmentChanceExtremes`
+ * explains, this has to enumerate instead.
+ *
+ * The fixed game is folded into the seed distribution before the walk begins.
+ * Order does not matter to a Poisson binomial, so folding it first and skipping
+ * row `fixOurs` in the recursion is identical to visiting it mid-tree, and
+ * cheaper. `need` is still a majority of the FULL board -- fixing one game does
+ * not change that three of five wins take the round.
+ *
+ * Returns `[floor, ceiling]` for the sub-board given the fixed pairing.
+ */
+export function committedChanceExtremes(
+  probs: readonly (readonly number[])[],
+  fixOurs: number,
+  fixTheirs: number,
+): [number, number] {
+  const n = probs.length;
+  if (n === 0) return [0, 0];
+  const need = winsNeeded(n);
+
+  let lo = Infinity;
+  let hi = -Infinity;
+  const used = new Array<boolean>(probs[0].length).fill(false);
+  used[fixTheirs] = true;
+
+  const walk = (ours: number, dist: readonly number[]): void => {
+    if (ours === n) {
+      const v = atLeast(dist, need);
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+      return;
+    }
+    if (ours === fixOurs) {
+      // Already folded into the seed; take no column for this row.
+      walk(ours + 1, dist);
+      return;
+    }
+    for (let theirs = 0; theirs < used.length; theirs++) {
+      if (used[theirs]) continue;
+      used[theirs] = true;
+      walk(ours + 1, extendDistribution(dist, probs[ours][theirs]));
+      used[theirs] = false;
+    }
+  };
+
+  walk(0, extendDistribution([1], probs[fixOurs][fixTheirs]));
+  return [lo, hi];
+}

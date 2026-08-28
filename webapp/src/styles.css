@@ -211,6 +211,50 @@ main {
   color: var(--dim);
 }
 
+/*
+  Toggleable cards carry a small unit pill in the top-right corner. The card is
+  positioned so the pill can sit over the padding without shoving the title, and
+  the title reserves a little right-hand room so a long heading never slides
+  under the pill.
+*/
+.insight.toggleable {
+  position: relative;
+}
+
+.insight.toggleable .insight-title {
+  padding-right: 2.5rem;
+}
+
+.insight-unit {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.5rem;
+  min-width: 1.9rem;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  text-align: center;
+  color: var(--dim);
+  background: var(--panel);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.14));
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.insight-unit:hover {
+  color: var(--text, inherit);
+  border-color: var(--accent);
+}
+
+.insight-unit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* ---------- protect-first choice ---------- */
 
 .protect-choice {
