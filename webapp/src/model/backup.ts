@@ -27,6 +27,7 @@
 
 import { BOARDS_KEY, isValidBoard, loadBoards, TEAM_SIZE, type Board } from "./board";
 import { DEFAULTS, loadSettings, saveSettings, type Settings } from "./settings";
+import { getStore } from "./store";
 
 /**
  * Marks the file as ours, so a wrong file chosen in a hurry fails clearly.
@@ -207,7 +208,7 @@ export function applyBackup(backup: Backup, mode: ImportMode = "merge"): ImportR
  */
 function writeBoards(boards: Board[]): void {
   try {
-    localStorage.setItem(BOARDS_KEY, JSON.stringify(boards));
+    getStore().setItem(BOARDS_KEY, JSON.stringify(boards));
   } catch {
     throw new BackupError("There was not enough room on the device to save the restored boards.");
   }
