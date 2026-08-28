@@ -72,12 +72,56 @@ export const SURPRISE_MODES: { id: SurpriseMode; label: string }[] = [
   { id: "on", label: "On (experimental)" },
 ];
 
+/**
+ * The currency a Verdict insight card speaks: rating points, or round-win %.
+ *
+ * The engine computes both for every card, so this is purely a display choice.
+ * It is per-card, not app-wide, because the cards do not all read the same way
+ * in each currency. The dice-off gap is a board-independent constant in points
+ * (a clean "going first is worth N") but a flat ~8pp in chance that carries no
+ * board-specific information, so its natural default is points; the protection
+ * and trade-off cards are decisions about taking the round, so they default to
+ * chance. Every card stays individually switchable regardless of its default.
+ */
+export type CardUnit = "points" | "chance";
+
+/** The Verdict insight cards that can switch currency. */
+export type CardId = "protocolProtects" | "beingHunted" | "diceOff" | "tradeOff" | "hiddenTie";
+
+export const CARD_IDS: readonly CardId[] = [
+  "protocolProtects",
+  "beingHunted",
+  "diceOff",
+  "tradeOff",
+  "hiddenTie",
+];
+
+/**
+ * The currency each card shows until the user says otherwise.
+ *
+ * Owner-set: everything that is a decision about taking the round reads in
+ * chance; the dice-off, whose chance form is a constant, keeps points.
+ */
+export const CARD_UNIT_DEFAULTS: Record<CardId, CardUnit> = {
+  protocolProtects: "chance",
+  beingHunted: "chance",
+  diceOff: "points",
+  tradeOff: "chance",
+  hiddenTie: "chance",
+};
+
 export interface Settings {
   dodgeMode: DodgeMode;
   adviceLevel: AdviceLevel;
   surpriseMode: SurpriseMode;
   /** Minimum points of opponent regret before we raise a surprise flag. */
   surpriseRegretThreshold: number;
+  /**
+   * Per-card currency overrides. Only cards the user has explicitly switched
+   * appear here; everything else falls back to `CARD_UNIT_DEFAULTS`, so the
+   * defaults can evolve without rewriting saved preferences.
+   */
+  cardUnits: Partial<Record<CardId, CardUnit>>;
 }
 
 /**
@@ -92,6 +136,7 @@ export const DEFAULTS: Settings = {
   adviceLevel: "full",
   surpriseMode: "off",
   surpriseRegretThreshold: 0,
+  cardUnits: {},
 };
 
 const KEY = "qtr.settings.v1";
@@ -104,10 +149,36 @@ const isAdviceLevel = (v: unknown): v is AdviceLevel =>
 
 const isSurpriseMode = (v: unknown): v is SurpriseMode => v === "off" || v === "on";
 
+const isCardUnit = (v: unknown): v is CardUnit => v === "points" || v === "chance";
+
 const asNonNegativeNumber = (v: unknown): number | null => {
   if (typeof v !== "number" || !Number.isFinite(v) || v < 0) return null;
   return v;
 };
+
+/**
+ * Keep only known cards mapped to a valid currency.
+ *
+ * Same tolerance as every other field: an unknown card id or a junk value is
+ * dropped rather than trusted, so a preferences file from a future version (a
+ * card that no longer exists, a third currency) degrades to defaults instead of
+ * putting an unrenderable unit in front of a captain.
+ */
+const sanitizeCardUnits = (v: unknown): Partial<Record<CardId, CardUnit>> => {
+  const out: Partial<Record<CardId, CardUnit>> = {};
+  if (!v || typeof v !== "object") return out;
+  const source = v as Record<string, unknown>;
+  for (const id of CARD_IDS) {
+    if (isCardUnit(source[id])) out[id] = source[id] as CardUnit;
+  }
+  return out;
+};
+
+/** The currency a card should show, resolving the user's choice against defaults. */
+export const resolveCardUnit = (
+  cardUnits: Partial<Record<CardId, CardUnit>>,
+  id: CardId,
+): CardUnit => cardUnits[id] ?? CARD_UNIT_DEFAULTS[id];
 
 export function loadSettings(): Settings {
   try {
@@ -126,6 +197,7 @@ export function loadSettings(): Settings {
         : DEFAULTS.surpriseMode,
       surpriseRegretThreshold:
         asNonNegativeNumber(parsed?.surpriseRegretThreshold) ?? DEFAULTS.surpriseRegretThreshold,
+      cardUnits: sanitizeCardUnits(parsed?.cardUnits),
     };
   } catch {
     return { ...DEFAULTS };
@@ -140,4 +212,18 @@ export function saveSettings(settings: Settings): Settings {
     // for this session, which is the part that matters during a round.
   }
   return settings;
+}
+
+/**
+ * Flip one card's currency and persist, leaving every other preference alone.
+ *
+ * A read-modify-write against the live stored settings rather than against a
+ * value held in a component, because the cards are the only writer of
+ * `cardUnits` and App.tsx round-trips the rest of the object independently.
+ * Merging here means a card toggle can never clobber a dodge-mode change made in
+ * the same session, and vice versa.
+ */
+export function setCardUnit(id: CardId, unit: CardUnit): Settings {
+  const current = loadSettings();
+  return saveSettings({ ...current, cardUnits: { ...current.cardUnits, [id]: unit } });
 }

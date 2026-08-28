@@ -68,27 +68,55 @@ export default function App() {
 
   // Set and persist in one call. Both layouts expose this preference, so the
   // write has to live in one place or one of them will change it without
-  // saving it. Both toggles share one storage record, so each writer has to
-  // hand the other's current value back or a save would wipe it.
+  // saving it. These toggles share one storage record with each other and with
+  // the per-card currency choices, so each writer hands the others' current
+  // values back or a save would wipe them. The card units are read fresh from
+  // storage rather than held in state here, because VerdictCards is their only
+  // writer -- mirroring them into App state would just be a second copy to keep
+  // in sync.
   const changeDodgeMode = (next: DodgeMode) => {
     setDodgeMode(next);
-    saveSettings({ dodgeMode: next, adviceLevel, surpriseMode, surpriseRegretThreshold });
+    saveSettings({
+      dodgeMode: next,
+      adviceLevel,
+      surpriseMode,
+      surpriseRegretThreshold,
+      cardUnits: loadSettings().cardUnits,
+    });
   };
 
   const changeAdviceLevel = (next: AdviceLevel) => {
     setAdviceLevel(next);
-    saveSettings({ dodgeMode, adviceLevel: next, surpriseMode, surpriseRegretThreshold });
+    saveSettings({
+      dodgeMode,
+      adviceLevel: next,
+      surpriseMode,
+      surpriseRegretThreshold,
+      cardUnits: loadSettings().cardUnits,
+    });
   };
 
   const changeSurpriseMode = (next: SurpriseMode) => {
     setSurpriseMode(next);
-    saveSettings({ dodgeMode, adviceLevel, surpriseMode: next, surpriseRegretThreshold });
+    saveSettings({
+      dodgeMode,
+      adviceLevel,
+      surpriseMode: next,
+      surpriseRegretThreshold,
+      cardUnits: loadSettings().cardUnits,
+    });
   };
 
   const changeSurpriseRegretThreshold = (next: number) => {
     const clamped = Number.isFinite(next) && next >= 0 ? next : 0;
     setSurpriseRegretThreshold(clamped);
-    saveSettings({ dodgeMode, adviceLevel, surpriseMode, surpriseRegretThreshold: clamped });
+    saveSettings({
+      dodgeMode,
+      adviceLevel,
+      surpriseMode,
+      surpriseRegretThreshold: clamped,
+      cardUnits: loadSettings().cardUnits,
+    });
   };
 
   /**

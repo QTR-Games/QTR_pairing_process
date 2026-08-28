@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { worstMatchupDodge } from "../engine/avoidance";
+import { worstMatchupDodge, winChanceFloor } from "../engine/avoidance";
 import type { Matrix } from "../engine/boardAnalysis";
-import { decisionReport, evenThreshold, LIVE, SECURED, UNWINNABLE } from "../engine/boardAnalysis";
+import {
+  decisionReport,
+  decisionReportChance,
+  evenThreshold,
+  LIVE,
+  SECURED,
+  UNWINNABLE,
+} from "../engine/boardAnalysis";
 import { chanceOutlook, outlook } from "../engine/opponent";
 import { protocolFloor } from "../engine/protocol";
 import { protectionFocus } from "../engine/protection";
@@ -10,7 +17,9 @@ import { assignmentChanceExtremes, probabilityMatrix, toWinProbability } from ".
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale, isRated, activeProtectPriority } from "../model/board";
 import { pct } from "../model/format";
-import type { DodgeMode } from "../model/settings";
+import type { DodgeMode, CardId, CardUnit } from "../model/settings";
+import { loadSettings, resolveCardUnit, setCardUnit } from "../model/settings";
+import { useLongPress } from "../hooks/useLongPress";
 
 interface Props {
   board: Board;
@@ -221,8 +230,8 @@ export function useVerdictModel({
                is an enumeration rather than a Hungarian solve because P(>= 3)
                is not a sum. 0.24 ms; the cheapest number on the panel.
   */
-  const chanceCeiling = useMemo(
-    () => assignmentChanceExtremes(probabilityMatrix(matrix, scale.min, scale.max))[1],
+  const [chanceFloorNaive, chanceCeiling] = useMemo(
+    () => assignmentChanceExtremes(probabilityMatrix(matrix, scale.min, scale.max)),
     [matrix, scale.min, scale.max],
   );
 
@@ -241,6 +250,40 @@ export function useVerdictModel({
         scale.max,
       ),
     [matrix, board.ourTeamFirst, protect.base, scale.min, scale.max],
+  );
+
+  /*
+    The chance-valued twins the toggleable cards read when a captain flips them
+    from points. The engine already double-computes both currencies, so these
+    add no new modelling -- only the second wording of numbers the panel is
+    already standing on.
+
+      pWeChance / pTheyChance  the guaranteed round-win chance if we open the
+        pairing versus if they do. One of the two is already `protect.base`
+        (whichever side goes first), but naming both makes the dice-off card's
+        chance form -- two side floors, no gap verb -- a straight read. The gap
+        itself is a board-independent ~8pp constant, which is exactly why the
+        dice-off defaults to points and only shows chance on request.
+      reportChance  the trade-off / hidden-tie consequences re-priced in chance.
+        Gated: it only solves when one of those two cards is actually on screen,
+        because `committedChanceExtremes` runs several enumerations and there is
+        no reason to pay for a card that is not rendering.
+  */
+  const pWeChance = useMemo(
+    () => winChanceFloor(matrix, scale.min, scale.max, true),
+    [matrix, scale.min, scale.max],
+  );
+  const pTheyChance = useMemo(
+    () => winChanceFloor(matrix, scale.min, scale.max, false),
+    [matrix, scale.min, scale.max],
+  );
+
+  const reportChance = useMemo(
+    () =>
+      report.choiceMatters || report.hiddenFloorCost > 0
+        ? decisionReportChance(matrix, tau, scale.min, scale.max)
+        : null,
+    [report.choiceMatters, report.hiddenFloorCost, matrix, tau, scale.min, scale.max],
   );
 
   /*
@@ -370,6 +413,10 @@ export function useVerdictModel({
     typical,
     chance,
     chanceCeiling,
+    chanceFloorNaive,
+    pWeChance,
+    pTheyChance,
+    reportChance,
     protect,
     tooCloseToCall,
     asked,
@@ -504,6 +551,15 @@ export function VerdictCards({
   model: VerdictModel;
   onHighlight?: (cells: Set<string>) => void;
 }) {
+  /*
+    Each toggleable card remembers its own currency. The state seeds from
+    storage once and is the single writer of `cardUnits`; App.tsx round-trips
+    the rest of the settings object independently and never touches this field,
+    so a card flip and a dodge-mode change in the same session cannot clobber
+    each other (see setCardUnit). Declared before the `rated` guard so the hook
+    order never depends on the board.
+  */
+  const [cardUnits, setCardUnits] = useState(() => loadSettings().cardUnits);
   if (!model.rated) return null;
   const {
     board,
@@ -516,6 +572,11 @@ export function VerdictCards({
     pWe,
     pThey,
     typical,
+    chance,
+    chanceFloorNaive,
+    pWeChance,
+    pTheyChance,
+    reportChance,
     dominant,
     asked,
     setAsked,
@@ -537,75 +598,121 @@ export function VerdictCards({
     theirName,
     winPct,
   } = model;
+
+  /*
+    The remaining currency helpers are plain closures over `cardUnits`, not
+    hooks, so they are safe below the guard.
+  */
+  const unitOf = (id: CardId): CardUnit => resolveCardUnit(cardUnits, id);
+  const toggleCard = (id: CardId) => {
+    const next: CardUnit = unitOf(id) === "points" ? "chance" : "points";
+    setCardUnits(setCardUnit(id, next).cardUnits);
+  };
+  // A chance delta only earns a number once it rounds to a visible percent; below
+  // that the card says so in words rather than claiming a hollow "0%".
+  const showsPct = (p: number) => Math.round(p * 100) >= 1;
   return (
       <div className="insight-list">
         {/*
           The permutation floor counts outcomes the pairing protocol can never
           actually produce, so it reads more pessimistic than the real game.
+          Points by default; the chance twin prices the same protection in the
+          currency that takes the round.
         */}
         {guaranteed > o.floor && (
-          <Insight
-            title={`The protocol protects ${fmt(guaranteed - o.floor)} of that`}
-            body={`A naive worst case says ${fmt(o.floor)}, but that assumes they can hand-pick any
-              set of matchups. They cannot -- pairing is turn-taking, and half the decisions
-              are yours. Against best play you hold ${fmt(guaranteed)}.`}
+          <ToggleableInsight
+            unit={unitOf("protocolProtects")}
+            onToggle={() => toggleCard("protocolProtects")}
+            points={{
+              title: `The protocol protects ${fmt(guaranteed - o.floor)} of that`,
+              body: `A naive worst case says ${fmt(o.floor)}, but that assumes they can hand-pick any
+                set of matchups. They cannot -- pairing is turn-taking, and half the decisions
+                are yours. Against best play you hold ${fmt(guaranteed)}.`,
+            }}
+            chance={{
+              title: showsPct(protect.base - chanceFloorNaive)
+                ? `The protocol protects ${pct(protect.base - chanceFloorNaive)} of round-win chance`
+                : `The protocol guards your round-win chance`,
+              body: `A naive worst case gives you ${pct(chanceFloorNaive)} to take the round, but that
+                assumes they hand-pick every matchup. They cannot -- pairing is turn-taking, and
+                half the calls are yours. Against best play you hold ${pct(protect.base)}.`,
+            }}
           />
         )}
 
         {typical.expected - guaranteed >= 0.5 && (
-          <Insight
-            title={`Being hunted costs ${fmt(typical.expected - guaranteed)} of that`}
-            body={`The guaranteed ${fmt(guaranteed)} assumes their grid is the exact opposite of
-              yours -- every matchup you rated good, they rated bad. Two real WTC teams'
-              grids matched that shape almost not at all. Playing a board of their own they
-              land you nearer ${fmt(typical.expected)}, and rarely below ${fmt(typical.low)}.
-              Use ${fmt(guaranteed)} when you must not lose, ${fmt(typical.expected)} when
-              you must win.`}
+          <ToggleableInsight
+            unit={unitOf("beingHunted")}
+            onToggle={() => toggleCard("beingHunted")}
+            points={{
+              title: `Being hunted costs ${fmt(typical.expected - guaranteed)} of that`,
+              body: `The guaranteed ${fmt(guaranteed)} assumes their grid is the exact opposite of
+                yours -- every matchup you rated good, they rated bad. Two real WTC teams'
+                grids matched that shape almost not at all. Playing a board of their own they
+                land you nearer ${fmt(typical.expected)}, and rarely below ${fmt(typical.low)}.
+                Use ${fmt(guaranteed)} when you must not lose, ${fmt(typical.expected)} when
+                you must win.`,
+            }}
+            chance={{
+              title: showsPct(chance.expected - protect.base)
+                ? `Being hunted costs ${pct(chance.expected - protect.base)} of round-win chance`
+                : `Being hunted barely dents your round-win chance`,
+              body: `The guaranteed ${pct(protect.base)} assumes their grid is the exact opposite of
+                yours. Real teams' grids almost never are; playing a board of their own they land
+                you nearer ${pct(chance.expected)}, and rarely below ${pct(chance.low)}.
+                Use ${pct(protect.base)} when you must not lose, ${pct(chance.expected)} when you
+                must win.`,
+            }}
           />
         )}
 
-        {initiative !== 0 ? (
-          <Insight
-            title={
-              initiative < 0
-                ? `Going first costs ${fmt(-initiative)}`
-                : `Going first gains ${fmt(initiative)}`
-            }
-            body={
-              initiative < 0
-                ? `Guaranteed ${fmt(pWe)} if you put a player up first, ${fmt(pThey)} if they do.
-                   The side that offers the pair controls the menu; the side that picks only
-                   chooses from it. If the order is yours to influence, make them commit first.`
-                : `Guaranteed ${fmt(pWe)} opening, ${fmt(pThey)} if they open. Unusually, this
-                   board rewards committing first.`
-            }
-          />
-        ) : (
-          /*
-            The dice-off is free on this board, and saying nothing about that is
-            not the same as saying so. Silence here reads as "not calculated",
-            which is the one thing it never is -- `initiative` exists on every
-            render from two protocolFloor calls the panel already makes.
+        {/*
+          The dice-off card always renders -- silence would read as "not
+          calculated", which it never is (`initiative` is two protocolFloor calls
+          the panel already makes every render). Points is the default, and its
+          two branches survive: a live gap ("Going first gains/costs X") or a free
+          board ("does not matter here").
 
-            Measured over the 31 saved event boards the gap takes exactly one
-            non-zero value, 1.000 points, and is exactly zero on 13 of them. So
-            this branch fires on more than a third of real boards, and on those
-            boards losing the roll costs nothing at all. That is worth a line:
-            it frees you from spending any thought on an outcome you cannot
-            control.
-
-            Deliberately phrased in points and not in round-win chance. The
-            probability version of this gap is also a single constant, 7.96875
-            percentage points, and it costs 17-36 ms of winChanceFloor to
-            recover a number that carries no board-specific information.
-          */
-          <Insight
-            title="The dice-off does not matter here"
-            body={`Guaranteed ${fmt(pWe)} either way -- ${fmt(pWe)} if you put a player up first,
-                   ${fmt(pThey)} if they do. Win or lose the roll, this board hands you the same
-                   floor, so there is nothing to plan around and nothing to regret.`}
-          />
-        )}
+          The chance twin is deliberately NOT branched. In round-win chance the
+          dice-off is never actually free: even on the boards where the POINTS gap
+          is exactly zero, the chance gap is a board-independent ~8pp constant
+          (7.96875pp). So chance mode shows both side floors plainly -- option B,
+          no gains/costs verb -- because there is no single "cost" to name, only
+          two floors to read.
+        */}
+        <ToggleableInsight
+          unit={unitOf("diceOff")}
+          onToggle={() => toggleCard("diceOff")}
+          points={
+            initiative !== 0
+              ? {
+                  title:
+                    initiative < 0
+                      ? `Going first costs ${fmt(-initiative)}`
+                      : `Going first gains ${fmt(initiative)}`,
+                  body:
+                    initiative < 0
+                      ? `Guaranteed ${fmt(pWe)} if you put a player up first, ${fmt(pThey)} if they do.
+                         The side that offers the pair controls the menu; the side that picks only
+                         chooses from it. If the order is yours to influence, make them commit first.`
+                      : `Guaranteed ${fmt(pWe)} opening, ${fmt(pThey)} if they open. Unusually, this
+                         board rewards committing first.`,
+                }
+              : {
+                  title: "The dice-off does not matter here",
+                  body: `Guaranteed ${fmt(pWe)} either way -- ${fmt(pWe)} if you put a player up first,
+                         ${fmt(pThey)} if they do. Win or lose the roll, this board hands you the same
+                         floor, so there is nothing to plan around and nothing to regret.`,
+                }
+          }
+          chance={{
+            title: "The dice-off, in round-win chance",
+            body: `${pct(pWeChance)} to take the round if you put a player up first, ${pct(pTheyChance)}
+                   if they do. The side that offers the pairing sets the menu; the other only picks
+                   from it -- and in chance terms that edge never fully vanishes, even when the points
+                   gap does.`,
+          }}
+        />
 
         {/*
           Offered rather than shown. One tap, and it stays open for this board.
@@ -810,15 +917,28 @@ export function VerdictCards({
           />
         )}
 
-        {report.choiceMatters && (
-          <Insight
-            title={`A real trade-off: ${fmt(report.floorAtStake)} floor against ${fmt(report.ceilingAtStake)} ceiling`}
-            body={`Safest is ${board.ourPlayers[report.safest.ours]} into
-              ${board.theirPlayers[report.safest.theirs]} (floor ${fmt(report.safest.outlook.floor)}).
-              Boldest is ${board.ourPlayers[report.boldest.ours]} into
-              ${board.theirPlayers[report.boldest.theirs]} (ceiling ${fmt(report.boldest.outlook.ceiling)}).
-              This is the one call the app should not make for you: take the floor if you
-              must not lose, take the ceiling if you must win.`}
+        {report.choiceMatters && reportChance && (
+          <ToggleableInsight
+            unit={unitOf("tradeOff")}
+            onToggle={() => toggleCard("tradeOff")}
+            points={{
+              title: `A real trade-off: ${fmt(report.floorAtStake)} floor against ${fmt(report.ceilingAtStake)} ceiling`,
+              body: `Safest is ${board.ourPlayers[report.safest.ours]} into
+                ${board.theirPlayers[report.safest.theirs]} (floor ${fmt(report.safest.outlook.floor)}).
+                Boldest is ${board.ourPlayers[report.boldest.ours]} into
+                ${board.theirPlayers[report.boldest.theirs]} (ceiling ${fmt(report.boldest.outlook.ceiling)}).
+                This is the one call the app should not make for you: take the floor if you
+                must not lose, take the ceiling if you must win.`,
+            }}
+            chance={{
+              title: `A real trade-off: ${pct(reportChance.floorAtStake)} floor against ${pct(reportChance.ceilingAtStake)} ceiling`,
+              body: `Safest is ${board.ourPlayers[reportChance.safest.ours]} into
+                ${board.theirPlayers[reportChance.safest.theirs]} (floor ${pct(reportChance.safest.floor)} to
+                take the round). Boldest is ${board.ourPlayers[reportChance.boldest.ours]} into
+                ${board.theirPlayers[reportChance.boldest.theirs]} (ceiling ${pct(reportChance.boldest.ceiling)}).
+                This is the one call the app should not make for you: take the floor if you must not
+                lose, take the ceiling if you must win.`,
+            }}
             onFocus={() =>
               onHighlight?.(
                 new Set([
@@ -830,12 +950,24 @@ export function VerdictCards({
           />
         )}
 
-        {report.hiddenFloorCost > 0 && (
-          <Insight
-            title={`${fmt(report.hiddenFloorCost)} points hide behind a tie`}
-            body={`Several pairings reach the same ceiling, so a single score rates them
-              equally. Their guaranteed floors differ by ${fmt(report.hiddenFloorCost)}.
-              Picking the wrong one of two "equal" options gives that away for nothing.`}
+        {report.hiddenFloorCost > 0 && reportChance && (
+          <ToggleableInsight
+            unit={unitOf("hiddenTie")}
+            onToggle={() => toggleCard("hiddenTie")}
+            points={{
+              title: `${fmt(report.hiddenFloorCost)} points hide behind a tie`,
+              body: `Several pairings reach the same ceiling, so a single score rates them
+                equally. Their guaranteed floors differ by ${fmt(report.hiddenFloorCost)}.
+                Picking the wrong one of two "equal" options gives that away for nothing.`,
+            }}
+            chance={{
+              title: showsPct(reportChance.hiddenFloorCost)
+                ? `${pct(reportChance.hiddenFloorCost)} of round-win chance hides behind a tie`
+                : `Round-win chance hides behind a tie`,
+              body: `Several pairings reach the same ceiling, so a single score rates them
+                equally. Their guaranteed round-win chances differ by ${pct(reportChance.hiddenFloorCost)}.
+                Picking the wrong one of two "equal" options gives that away for nothing.`,
+            }}
           />
         )}
       </div>
@@ -885,6 +1017,71 @@ function Insight({
     <div className="insight" onClick={onFocus} role={onFocus ? "button" : undefined}>
       <p className="insight-title">{title}</p>
       <p className="insight-body">{body}</p>
+    </div>
+  );
+}
+
+/**
+ * An `Insight` whose numbers can be read in either currency.
+ *
+ * The captain long-presses the card (or right-clicks on a desktop, or clicks the
+ * small unit pill) to swap the whole card between rating points and round-win
+ * chance. The gesture matches the grid's opponent-name hold, so there is one
+ * "press and hold to see the other side of this" idiom across the app.
+ *
+ * The visible pill is the load-bearing control: it is a real focusable button
+ * with an aria-label, so the keyboard and the tests reach the toggle the same
+ * way. The hold and the context menu are discoverable bonuses layered on top;
+ * the card is not keyboard-focusable itself, so the hook's Enter/Space handler
+ * is inert there and cannot fight the pill.
+ *
+ * A card only ever CHANGES WORDING, never appears or disappears, when toggled:
+ * visibility stays points-driven upstream so a captain flipping a unit can never
+ * make a card vanish under their thumb.
+ */
+function ToggleableInsight({
+  unit,
+  onToggle,
+  points,
+  chance,
+  onFocus,
+}: {
+  unit: CardUnit;
+  onToggle: () => void;
+  points: { title: string; body: string };
+  chance: { title: string; body: string };
+  onFocus?: () => void;
+}) {
+  const active = unit === "points" ? points : chance;
+  const hold = useLongPress(onToggle);
+  return (
+    <div
+      className="insight toggleable"
+      onClick={onFocus}
+      role={onFocus ? "button" : undefined}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onToggle();
+      }}
+      {...hold}
+    >
+      <button
+        type="button"
+        className="insight-unit"
+        aria-label={
+          unit === "points"
+            ? "Showing rating points. Switch to round-win chance."
+            : "Showing round-win chance. Switch to rating points."
+        }
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+      >
+        {unit === "points" ? "pts" : "%"}
+      </button>
+      <p className="insight-title">{active.title}</p>
+      <p className="insight-body">{active.body}</p>
     </div>
   );
 }

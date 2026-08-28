@@ -4,6 +4,7 @@ import {
   boardOutlook,
   cellOutlooks,
   decisionReport,
+  decisionReportChance,
   dominates,
   evenThreshold,
   hungarianMin,
@@ -12,6 +13,7 @@ import {
   UNWINNABLE,
   type Matrix,
 } from "./boardAnalysis";
+import { committedChanceExtremes, probabilityMatrix } from "./winProbability";
 import { protocolFloor, solveProtocol, type ProtocolState, type Side } from "./protocol";
 
 /**
@@ -206,6 +208,60 @@ describe("decisionReport", () => {
 
   it("rejects an empty board", () => {
     expect(() => decisionReport([], 0)).toThrow();
+  });
+});
+
+describe("decisionReportChance", () => {
+  it("recommends the same cells the points report names", () => {
+    // The two currencies must describe ONE decision. The chance report is only
+    // allowed to re-price the consequences, never to pick a different pairing,
+    // so its safest and boldest cells are exactly the points report's cells.
+    const tau = evenThreshold(5);
+    const points = decisionReport(WTC_TRADEOFF_BOARD, tau);
+    const chance = decisionReportChance(WTC_TRADEOFF_BOARD, tau);
+    expect([chance.safest.ours, chance.safest.theirs]).toEqual([
+      points.safest.ours,
+      points.safest.theirs,
+    ]);
+    expect([chance.boldest.ours, chance.boldest.theirs]).toEqual([
+      points.boldest.ours,
+      points.boldest.theirs,
+    ]);
+  });
+
+  it("prices each named cell with the committed chance bound", () => {
+    const tau = evenThreshold(5);
+    const chance = decisionReportChance(WTC_TRADEOFF_BOARD, tau);
+    const probs = probabilityMatrix(WTC_TRADEOFF_BOARD, 1, 5);
+    const [safeLo, safeHi] = committedChanceExtremes(probs, chance.safest.ours, chance.safest.theirs);
+    const [boldLo, boldHi] = committedChanceExtremes(probs, chance.boldest.ours, chance.boldest.theirs);
+    expect(chance.safest.floor).toBeCloseTo(safeLo, 12);
+    expect(chance.safest.ceiling).toBeCloseTo(safeHi, 12);
+    expect(chance.boldest.floor).toBeCloseTo(boldLo, 12);
+    expect(chance.boldest.ceiling).toBeCloseTo(boldHi, 12);
+    // The at-stake gaps are the spreads between those same two cells.
+    expect(chance.floorAtStake).toBeCloseTo(chance.safest.floor - chance.boldest.floor, 12);
+    expect(chance.ceilingAtStake).toBeCloseTo(chance.boldest.ceiling - chance.safest.ceiling, 12);
+  });
+
+  it("reports a non-negative hidden floor spread across the tied ceiling set", () => {
+    // The chance twin of hiddenFloorCost: the spread of guaranteed chance across
+    // the cells a points ceiling calls equal. On the flat board the safe pick is
+    // worth measurably more chance than the tied cost the points panel hides.
+    const tau = evenThreshold(5);
+    const chance = decisionReportChance(WTC_FLAT_BOARD, tau);
+    expect(chance.hiddenFloorCost).toBeGreaterThanOrEqual(0);
+  });
+
+  it("does not depend on row or column order", () => {
+    const tau = evenThreshold(5);
+    const first = decisionReportChance(WTC_TRADEOFF_BOARD, tau);
+    const order = [3, 1, 4, 0, 2];
+    const shuffled = order.map((i) => order.map((j) => WTC_TRADEOFF_BOARD[i][j]));
+    const second = decisionReportChance(shuffled, tau);
+    expect(second.floorAtStake).toBeCloseTo(first.floorAtStake, 12);
+    expect(second.ceilingAtStake).toBeCloseTo(first.ceilingAtStake, 12);
+    expect(second.hiddenFloorCost).toBeCloseTo(first.hiddenFloorCost, 12);
   });
 });
 

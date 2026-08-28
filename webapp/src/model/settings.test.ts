@@ -34,10 +34,14 @@ const store = new MemoryStorage();
 const {
   loadSettings,
   saveSettings,
+  setCardUnit,
+  resolveCardUnit,
   DEFAULTS,
   DODGE_MODES,
   ADVICE_LEVELS,
   SURPRISE_MODES,
+  CARD_IDS,
+  CARD_UNIT_DEFAULTS,
 } =
   await import("./settings");
 
@@ -68,6 +72,7 @@ describe("app settings", () => {
         adviceLevel: DEFAULTS.adviceLevel,
         surpriseMode: DEFAULTS.surpriseMode,
         surpriseRegretThreshold: DEFAULTS.surpriseRegretThreshold,
+        cardUnits: DEFAULTS.cardUnits,
       });
       expect(loadSettings().dodgeMode).toBe(mode.id);
     }
@@ -80,6 +85,7 @@ describe("app settings", () => {
         adviceLevel: level.id,
         surpriseMode: DEFAULTS.surpriseMode,
         surpriseRegretThreshold: DEFAULTS.surpriseRegretThreshold,
+        cardUnits: DEFAULTS.cardUnits,
       });
       expect(loadSettings().adviceLevel).toBe(level.id);
     }
@@ -110,6 +116,7 @@ describe("app settings", () => {
         adviceLevel: DEFAULTS.adviceLevel,
         surpriseMode: mode.id,
         surpriseRegretThreshold: DEFAULTS.surpriseRegretThreshold,
+        cardUnits: DEFAULTS.cardUnits,
       });
       expect(loadSettings().surpriseMode).toBe(mode.id);
     }
@@ -121,6 +128,7 @@ describe("app settings", () => {
       adviceLevel: DEFAULTS.adviceLevel,
       surpriseMode: DEFAULTS.surpriseMode,
       surpriseRegretThreshold: 1.5,
+      cardUnits: DEFAULTS.cardUnits,
     });
     expect(loadSettings().surpriseRegretThreshold).toBe(1.5);
   });
@@ -136,6 +144,8 @@ describe("app settings", () => {
       '{"adviceLevel":"banana"}',
       '{"surpriseMode":"banana"}',
       '{"surpriseRegretThreshold":-1}',
+      '{"cardUnits":"banana"}',
+      '{"cardUnits":{"diceOff":"banana"}}',
     ]) {
       store.setItem(KEY, junk);
       expect(() => loadSettings()).not.toThrow();
@@ -143,6 +153,7 @@ describe("app settings", () => {
       expect(loadSettings().adviceLevel).toBe(DEFAULTS.adviceLevel);
       expect(loadSettings().surpriseMode).toBe(DEFAULTS.surpriseMode);
       expect(loadSettings().surpriseRegretThreshold).toBe(DEFAULTS.surpriseRegretThreshold);
+      expect(loadSettings().cardUnits).toEqual({});
     }
   });
 
@@ -175,8 +186,7 @@ describe("app settings", () => {
     expect(loaded.surpriseRegretThreshold).toBe(1);
   });
 
-  it("still applies the setting when storage refuses to write", () => {
-    const broken = {
+  it("still applies the setting when storage refuses to write", () => {    const broken = {
       getItem: () => null,
       setItem: () => {
         throw new Error("QuotaExceededError");
@@ -191,6 +201,7 @@ describe("app settings", () => {
         adviceLevel: "brief" as const,
         surpriseMode: "on" as const,
         surpriseRegretThreshold: 0.5,
+        cardUnits: {},
       };
       expect(() => saveSettings(next)).not.toThrow();
       expect(saveSettings(next).dodgeMode).toBe("off");
@@ -200,5 +211,71 @@ describe("app settings", () => {
     } finally {
       (globalThis as unknown as { localStorage: unknown }).localStorage = real;
     }
+  });
+});
+
+describe("per-card currency", () => {
+  beforeEach(() => store.clear());
+
+  it("starts every card on its owner-set default", () => {
+    // A fresh install carries no overrides, so each card reads in the currency
+    // the owner chose for it, not a single app-wide unit.
+    expect(loadSettings().cardUnits).toEqual({});
+    expect(resolveCardUnit(loadSettings().cardUnits, "protocolProtects")).toBe("chance");
+    expect(resolveCardUnit(loadSettings().cardUnits, "beingHunted")).toBe("chance");
+    expect(resolveCardUnit(loadSettings().cardUnits, "diceOff")).toBe("points");
+    expect(resolveCardUnit(loadSettings().cardUnits, "tradeOff")).toBe("chance");
+    expect(resolveCardUnit(loadSettings().cardUnits, "hiddenTie")).toBe("chance");
+  });
+
+  it("names exactly the five toggleable cards, once each", () => {
+    expect(new Set(CARD_IDS)).toEqual(
+      new Set(["protocolProtects", "beingHunted", "diceOff", "tradeOff", "hiddenTie"]),
+    );
+    expect(CARD_IDS).toHaveLength(5);
+    // Every card has a default, so no card can render an undefined unit.
+    for (const id of CARD_IDS) {
+      expect(CARD_UNIT_DEFAULTS[id] === "points" || CARD_UNIT_DEFAULTS[id] === "chance").toBe(true);
+    }
+  });
+
+  it("remembers a switched card across a reload", () => {
+    setCardUnit("diceOff", "chance");
+    expect(resolveCardUnit(loadSettings().cardUnits, "diceOff")).toBe("chance");
+    setCardUnit("protocolProtects", "points");
+    expect(resolveCardUnit(loadSettings().cardUnits, "protocolProtects")).toBe("points");
+  });
+
+  it("switches one card without disturbing another or the app-wide toggles", () => {
+    // The cards share the settings key with dodge mode; flipping a card must not
+    // reset a preference set elsewhere, and vice versa.
+    saveSettings({
+      dodgeMode: "always",
+      adviceLevel: "off",
+      surpriseMode: "on",
+      surpriseRegretThreshold: 2,
+      cardUnits: { diceOff: "chance" },
+    });
+    setCardUnit("tradeOff", "points");
+    const loaded = loadSettings();
+    expect(loaded.cardUnits.diceOff).toBe("chance");
+    expect(loaded.cardUnits.tradeOff).toBe("points");
+    expect(loaded.dodgeMode).toBe("always");
+    expect(loaded.adviceLevel).toBe("off");
+    expect(loaded.surpriseMode).toBe("on");
+    expect(loaded.surpriseRegretThreshold).toBe(2);
+  });
+
+  it("keeps a valid override while dropping a junk sibling", () => {
+    store.setItem(
+      KEY,
+      JSON.stringify({ cardUnits: { diceOff: "chance", beingHunted: "banana", ghost: "points" } }),
+    );
+    const loaded = loadSettings();
+    expect(loaded.cardUnits.diceOff).toBe("chance");
+    // A junk value falls back to the card's default rather than being trusted.
+    expect(resolveCardUnit(loaded.cardUnits, "beingHunted")).toBe("chance");
+    // An unknown card id never enters the stored record.
+    expect("ghost" in loaded.cardUnits).toBe(false);
   });
 });

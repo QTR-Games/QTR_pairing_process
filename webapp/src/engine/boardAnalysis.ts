@@ -11,6 +11,8 @@
  * against THEIR player `j`, higher being better for us.
  */
 
+import { committedChanceExtremes, probabilityMatrix } from "./winProbability";
+
 export type Matrix = readonly (readonly number[])[];
 
 export const UNWINNABLE = "unwinnable";
@@ -285,5 +287,81 @@ export function decisionReport(matrix: Matrix, tau: number, committed = 0): Deci
     choiceMatters: distinct.size > 1,
     floorAtStake: safest.outlook.floor - boldest.outlook.floor,
     ceilingAtStake: boldest.outlook.ceiling - safest.outlook.ceiling,
+  };
+}
+
+export interface CellChance {
+  ours: number;
+  theirs: number;
+  floor: number;
+  ceiling: number;
+}
+
+export interface DecisionReportChance {
+  safest: CellChance;
+  boldest: CellChance;
+  /** Guaranteed round-win chance given up by taking the bold cell over the safe one. */
+  floorAtStake: number;
+  /** Upside chance given up by taking the safe cell over the bold one. */
+  ceilingAtStake: number;
+  /**
+   * The chance-valued twin of `DecisionReport.hiddenFloorCost`: the spread in
+   * guaranteed round-win chance across the very pairings a points ceiling rates
+   * as equal.
+   */
+  hiddenFloorCost: number;
+}
+
+/**
+ * `decisionReport` re-expressed in round-win chance rather than points.
+ *
+ * The RECOMMENDATION stays points-driven: which cell is "safest" and which is
+ * "boldest", and which pairings a ceiling-only metric calls tied, are decided by
+ * the same `decisionReport` the panel already trusts. Only the CONSEQUENCES --
+ * the floors, ceilings, and the gaps between them -- are recomputed in chance,
+ * because a captain deciding whether the trade-off is worth it wants it in the
+ * currency that takes the round, not in points.
+ *
+ * That split is deliberate: `committedChanceExtremes` bounds are not a sum, so
+ * the cell that is safest in chance need not be the cell that is safest in
+ * points. Re-picking here would quietly recommend a different pairing than the
+ * points cards name, and the two currencies are meant to describe ONE decision.
+ */
+export function decisionReportChance(
+  matrix: Matrix,
+  tau: number,
+  ratingMin = 1,
+  ratingMax = 5,
+): DecisionReportChance {
+  const report = decisionReport(matrix, tau);
+  const probs = probabilityMatrix(matrix, ratingMin, ratingMax);
+
+  const chanceAt = (ours: number, theirs: number): CellChance => {
+    const [floor, ceiling] = committedChanceExtremes(probs, ours, theirs);
+    return { ours, theirs, floor, ceiling };
+  };
+
+  const safest = chanceAt(report.safest.ours, report.safest.theirs);
+  const boldest = chanceAt(report.boldest.ours, report.boldest.theirs);
+
+  // The same tied set decisionReport measured: cells whose POINTS ceiling ties
+  // the board maximum. Recomputed here because decisionReport does not expose
+  // it, at the cost of one more cellOutlooks pass (ten sorts of five numbers).
+  const outlooks = cellOutlooks(matrix, tau);
+  const cells = [...outlooks].map(([key, o]) => {
+    const [i, j] = key.split(",").map(Number);
+    return { ours: i, theirs: j, ceiling: o.ceiling };
+  });
+  const bestCeiling = Math.max(...cells.map((c) => c.ceiling));
+  const tiedFloors = cells
+    .filter((c) => c.ceiling === bestCeiling)
+    .map((c) => committedChanceExtremes(probs, c.ours, c.theirs)[0]);
+
+  return {
+    safest,
+    boldest,
+    floorAtStake: safest.floor - boldest.floor,
+    ceilingAtStake: boldest.ceiling - safest.ceiling,
+    hiddenFloorCost: Math.max(...tiedFloors) - Math.min(...tiedFloors),
   };
 }
