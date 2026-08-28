@@ -13,6 +13,7 @@
 import type { Matrix } from "../engine/boardAnalysis";
 import type { LiveState } from "../engine/live";
 import { fromFraction, scaleById, toFraction, type Scale } from "./scale";
+import { getStore } from "./store";
 
 export const TEAM_SIZE = 5;
 
@@ -184,7 +185,7 @@ const KEY = BOARDS_KEY;
 
 export function loadBoards(): Board[] {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = getStore().getItem(KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as Board[];
     return Array.isArray(parsed) ? parsed.filter(isValidBoard) : [];
@@ -215,7 +216,7 @@ export function saveBoard(board: Board): Board[] {
   else boards.unshift(next);
   boards.sort((a, b) => b.updatedAt - a.updatedAt);
   try {
-    localStorage.setItem(KEY, JSON.stringify(boards));
+    getStore().setItem(KEY, JSON.stringify(boards));
   } catch {
     // Out of quota. The in-memory board still works for this round.
   }
@@ -241,7 +242,7 @@ export function saveBoards(newBoards: Board[]): Board[] {
   });
   boards.sort((a, b) => b.updatedAt - a.updatedAt);
   try {
-    localStorage.setItem(KEY, JSON.stringify(boards));
+    getStore().setItem(KEY, JSON.stringify(boards));
   } catch {
     // Out of quota. The returned in-memory list still drives this session.
   }
@@ -251,7 +252,7 @@ export function saveBoards(newBoards: Board[]): Board[] {
 export function deleteBoard(id: string): Board[] {
   const boards = loadBoards().filter((b) => b.id !== id);
   try {
-    localStorage.setItem(KEY, JSON.stringify(boards));
+    getStore().setItem(KEY, JSON.stringify(boards));
   } catch {
     /* ignore */
   }
@@ -298,14 +299,14 @@ type LiveMap = Record<string, StoredLive>;
 
 function readLiveMap(): LiveMap {
   try {
-    const raw = localStorage.getItem(LIVE_KEY);
+    const raw = getStore().getItem(LIVE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as LiveMap;
       return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
     }
     // Nothing in the new layout. Someone updating mid-event may still have a
     // round in the old one, and that is precisely the round worth rescuing.
-    const legacy = localStorage.getItem(LEGACY_LIVE_KEY);
+    const legacy = getStore().getItem(LEGACY_LIVE_KEY);
     if (!legacy) return {};
     const one = JSON.parse(legacy) as StoredLive;
     return one && one.boardId ? { [one.boardId]: one } : {};
@@ -328,10 +329,10 @@ function writeLiveMap(map: LiveMap, keep?: string): void {
     });
     const kept: LiveMap = {};
     for (const e of entries.slice(0, MAX_LIVE_ROUNDS)) kept[e.boardId] = e;
-    localStorage.setItem(LIVE_KEY, JSON.stringify(kept));
+    getStore().setItem(LIVE_KEY, JSON.stringify(kept));
     // Only once the new layout has taken, so a failed write cannot strand the
     // round in neither place.
-    localStorage.removeItem(LEGACY_LIVE_KEY);
+    getStore().removeItem(LEGACY_LIVE_KEY);
   } catch {
     // Out of quota. The in-memory round still works for this round.
   }

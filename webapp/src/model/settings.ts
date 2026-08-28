@@ -11,6 +11,8 @@
  * throws on a corrupt preference is worse than one that quietly uses defaults.
  */
 
+import { getStore } from "./store";
+
 /**
  * How much the screen should say about the worst matchup on the board.
  *
@@ -182,7 +184,7 @@ export const resolveCardUnit = (
 
 export function loadSettings(): Settings {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = getStore().getItem(KEY);
     if (!raw) return { ...DEFAULTS };
     const parsed = JSON.parse(raw) as Partial<Settings>;
     // Field by field rather than trusting the shape. A settings file written by
@@ -206,7 +208,7 @@ export function loadSettings(): Settings {
 
 export function saveSettings(settings: Settings): Settings {
   try {
-    localStorage.setItem(KEY, JSON.stringify(settings));
+    getStore().setItem(KEY, JSON.stringify(settings));
   } catch {
     // Out of quota, or storage disabled. The in-memory setting still applies
     // for this session, which is the part that matters during a round.
