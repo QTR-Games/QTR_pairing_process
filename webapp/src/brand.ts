@@ -22,7 +22,7 @@ export const BRAND = {
    * name; only the shipped app is KLIK KLAK.
    */
   product: "KLIK KLAK",
-  tagline: "Pairing maths for team tournaments",
+  tagline: "Play like you've got a pairing.",
 } as const;
 
 /**
