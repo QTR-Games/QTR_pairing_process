@@ -20,6 +20,19 @@ interface Props {
    * existed. Returning null for a cell is the normal case even on desktop.
    */
   overlay?: (ours: number, theirs: number) => ReactNode;
+  /**
+   * The body of the per-cell info popup, opened by a long-press on that cell.
+   *
+   * This is the phone's answer to the desktop overlay dropdown: the desktop can
+   * paint every cell's exposure and dodge price at once because it has the room,
+   * a phone cannot, so instead a hold on one cell opens a sheet with the same
+   * figures for just that matchup. Only the phone Board tab supplies this;
+   * omitted, cells have no hold gesture and behave exactly as before.
+   *
+   * Invoked lazily -- only for the cell actually held, and only while its sheet
+   * is open -- so the expensive dodge solve never runs during rating entry.
+   */
+  cellInfo?: (ours: number, theirs: number) => ReactNode;
 }
 
 /**
@@ -30,14 +43,30 @@ interface Props {
  * opens the value picker rather than a keyboard: phone keyboards cover half the
  * screen and typing a number is slower than hitting one of five big targets.
  */
-export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
+export function Grid({ board, onChange, locked, highlight, overlay, cellInfo }: Props) {
   const scale = boardScale(board);
   const [editing, setEditing] = useState<{ ours: number; theirs: number } | null>(null);
   // Which opponent's roster popup is open, as an index into `theirPlayers`.
   // Opened by a long-press (or keyboard) on that name, and only offered for
   // players an import gave detail for -- see `OppName`.
   const [info, setInfo] = useState<number | null>(null);
+  // Which cell's info popup is open. Opened by a long-press on the cell, and
+  // only when `cellInfo` is supplied (the phone Board tab). See the cell button.
+  const [cellHeldSel, setCellHeldSel] = useState<{ ours: number; theirs: number } | null>(null);
   const values = scaleValues(scale);
+
+  // A long-press on a cell has to open the info sheet WITHOUT the tap-to-edit
+  // firing after the finger lifts. One press happens at a time, so a pair of
+  // component-level refs is enough: `cellTimer` is the pending hold, `cellHeld`
+  // records that a hold fired so the click it precedes can be swallowed once.
+  const cellTimer = useRef<number | null>(null);
+  const cellHeld = useRef(false);
+  const clearCellTimer = () => {
+    if (cellTimer.current !== null) {
+      window.clearTimeout(cellTimer.current);
+      cellTimer.current = null;
+    }
+  };
 
   // The captain's protect-first pick, marked on that player's row so the call
   // made on the reading screen is visible while looking at the sheet. Trusted
@@ -85,7 +114,33 @@ export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
                         "cell" + (isLocked ? " locked" : "") + (isHigh ? " highlight" : "")
                       }
                       style={{ background: ratingColor(f) }}
-                      onClick={() => setEditing({ ours: i, theirs: j })}
+                      onClick={() => {
+                        // Swallow the click that follows a long-press so a hold
+                        // opens the info sheet without also opening the editor.
+                        if (cellHeld.current) {
+                          cellHeld.current = false;
+                          return;
+                        }
+                        setEditing({ ours: i, theirs: j });
+                      }}
+                      {...(cellInfo
+                        ? {
+                            onPointerDown: (e: React.PointerEvent) => {
+                              if (e.button !== 0) return;
+                              cellHeld.current = false;
+                              clearCellTimer();
+                              cellTimer.current = window.setTimeout(() => {
+                                cellTimer.current = null;
+                                cellHeld.current = true;
+                                setCellHeldSel({ ours: i, theirs: j });
+                              }, 450);
+                            },
+                            onPointerUp: clearCellTimer,
+                            onPointerLeave: clearCellTimer,
+                            onPointerCancel: clearCellTimer,
+                            onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+                          }
+                        : {})}
                       aria-label={`${board.ourPlayers[i]} versus ${board.theirPlayers[j]}`}
                     >
                       {Math.round(winProbabilityFromFraction(f) * 100)}
@@ -155,6 +210,30 @@ export function Grid({ board, onChange, locked, highlight, overlay }: Props) {
             <p className="sheet-title">{board.theirPlayers[info]}</p>
             <OpponentDetailView detail={board.theirDetails?.[info]} />
             <button type="button" className="ghost wide" onClick={() => setInfo(null)}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/*
+        The per-cell overlay figures, shown on a long-press of a cell. This is
+        the phone's stand-in for the desktop overlay dropdown: everything the
+        desktop can paint across the whole grid -- what the opening costs, what
+        refusing the matchup costs -- for the one cell the captain is holding.
+        `cellInfo` is invoked here and only here, so the dodge solve it runs
+        happens once, when the sheet opens, and never during rating entry.
+      */}
+      {cellHeldSel && cellInfo && (
+        <div className="sheet-backdrop" onClick={() => setCellHeldSel(null)} role="presentation">
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <p className="sheet-title">
+              {board.ourPlayers[cellHeldSel.ours]}
+              <span className="vs"> vs </span>
+              {board.theirPlayers[cellHeldSel.theirs]}
+            </p>
+            {cellInfo(cellHeldSel.ours, cellHeldSel.theirs)}
+            <button type="button" className="ghost wide" onClick={() => setCellHeldSel(null)}>
               Close
             </button>
           </div>

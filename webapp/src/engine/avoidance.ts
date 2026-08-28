@@ -821,6 +821,37 @@ export function dodgeMapChance(
 }
 
 /**
+ * The dodge price of a single matchup, in round-win probability.
+ *
+ * This is `dodgeMapChance` for one cell. It runs the two solves that cell needs
+ * -- the unconstrained baseline and the one that refuses this matchup -- instead
+ * of the whole board, so a phone can price the cell a captain is holding without
+ * paying for the other twenty-four. The per-cell math is copied verbatim from
+ * `dodgeMapChance` so the two can never disagree; the pinning test guards that.
+ */
+export function dodgeCellChance(
+  matrix: Matrix,
+  cell: Cell,
+  ratingMin = 1,
+  ratingMax = 5,
+  ourTeamFirst = true,
+): ChancePrice {
+  const n = matrix.length;
+  const probs = probabilityMatrix(matrix, ratingMin, ratingMax);
+  const base = avoidingWinChance(probs, 0, ourTeamFirst) ?? 0;
+  const avoided = avoidingWinChance(probs, cellBit(cell, n), ourTeamFirst);
+  const price = avoided === null ? null : base - avoided;
+  return {
+    cell,
+    rating: matrix[cell.ours][cell.theirs],
+    base,
+    avoided,
+    price,
+    free: price !== null && price < 1e-9,
+  };
+}
+
+/**
  * Can both of these be refused at once, and what does it cost in round-win
  * probability?
  *

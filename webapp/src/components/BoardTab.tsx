@@ -3,7 +3,11 @@ import { Grid, Rosters } from "./Grid";
 import { useVerdictModel, VerdictHeadline, VerdictCards } from "./Verdict";
 import { boardMatrix, boardScale, isRated, type Board } from "../model/board";
 import { SCALES } from "../model/scale";
+import { dodgeCellChance } from "../engine/avoidance";
+import { cellOutlooks, evenThreshold } from "../engine/boardAnalysis";
 import { openingChoice } from "../engine/protocol";
+import { toWinProbability } from "../engine/winProbability";
+import { pct } from "../model/format";
 import type { DodgeMode } from "../model/settings";
 
 interface Props {
@@ -129,7 +133,13 @@ export function BoardTab({
         grid's border-spacing do not show the cards sliding underneath.
       */}
       <div className="board-grid-sticky">
-        <Grid board={board} onChange={onBoardChange} highlight={highlight} locked={lockedCells} />
+        <Grid
+          board={board}
+          onChange={onBoardChange}
+          highlight={highlight}
+          locked={lockedCells}
+          cellInfo={(ours, theirs) => <CellAnalysis board={board} ours={ours} theirs={theirs} />}
+        />
       </div>
 
       {model.rated && (
@@ -147,5 +157,95 @@ export function BoardTab({
         Start the round
       </button>
     </>
+  );
+}
+
+/**
+ * The per-cell info sheet body, shown when a captain long-presses a grid cell.
+ *
+ * The desktop paints two overlays across all 25 cells at once -- what each
+ * opening costs (in points) and what refusing each matchup costs (in round-win
+ * chance). A phone has no room for that, so a hold on one cell shows both
+ * figures for just that matchup here. Kept out of `Grid` so the grid stays
+ * presentational and pulls in no engine code; the phone Board tab owns the
+ * analysis and hands it in through `cellInfo`.
+ *
+ * Everything is computed in a single `useMemo` that runs when the sheet mounts
+ * -- which is only when a hold fires -- so the dodge solve, the one expensive
+ * step, never runs while ratings are being typed. It prices this single cell
+ * via `dodgeCellChance` rather than the whole board, ~12 ms instead of ~293.
+ *
+ * The two figures stay in their own units on purpose: the opening cost is a
+ * points total, the dodge a probability, and the two must never be added or
+ * shown as one number (see the note on `ChancePrice` in avoidance.ts).
+ */
+function CellAnalysis({ board, ours, theirs }: { board: Board; ours: number; theirs: number }) {
+  const scale = boardScale(board);
+  const analysis = useMemo(() => {
+    const matrix = boardMatrix(board, scale);
+    const rating = matrix[ours][theirs];
+    const winChance = toWinProbability(rating, scale.min, scale.max);
+    if (!isRated(board)) return { rating, winChance, rated: false as const };
+    const tau = evenThreshold(board.ourPlayers.length, scale.min, scale.max);
+    const outlooks = cellOutlooks(matrix, tau);
+    let bestFloor = -Infinity;
+    for (const o of outlooks.values()) bestFloor = Math.max(bestFloor, o.floor);
+    const outlook = outlooks.get(`${ours},${theirs}`)!;
+    const cost = bestFloor - outlook.floor;
+    const dodge = dodgeCellChance(matrix, { ours, theirs }, scale.min, scale.max, board.ourTeamFirst);
+    return { rating, winChance, rated: true as const, floor: outlook.floor, cost, dodge };
+  }, [board, scale, ours, theirs]);
+
+  return (
+    <div className="cell-info">
+      <p className="cell-info-rating">
+        Rated <strong>{analysis.rating}</strong> &mdash; about {pct(analysis.winChance)} to take
+        this game.
+      </p>
+      {!analysis.rated ? (
+        <p className="sheet-hint">Rate the board to price this matchup.</p>
+      ) : (
+        <>
+          <div className="cell-info-row">
+            <span className="cell-info-label">What this opening costs</span>
+            <span className="cell-info-value">
+              {analysis.cost < 1e-9 ? (
+                <>
+                  Guaranteed {analysis.floor.toFixed(1)} &mdash;{" "}
+                  <strong>best on the board</strong>
+                </>
+              ) : (
+                <>
+                  Guaranteed {analysis.floor.toFixed(1)}, giving up {analysis.cost.toFixed(1)}{" "}
+                  against the best opening
+                </>
+              )}
+            </span>
+          </div>
+          <div className="cell-info-row">
+            <span className="cell-info-label">Refusing this matchup</span>
+            <span className="cell-info-value">
+              {analysis.dodge.price === null ? (
+                <>
+                  <strong>forced</strong> &mdash; no line of play refuses it
+                </>
+              ) : analysis.dodge.free ? (
+                <>
+                  <strong>free</strong> &mdash; the protocol dodges it for nothing
+                </>
+              ) : (
+                <>
+                  costs <strong>{pct(analysis.dodge.price)}</strong> of round-win chance
+                </>
+              )}
+            </span>
+          </div>
+          <p className="sheet-hint">
+            Two currencies on purpose: the opening cost is in points, the dodge in round-win
+            chance. A high dodge price on a cell you rated badly is the matchup you are stuck with.
+          </p>
+        </>
+      )}
+    </div>
   );
 }

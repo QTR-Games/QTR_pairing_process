@@ -22,6 +22,7 @@ import {
   avoidingFloor,
   avoidingWinChance,
   cellBit,
+  dodgeCellChance,
   dodgeMapChance,
   forbidCells,
   pricePairChance,
@@ -266,6 +267,31 @@ describe("invariants", () => {
       for (const single of [find(a), find(b)]) {
         if (single?.price == null) continue;
         expect(pair.price).toBeGreaterThan(single.price - 1e-9);
+      }
+    }
+  });
+
+  it("dodgeCellChance matches dodgeMapChance cell by cell", () => {
+    for (const { opponent, matrix } of FIXTURES) {
+      const n = matrix.length;
+      const map = dodgeMapChance(matrix, 1, 5);
+      const byCell = new Map(map.map((d) => [`${d.cell.ours},${d.cell.theirs}`, d]));
+      for (let ours = 0; ours < n; ours++) {
+        for (let theirs = 0; theirs < n; theirs++) {
+          const one = dodgeCellChance(matrix, { ours, theirs }, 1, 5);
+          const all = byCell.get(`${ours},${theirs}`)!;
+          const label = `${opponent} [${ours}][${theirs}]`;
+          expect(one.rating, label).toBe(all.rating);
+          expect(one.base, label).toBeCloseTo(all.base, 12);
+          expect(one.free, label).toBe(all.free);
+          if (all.price === null) {
+            expect(one.price, label).toBeNull();
+            expect(one.avoided, label).toBeNull();
+          } else {
+            expect(one.price as number, label).toBeCloseTo(all.price, 12);
+            expect(one.avoided as number, label).toBeCloseTo(all.avoided as number, 12);
+          }
+        }
       }
     }
   });
