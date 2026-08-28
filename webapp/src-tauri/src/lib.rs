@@ -68,6 +68,19 @@ pub fn run() {
         )?;
       }
 
+      // Auto-update is a desktop-only concern: mobile builds update through
+      // their app stores, and the updater crate has no mobile support. The
+      // process plugin lets the frontend relaunch after an update on the
+      // platforms that need it (macOS/Linux); on Windows the NSIS installer
+      // relaunches the app itself.
+      #[cfg(desktop)]
+      {
+        app
+          .handle()
+          .plugin(tauri_plugin_updater::Builder::new().build())?;
+        app.handle().plugin(tauri_plugin_process::init())?;
+      }
+
       build_menu(app)?;
       Ok(())
     })
