@@ -351,15 +351,6 @@ main {
   box-shadow: 0 0 0 2px var(--panel);
 }
 
-.corner-unit {
-  display: block;
-  font-size: 0.58rem;
-  font-weight: 500;
-  color: var(--dim);
-  text-transform: lowercase;
-  letter-spacing: 0.02em;
-}
-
 .cell {
   width: 100%;
   height: 46px;
