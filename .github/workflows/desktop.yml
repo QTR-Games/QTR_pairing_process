@@ -1,0 +1,58 @@
+# Desktop (Tauri) CI.
+#
+# The webapp.yml gate proves the React build works in a browser; it says nothing
+# about whether the same build actually packages and launches as a native
+# Windows app. This job is that missing gate: it compiles the Tauri v2 shell on
+# Windows, runs the real bundler, and produces an installable KLIK KLAK setup.
+# A desktop build that only works on one machine is not a build.
+name: desktop
+
+on:
+  push:
+    branches: [main]
+    paths: ['webapp/**', '.github/workflows/desktop.yml']
+  pull_request:
+    paths: ['webapp/**', '.github/workflows/desktop.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # Cache the Cargo registry and the Tauri target dir so PRs don't pay the
+      # full cold-compile cost of the Rust dependency tree every run.
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: webapp/src-tauri -> target
+
+      - run: npm ci
+
+      # beforeBuildCommand in tauri.conf.json runs `npm run build`, so this also
+      # covers the frontend production build. --bundles nsis keeps the packager
+      # off WiX/MSI and produces the single installer we hand to testers.
+      - name: Tauri build (Windows installer)
+        run: npm run tauri:build -- --bundles nsis
+
+      - name: Upload KLIK KLAK installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: klik-klak-setup
+          path: webapp/src-tauri/target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
