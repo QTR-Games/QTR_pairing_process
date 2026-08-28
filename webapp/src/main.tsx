@@ -47,12 +47,19 @@ if ('serviceWorker' in navigator) {
  * localStorage backend, so a database problem never stops the app from opening.
  */
 async function boot() {
-  const { isDesktop, initDesktopStore } = await import('./desktop/bootstrap')
+  const { isDesktop, initDesktopStore, initDesktopAffordances } = await import(
+    './desktop/bootstrap'
+  )
   if (isDesktop()) {
     try {
       await initDesktopStore()
     } catch (err) {
       console.error('desktop SQLite store unavailable, using localStorage', err)
+    }
+    try {
+      await initDesktopAffordances()
+    } catch (err) {
+      console.error('desktop menu and dialogs unavailable', err)
     }
   }
 
