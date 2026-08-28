@@ -1,6 +1,10 @@
 # Desktop Modernization Plan — KLIK KLAK
 
-**Status:** Draft for review — **shell decided: Tauri v2**
+**Status:** Finalized — all decisions locked. Shell: **Tauri v2**; storage:
+**SQLite-as-document-store (6a)** + one-time legacy import; Python app **retired
+after one transition release**; **converged on KLIK KLAK `1.x`** across all
+platforms; distribution: **signed installer + auto-update**. Ready to execute
+(tracked as epic #104, phases #105–#110).
 **Goal:** Replace the dated Tkinter desktop UI with a modern experience that is
 **cohesive** with the web (Pages/PWA) and phone (APK) builds, while the desktop
 build continues to **keep its data in a local database**.
@@ -188,33 +192,47 @@ interface Store {
   round-trip. More work; only justified if live interop with legacy desktop
   data files is a hard requirement.
 
-**Recommendation:** Ship **6a** with a legacy import bridge; reserve **6b** for
-later only if users need to open old `.db` files directly.
+**Decision: ship 6a** — SQLite-as-document store — with a **one-time legacy
+import bridge**. The desktop does **not** need to open old `.db` files live;
+existing data comes in through a one-time import of Excel/backup (and, where
+practical, a read of legacy `.db` files) into the 6a model. 6b (full relational
+parity) is explicitly **not** pursued; revisit only if a future hard requirement
+to open legacy `.db` files directly emerges.
 
 ---
 
 ## 7. Decision 3 — the Tkinter app and the Python code
 
-- **Retire the Tkinter UI** (`ui_manager*.py`, dialogs) after one transition
-  release. Freeze it under `qtr_pairing_process/legacy/` and keep it buildable
-  for one version as a fallback, then remove.
-- **Keep the Python data/Excel tooling available** regardless of shell choice:
-  - Under **pywebview**, it becomes the desktop backend directly.
-  - Under **Tauri/Electron**, keep it as a **CLI import/export helper** (or port
-    the Excel import to TS) so no data workflow is lost.
-- The Python **engine/analysis** is superseded on the client by the TS engine;
-  keep it only if it's still used for offline batch analysis.
+**Decision: retire the Python app after one transition release.** The Python
+desktop (Tkinter UI + its DB/Excel tooling) is **not** kept as a supported CLI
+companion.
+
+- **One transition release** ships where the legacy Python build is still
+  available as a fallback (frozen under `qtr_pairing_process/legacy/`), giving
+  users a window to migrate their data via the import bridge.
+- **After that release, remove it** — Tkinter UI, PyInstaller packaging, and the
+  Python DB/Excel tooling. All data workflows users still need are reimplemented
+  in the new stack: the Excel/backup/`.db` import path lives in the **TS import
+  bridge** (Decision 2, model 6a), not in retained Python code.
+- The Python **engine/analysis** is superseded on the client by the TS engine and
+  is retired with the rest of the app.
+- If any offline batch/analysis need surfaces later, it is a **new**, separately
+  scoped tool — not a reason to keep the legacy Python app on life support.
 
 ---
 
 ## 8. Decision 4 — branding and versioning
 
+**Decision: converge all platforms on KLIK KLAK branding and the `1.x` version
+line.**
+
 - Adopt **one product name** everywhere: **KLIK KLAK** (the web/phone app is
   already branded via `webapp/src/brand.ts`). Rebrand the desktop shell to match.
-- Converge on **one version line** for the shipped product across platforms
-  (e.g. app `1.x`), and treat the Python `2.1.x` line as internal tooling
-  version or retire it. Removes the current confusing "desktop 2.1.4 vs app
-  1.0.4" split.
+- Converge on **one version line** across desktop, web, and phone: the app
+  **`1.x`** line. The desktop's current `2.1.x` line is retired (its one-time
+  jump from `2.1.x` down to `1.x` is an accepted cosmetic quirk of unification).
+  This removes the confusing "desktop 2.1.4 vs app 1.0.4" split so a single
+  version identifies the product on every platform.
 
 ---
 
@@ -261,10 +279,11 @@ Each phase has a clear exit criterion and leaves the repo shippable.
   native, not just a hosted web page.
 
 - **Phase 5 — Packaging, signing, release, retire Tkinter (medium).**
-  Tauri bundler installer (`.msi`/NSIS `.exe`), code signing, optional Tauri
-  auto-updater, CI job with the Rust toolchain, parity QA vs. the phone/web
-  build, docs. Freeze/remove the Tkinter app. *Exit:* a signed Tauri desktop
-  release cut from the shared frontend; old desktop retired.
+  Tauri bundler installer (`.msi`/NSIS `.exe`), **code signing, and the Tauri
+  auto-updater** (distribution decision: signed installer + auto-update), CI job
+  with the Rust toolchain, parity QA vs. the phone/web build, docs. Freeze/remove
+  the Tkinter app. *Exit:* a signed, auto-updating Tauri desktop release cut from
+  the shared frontend; old desktop retired.
 
 ---
 
@@ -294,13 +313,17 @@ setup cost for the smallest ongoing divergence.
 
 ---
 
-## 13. Open questions to finalize the plan
+## 13. Decisions — finalized
 
-1. **Shell:** ✅ **Decided — Tauri v2.**
-2. **Legacy data:** must the new desktop open existing `.db` files directly
-   (pushes toward relational parity, model 6b / pywebview), or is a one-time
-   import of Excel/backup enough (model 6a)?
-3. **Fate of the Python app:** retire after one transition release, or keep the
-   Python DB/Excel tooling as a supported CLI companion?
-4. **Versioning/branding:** converge everything on the KLIK KLAK `1.x` line?
-5. **Distribution:** signed installer + auto-update, or a portable exe like today?
+All open questions are resolved; the plan is ready to execute.
+
+1. **Shell:** ✅ **Tauri v2.**
+2. **Legacy data:** ✅ **One-time import (model 6a).** SQLite-as-document store;
+   existing data enters via a one-time Excel/backup/`.db` import bridge. No live
+   `.db` opening; 6b relational parity not pursued.
+3. **Fate of the Python app:** ✅ **Retire after one transition release.** No
+   supported Python CLI companion; data workflows move to the TS import bridge.
+4. **Versioning/branding:** ✅ **Converge on KLIK KLAK `1.x`** across desktop,
+   web, and phone; retire the desktop `2.1.x` line.
+5. **Distribution:** ✅ **Signed installer (`.msi`/NSIS) + auto-update** via the
+   Tauri updater. No portable-exe distribution.
