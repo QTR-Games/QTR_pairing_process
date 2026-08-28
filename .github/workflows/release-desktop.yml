@@ -97,24 +97,32 @@ jobs:
         run: |
           node -e "const fs=require('fs');const f='webapp/src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(f,'utf8'));c.version='${{ steps.version.outputs.value }}';fs.writeFileSync(f, JSON.stringify(c,null,2)+'\n');"
 
-      # Authenticode is optional and separate from the updater signature. When a
-      # certificate thumbprint secret is present we inject it through an
-      # out-of-tree --config file, so the installer is Authenticode-signed
-      # without ever putting a machine-specific thumbprint in tauri.conf.json
-      # (which would break the unsigned desktop.yml PR gate). When the secret is
-      # absent the args are byte-for-byte the tested desktop.yml path.
-      - name: Resolve build args (optional Authenticode)
+      # Two build-time concerns are injected here through an out-of-tree
+      # --config file rather than committed to tauri.conf.json, so the unsigned
+      # desktop.yml PR gate stays green:
+      #
+      #   createUpdaterArtifacts -- turns on generation of the signed .sig the
+      #   updater reads. It is deliberately absent from the committed config: if
+      #   it were on there, the PR gate (which has no signing key) would fail
+      #   with "public key found, but no private key". Only this release path,
+      #   which has the key, should ever try to sign.
+      #
+      #   certificateThumbprint -- optional Windows Authenticode signing, added
+      #   only when the secret is present. A machine-specific thumbprint in the
+      #   committed config would likewise break the PR gate.
+      - name: Resolve build config
         id: buildargs
         shell: bash
         env:
           CERT_THUMBPRINT: ${{ secrets.WINDOWS_CERTIFICATE_THUMBPRINT }}
         run: |
+          cfg="$RUNNER_TEMP/release-config.json"
           if [ -n "$CERT_THUMBPRINT" ]; then
-            printf '{"bundle":{"windows":{"certificateThumbprint":"%s"}}}' "$CERT_THUMBPRINT" > "$RUNNER_TEMP/authenticode.json"
-            echo "value=--bundles nsis --config $RUNNER_TEMP/authenticode.json" >> "$GITHUB_OUTPUT"
+            printf '{"bundle":{"createUpdaterArtifacts":true,"windows":{"certificateThumbprint":"%s"}}}' "$CERT_THUMBPRINT" > "$cfg"
           else
-            echo "value=--bundles nsis" >> "$GITHUB_OUTPUT"
+            printf '{"bundle":{"createUpdaterArtifacts":true}}' > "$cfg"
           fi
+          echo "value=--bundles nsis --config $cfg" >> "$GITHUB_OUTPUT"
 
       # tauri-action runs the frontend build (beforeBuildCommand), bundles the
       # NSIS installer, signs the updater artifacts with the key below, and

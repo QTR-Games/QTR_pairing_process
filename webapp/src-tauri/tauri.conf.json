@@ -29,7 +29,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": true,
     "publisher": "QTR Games",
     "category": "Sports",
     "shortDescription": "5v5 tournament pairing planner",
