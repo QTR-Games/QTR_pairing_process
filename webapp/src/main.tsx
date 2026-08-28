@@ -35,14 +35,32 @@ if ('serviceWorker' in navigator) {
   })
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+/*
+ * Bring the store up before the UI.
+ *
+ * On the desktop build the model must persist to SQLite, not localStorage, and
+ * that store hydrates from disk asynchronously. So the very first render waits
+ * for the desktop store to be installed on the seam -- otherwise the first board
+ * read would race the hydrate and briefly see an empty app. On the web
+ * `isDesktop()` is false and this is a straight-through render with no delay. If
+ * the desktop store fails to open we log and fall through to the default
+ * localStorage backend, so a database problem never stops the app from opening.
+ */
+async function boot() {
+  const { isDesktop, initDesktopStore } = await import('./desktop/bootstrap')
+  if (isDesktop()) {
+    try {
+      await initDesktopStore()
+    } catch (err) {
+      console.error('desktop SQLite store unavailable, using localStorage', err)
+    }
+  }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  )
+}
+
+void boot()
