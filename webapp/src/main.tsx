@@ -47,10 +47,14 @@ if ('serviceWorker' in navigator) {
  * localStorage backend, so a database problem never stops the app from opening.
  */
 async function boot() {
-  const { isDesktop, initDesktopStore, initDesktopAffordances } = await import(
-    './desktop/bootstrap'
-  )
-  if (isDesktop()) {
+  const {
+    isDesktop,
+    initDesktopStore,
+    initDesktopAffordances,
+    initDesktopUpdates,
+  } = await import('./desktop/bootstrap')
+  const desktop = isDesktop()
+  if (desktop) {
     try {
       await initDesktopStore()
     } catch (err) {
@@ -68,6 +72,12 @@ async function boot() {
       <App />
     </StrictMode>,
   )
+
+  // After the first paint, not before it: an update check must never delay the
+  // app opening. Fire-and-forget -- initDesktopUpdates swallows its own errors.
+  if (desktop) {
+    void initDesktopUpdates()
+  }
 }
 
 void boot()

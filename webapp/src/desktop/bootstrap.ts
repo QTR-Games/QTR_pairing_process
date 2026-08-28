@@ -11,6 +11,8 @@
  */
 import Database from "@tauri-apps/plugin-sql";
 import { listen } from "@tauri-apps/api/event";
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { setStore } from "../model/store";
 import {
   applyBackup,
@@ -130,4 +132,31 @@ export async function initDesktopAffordances(): Promise<void> {
       }
     })();
   });
+}
+
+/**
+ * Check for a newer desktop build and install it, in the background.
+ *
+ * This runs only inside the Tauri shell and never blocks the app opening: the
+ * check is fired after the first render and its result is awaited off the render
+ * path. When an update exists it is downloaded and installed; on Windows
+ * `downloadAndInstall` exits the app and hands off to the NSIS installer, which
+ * relaunches, so the `relaunch()` below is reached only on macOS/Linux. Every
+ * failure -- offline, no release published yet, a signature that does not match
+ * the bundled public key -- is swallowed: a broken update check must never stop
+ * the user from running the build they already have.
+ *
+ * `check()` returns `null` when the app is current and an update handle
+ * otherwise; there is deliberately no user prompt, matching the phone and web
+ * builds where a new version is simply taken on next launch.
+ */
+export async function initDesktopUpdates(): Promise<void> {
+  try {
+    const update = await check();
+    if (!update) return;
+    await update.downloadAndInstall();
+    await relaunch();
+  } catch (err) {
+    console.error("desktop update check failed", err);
+  }
 }

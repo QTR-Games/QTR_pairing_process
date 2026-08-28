@@ -1,0 +1,146 @@
+# Build a signed, auto-updatable desktop release.
+#
+# This is the deliberate path, separate from desktop.yml. That workflow runs on
+# every push and pull request and proves the Tauri shell still compiles and
+# packages on Windows; the installer it uploads is an unsigned artifact for a
+# quick look. This one cuts an actual release: it stamps the version, builds the
+# NSIS installer, signs the updater artifacts with the project's minisign key,
+# and publishes a draft GitHub release carrying the installer plus the
+# `latest.json` manifest the in-app updater reads.
+#
+# Manual dispatch is the normal path -- give it a version and it tags and builds
+# that version. Pushing a desktop-v* tag builds the same artifact for a tag you
+# have already cut. The desktop-v prefix is deliberately distinct from the phone
+# app's v* tags (release-apk.yml) so the two release pipelines never collide.
+#
+# Signing material never lives in the repository. The updater key comes from two
+# repository secrets; optional Windows Authenticode signing comes from a third.
+# See docs/desktop-release.md for the full setup and the review-and-publish step
+# that actually makes an update go live.
+name: Release Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 2.2.0), no leading v'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'desktop-v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-desktop:
+    name: Build signed desktop release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # Same cache key shape as desktop.yml so a release build can reuse the
+      # dependency tree the PR gate already compiled.
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: webapp/src-tauri -> target
+
+      - run: npm ci
+        working-directory: webapp
+
+      # Fail loudly and early. tauri-action will happily emit an *unsigned*
+      # updater artifact when the key is absent, and an unsigned artifact fails
+      # the client-side signature check silently -- every user would simply stop
+      # receiving updates with no error anyone would notice. Catch it here.
+      - name: Verify updater signing secret is present
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::Missing TAURI_SIGNING_PRIVATE_KEY. See docs/desktop-release.md."
+            exit 1
+          fi
+
+      # A tag push carries no dispatch input. Fall back to the tag name with the
+      # desktop-v prefix stripped, so desktop-v2.2.0 -> 2.2.0.
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME#desktop-v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # tauri.conf.json ships a placeholder version (0.1.0). Stamp the real one
+      # in before the build so the installer filename, the release, and the
+      # latest.json the updater compares against all agree.
+      - name: Stamp version into tauri.conf.json
+        shell: bash
+        run: |
+          node -e "const fs=require('fs');const f='webapp/src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(f,'utf8'));c.version='${{ steps.version.outputs.value }}';fs.writeFileSync(f, JSON.stringify(c,null,2)+'\n');"
+
+      # Two build-time concerns are injected here through an out-of-tree
+      # --config file rather than committed to tauri.conf.json, so the unsigned
+      # desktop.yml PR gate stays green:
+      #
+      #   createUpdaterArtifacts -- turns on generation of the signed .sig the
+      #   updater reads. It is deliberately absent from the committed config: if
+      #   it were on there, the PR gate (which has no signing key) would fail
+      #   with "public key found, but no private key". Only this release path,
+      #   which has the key, should ever try to sign.
+      #
+      #   certificateThumbprint -- optional Windows Authenticode signing, added
+      #   only when the secret is present. A machine-specific thumbprint in the
+      #   committed config would likewise break the PR gate.
+      - name: Resolve build config
+        id: buildargs
+        shell: bash
+        env:
+          CERT_THUMBPRINT: ${{ secrets.WINDOWS_CERTIFICATE_THUMBPRINT }}
+        run: |
+          cfg="$RUNNER_TEMP/release-config.json"
+          if [ -n "$CERT_THUMBPRINT" ]; then
+            printf '{"bundle":{"createUpdaterArtifacts":true,"windows":{"certificateThumbprint":"%s"}}}' "$CERT_THUMBPRINT" > "$cfg"
+          else
+            printf '{"bundle":{"createUpdaterArtifacts":true}}' > "$cfg"
+          fi
+          echo "value=--bundles nsis --config $cfg" >> "$GITHUB_OUTPUT"
+
+      # tauri-action runs the frontend build (beforeBuildCommand), bundles the
+      # NSIS installer, signs the updater artifacts with the key below, and
+      # creates a *draft* release carrying the installer, its .sig, and the
+      # generated latest.json. updaterJsonPreferNsis points that manifest at the
+      # .exe so the in-app updater downloads the installer, not a zip. The
+      # release stays a draft on purpose -- publishing it is the manual go-live
+      # step in docs/desktop-release.md.
+      - name: Build and publish draft release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: webapp
+          tagName: desktop-v${{ steps.version.outputs.value }}
+          releaseName: 'KLIK KLAK Desktop v${{ steps.version.outputs.value }}'
+          releaseDraft: true
+          updaterJsonPreferNsis: true
+          args: ${{ steps.buildargs.outputs.value }}
