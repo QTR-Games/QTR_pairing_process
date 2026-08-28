@@ -1,16 +1,72 @@
 // @vitest-environment jsdom
 /**
- * The opponent roster popup, at its edges.
+ * The grid cell readout, and the opponent roster popup, at their edges.
  *
- * The grid's own value picker is exercised elsewhere; this file is only about
- * the roster affordance added to the column headers -- that it appears exactly
- * where an import left detail and nowhere else, that a hold (not a tap) opens
- * it, and that it renders the faction and lists it was given.
+ * The first suite guards issue #93: the grid used to render each cell as a
+ * SPREAD-compressed win percentage, so on the 1-10 scale picking a 1 showed 8
+ * and a 10 showed 93 -- "a much different value than I selected". A cell now
+ * reads back the rating that was chosen, on the board's own scale, matching the
+ * value picker.
+ *
+ * The rest is the roster affordance added to the column headers -- that it
+ * appears exactly where an import left detail and nowhere else, that a hold (not
+ * a tap) opens it, and that it renders the faction and lists it was given.
  */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { emptyBoard, type Board } from "../model/board";
+import { boardScale, emptyBoard, setRating, type Board } from "../model/board";
 import { Grid } from "./Grid";
+
+afterEach(cleanup);
+
+describe("Grid cell readout", () => {
+  it("echoes the chosen rating on the 1-10 scale, not a win percentage", () => {
+    // The exact #93 report: ratings 1..5 down the first row used to read back
+    // as 8, 17, 26, 36, 45. They must read back as themselves.
+    let board = emptyBoard("ten");
+    const scale = boardScale(board);
+    for (let j = 0; j < 5; j++) {
+      board = setRating(board, 0, j, j + 1, scale);
+    }
+    render(<Grid board={board} onChange={() => {}} />);
+
+    const readouts = ["1", "2", "3", "4", "5"].map(
+      (_, j) =>
+        screen.getByRole("button", { name: `Player 1 versus Opponent ${j + 1}` }).textContent,
+    );
+    expect(readouts).toEqual(["1", "2", "3", "4", "5"]);
+  });
+
+  it.each([
+    ["five", 0.75, "4"],
+    ["fiveHalf", 0.625, "3.5"],
+  ])("displays the picked scale value on the %s scale", (scaleId, fraction, expected) => {
+    const board = emptyBoard(scaleId);
+    board.fractions[0][0] = fraction;
+
+    render(<Grid board={board} onChange={() => {}} />);
+
+    expect(
+      screen.getByRole("button", { name: "Player 1 versus Opponent 1" }).textContent,
+    ).toBe(expected);
+  });
+
+  it("shows the picked value back after selecting it", () => {
+    let board = emptyBoard("ten");
+    const onChange = vi.fn((b: Board) => {
+      board = b;
+    });
+    const { rerender } = render(<Grid board={board} onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Player 1 versus Opponent 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "9" }));
+
+    rerender(<Grid board={board} onChange={onChange} />);
+    expect(
+      screen.getByRole("button", { name: "Player 1 versus Opponent 1" }).textContent,
+    ).toBe("9");
+  });
+});
 
 /**
  * A board whose first opponent carries full detail, whose second carries only a
@@ -37,8 +93,6 @@ function boardWithDetail(): Board {
 
 const holdName = (name: string) =>
   screen.queryByRole("button", { name: new RegExp(`^${name}\\. Hold for roster\\.$`) });
-
-afterEach(cleanup);
 
 describe("Grid opponent roster popup", () => {
   it("offers the affordance only for names an import gave detail", () => {
