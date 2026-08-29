@@ -14,9 +14,10 @@
 # app's v* tags (release-apk.yml) so the two release pipelines never collide.
 #
 # Signing material never lives in the repository. The updater key comes from two
-# repository secrets; optional Windows Authenticode signing comes from a third.
-# See docs/desktop-release.md for the full setup and the review-and-publish step
-# that actually makes an update go live.
+# repository secrets, published by scripts/Publish-UpdaterSecrets.ps1; optional
+# Windows Authenticode signing comes from a third. See docs/desktop-release.md
+# for the full setup and the review-and-publish step that actually makes an
+# update go live.
 name: Release Desktop
 
 on:
@@ -63,19 +64,19 @@ jobs:
       - run: npm ci
         working-directory: webapp
 
-      # Fail loudly and early. tauri-action will happily emit an *unsigned*
-      # updater artifact when the key is absent, and an unsigned artifact fails
-      # the client-side signature check silently -- every user would simply stop
-      # receiving updates with no error anyone would notice. Catch it here.
-      - name: Verify updater signing secret is present
-        shell: bash
+      # Fail loudly and early. Two failures hide here, and both are silent.
+      # tauri-action will happily emit an *unsigned* updater artifact when the
+      # key is absent; worse, a key that does not match the public key committed
+      # in tauri.conf.json signs perfectly and produces a release every installed
+      # app rejects. Either way users simply stop receiving updates with no error
+      # anyone would notice. The check signs a scratch file and compares key IDs,
+      # so it costs seconds and runs before the long Rust build.
+      - name: Verify the updater signing key
+        working-directory: webapp
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        run: |
-          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "::error::Missing TAURI_SIGNING_PRIVATE_KEY. See docs/desktop-release.md."
-            exit 1
-          fi
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run desktop:updater:verify
 
       # A tag push carries no dispatch input. Fall back to the tag name with the
       # desktop-v prefix stripped, so desktop-v2.2.0 -> 2.2.0.
