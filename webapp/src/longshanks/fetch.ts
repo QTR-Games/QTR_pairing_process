@@ -12,9 +12,15 @@
  *
  * The whole thing is deliberately online-only and one-shot: the owner runs the
  * import once, the evening before an event, to seed the boards. Nothing here is
- * called again in the hall. That is why there is no caching, retry queue, or
- * background refresh -- the app's offline promise is kept by never calling this
- * at pairing time, not by making it resilient.
+ * called again in the hall. That is why there is no caching, no retry *queue*,
+ * and no background refresh -- the app's offline promise is kept by never
+ * calling this at pairing time, not by making it resilient.
+ *
+ * There is, however, an in-flight retry, which is a different thing: Longshanks
+ * refuses a minority of valid requests with a 403 and serves the same URL
+ * moments later. That is not a state to persist and reconcile, it is a bad
+ * second to sit through, so `withRetry` sits through it. See {@link isRetryable}
+ * for what counts and what is allowed to fail immediately.
  *
  * `fetchRoster` takes an injectable `fetcher` so the URL handling and the
  * two-panel join can be tested with canned HTML, leaving only the tiny native/
@@ -42,6 +48,118 @@ const BROWSER_HEADERS: Record<string, string> = {
 
 /** A source of HTML for a URL. Swapped out in tests. */
 export type HtmlFetcher = (url: string) => Promise<string>;
+
+/**
+ * A non-2xx response, carrying the status so retry can classify it.
+ *
+ * The status is the whole reason this is a class rather than a bare `Error`:
+ * "refused this time" and "no such event" both arrive as failed requests, and
+ * retrying the second one is pointless.
+ */
+export class LongshanksHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(describeStatus(status));
+    this.name = "LongshanksHttpError";
+    this.status = status;
+  }
+}
+
+/**
+ * What to tell the owner about a status, in their terms.
+ *
+ * By the time one of these surfaces the fetch has already retried, so the
+ * message says so -- otherwise the advice ("try again") reads as though the
+ * first attempt was the only one.
+ */
+function describeStatus(status: number): string {
+  if (status === 403) {
+    return "Longshanks refused the request (403). It does this intermittently to requests that are not a browser; the import retried and kept getting refused. Wait a moment and try again.";
+  }
+  if (status === 404) {
+    return "Longshanks has no event with that id (404). Check the number in the event link.";
+  }
+  if (status === 429) {
+    return "Longshanks is rate-limiting this device (429). Wait a minute and try again.";
+  }
+  if (status >= 500) {
+    return `Longshanks is having trouble (status ${status}). This is their end, not yours -- try again shortly.`;
+  }
+  return `Longshanks returned status ${status}`;
+}
+
+/**
+ * Backoff between attempts, in milliseconds; the length sets the retry count.
+ *
+ * Three retries over about four seconds. Deliberately deterministic, with no
+ * jitter: jitter exists to stop many clients retrying in lockstep, and there is
+ * exactly one client here -- one person, importing one event, once. Fixed delays
+ * are testable, and a test that pins the schedule is worth more than randomness
+ * that protects against a problem this app cannot have.
+ */
+const RETRY_DELAYS_MS = [400, 1200, 2500];
+
+export interface RetryOptions {
+  /** Backoff schedule; its length is how many retries happen. */
+  delays?: number[];
+  /** Injected in tests so a retry schedule costs no real time. */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+const realSleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Is this failure worth trying again?
+ *
+ * Longshanks intermittently answers a perfectly good request with 403 -- it is
+ * bot protection reacting to a non-browser client, not a verdict about the
+ * event, and the same URL succeeds moments later. That is the case this whole
+ * mechanism exists for. 408/429/5xx are transient for the ordinary reasons.
+ *
+ * A 404 is not retried: the event genuinely is not there, and hammering it just
+ * makes the owner wait four seconds to be told what we already knew. Other 4xx
+ * are treated the same way.
+ *
+ * Anything that is not an HTTP status at all -- a dropped connection, DNS,
+ * `fetch` rejecting with a TypeError -- is retried. Those are the failures most
+ * likely to be a bad moment on venue wifi.
+ */
+export function isRetryable(error: unknown): boolean {
+  if (error instanceof LongshanksHttpError) {
+    const { status } = error;
+    return status === 403 || status === 408 || status === 429 || status >= 500;
+  }
+  return true;
+}
+
+/**
+ * Wrap a fetcher so transient failures are retried before they reach the user.
+ *
+ * Applied around whatever fetcher `fetchRoster` is given, rather than buried
+ * inside {@link fetchHtml}, for two reasons: the tests inject their own fetcher
+ * and would otherwise skip the retry path entirely, and the retry is a policy
+ * about Longshanks rather than a property of one transport.
+ */
+export function withRetry(fetcher: HtmlFetcher, options: RetryOptions = {}): HtmlFetcher {
+  const delays = options.delays ?? RETRY_DELAYS_MS;
+  const sleep = options.sleep ?? realSleep;
+
+  return async (url: string): Promise<string> => {
+    let last: unknown;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await fetcher(url);
+      } catch (error) {
+        last = error;
+        if (attempt >= delays.length || !isRetryable(error)) break;
+        await sleep(delays[attempt]);
+      }
+    }
+    throw last;
+  };
+}
 
 /**
  * Pull an event id out of whatever the owner pasted.
@@ -77,12 +195,12 @@ export async function fetchHtml(url: string): Promise<string> {
   if (Capacitor.getPlatform() !== "web") {
     const res = await CapacitorHttp.get({ url, headers: BROWSER_HEADERS, responseType: "text" });
     if (res.status < 200 || res.status >= 300) {
-      throw new Error(`Longshanks returned status ${res.status}`);
+      throw new LongshanksHttpError(res.status);
     }
     return typeof res.data === "string" ? res.data : String(res.data ?? "");
   }
   const res = await fetch(url, { headers: BROWSER_HEADERS });
-  if (!res.ok) throw new Error(`Longshanks returned status ${res.status}`);
+  if (!res.ok) throw new LongshanksHttpError(res.status);
   return res.text();
 }
 
@@ -92,17 +210,28 @@ export async function fetchHtml(url: string): Promise<string> {
  * The two panels are independent GETs, so they run together; the join happens in
  * `parseRoster`. A bad input fails fast, before any network call, with a message
  * that shows the two shapes that do work.
+ *
+ * Each panel is fetched through {@link withRetry}, because Longshanks refuses a
+ * minority of otherwise-valid requests with a 403. Two panels fetched in
+ * parallel means one import is two chances to be refused, which made a clean
+ * import roughly a coin-flip on a bad morning; retrying independently per panel
+ * takes that back to negligible.
  */
-export async function fetchRoster(input: string, fetcher: HtmlFetcher = fetchHtml): Promise<Roster> {
+export async function fetchRoster(
+  input: string,
+  fetcher: HtmlFetcher = fetchHtml,
+  options: RetryOptions = {},
+): Promise<Roster> {
   const eventId = parseEventId(input);
   if (!eventId) {
     throw new Error(
       "Enter a Longshanks event id or URL, for example 33997 or https://longshanks.org/event/33997/",
     );
   }
+  const get = withRetry(fetcher, options);
   const [teamHtml, playerHtml] = await Promise.all([
-    fetcher(panelUrl(eventId, "team")),
-    fetcher(panelUrl(eventId, "player")),
+    get(panelUrl(eventId, "team")),
+    get(panelUrl(eventId, "player")),
   ]);
   return parseRoster(teamHtml, playerHtml, eventId);
 }
