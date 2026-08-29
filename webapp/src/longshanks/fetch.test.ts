@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createDesktopHttp } from "../desktop/http";
+import { setDesktopHttp } from "../desktop/platform";
 import {
+  fetchHtml,
   fetchRoster,
   isRetryable,
   LongshanksHttpError,
@@ -203,5 +206,49 @@ describe("fetchRoster", () => {
     });
 
     await expect(fetchRoster("33997", fetcher, instant)).rejects.toThrow(/refused the request/);
+  });
+});
+
+describe("fetchHtml on desktop", () => {
+  afterEach(() => setDesktopHttp(null));
+
+  it("goes through the desktop bridge rather than the webview's fetch", async () => {
+    // The bridge existing at all is the point: on desktop a plain fetch would be
+    // CORS-blocked, so if this ever fell through to `fetch` the feature is dead.
+    const getText = vi.fn(async () => ({ status: 200, body: TEAM }));
+    setDesktopHttp({ getText });
+    const spy = vi.spyOn(globalThis, "fetch");
+
+    await expect(fetchHtml(URL_TEAM)).resolves.toBe(TEAM);
+    expect(getText).toHaveBeenCalledWith(URL_TEAM, expect.objectContaining({ Accept: expect.any(String) }));
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("turns a refusal into the error retry knows how to classify", async () => {
+    setDesktopHttp({ getText: async () => ({ status: 403, body: "" }) });
+
+    await expect(fetchHtml(URL_TEAM)).rejects.toMatchObject({ status: 403 });
+    await expect(fetchHtml(URL_TEAM)).rejects.toSatisfy(isRetryable);
+  });
+});
+
+describe("createDesktopHttp", () => {
+  it("reports the status instead of throwing, leaving the verdict to the caller", async () => {
+    const http = createDesktopHttp(async () => ({ status: 403, text: async () => "nope" }));
+
+    await expect(http.getText(URL_TEAM, {})).resolves.toEqual({ status: 403, body: "nope" });
+  });
+
+  it("passes the browser-shaped headers straight through", async () => {
+    const fetchFn = vi.fn(async () => ({ status: 200, text: async () => "ok" }));
+    const http = createDesktopHttp(fetchFn);
+
+    await http.getText(URL_TEAM, { "User-Agent": "Mozilla/5.0" });
+
+    expect(fetchFn).toHaveBeenCalledWith(URL_TEAM, {
+      method: "GET",
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
   });
 });
