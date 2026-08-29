@@ -3,12 +3,14 @@
  *
  * The awkward part of this feature is not parsing, it is the fetch: a browser
  * can load `longshanks.org` but a WebView's `fetch` cannot, because the site
- * sends no CORS headers and the request is cross-origin. So on a real device we
- * do not use `fetch` at all -- we hand the request to Capacitor's native HTTP
- * client, which runs outside the WebView's origin rules and simply makes the
- * GET the way a browser would. On the web build (dev, tests) we fall back to
- * `fetch`, which is enough for anything same-origin and keeps this module
- * importable in a plain Node/jsdom test.
+ * sends no CORS headers and the request is cross-origin. So neither packaged
+ * build uses `fetch` at all. On a phone we hand the request to Capacitor's
+ * native HTTP client; on desktop, to the Tauri HTTP bridge. Both run outside the
+ * WebView's origin rules and simply make the GET the way a browser would. On the
+ * web build (dev, tests) we fall back to `fetch`, which is enough for anything
+ * same-origin and keeps this module importable in a plain Node/jsdom test --
+ * though a real Longshanks import cannot work there, and no header or option
+ * will change that.
  *
  * The whole thing is deliberately online-only and one-shot: the owner runs the
  * import once, the evening before an event, to seed the boards. Nothing here is
@@ -23,11 +25,13 @@
  * for what counts and what is allowed to fail immediately.
  *
  * `fetchRoster` takes an injectable `fetcher` so the URL handling and the
- * two-panel join can be tested with canned HTML, leaving only the tiny native/
- * web branch untested (it cannot run without a device).
+ * two-panel join can be tested with canned HTML. The desktop branch of
+ * `fetchHtml` is testable too, through the same seam the bridge is installed
+ * on; only the Capacitor branch cannot run without a device.
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
+import { getDesktopHttp } from "../desktop/platform";
 import { parseRoster } from "./parse";
 import type { Roster } from "./types";
 
@@ -192,6 +196,14 @@ export function panelUrl(eventId: string, section: "team" | "player"): string {
  * and look like a "successful" import of nothing.
  */
 export async function fetchHtml(url: string): Promise<string> {
+  const desktop = getDesktopHttp();
+  if (desktop) {
+    const { status, body } = await desktop.getText(url, BROWSER_HEADERS);
+    if (status < 200 || status >= 300) {
+      throw new LongshanksHttpError(status);
+    }
+    return body;
+  }
   if (Capacitor.getPlatform() !== "web") {
     const res = await CapacitorHttp.get({ url, headers: BROWSER_HEADERS, responseType: "text" });
     if (res.status < 200 || res.status >= 300) {

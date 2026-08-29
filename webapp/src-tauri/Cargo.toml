@@ -26,6 +26,11 @@ tauri-plugin-log = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-window-state = "2"
+# Lets the Longshanks import run on desktop. The webview cannot fetch
+# longshanks.org itself -- the site sends no CORS headers -- so the request is
+# made from Rust, where the browser's origin rules do not apply. The phone build
+# solves the same problem with Capacitor's native HTTP client.
+tauri-plugin-http = "2"
 
 # Auto-update is desktop-only: mobile ships through app stores, and the updater
 # crate declares no Android/iOS support. The target gate keeps it (and the

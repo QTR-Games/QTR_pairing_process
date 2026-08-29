@@ -26,7 +26,8 @@ import {
   type KvDatabase,
 } from "../model/sqliteStore";
 import { createDesktopFiles } from "./files";
-import { BOARDS_RESTORED_EVENT, setDesktopFiles } from "./platform";
+import { createDesktopHttp } from "./http";
+import { BOARDS_RESTORED_EVENT, setDesktopFiles, setDesktopHttp } from "./platform";
 
 /** The database file, resolved by the SQL plugin under the app data dir. */
 const DB_URL = "sqlite:klikklak.db";
@@ -97,15 +98,20 @@ async function seedFromLegacy(db: {
 }
 
 /**
- * Install the desktop file bridge and connect the native menu.
+ * Install the desktop bridges and connect the native menu.
  *
- * The bridge lets the backup screen's own buttons open native save/open dialogs
- * instead of a browser download and a file input. The menu items live in Rust
- * and work from anywhere in the app, not only the backup screen; they arrive
- * here as `menu://…` events and run the very same save/open flow. On a menu
- * restore there is no React callback to reach, so the new boards are announced
- * on a window event that {@link ../App} listens for -- the app re-renders
- * without a reload.
+ * The file bridge lets the backup screen's own buttons open native save/open
+ * dialogs instead of a browser download and a file input. The HTTP bridge lets
+ * the Longshanks importer reach a site that sends no CORS headers, which the
+ * webview cannot do by itself. The menu items live in Rust and work from
+ * anywhere in the app, not only the backup screen; they arrive here as
+ * `menu://…` events and run the very same save/open flow. On a menu restore
+ * there is no React callback to reach, so the new boards are announced on a
+ * window event that {@link ../App} listens for -- the app re-renders without a
+ * reload.
+ *
+ * Both bridges are installed before the first `await`, so a menu that fails to
+ * wire cannot take the importer or the dialogs down with it.
  *
  * Wiring failures are the caller's to swallow: a missing menu must not cost the
  * SQLite store or the render.
@@ -113,6 +119,7 @@ async function seedFromLegacy(db: {
 export async function initDesktopAffordances(): Promise<void> {
   const files = createDesktopFiles();
   setDesktopFiles(files);
+  setDesktopHttp(createDesktopHttp());
 
   await listen("menu://backup-save", () => {
     void files.saveBackup(serializeBackup(), backupFilename());
