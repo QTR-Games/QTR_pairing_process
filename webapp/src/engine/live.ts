@@ -634,12 +634,12 @@ export function liveWinChance(
   s: LiveState,
   ratingMin = 1,
   ratingMax = 5,
+  memo: Map<string, number> = new Map(),
 ): number {
   const probs = probabilityMatrix(matrix, ratingMin, ratingMax);
   const need = winsNeeded(matrix.length);
   let dist: number[] = [1];
   for (const c of s.committed) dist = extendDistribution(dist, probs[c.ours][c.theirs]);
-  const memo = new Map<string, number>();
   return solveLiveChance(probs, s, need, dist, memo);
 }
 

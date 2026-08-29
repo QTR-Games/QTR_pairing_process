@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Board } from "../model/board";
-import { newRound, type LiveState } from "../engine/live";
+import { boardMatrix, boardScale, type Board } from "../model/board";
+import { newRound, pickOptions, type LiveState } from "../engine/live";
 import { LivePanel } from "./LivePanel";
 
 afterEach(cleanup);
@@ -67,17 +67,26 @@ function stateAtTheirPick(): LiveState {
   };
 }
 
-function tapOpponentOffModelPick(container: HTMLElement): void {
-  const picks = Array.from(container.querySelectorAll("button.pick"));
+function tapOpponentOffModelPick(container: HTMLElement, b: Board): void {
+  const picks = Array.from(container.querySelectorAll<HTMLButtonElement>("button.pick"));
   if (picks.length !== 2) throw new Error("expected exactly two pick buttons");
-  const values = picks.map((p) => Number(p.querySelector(".pick-value")?.textContent ?? "NaN"));
-  if (!Number.isFinite(values[0]) || !Number.isFinite(values[1])) {
-    throw new Error("missing numeric pick values");
+
+  // Which half is off-model is a property of the search, not of the rounded
+  // percentage on screen: two distinct floors can print the same whole percent.
+  // They hold the attacker here, so they minimise our total -- the higher-value
+  // half is the one the model says they should not take.
+  const s = stateAtTheirPick();
+  const matrix = boardMatrix(b, boardScale(b));
+  const options = pickOptions(matrix, s, [2, 3]);
+  if (Math.abs(options[0].value - options[1].value) < 1e-9) {
+    throw new Error("need non-equal pick values");
   }
-  if (Math.abs(values[0] - values[1]) < 1e-9) throw new Error("need non-equal pick values");
-  // They should minimise our projected total; the higher value is the off-model pick.
-  const offModel = values[0] > values[1] ? picks[0] : picks[1];
-  fireEvent.click(offModel);
+  const offModelPlayer = options[0].value > options[1].value ? options[0].player : options[1].player;
+  const offModelName = b.ourPlayers[offModelPlayer];
+
+  const button = picks.find((p) => within(p).queryByText(new RegExp(offModelName)));
+  if (!button) throw new Error("could not find the off-model pick button");
+  fireEvent.click(button);
 }
 
 describe("LivePanel surprise alerts", () => {
@@ -85,7 +94,7 @@ describe("LivePanel surprise alerts", () => {
     const { container } = render(
       <Harness b={board(false)} mode="on" threshold={0} initialState={stateAtTheirPick()} />,
     );
-    tapOpponentOffModelPick(container);
+    tapOpponentOffModelPick(container, board(false));
 
     const flag = container.querySelector(".surprise-flag");
     expect(flag).not.toBeNull();
@@ -96,7 +105,7 @@ describe("LivePanel surprise alerts", () => {
     const { container } = render(
       <Harness b={board(false)} mode="off" threshold={0} initialState={stateAtTheirPick()} />,
     );
-    tapOpponentOffModelPick(container);
+    tapOpponentOffModelPick(container, board(false));
     expect(container.querySelector(".surprise-flag")).toBeNull();
   });
 
@@ -104,7 +113,7 @@ describe("LivePanel surprise alerts", () => {
     const { container } = render(
       <Harness b={board(false)} mode="on" threshold={99} initialState={stateAtTheirPick()} />,
     );
-    tapOpponentOffModelPick(container);
+    tapOpponentOffModelPick(container, board(false));
     expect(container.querySelector(".surprise-flag")).toBeNull();
   });
 });

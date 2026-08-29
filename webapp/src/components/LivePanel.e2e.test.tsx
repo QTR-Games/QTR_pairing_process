@@ -152,7 +152,7 @@ describe("playing a round by tapping", () => {
     });
   }
 
-  it("shows the running count and banked total as tables are set", () => {
+  it("shows the running count and round-win chance as tables are set", () => {
     const b = board(true);
     const { container } = render(<Harness b={b} onState={() => {}} />);
 
@@ -169,7 +169,7 @@ describe("playing a round by tapping", () => {
 
     expect(container.querySelector(".committed")).not.toBeNull();
     expect(screen.queryByText(/0 of 5 tables set/)).toBeNull();
-    expect(screen.getByText(/banked/)).toBeTruthy();
+    expect(screen.getByText(/to take the round/)).toBeTruthy();
   });
 
   it("restarts back to an empty round", () => {
