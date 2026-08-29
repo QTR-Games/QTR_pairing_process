@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Matrix } from "../engine/boardAnalysis";
-import { evenThreshold } from "../engine/boardAnalysis";
-import type { LiveState, MoveOption, OptionProfile, PickOption } from "../engine/live";
+import type { Decision, LiveState, MoveOption, OptionProfile, PickOption } from "../engine/live";
 import {
   commitPairing,
   currentDecision,
@@ -13,6 +12,7 @@ import {
   playerLeverage,
 } from "../engine/live";
 import { solveCache, type SolveCache } from "../engine/protocol";
+import { toWinProbability } from "../engine/winProbability";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale } from "../model/board";
 import { pct } from "../model/format";
@@ -35,6 +35,73 @@ interface Props {
 }
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
+/**
+ * The live state that results from taking a non-pair option -- nominating a
+ * player (open) or playing the only legal pairing (forced). Mirrors what
+ * `applyOpen` and the forced tap commit, so a card's projected round-win chance
+ * is priced against exactly the position the tap would create.
+ */
+function optionState(
+  matrix: Matrix,
+  s: LiveState,
+  decision: Decision,
+  opt: MoveOption,
+): LiveState | null {
+  if (decision.kind === "forced" && opt.ours !== undefined && opt.theirs !== undefined) {
+    return commitPairing(matrix, s, opt.ours, opt.theirs, null, null);
+  }
+  if (decision.kind === "open" && decision.owner === "our" && opt.ours !== undefined) {
+    return { ...s, ourPool: s.ourPool & ~(1 << opt.ours), attacker: opt.ours, attackerSide: "our" };
+  }
+  if (decision.kind === "open" && decision.owner === "their" && opt.theirs !== undefined) {
+    return {
+      ...s,
+      theirPool: s.theirPool & ~(1 << opt.theirs),
+      attacker: opt.theirs,
+      attackerSide: "their",
+    };
+  }
+  return null;
+}
+
+/** The live state that results from taking one half of an offered pair. */
+function pickState(
+  matrix: Matrix,
+  s: LiveState,
+  pair: [number, number],
+  picked: number,
+): LiveState {
+  const leftover = picked === pair[0] ? pair[1] : pair[0];
+  const attackerIsUs = s.attackerSide === "our";
+  const [ours, theirs] = attackerIsUs ? [s.attacker, picked] : [picked, s.attacker];
+  return commitPairing(matrix, s, ours, theirs, leftover, attackerIsUs ? "their" : "our");
+}
+
+/**
+ * Guaranteed round-win chance if a given option is taken, in [0, 1].
+ *
+ * The currency of the rest of the app, brought to the live tree. For an offer
+ * the value is the one the *attacker* realises: they pick the half that suits
+ * them, so it is the best of the two halves for us when we hold the attacker and
+ * the worst when they do -- exactly what the two pick tiles beneath it show.
+ */
+function optionChanceValue(
+  matrix: Matrix,
+  s: LiveState,
+  decision: Decision,
+  opt: MoveOption,
+  chanceOf: (st: LiveState) => number,
+): number {
+  if (opt.pair) {
+    const attackerIsUs = s.attackerSide === "our";
+    const ca = chanceOf(pickState(matrix, s, opt.pair, opt.pair[0]));
+    const cb = chanceOf(pickState(matrix, s, opt.pair, opt.pair[1]));
+    return attackerIsUs ? Math.max(ca, cb) : Math.min(ca, cb);
+  }
+  const st = optionState(matrix, s, decision, opt);
+  return st ? chanceOf(st) : 0;
+}
 
 interface SurpriseNotice {
   regret: number;
@@ -72,7 +139,6 @@ export function LivePanel({
 }: Props) {
   const scale = boardScale(board);
   const matrix: Matrix = useMemo(() => boardMatrix(board, scale), [board, scale]);
-  const tau = evenThreshold(board.ourPlayers.length, scale.min, scale.max);
 
   // The toggle draws two lines through the same computed advice. `showProse` is
   // the paragraphs -- tie-break reasoning, hold-or-play, upside-if-they-err;
@@ -98,6 +164,18 @@ export function LivePanel({
    * and once per option by `optionProfile`.
    */
   const cache = useMemo(() => solveCache(matrix), [matrix]);
+
+  /*
+   * Round-win chance is the currency the rest of the app reads in, so the live
+   * tree shows it too. `liveWinChance` searches the same decision tree the
+   * points engine does; a shared memo lets one render price every option and
+   * pick tile without repeating the walk. Scoped to the board (and its scale)
+   * so a board edit throws it away, exactly like the points cache above.
+   */
+  const chanceOf = useMemo(() => {
+    const memo = new Map<string, number>();
+    return (st: LiveState) => liveWinChance(matrix, st, scale.min, scale.max, memo);
+  }, [matrix, scale.min, scale.max]);
 
   const rawOptions = useMemo(() => moveOptions(matrix, state, cache), [matrix, state, cache]);
   const leverage = useMemo(() => playerLeverage(matrix, state, cache), [matrix, state, cache]);
@@ -138,6 +216,13 @@ export function LivePanel({
   }, [matrix, state, rawOptions, decision, cache]);
 
   const tieBreak = useMemo(() => summariseTieBreak(ranked), [ranked]);
+
+  // The owner's optimum in the same currency the cards read in, so every card's
+  // "how far behind the best offer" tag is a chance gap rather than a points
+  // one. The list is ranked on the points floor, so the top row is the
+  // reference; a card that happens to price higher in chance simply reads level.
+  const bestChance =
+    ranked.length > 0 ? optionChanceValue(matrix, state, decision, ranked[0].o, chanceOf) : 0;
 
   const ourName = (i: number) => board.ourPlayers[i] ?? `Us ${i + 1}`;
   const theirName = (i: number) => board.theirPlayers[i] ?? `Them ${i + 1}`;
@@ -255,8 +340,7 @@ export function LivePanel({
           <h2>{prompt(decision, ourName, theirName)}</h2>
           <p className="live-sub">
             {state.committed.length} of {board.ourPlayers.length} tables set
-            {state.committed.length > 0 && <> &middot; {fmt(state.banked)} banked</>}
-            {" "}&middot; {fmt(tau)} takes the round
+            {" "}&middot; {pct(chanceOf(state))} to take the round
           </p>
         </div>
         <button type="button" className="ghost" onClick={onReset}>
@@ -265,7 +349,7 @@ export function LivePanel({
       </header>
 
       {decision.kind === "done" ? (
-        <Result state={state} tau={tau} ourName={ourName} theirName={theirName} />
+        <Result state={state} chance={chanceOf(state)} scale={scale} ourName={ourName} theirName={theirName} />
       ) : (
         <>
           {showProse && tieBreak && (
@@ -304,7 +388,8 @@ export function LivePanel({
                 cache={cache}
                 best={idx === 0}
                 ownerIsUs={ownerIsUs}
-                tau={tau}
+                bestChance={bestChance}
+                chanceOf={chanceOf}
                 ratingSpan={scale.max - scale.min}
                 scale={scale}
                 showProse={showProse}
@@ -342,7 +427,7 @@ export function LivePanel({
                 <span>
                   {ourName(c.ours)} vs {theirName(c.theirs)}
                 </span>
-                <strong>{fmt(c.value)}</strong>
+                <strong>{pct(toWinProbability(c.value, scale.min, scale.max))}</strong>
               </li>
             ))}
           </ul>
@@ -380,7 +465,8 @@ function OptionRow({
   cache,
   best,
   ownerIsUs,
-  tau,
+  bestChance,
+  chanceOf,
   ratingSpan,
   scale,
   showProse,
@@ -399,7 +485,10 @@ function OptionRow({
   cache: SolveCache;
   best: boolean;
   ownerIsUs: boolean;
-  tau: number;
+  /** The owner's optimum round-win chance, for pricing this card's shortfall. */
+  bestChance: number;
+  /** Prices a resulting live state in round-win chance, memoised per render. */
+  chanceOf: (st: LiveState) => number;
   /** `scale.max - scale.min`; the tie-break threshold is a fraction of it. */
   ratingSpan: number;
   /** The board scale, for colouring raw matchup-rating chips on each tile. */
@@ -413,8 +502,14 @@ function OptionRow({
   onChoose: () => void;
   onPick: (picked: number) => void;
 }) {
-  const wins = option.value > tau;
-  const cost = Math.abs(option.regret);
+  // Everything the captain reads off a card is priced in round-win chance, the
+  // currency the rest of the app already speaks. `wins` is being the favourite
+  // rather than clearing a points threshold; `cost` is the chance surrendered
+  // against the best offer, and rounds to nothing when the two are level.
+  const optionChance = optionChanceValue(matrix, state, decision, option, chanceOf);
+  const wins = optionChance > 0.5;
+  const cost = Math.max(0, ownerIsUs ? bestChance - optionChance : optionChance - bestChance);
+  const level = cost < 0.005;
 
   if (option.pair) {
     // An offer is two taps: what was offered, then which one was taken.
@@ -459,7 +554,7 @@ function OptionRow({
           <span className="option-label">
             {names(option.pair[0])} or {names(option.pair[1])}
           </span>
-          <span className={"option-value" + (wins ? " winning" : "")}>{fmt(option.value)}</span>
+          <span className={"option-value" + (wins ? " winning" : "")}>{pct(optionChance)}</span>
         </div>
         <div className="option-meta">
           {showHints &&
@@ -467,14 +562,16 @@ function OptionRow({
               <span className="tag">
                 {ownerIsUs ? "best offer" : "their strongest"}
               </span>
-            ) : cost > 1e-9 ? (
-              <span className="tag cost">-{fmt(cost)}</span>
+            ) : !level ? (
+              <span className="tag cost">-{pct(cost)}</span>
             ) : (
               <span className="tag cost">same floor</span>
             ))}
         </div>
         <div className="pick-row">
-          {picks.map((p) => (
+          {picks.map((p) => {
+            const pickChance = chanceOf(pickState(matrix, state, option.pair!, p.player));
+            return (
             <button
               key={p.player}
               type="button"
@@ -491,11 +588,12 @@ function OptionRow({
               >
                 {fmt(ratingFor(p.player))}
               </span>
-              <span className={"pick-value" + (p.value > tau ? " winning" : "")}>
-                {fmt(p.value)}
+              <span className={"pick-value" + (pickChance > 0.5 ? " winning" : "")}>
+                {pct(pickChance)}
               </span>
             </button>
-          ))}
+            );
+          })}
         </div>
         {choiceIsOurs && showHints && (
           <p className="pick-hint">
@@ -581,14 +679,14 @@ function OptionRow({
     <li className={"option" + (best ? " best" : "")}>
       <button type="button" className="option-main tappable" onClick={onChoose}>
         <span className="option-label">{label}</span>
-        <span className={"option-value" + (wins ? " winning" : "")}>{fmt(option.value)}</span>
+        <span className={"option-value" + (wins ? " winning" : "")}>{pct(optionChance)}</span>
       </button>
       <div className="option-meta">
         {showHints &&
           (best ? (
             <span className="tag">{ownerIsUs ? "best" : "their strongest"}</span>
-          ) : cost > 1e-9 ? (
-            <span className="tag cost">-{fmt(cost)}</span>
+          ) : !level ? (
+            <span className="tag cost">-{pct(cost)}</span>
           ) : (
             <span className="tag cost">same floor</span>
           ))}
@@ -749,26 +847,29 @@ function Leverage({
 
 function Result({
   state,
-  tau,
+  chance,
+  scale,
   ourName,
   theirName,
 }: {
   state: LiveState;
-  tau: number;
+  /** The round-win chance of the completed board, in [0, 1]. */
+  chance: number;
+  scale: Scale;
   ourName: (i: number) => string;
   theirName: (i: number) => string;
 }) {
-  const won = state.banked > tau;
+  const won = chance > 0.5;
   return (
     <div className={"result " + (won ? "won" : "lost")}>
-      <p className="result-score">{fmt(state.banked)}</p>
+      <p className="result-score">{pct(chance)}</p>
       <p className="result-note">
-        {won ? "Takes the round" : `Falls ${fmt(tau - state.banked)} short of ${fmt(tau)}`}
+        {won ? "Takes the round" : "Falls short of the round"}
       </p>
       <ul className="result-tables">
         {state.committed.map((c, i) => (
           <li key={i}>
-            {ourName(c.ours)} vs {theirName(c.theirs)} — {fmt(c.value)}
+            {ourName(c.ours)} vs {theirName(c.theirs)} — {pct(toWinProbability(c.value, scale.min, scale.max))}
           </li>
         ))}
       </ul>
