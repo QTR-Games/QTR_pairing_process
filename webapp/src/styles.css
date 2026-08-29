@@ -44,12 +44,22 @@ body,
   padding: 0 0 4rem;
 }
 
+/*
+  The top padding consumes the status bar rather than ignoring it. `index.html`
+  sets `viewport-fit=cover`, so in a standalone WebView the viewport starts
+  *underneath* the clock and notification icons -- a plain 0.75rem would put the
+  Menu button behind them. `env()` reports 0px on desktop and in a browser tab,
+  so this is inert everywhere the inset does not exist.
+
+  The grid below needs no matching change: it offsets itself by `--head-h`,
+  which App.tsx measures from this element, so a taller header moves it too.
+*/
 .app-head {
   position: sticky;
   top: 0;
   z-index: 20;
   background: var(--bg);
-  padding: 0.75rem 1rem 0;
+  padding: calc(0.75rem + env(safe-area-inset-top, 0px)) 1rem 0;
   border-bottom: 1px solid var(--line);
 }
 
@@ -1342,8 +1352,13 @@ a.ghost:hover {
     padding: 0 0 2rem;
   }
 
+  /*
+    The inset has to be repeated here. This is the `padding` shorthand, so it
+    resets the top value the base rule calculated -- a wide Android tablet in
+    fullscreen would put the header back under the status bar.
+  */
   .app-wide .app-head {
-    padding: 0.75rem 1.5rem 0;
+    padding: calc(0.75rem + env(safe-area-inset-top, 0px)) 1.5rem 0;
     display: flex;
     align-items: center;
     gap: 2rem;
