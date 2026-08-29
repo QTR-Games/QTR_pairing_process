@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
+  "description": "Enables the default permissions. The http permission is scoped to longshanks.org on purpose: it exists only so the event importer can reach the two standings panels, and http:default grants no origins on its own. Widening this list hands the webview a general-purpose HTTP client, so add a host only when a feature genuinely needs it.",
   "windows": [
     "main"
   ],
@@ -12,6 +12,14 @@
     "sql:allow-execute",
     "sql:allow-select",
     "updater:default",
-    "process:default"
+    "process:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "https://longshanks.org/*"
+        }
+      ]
+    }
   ]
 }

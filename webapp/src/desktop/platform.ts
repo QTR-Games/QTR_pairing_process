@@ -1,12 +1,12 @@
 /**
- * A tiny platform seam for desktop-only native file access.
+ * A tiny platform seam for desktop-only native capability.
  *
- * The web build has no native file dialogs, so this holds `null` there and the
- * backup screen keeps its browser behaviour -- a download and a file input.
- * Inside the Tauri shell, `bootstrap` installs a real implementation backed by
- * native save/open dialogs, and any component can reach it through this module
- * without importing Tauri. Because nothing here depends on Tauri, it stays in
- * the web bundle safely and the actual desktop code loads only on desktop.
+ * The web build has no native file dialogs and no way around the browser's
+ * origin rules, so these hold `null` there and each caller keeps its browser
+ * behaviour. Inside the Tauri shell, `bootstrap` installs real implementations,
+ * and any component can reach them through this module without importing Tauri.
+ * Because nothing here depends on Tauri, it stays in the web bundle safely and
+ * the actual desktop code loads only on desktop.
  */
 
 /** Native file access the desktop shell provides; `null` on the web. */
@@ -21,6 +21,27 @@ export interface DesktopFiles {
    * `null` if the user cancelled.
    */
   openBackup(): Promise<string | null>;
+}
+
+/**
+ * A GET that is not subject to the webview's origin rules; `null` on the web.
+ *
+ * This exists for one reason: `longshanks.org` sends no CORS headers, so the
+ * event importer cannot fetch it from the webview at all. The phone build
+ * escapes that through Capacitor's native HTTP client, and this is the desktop
+ * equivalent -- the request is made in Rust, where same-origin policy does not
+ * apply. On the web build there is no escape and this stays `null`, which is
+ * the honest answer: a browser tab cannot do it.
+ *
+ * The status comes back rather than being thrown on, so that the decision about
+ * which statuses mean "retry" and which mean "give up" stays in one place, next
+ * to the importer that has an opinion about it.
+ */
+export interface DesktopHttp {
+  getText(
+    url: string,
+    headers: Record<string, string>,
+  ): Promise<{ status: number; body: string }>;
 }
 
 /**
@@ -42,4 +63,16 @@ export function setDesktopFiles(bridge: DesktopFiles | null): void {
 /** The desktop file bridge, or `null` when running on the web. */
 export function getDesktopFiles(): DesktopFiles | null {
   return files;
+}
+
+let http: DesktopHttp | null = null;
+
+/** Install (or clear) the desktop HTTP bridge. Called once at desktop boot. */
+export function setDesktopHttp(bridge: DesktopHttp | null): void {
+  http = bridge;
+}
+
+/** The desktop HTTP bridge, or `null` when running on the web. */
+export function getDesktopHttp(): DesktopHttp | null {
+  return http;
 }
