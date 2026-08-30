@@ -75,6 +75,15 @@ export const SURPRISE_MODES: { id: SurpriseMode; label: string }[] = [
 ];
 
 /**
+ * The two currencies the app can speak: rating points, or round-win chance.
+ *
+ * Named once and shared, because the same choice is offered in two places --
+ * per Verdict card, and app-wide for the live round -- and a second copy of the
+ * union is a second place for them to drift apart.
+ */
+export type Unit = "points" | "chance";
+
+/**
  * The currency a Verdict insight card speaks: rating points, or round-win %.
  *
  * The engine computes both for every card, so this is purely a display choice.
@@ -85,7 +94,7 @@ export const SURPRISE_MODES: { id: SurpriseMode; label: string }[] = [
  * and trade-off cards are decisions about taking the round, so they default to
  * chance. Every card stays individually switchable regardless of its default.
  */
-export type CardUnit = "points" | "chance";
+export type CardUnit = Unit;
 
 /** The Verdict insight cards that can switch currency. */
 export type CardId = "protocolProtects" | "beingHunted" | "diceOff" | "tradeOff" | "hiddenTie";
@@ -112,12 +121,31 @@ export const CARD_UNIT_DEFAULTS: Record<CardId, CardUnit> = {
   hiddenTie: "chance",
 };
 
+/**
+ * The currency the live round reads in, app-wide.
+ *
+ * Everything on the round screen is a decision about taking the round, so it
+ * defaults to chance and the whole screen agrees. Points remain available
+ * because a captain who has built the grid by hand thinks in the numbers he
+ * wrote, and a round total is the figure he can check against the sheet.
+ *
+ * App-wide rather than per-element for the reason the per-card setting is not:
+ * the round screen is one continuous readout, and a card showing 62% beside a
+ * hold-or-play line showing 5 is the mix this setting exists to end.
+ */
+export const ROUND_UNITS: { id: Unit; label: string }[] = [
+  { id: "chance", label: "Round-win %" },
+  { id: "points", label: "Rating points" },
+];
+
 export interface Settings {
   dodgeMode: DodgeMode;
   adviceLevel: AdviceLevel;
   surpriseMode: SurpriseMode;
   /** Minimum points of opponent regret before we raise a surprise flag. */
   surpriseRegretThreshold: number;
+  /** The currency every number in the live round is shown in. */
+  roundUnit: Unit;
   /**
    * Per-card currency overrides. Only cards the user has explicitly switched
    * appear here; everything else falls back to `CARD_UNIT_DEFAULTS`, so the
@@ -138,6 +166,7 @@ export const DEFAULTS: Settings = {
   adviceLevel: "full",
   surpriseMode: "off",
   surpriseRegretThreshold: 0,
+  roundUnit: "chance",
   cardUnits: {},
 };
 
@@ -199,6 +228,7 @@ export function loadSettings(): Settings {
         : DEFAULTS.surpriseMode,
       surpriseRegretThreshold:
         asNonNegativeNumber(parsed?.surpriseRegretThreshold) ?? DEFAULTS.surpriseRegretThreshold,
+      roundUnit: isCardUnit(parsed?.roundUnit) ? parsed.roundUnit : DEFAULTS.roundUnit,
       cardUnits: sanitizeCardUnits(parsed?.cardUnits),
     };
   } catch {

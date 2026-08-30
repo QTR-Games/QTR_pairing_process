@@ -7,17 +7,19 @@ import {
   liveWinChance,
   moveOptions,
   optionProfile,
+  optionProfileBy,
   pickOptions,
   pickTieBreak,
   playerLeverage,
+  playerLeverageBy,
 } from "../engine/live";
 import { solveCache, type SolveCache } from "../engine/protocol";
 import { toWinProbability } from "../engine/winProbability";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale } from "../model/board";
-import { pct } from "../model/format";
+import { gapInUnit, inUnit, pct, points } from "../model/format";
 import { ratingColor, toFraction, type Scale } from "../model/scale";
-import type { AdviceLevel, SurpriseMode } from "../model/settings";
+import type { AdviceLevel, SurpriseMode, Unit } from "../model/settings";
 
 interface Props {
   board: Board;
@@ -32,9 +34,13 @@ interface Props {
   adviceLevel?: AdviceLevel;
   surpriseMode?: SurpriseMode;
   surpriseRegretThreshold?: number;
+  /**
+   * The currency every number on this screen reads in. Defaults to chance, the
+   * currency the rest of the app speaks, so a caller that never sets it gets
+   * the round-win view the live-round tests rely on.
+   */
+  roundUnit?: Unit;
 }
-
-const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
 /**
  * The live state that results from taking a non-pair option -- nominating a
@@ -136,6 +142,7 @@ export function LivePanel({
   adviceLevel = "full",
   surpriseMode = "off",
   surpriseRegretThreshold = 0,
+  roundUnit = "chance",
 }: Props) {
   const scale = boardScale(board);
   const matrix: Matrix = useMemo(() => boardMatrix(board, scale), [board, scale]);
@@ -180,6 +187,42 @@ export function LivePanel({
   const rawOptions = useMemo(() => moveOptions(matrix, state, cache), [matrix, state, cache]);
   const leverage = useMemo(() => playerLeverage(matrix, state, cache), [matrix, state, cache]);
 
+  /** Print a value the engine has already priced in the displayed currency. */
+  const show = (v: number) => inUnit(roundUnit, v);
+
+  /** A matchup rating, in the displayed currency: the number written, or its win chance. */
+  const ratingValue = (r: number) =>
+    roundUnit === "chance" ? toWinProbability(r, scale.min, scale.max) : r;
+
+  /*
+   * The chance valuation of an option, in the shape the engine's generic
+   * leverage and profile helpers ask for. `from` rather than the panel's own
+   * state because a profile prices *their replies* to a position one move
+   * deeper, and the decision that option belongs to is the one at that node.
+   */
+  const chanceValueOf = useMemo(
+    () => (o: MoveOption, from: LiveState) =>
+      optionChanceValue(matrix, from, currentDecision(from), o, chanceOf),
+    [matrix, chanceOf],
+  );
+
+  /*
+   * Hold-or-play in the displayed currency.
+   *
+   * Ranked by the number it prints: the panel is a sorted list, and sorting it
+   * on points while showing chance would put a smaller figure above a larger
+   * one. The points list is still computed above because the surprise flag's
+   * priority seat reads from it, and that must not move when a display toggle
+   * is flipped.
+   */
+  const leverageShown = useMemo(
+    () =>
+      roundUnit === "points"
+        ? leverage
+        : playerLeverageBy(matrix, state, chanceValueOf, cache),
+    [roundUnit, leverage, matrix, state, chanceValueOf, cache],
+  );
+
   /*
    * When several of our options carry the same guaranteed value, minimax has
    * nothing left to say and the app would otherwise present a coin flip. The
@@ -215,14 +258,36 @@ export function LivePanel({
     return withProfiles;
   }, [matrix, state, rawOptions, decision, cache]);
 
-  const tieBreak = useMemo(() => summariseTieBreak(ranked), [ranked]);
+  /*
+   * Every option with a profile in the displayed currency attached.
+   *
+   * `ranked` above is deliberately left alone: it is priced in points and it
+   * decides both the order and which option is called best. Flipping the
+   * display unit must never move the recommendation, only the figures printed
+   * beside it -- so the chance profile is computed as a second, parallel read
+   * of the same options rather than by re-ranking them.
+   */
+  const rows = useMemo(
+    () =>
+      ranked.map(({ o, p }) => ({
+        o,
+        p,
+        pShown:
+          roundUnit === "points" || !p
+            ? p
+            : (optionProfileBy(matrix, state, o, chanceValueOf, cache) ?? undefined),
+        chance: optionChanceValue(matrix, state, decision, o, chanceOf),
+      })),
+    [ranked, roundUnit, matrix, state, cache, chanceValueOf, decision, chanceOf],
+  );
+
+  const tieBreak = useMemo(() => summariseTieBreak(rows, roundUnit), [rows, roundUnit]);
 
   // The owner's optimum in the same currency the cards read in, so every card's
   // "how far behind the best offer" tag is a chance gap rather than a points
   // one. The list is ranked on the points floor, so the top row is the
   // reference; a card that happens to price higher in chance simply reads level.
-  const bestChance =
-    ranked.length > 0 ? optionChanceValue(matrix, state, decision, ranked[0].o, chanceOf) : 0;
+  const bestChance = rows.length > 0 ? rows[0].chance : 0;
 
   const ourName = (i: number) => board.ourPlayers[i] ?? `Us ${i + 1}`;
   const theirName = (i: number) => board.theirPlayers[i] ?? `Them ${i + 1}`;
@@ -340,7 +405,10 @@ export function LivePanel({
           <h2>{prompt(decision, ourName, theirName)}</h2>
           <p className="live-sub">
             {state.committed.length} of {board.ourPlayers.length} tables set
-            {" "}&middot; {pct(chanceOf(state))} to take the round
+            {" "}&middot;{" "}
+            {roundUnit === "chance"
+              ? `${pct(chanceOf(state))} to take the round`
+              : `${points(rawOptions[0]?.value ?? state.banked)} guaranteed`}
           </p>
         </div>
         <button type="button" className="ghost" onClick={onReset}>
@@ -349,7 +417,7 @@ export function LivePanel({
       </header>
 
       {decision.kind === "done" ? (
-        <Result state={state} chance={chanceOf(state)} scale={scale} ourName={ourName} theirName={theirName} />
+        <Result state={state} chance={chanceOf(state)} scale={scale} unit={roundUnit} ourName={ourName} theirName={theirName} />
       ) : (
         <>
           {showProse && tieBreak && (
@@ -364,7 +432,7 @@ export function LivePanel({
                 !!! Opponent previous choice is suspiciously outside expectations. Be careful!
               </p>
               <p className="surprise-body">
-                They gave up {fmt(surprise.regret)} points against your model ({fmt(surprise.valueDelta)} to
+                They gave up {points(surprise.regret)} points against your model ({points(surprise.valueDelta)} to
                 the floor), moving your projected round-win chance from {pct(surprise.chanceBest)} to{" "}
                 {pct(surprise.chanceAfter)}. Why might they choose this line?
                 {surprise.priorityAfter === null && surprise.priorityBefore === null
@@ -377,11 +445,11 @@ export function LivePanel({
           )}
 
           <ol className="options">
-            {ranked.map(({ o, p }, idx) => (
+            {rows.map(({ o, pShown }, idx) => (
               <OptionRow
                 key={idx}
                 option={o}
-                profile={p}
+                profile={pShown}
                 decision={decision}
                 matrix={matrix}
                 state={state}
@@ -394,6 +462,7 @@ export function LivePanel({
                 scale={scale}
                 showProse={showProse}
                 showHints={showHints}
+                roundUnit={roundUnit}
                 ourName={ourName}
                 theirName={theirName}
                 onChoose={() => {
@@ -412,8 +481,8 @@ export function LivePanel({
             ))}
           </ol>
 
-          {showProse && leverage.length > 1 && (
-            <Leverage leverage={leverage} ourName={ourName} />
+          {showProse && leverageShown.length > 1 && (
+            <Leverage leverage={leverageShown} unit={roundUnit} ourName={ourName} />
           )}
         </>
       )}
@@ -427,7 +496,7 @@ export function LivePanel({
                 <span>
                   {ourName(c.ours)} vs {theirName(c.theirs)}
                 </span>
-                <strong>{pct(toWinProbability(c.value, scale.min, scale.max))}</strong>
+                <strong>{show(ratingValue(c.value))}</strong>
               </li>
             ))}
           </ul>
@@ -471,6 +540,7 @@ function OptionRow({
   scale,
   showProse,
   showHints,
+  roundUnit,
   ourName,
   theirName,
   onChoose,
@@ -497,6 +567,8 @@ function OptionRow({
   showProse: boolean;
   /** Show the one-line recommendation and the tags (full and brief). */
   showHints: boolean;
+  /** The currency every figure on this row prints in. */
+  roundUnit: Unit;
   ourName: (i: number) => string;
   theirName: (i: number) => string;
   onChoose: () => void;
@@ -509,7 +581,16 @@ function OptionRow({
   const optionChance = optionChanceValue(matrix, state, decision, option, chanceOf);
   const wins = optionChance > 0.5;
   const cost = Math.max(0, ownerIsUs ? bestChance - optionChance : optionChance - bestChance);
-  const level = cost < 0.005;
+
+  // The same two readings in the currency on show. `regret` is the engine's own
+  // points shortfall against the best move, so the points column never has to
+  // re-derive what the search already knew.
+  const show = (v: number) => inUnit(roundUnit, v);
+  const ratingValue = (r: number) =>
+    roundUnit === "chance" ? toWinProbability(r, scale.min, scale.max) : r;
+  const shownValue = roundUnit === "chance" ? optionChance : option.value;
+  const shownCost = roundUnit === "chance" ? cost : Math.abs(option.regret);
+  const level = roundUnit === "chance" ? cost < 0.005 : shownCost < 1e-9;
 
   if (option.pair) {
     // An offer is two taps: what was offered, then which one was taken.
@@ -548,13 +629,25 @@ function OptionRow({
       if (tieBreak) return p.player === tieBreak.player;
       return p.best && Math.abs(picks[0].value - picks[1].value) > 1e-9;
     };
+    // What both halves hold. They tie exactly in points -- that is what puts
+    // this paragraph on screen -- but their chance values need not tie, so in
+    // that currency the shared claim is the weaker of the two, and the wording
+    // says "at least" to stay true either way.
+    const bothHold =
+      roundUnit === "chance"
+        ? Math.min(
+            ...picks.map((p) => chanceOf(pickState(matrix, state, option.pair!, p.player))),
+          )
+        : picks[0].value;
+    const bothHoldText =
+      roundUnit === "chance" ? `at least ${show(bothHold)}` : show(bothHold);
     return (
       <li className={"option" + (best ? " best" : "")}>
         <div className="option-main">
           <span className="option-label">
             {names(option.pair[0])} or {names(option.pair[1])}
           </span>
-          <span className={"option-value" + (wins ? " winning" : "")}>{pct(optionChance)}</span>
+          <span className={"option-value" + (wins ? " winning" : "")}>{show(shownValue)}</span>
         </div>
         <div className="option-meta">
           {showHints &&
@@ -563,7 +656,7 @@ function OptionRow({
                 {ownerIsUs ? "best offer" : "their strongest"}
               </span>
             ) : !level ? (
-              <span className="tag cost">-{pct(cost)}</span>
+              <span className="tag cost">-{show(shownCost)}</span>
             ) : (
               <span className="tag cost">same floor</span>
             ))}
@@ -571,6 +664,7 @@ function OptionRow({
         <div className="pick-row">
           {picks.map((p) => {
             const pickChance = chanceOf(pickState(matrix, state, option.pair!, p.player));
+            const rating = ratingFor(p.player);
             return (
             <button
               key={p.player}
@@ -583,13 +677,16 @@ function OptionRow({
               </span>
               <span
                 className="pick-rating"
-                style={{ background: ratingColor(toFraction(ratingFor(p.player), scale)) }}
-                title={choiceIsOurs ? "Our rating of this matchup" : "Their rating of this matchup"}
+                style={{ background: ratingColor(toFraction(rating, scale)) }}
+                // The raw number the captain wrote stays reachable on the chip
+                // even when the screen is reading in chance, because it is the
+                // one figure he can check against his own sheet.
+                title={`${choiceIsOurs ? "Our" : "Their"} rating of this matchup: ${points(rating)}`}
               >
-                {fmt(ratingFor(p.player))}
+                {show(ratingValue(rating))}
               </span>
               <span className={"pick-value" + (pickChance > 0.5 ? " winning" : "")}>
-                {pct(pickChance)}
+                {show(roundUnit === "chance" ? pickChance : p.value)}
               </span>
             </button>
             );
@@ -612,7 +709,7 @@ function OptionRow({
               )
             ) : tieBreak?.reason === "interchangeable" ? (
               <>
-                Both hold {fmt(picks[0].value)}, and your grid rates{" "}
+                Both hold {bothHoldText}, and your grid rates{" "}
                 {names(tieBreak.player)} and {names(tieBreak.other)} the same
                 against everyone you have left &mdash; so this is genuinely
                 yours to call. Pick on what the sheet cannot see: terrain, who
@@ -620,36 +717,57 @@ function OptionRow({
               </>
             ) : tieBreak ? (
               <>
-                Both hold {fmt(picks[0].value)}. Take{" "}
+                Both hold {bothHoldText}. Take{" "}
                 <strong>{names(tieBreak.player)}</strong> &mdash;{" "}
                 {tieBreak.reason === "typical" ? (
-                  <>
-                    if they play their own board it leaves {fmt(tieBreak.value)}{" "}
-                    reachable against {fmt(tieBreak.otherValue)}.
-                  </>
+                  roundUnit === "chance" ? (
+                    <>
+                      if they play their own board it typically comes out ahead
+                      of {names(tieBreak.other)}.
+                    </>
+                  ) : (
+                    <>
+                      if they play their own board it leaves {points(tieBreak.value)}{" "}
+                      reachable against {points(tieBreak.otherValue)}.
+                    </>
+                  )
                 ) : tieBreak.reason === "upside" ? (
-                  <>
-                    same floor either way, but it keeps {fmt(tieBreak.value)} alive
-                    if they misplay against {fmt(tieBreak.otherValue)}. Play to
-                    your outs.
-                  </>
+                  roundUnit === "chance" ? (
+                    <>
+                      same floor either way, but it keeps more alive if they
+                      misplay. Play to your outs.
+                    </>
+                  ) : (
+                    <>
+                      same floor either way, but it keeps {points(tieBreak.value)} alive
+                      if they misplay against {points(tieBreak.otherValue)}. Play to
+                      your outs.
+                    </>
+                  )
                 ) : tieBreak.reason === "average" ? (
-                  <>
-                    floor, ceiling and pressure all match, but across their whole
-                    reply space it averages {fmt(tieBreak.value)} against{" "}
-                    {fmt(tieBreak.otherValue)}.
-                  </>
+                  roundUnit === "chance" ? (
+                    <>
+                      floor, ceiling and pressure all match, but across their
+                      whole reply space it averages higher.
+                    </>
+                  ) : (
+                    <>
+                      floor, ceiling and pressure all match, but across their whole
+                      reply space it averages {points(tieBreak.value)} against{" "}
+                      {points(tieBreak.otherValue)}.
+                    </>
+                  )
                 ) : (
                   <>
                     same floor and same upside, but only{" "}
-                    {Math.round(tieBreak.value * 100)}% of their replies hold you
-                    there, against {Math.round(tieBreak.otherValue * 100)}%.
+                    {pct(tieBreak.value)} of their replies hold you
+                    there, against {pct(tieBreak.otherValue)}.
                   </>
                 )}
               </>
             ) : (
               <>
-                Both hold {fmt(picks[0].value)} and every measure this app has
+                Both hold {bothHoldText} and every measure this app has
                 comes out level &mdash; but they are not the same players, so
                 there is an edge here the grid is not capturing. Trust what you
                 know about the matchup.
@@ -679,14 +797,14 @@ function OptionRow({
     <li className={"option" + (best ? " best" : "")}>
       <button type="button" className="option-main tappable" onClick={onChoose}>
         <span className="option-label">{label}</span>
-        <span className={"option-value" + (wins ? " winning" : "")}>{pct(optionChance)}</span>
+        <span className={"option-value" + (wins ? " winning" : "")}>{show(shownValue)}</span>
       </button>
       <div className="option-meta">
         {showHints &&
           (best ? (
             <span className="tag">{ownerIsUs ? "best" : "their strongest"}</span>
           ) : !level ? (
-            <span className="tag cost">-{pct(cost)}</span>
+            <span className="tag cost">-{show(shownCost)}</span>
           ) : (
             <span className="tag cost">same floor</span>
           ))}
@@ -694,19 +812,19 @@ function OptionRow({
           <span
             className="pick-rating"
             style={{ background: ratingColor(toFraction(concreteRating, scale)) }}
-            title="Our rating of this matchup"
+            title={`Our rating of this matchup: ${points(concreteRating)}`}
           >
-            {fmt(concreteRating)}
+            {show(ratingValue(concreteRating))}
           </span>
         )}
-        {showProse && profile && <ProfileBar profile={profile} />}
+        {showProse && profile && <ProfileBar profile={profile} unit={roundUnit} />}
       </div>
       {showHints && decision.kind === "forced" && (
         <p className="pick-hint forced-why">
           No choice here &mdash; {label} is the only legal pairing, so the engine
           plays it and moves on.
           {concreteRating !== null && (
-            <> Your grid rates the matchup {fmt(concreteRating)}.</>
+            <> Your grid rates the matchup {show(ratingValue(concreteRating))}.</>
           )}
         </p>
       )}
@@ -717,18 +835,22 @@ function OptionRow({
 /**
  * The two numbers that separate options minimax rates identically: how much is
  * still reachable if they misstep, and how many of their replies take it away.
+ *
+ * The profile arrives already priced in the currency on show, so both figures
+ * come from the same search in the same units; only the reply counts are
+ * currency-free.
  */
-function ProfileBar({ profile }: { profile: OptionProfile }) {
+function ProfileBar({ profile, unit }: { profile: OptionProfile; unit: Unit }) {
   const safe = profile.totalReplies - profile.punishingReplies;
   return (
     <span className="profile">
       <span className={"profile-upside" + (profile.upside > 0 ? " live" : "")}>
-        up to {fmt(profile.ifTheyErr)}
+        up to {inUnit(unit, profile.ifTheyErr)}
       </span>
       <span className="profile-risk">
         {profile.punishingReplies === 0
           ? "nothing they do lowers it"
-          : `${profile.punishingReplies} of ${profile.totalReplies} replies hold you to ${fmt(profile.guaranteed)}`}
+          : `${profile.punishingReplies} of ${profile.totalReplies} replies hold you to ${inUnit(unit, profile.guaranteed)}`}
         {safe > 0 && profile.upside > 0 && ` · ${safe} give you more`}
       </span>
     </span>
@@ -743,10 +865,12 @@ function ProfileBar({ profile }: { profile: OptionProfile }) {
  * twice the upside, or three times the chance of being punished.
  */
 function summariseTieBreak(
-  ranked: { o: MoveOption; p?: OptionProfile }[],
+  ranked: { o: MoveOption; p?: OptionProfile; pShown?: OptionProfile }[],
+  unit: Unit,
 ): { lead: string; body: string } | null {
   const entries = ranked.filter(
-    (x): x is { o: MoveOption; p: OptionProfile } => !!x.p,
+    (x): x is { o: MoveOption; p: OptionProfile; pShown: OptionProfile } =>
+      !!x.p && !!x.pShown,
   );
   if (entries.length < 2) return null;
 
@@ -754,11 +878,23 @@ function summariseTieBreak(
   const tied = entries.filter((x) => Math.abs(x.o.value - best) < 1e-9);
   if (tied.length < 2) return null;
 
+  // Judged on the points profile, so which of the two paragraphs appears is
+  // decided by the engine and not by a display setting. Only the figures
+  // inside them follow the unit.
   const upsides = new Set(tied.map((x) => x.p.upside.toFixed(3)));
   const risks = new Set(tied.map((x) => x.p.punishingReplies));
+
+  // The options tie exactly on the points floor -- that is what put them here.
+  // They need not tie in chance, so the claim they all support is the weakest
+  // of them, and "at least" is the wording that stays true in both currencies.
+  const floor =
+    unit === "chance" ? Math.min(...tied.map((x) => x.pShown.guaranteed)) : best;
+  const floorText = inUnit(unit, floor);
+  const holds = unit === "chance" ? `at least ${floorText}` : floorText;
+
   if (upsides.size === 1 && risks.size === 1) {
     return {
-      lead: `${tied.length} options all guarantee ${fmt(best)}.`,
+      lead: `${tied.length} options all guarantee ${holds}.`,
       body:
         "They are genuinely equivalent -- same upside, same exposure. Nothing " +
         "in the numbers separates them, so pick on what the numbers do not " +
@@ -766,13 +902,13 @@ function summariseTieBreak(
     };
   }
 
-  const top = tied[0].p;
+  const top = tied[0].pShown;
   return {
-    lead: `${tied.length} options all guarantee ${fmt(best)} -- but they are not equal.`,
+    lead: `${tied.length} options all guarantee ${holds} -- but they are not equal.`,
     body:
-      `The one at the top reaches ${fmt(top.ifTheyErr)} if they misstep, and only ` +
+      `The one at the top reaches ${inUnit(unit, top.ifTheyErr)} if they misstep, and only ` +
       `${top.punishingReplies} of their ${top.totalReplies} replies holds you to ` +
-      `${fmt(best)}. The others give up upside, or hand them more ways to punish you, ` +
+      `${floorText}. The others give up upside, or hand them more ways to punish you, ` +
       `for exactly the same floor.`,
   };
 }
@@ -786,9 +922,12 @@ function summariseTieBreak(
  */
 function Leverage({
   leverage,
+  unit,
   ourName,
 }: {
   leverage: ReturnType<typeof playerLeverage>;
+  /** The currency `leverage` was priced in, and so the one it prints in. */
+  unit: Unit;
   ourName: (i: number) => string;
 }) {
   const spread =
@@ -822,9 +961,9 @@ function Leverage({
       <h3>Hold or play</h3>
       <p className="leverage-lead">
         Holding <strong>{ourName(hold.player)}</strong> is worth{" "}
-        {fmt(hold.gainFromWaiting)} more than committing them here.{" "}
+        {gapInUnit(unit, hold.gainFromWaiting)} more than committing them here.{" "}
         <strong>{ourName(now.player)}</strong> is the opposite — their moment is
-        this one, by {fmt(-now.gainFromWaiting)}.
+        this one, by {gapInUnit(unit, now.gainFromWaiting)}.
       </p>
       <ul>
         {leverage.map((l) => (
@@ -835,8 +974,8 @@ function Leverage({
                 "gain " + (l.gainFromWaiting > 0 ? "up" : l.gainFromWaiting < 0 ? "down" : "flat")
               }
             >
-              {l.gainFromWaiting > 0 ? "+" : ""}
-              {fmt(l.gainFromWaiting)}
+              {l.gainFromWaiting > 0 ? "+" : l.gainFromWaiting < 0 ? "-" : ""}
+              {gapInUnit(unit, l.gainFromWaiting)}
             </span>
           </li>
         ))}
@@ -849,6 +988,7 @@ function Result({
   state,
   chance,
   scale,
+  unit,
   ourName,
   theirName,
 }: {
@@ -856,20 +996,25 @@ function Result({
   /** The round-win chance of the completed board, in [0, 1]. */
   chance: number;
   scale: Scale;
+  unit: Unit;
   ourName: (i: number) => string;
   theirName: (i: number) => string;
 }) {
+  // Won or lost is always the chance question, whichever currency is on show:
+  // the round is taken or it is not, and a points total does not say which.
   const won = chance > 0.5;
+  const rating = (v: number) =>
+    inUnit(unit, unit === "chance" ? toWinProbability(v, scale.min, scale.max) : v);
   return (
     <div className={"result " + (won ? "won" : "lost")}>
-      <p className="result-score">{pct(chance)}</p>
+      <p className="result-score">{inUnit(unit, unit === "chance" ? chance : state.banked)}</p>
       <p className="result-note">
         {won ? "Takes the round" : "Falls short of the round"}
       </p>
       <ul className="result-tables">
         {state.committed.map((c, i) => (
           <li key={i}>
-            {ourName(c.ours)} vs {theirName(c.theirs)} — {pct(toWinProbability(c.value, scale.min, scale.max))}
+            {ourName(c.ours)} vs {theirName(c.theirs)} — {rating(c.value)}
           </li>
         ))}
       </ul>

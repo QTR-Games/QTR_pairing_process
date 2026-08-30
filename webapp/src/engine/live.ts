@@ -512,28 +512,37 @@ export function commitPairing(
   };
 }
 
-/** What holding a player back is worth, in points. */
+/**
+ * What holding a player back is worth.
+ *
+ * The unit is whatever the caller priced the options in: points from
+ * `playerLeverage`, round-win chance from `playerLeverageBy` with a chance
+ * valuation. Both halves and the difference are always in that same currency.
+ */
 export interface Leverage {
   player: number;
-  /** Best guaranteed total with this player paired at the next opportunity. */
+  /** Best guaranteed value with this player paired at the next opportunity. */
   ifPlayedNow: number;
-  /** Best guaranteed total with this player held back instead. */
+  /** Best guaranteed value with this player held back instead. */
   ifHeld: number;
   /** Positive means waiting pays; negative means the opportunity is now. */
   gainFromWaiting: number;
 }
 
 /**
- * Per-player value of waiting.
+ * Per-player value of waiting, in whatever currency `valueOf` prices an option.
  *
- * This is the answer to "hold Pete or hold Bokur". It does not rank players by
- * how good their matchups look; it searches the rest of the round twice for
- * each player -- once committing them at the next opportunity, once refusing
- * to -- and reports the difference. A player with a large positive gain has
- * opportunities later that do not exist now. A player with a negative gain is
- * a player whose moment is this one.
+ * The structure of the question is currency-independent: split the options into
+ * the ones that use a player and the ones that hold him, take the best of each,
+ * and report the difference. Only the valuation changes, so the live screen can
+ * ask this in round-win chance without a second copy of the reasoning.
  */
-export function playerLeverage(matrix: Matrix, s: LiveState, cache?: SolveCache): Leverage[] {
+export function playerLeverageBy(
+  matrix: Matrix,
+  s: LiveState,
+  valueOf: (o: MoveOption, from: LiveState) => number,
+  cache?: SolveCache,
+): Leverage[] {
   // This asks the solver the exact question the panel has already asked. With a
   // shared cache the second ask is a walk over cached values; without one it is
   // a second full search of the same tree.
@@ -547,7 +556,7 @@ export function playerLeverage(matrix: Matrix, s: LiveState, cache?: SolveCache)
     for (const o of options) {
       const involves =
         o.ours === p || (o.pair !== undefined && isOurOffer(s) && o.pair.includes(p));
-      (involves ? uses : holds).push(o.value);
+      (involves ? uses : holds).push(valueOf(o, s));
     }
     if (uses.length === 0 || holds.length === 0) continue;
     const ifPlayedNow = Math.max(...uses);
@@ -556,6 +565,20 @@ export function playerLeverage(matrix: Matrix, s: LiveState, cache?: SolveCache)
   }
   out.sort((a, b) => b.gainFromWaiting - a.gainFromWaiting);
   return out;
+}
+
+/**
+ * Per-player value of waiting.
+ *
+ * This is the answer to "hold Pete or hold Bokur". It does not rank players by
+ * how good their matchups look; it searches the rest of the round twice for
+ * each player -- once committing them at the next opportunity, once refusing
+ * to -- and reports the difference. A player with a large positive gain has
+ * opportunities later that do not exist now. A player with a negative gain is
+ * a player whose moment is this one.
+ */
+export function playerLeverage(matrix: Matrix, s: LiveState, cache?: SolveCache): Leverage[] {
+  return playerLeverageBy(matrix, s, (o) => o.value, cache);
 }
 
 function isOurOffer(s: LiveState): boolean {
@@ -593,10 +616,11 @@ export interface OptionProfile {
   upside: number;
 }
 
-export function optionProfile(
+export function optionProfileBy(
   matrix: Matrix,
   s: LiveState,
   opt: MoveOption,
+  valueOf: (o: MoveOption, from: LiveState) => number,
   cache?: SolveCache,
 ): OptionProfile | null {
   const next = stateAfterOption(s, opt, matrix);
@@ -607,7 +631,7 @@ export function optionProfile(
   const replies = moveOptions(matrix, next, cache);
   if (replies.length === 0) return null;
 
-  const values = replies.map((r) => r.value);
+  const values = replies.map((r) => valueOf(r, next));
   const guaranteed = Math.min(...values);
   const ifTheyErr = Math.max(...values);
   const punishingReplies = values.filter((v) => Math.abs(v - guaranteed) < 1e-9).length;
@@ -619,6 +643,15 @@ export function optionProfile(
     totalReplies: values.length,
     upside: ifTheyErr - guaranteed,
   };
+}
+
+export function optionProfile(
+  matrix: Matrix,
+  s: LiveState,
+  opt: MoveOption,
+  cache?: SolveCache,
+): OptionProfile | null {
+  return optionProfileBy(matrix, s, opt, (o) => o.value, cache);
 }
 
 const chanceDistKey = (dist: readonly number[]): string => dist.map((v) => v.toFixed(9)).join(",");

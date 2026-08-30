@@ -18,7 +18,9 @@ import {
   saveSettings,
   type DodgeMode,
   type AdviceLevel,
+  type Settings,
   type SurpriseMode,
+  type Unit,
 } from "./model/settings";
 import { newRound, type LiveState } from "./engine/live";
 import { DesktopWorkspace } from "./components/desktop/DesktopWorkspace";
@@ -65,59 +67,44 @@ export default function App() {
   const [surpriseRegretThreshold, setSurpriseRegretThreshold] = useState<number>(
     () => loadSettings().surpriseRegretThreshold,
   );
+  const [roundUnit, setRoundUnit] = useState<Unit>(() => loadSettings().roundUnit);
   const [screen, setScreen] = useState<Screen>("splash");
 
-  // Set and persist in one call. Both layouts expose this preference, so the
-  // write has to live in one place or one of them will change it without
-  // saving it. These toggles share one storage record with each other and with
-  // the per-card currency choices, so each writer hands the others' current
-  // values back or a save would wipe them. The card units are read fresh from
-  // storage rather than held in state here, because VerdictCards is their only
-  // writer -- mirroring them into App state would just be a second copy to keep
-  // in sync.
+  // Set and persist in one call. Both layouts expose these preferences, so the
+  // write has to live in one place or one of them will change a setting without
+  // saving it. Every toggle shares one storage record with the others and with
+  // the per-card currency choices, so the save is a read-modify-write against
+  // what is on disk: a writer that listed the fields it knew about would drop
+  // any it did not, which is exactly what happens when a new toggle is added
+  // and one of the copies is missed. The card units are read fresh rather than
+  // mirrored into App state because VerdictCards is their only writer.
+  const persist = (patch: Partial<Settings>) =>
+    saveSettings({ ...loadSettings(), ...patch });
+
   const changeDodgeMode = (next: DodgeMode) => {
     setDodgeMode(next);
-    saveSettings({
-      dodgeMode: next,
-      adviceLevel,
-      surpriseMode,
-      surpriseRegretThreshold,
-      cardUnits: loadSettings().cardUnits,
-    });
+    persist({ dodgeMode: next });
   };
 
   const changeAdviceLevel = (next: AdviceLevel) => {
     setAdviceLevel(next);
-    saveSettings({
-      dodgeMode,
-      adviceLevel: next,
-      surpriseMode,
-      surpriseRegretThreshold,
-      cardUnits: loadSettings().cardUnits,
-    });
+    persist({ adviceLevel: next });
   };
 
   const changeSurpriseMode = (next: SurpriseMode) => {
     setSurpriseMode(next);
-    saveSettings({
-      dodgeMode,
-      adviceLevel,
-      surpriseMode: next,
-      surpriseRegretThreshold,
-      cardUnits: loadSettings().cardUnits,
-    });
+    persist({ surpriseMode: next });
+  };
+
+  const changeRoundUnit = (next: Unit) => {
+    setRoundUnit(next);
+    persist({ roundUnit: next });
   };
 
   const changeSurpriseRegretThreshold = (next: number) => {
     const clamped = Number.isFinite(next) && next >= 0 ? next : 0;
     setSurpriseRegretThreshold(clamped);
-    saveSettings({
-      dodgeMode,
-      adviceLevel,
-      surpriseMode,
-      surpriseRegretThreshold: clamped,
-      cardUnits: loadSettings().cardUnits,
-    });
+    persist({ surpriseRegretThreshold: clamped });
   };
 
   /**
@@ -240,6 +227,8 @@ export default function App() {
           onSurpriseMode={changeSurpriseMode}
           surpriseRegretThreshold={surpriseRegretThreshold}
           onSurpriseRegretThreshold={changeSurpriseRegretThreshold}
+          roundUnit={roundUnit}
+          onRoundUnit={changeRoundUnit}
           onResume={() => enter("round")}
           onContinue={() => {
             /*
@@ -319,6 +308,8 @@ export default function App() {
               onSurpriseMode={changeSurpriseMode}
               surpriseRegretThreshold={surpriseRegretThreshold}
               onSurpriseRegretThreshold={changeSurpriseRegretThreshold}
+              roundUnit={roundUnit}
+              onRoundUnit={changeRoundUnit}
             />
           )}
         </main>
@@ -370,6 +361,7 @@ export default function App() {
               adviceLevel={adviceLevel}
               surpriseMode={surpriseMode}
               surpriseRegretThreshold={surpriseRegretThreshold}
+              roundUnit={roundUnit}
               onReset={() => setLive(newRound(board.ourPlayers.length, board.ourTeamFirst))}
             />
           ) : (
