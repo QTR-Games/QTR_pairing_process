@@ -51,7 +51,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc4RTY4NEE1RTEzMDg1QjIKUldTeWhURGhwWVRtZUQxZUlaOUprNmEzaTlOOEdYWGpKRUp6YkVmZEhwaloyOFhEa082cWhOVlEK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI4MTkzNzM3QkMyNjk1NTMKUldSVGxTYThOemNaS0VaQmlKK3Bla29FVzB2bjQzWEJkZUJxcUQ5blJvN1RmMGlob2JIemQ5SUsK",
       "endpoints": [
         "https://github.com/QTR-Games/QTR_pairing_process/releases/latest/download/latest.json"
       ],
