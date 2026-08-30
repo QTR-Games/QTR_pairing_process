@@ -55,6 +55,12 @@ publishes it. See [Making a release go live](#making-a-release-go-live).
 
 ## Updater signing key: one-time setup
 
+Not yet done for this repository. The `pubkey` currently committed in
+`tauri.conf.json` came from a keypair generated while the pipeline was being
+built, whose private half nobody holds, and no signing secrets are set -- so the
+release workflow stops at its first step. Run the setup below before cutting the
+first release; it replaces both halves together.
+
 The updater key is a minisign keypair, separate from any Windows code-signing
 certificate. The **private** key signs the installer in CI; the **public** key
 is committed in `tauri.conf.json` and ships inside every build. Losing the
@@ -63,33 +69,53 @@ new pair and ship it in the next build -- but every already-installed copy stops
 accepting updates until it is manually reinstalled onto the new key, so treat it
 as durable material and back it up.
 
-Generate a pair with the Tauri CLI (this needs only Node, not Rust):
+The two halves have to move together. A private key in CI that is *not* the
+match for the public key in the build produces a release that looks perfect and
+that every installed app silently rejects, so both are written by one script:
 
 ```powershell
 cd webapp
-npx tauri signer generate -w klikklak-updater.key
+npm ci                            # the script uses the Tauri CLI from here
+npm run desktop:updater:key       # generates the pair, writes the pubkey into tauri.conf.json
+npm run desktop:updater:secrets   # uploads the private half as repository secrets
 ```
 
-It writes `klikklak-updater.key` (private) and `klikklak-updater.key.pub`
-(public), and prompts for a password. **Keep both files and the password out of
-the repository** -- write them somewhere durable and private.
+The first command writes `webapp/klikklak-updater.key` (private) and
+`webapp/klikklak-updater.key.pub` (public), records the generated password in a
+gitignored `webapp/updater.properties`, and replaces
+`plugins.updater.pubkey` in `webapp/src-tauri/tauri.conf.json` with the public
+key. **Commit that config change** -- the public key has to ship in the build
+that will verify updates. It refuses to overwrite an existing key without
+`-Force`, because replacing the key stops updates for anyone already running a
+build signed with the old one.
 
-Then set the public key and the two secrets:
+**Keep the key files and the password out of the repository** -- write them
+somewhere durable and private. All three generated paths are gitignored.
 
-1. Copy the entire contents of `klikklak-updater.key.pub` into
-   `plugins.updater.pubkey` in `webapp/src-tauri/tauri.conf.json`. It is the raw
-   key text, not a path.
-2. Set two repository secrets (Settings -> Secrets and variables -> Actions):
-   - `TAURI_SIGNING_PRIVATE_KEY` -- the entire contents of the private
-     `klikklak-updater.key` file.
-   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` -- the password you chose.
+The second command reads both and sets two repository secrets over stdin, so no
+secret ever appears on a command line:
+
+- `TAURI_SIGNING_PRIVATE_KEY` -- the contents of the private key file.
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` -- the generated password.
 
 The exact secret names matter. Tauri v2 reads `TAURI_SIGNING_PRIVATE_KEY` and
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the v1 names (`TAURI_PRIVATE_KEY`,
 `TAURI_KEY_PASSWORD`) are silently ignored and produce an *unsigned* artifact
-that no installed app will accept. `release-desktop.yml` fails loudly before
-building if `TAURI_SIGNING_PRIVATE_KEY` is missing, precisely because that
-failure is otherwise invisible until an update silently never arrives.
+that no installed app will accept.
+
+Before it builds anything, `release-desktop.yml` signs a scratch file with the
+secret and compares the key ID against the `pubkey` in `tauri.conf.json`
+(`npm run desktop:updater:verify`, which you can also run locally with the key
+in your environment). A missing key, a wrong password, or a key that is not the
+match for the shipped public key all fail there, in seconds, rather than
+invisibly weeks later when nobody's app is updating.
+
+If you would rather do it by hand -- generating on a machine that is not this
+checkout, say -- the equivalent is `npx tauri signer generate -w
+klikklak-updater.key`, pasting the whole contents of the resulting `.pub` file
+into `plugins.updater.pubkey`, and setting the two secrets yourself under
+Settings -> Secrets and variables -> Actions. The verification step holds either
+way.
 
 ## Cutting a release
 
@@ -160,11 +186,11 @@ effect of a release. Track that work on its own.
 
 ## Troubleshooting
 
-**The `desktop` PR check builds fine but the release fails at signing.** The two
-secrets are the usual cause. `release-desktop.yml` checks for
-`TAURI_SIGNING_PRIVATE_KEY` up front, but a wrong *password* surfaces later as a
-signer error mid-build. Confirm `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` matches the
-password you set when generating the key.
+**The release fails before it builds, at "Verify the updater signing key".**
+That step is doing its job: the secret is missing, the password is wrong, or the
+key is not the private half of the `pubkey` this build ships. The message names
+which. Re-run `npm run desktop:updater:key` and `npm run desktop:updater:secrets`
+to put a matching pair in place, and commit the changed `tauri.conf.json`.
 
 **A release published but installed apps are not updating.** Three things to
 check, in order: the release is *published*, not still a draft; it is not marked
@@ -174,10 +200,11 @@ no key, or an older key, cannot verify the new signature. The version in
 `latest.json` must also be strictly higher than the installed one.
 
 **Updates verify-fail silently.** The installer was signed with a private key
-that does not match the `pubkey` shipped in the app. This happens if the key was
-regenerated but `tauri.conf.json` was not updated, or vice versa. The public key
-in the build and the private key in `TAURI_SIGNING_PRIVATE_KEY` must be halves of
-the same pair. Regenerate both together if in doubt.
+that does not match the `pubkey` shipped in the *installed* app -- typically an
+app installed from a build made before the key was rotated. New releases cannot
+land in this state: the workflow now compares the two before building.
+`npm run desktop:updater:key` regenerates both halves together, and an app on the
+old key has to be reinstalled once from the new installer.
 
 **SmartScreen warns about an unknown publisher.** Expected without Authenticode
 signing -- the updater signature does not affect it. See

@@ -211,6 +211,13 @@ webapp/android/keystore.properties
 *.jks
 *.keystore
 
+# Desktop updater signing material. The minisign private key and its password
+# are never committed; only the public half belongs in the repository, inside
+# tauri.conf.json. See docs/desktop-release.md.
+webapp/updater.properties
+klikklak-updater.key
+klikklak-updater.key.pub
+
 # Real event data stays out of the repository. This repository is public, so
 # anything committed here is world-readable and stays that way in the history and
 # in every fork -- rosters and ratings are harmless apart, but joined together
