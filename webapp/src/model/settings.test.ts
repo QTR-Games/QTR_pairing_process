@@ -42,6 +42,7 @@ const {
   SURPRISE_MODES,
   CARD_IDS,
   CARD_UNIT_DEFAULTS,
+  ROUND_UNITS,
 } =
   await import("./settings");
 
@@ -107,6 +108,20 @@ describe("app settings", () => {
   it("remembers a non-negative surprise threshold across a reload", () => {
     saveSettings({ ...DEFAULTS, surpriseRegretThreshold: 1.5 });
     expect(loadSettings().surpriseRegretThreshold).toBe(1.5);
+  });
+
+  it("shows the round in chance by default, and remembers either unit", () => {
+    expect(DEFAULTS.roundUnit).toBe("chance");
+    expect(loadSettings().roundUnit).toBe("chance");
+    for (const u of ROUND_UNITS) {
+      saveSettings({ ...DEFAULTS, roundUnit: u.id });
+      expect(loadSettings().roundUnit).toBe(u.id);
+    }
+  });
+
+  it("names exactly the two round units, once each", () => {
+    expect(ROUND_UNITS.map((u) => u.id).sort()).toEqual(["chance", "points"]);
+    expect(new Set(ROUND_UNITS.map((u) => u.label)).size).toBe(ROUND_UNITS.length);
   });
 
   it("falls back to defaults rather than throwing on rubbish", () => {

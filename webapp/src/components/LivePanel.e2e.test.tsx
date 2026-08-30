@@ -189,11 +189,12 @@ describe("playing a round by tapping", () => {
     expect(container.querySelector(".committed")).toBeNull();
   });
 
-  it("shows each pairing's raw matchup rating as a chip drawn from our grid", () => {
+  it("keeps each pairing chip anchored to a real cell of our grid", () => {
     // Them-first, so the very first decision is an offer whose two halves are
-    // fixed pairings -- exactly the tiles the captain reads a rating off. Every
-    // rating shown must be a real cell of our grid formatted the way the panel
-    // formats scores, or the chip is decorative at best and wrong at worst.
+    // fixed pairings -- exactly the tiles the captain reads a rating off. The
+    // chip's face follows the round unit, but its tooltip must always carry a
+    // real cell of our grid formatted the way the panel formats points, or the
+    // chip is decorative at best and wrong at worst.
     const b = board(false);
     const { container } = render(<Harness b={b} onState={() => {}} />);
 
@@ -213,11 +214,11 @@ describe("playing a round by tapping", () => {
 
     expect(chips.length).toBeGreaterThan(0);
     for (const chip of chips) {
-      const text = chip.textContent ?? "";
-      expect(Number.isFinite(Number(text))).toBe(true);
-      // The number is a real matchup rating from our grid, not a projected
-      // score or an index -- membership catches a wrong source or wrong scale.
-      expect(gridValues.has(text)).toBe(true);
+      // The tooltip ends in the raw rating. Membership in the grid catches a
+      // wrong source or a wrong scale, which is what the chip could get wrong.
+      const tip = chip.getAttribute("title") ?? "";
+      const raw = tip.split(": ").pop() ?? "";
+      expect(gridValues.has(raw), `"${tip}" should end in one of our ratings`).toBe(true);
     }
   });
 });
