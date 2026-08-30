@@ -67,26 +67,14 @@ describe("app settings", () => {
 
   it("remembers every mode across a reload", () => {
     for (const mode of DODGE_MODES) {
-      saveSettings({
-        dodgeMode: mode.id,
-        adviceLevel: DEFAULTS.adviceLevel,
-        surpriseMode: DEFAULTS.surpriseMode,
-        surpriseRegretThreshold: DEFAULTS.surpriseRegretThreshold,
-        cardUnits: DEFAULTS.cardUnits,
-      });
+      saveSettings({ ...DEFAULTS, dodgeMode: mode.id });
       expect(loadSettings().dodgeMode).toBe(mode.id);
     }
   });
 
   it("remembers every advice level across a reload", () => {
     for (const level of ADVICE_LEVELS) {
-      saveSettings({
-        dodgeMode: DEFAULTS.dodgeMode,
-        adviceLevel: level.id,
-        surpriseMode: DEFAULTS.surpriseMode,
-        surpriseRegretThreshold: DEFAULTS.surpriseRegretThreshold,
-        cardUnits: DEFAULTS.cardUnits,
-      });
+      saveSettings({ ...DEFAULTS, adviceLevel: level.id });
       expect(loadSettings().adviceLevel).toBe(level.id);
     }
   });
@@ -111,25 +99,13 @@ describe("app settings", () => {
 
   it("remembers every surprise mode across a reload", () => {
     for (const mode of SURPRISE_MODES) {
-      saveSettings({
-        dodgeMode: DEFAULTS.dodgeMode,
-        adviceLevel: DEFAULTS.adviceLevel,
-        surpriseMode: mode.id,
-        surpriseRegretThreshold: DEFAULTS.surpriseRegretThreshold,
-        cardUnits: DEFAULTS.cardUnits,
-      });
+      saveSettings({ ...DEFAULTS, surpriseMode: mode.id });
       expect(loadSettings().surpriseMode).toBe(mode.id);
     }
   });
 
   it("remembers a non-negative surprise threshold across a reload", () => {
-    saveSettings({
-      dodgeMode: DEFAULTS.dodgeMode,
-      adviceLevel: DEFAULTS.adviceLevel,
-      surpriseMode: DEFAULTS.surpriseMode,
-      surpriseRegretThreshold: 1.5,
-      cardUnits: DEFAULTS.cardUnits,
-    });
+    saveSettings({ ...DEFAULTS, surpriseRegretThreshold: 1.5 });
     expect(loadSettings().surpriseRegretThreshold).toBe(1.5);
   });
 
@@ -197,11 +173,11 @@ describe("app settings", () => {
     (globalThis as unknown as { localStorage: unknown }).localStorage = broken;
     try {
       const next = {
+        ...DEFAULTS,
         dodgeMode: "off" as const,
         adviceLevel: "brief" as const,
         surpriseMode: "on" as const,
         surpriseRegretThreshold: 0.5,
-        cardUnits: {},
       };
       expect(() => saveSettings(next)).not.toThrow();
       expect(saveSettings(next).dodgeMode).toBe("off");
@@ -250,6 +226,7 @@ describe("per-card currency", () => {
     // The cards share the settings key with dodge mode; flipping a card must not
     // reset a preference set elsewhere, and vice versa.
     saveSettings({
+      ...DEFAULTS,
       dodgeMode: "always",
       adviceLevel: "off",
       surpriseMode: "on",

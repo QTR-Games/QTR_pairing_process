@@ -21,11 +21,13 @@ import { LongshanksImport } from "./LongshanksImport";
 import { BRAND, LINKS } from "../brand";
 import {
   ADVICE_LEVELS,
+  ROUND_UNITS,
   DODGE_MODES,
   SURPRISE_MODES,
   type AdviceLevel,
   type DodgeMode,
   type SurpriseMode,
+  type Unit,
 } from "../model/settings";
 import type { Board } from "../model/board";
 
@@ -43,6 +45,8 @@ interface HomeMenuProps {
   onSurpriseMode: (mode: SurpriseMode) => void;
   surpriseRegretThreshold: number;
   onSurpriseRegretThreshold: (threshold: number) => void;
+  roundUnit: Unit;
+  onRoundUnit: (unit: Unit) => void;
   /** Resume the live round. Only called when `liveOpponent` is set. */
   onResume: () => void;
   /** Open the most recent board on the pairing screen. */
@@ -64,6 +68,8 @@ export function HomeMenu({
   onSurpriseMode,
   surpriseRegretThreshold,
   onSurpriseRegretThreshold,
+  roundUnit,
+  onRoundUnit,
   onResume,
   onContinue,
   onBoards,
@@ -136,6 +142,26 @@ export function HomeMenu({
             much the round explains itself. <em>Just the picks</em> drops the
             reasoning for a faster read; <em>No advice</em> shows the bare
             options.
+          </p>
+          <label className="field inline">
+            <span>Show numbers as</span>
+            <select
+              value={roundUnit}
+              onChange={(e) => onRoundUnit(e.target.value as Unit)}
+            >
+              {ROUND_UNITS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="hint">
+            One currency for the whole round screen. <em>Round-win %</em> is the
+            chance of taking the round from the position a tap would create;{" "}
+            <em>Rating points</em> is the guaranteed total in the numbers you
+            wrote on the grid. The recommendation is the same either way &mdash;
+            only the figures change.
           </p>
           <label className="field inline">
             <span>Surprise-pick alerts</span>

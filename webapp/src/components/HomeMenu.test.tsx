@@ -41,6 +41,8 @@ function renderMenu(over: Partial<Parameters<typeof HomeMenu>[0]> = {}) {
     onSurpriseMode: vi.fn(),
     surpriseRegretThreshold: 0,
     onSurpriseRegretThreshold: vi.fn(),
+    roundUnit: "chance" as const,
+    onRoundUnit: vi.fn(),
     onResume: vi.fn(),
     onContinue: vi.fn(),
     onBoards: vi.fn(),

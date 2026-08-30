@@ -13,8 +13,10 @@ import { SCALES } from "../../model/scale";
 type OverlayMode = "none" | "exposure" | "dodge";
 import {
   ADVICE_LEVELS,
+  ROUND_UNITS,
   DODGE_MODES,
   type AdviceLevel,
+  type Unit,
   type DodgeMode,
   SURPRISE_MODES,
   type SurpriseMode,
@@ -40,6 +42,8 @@ interface Props {
   onSurpriseMode: (m: SurpriseMode) => void;
   surpriseRegretThreshold: number;
   onSurpriseRegretThreshold: (threshold: number) => void;
+  roundUnit: Unit;
+  onRoundUnit: (unit: Unit) => void;
 }
 
 /**
@@ -73,6 +77,8 @@ export function DesktopWorkspace({
   onSurpriseMode,
   surpriseRegretThreshold,
   onSurpriseRegretThreshold,
+  roundUnit,
+  onRoundUnit,
 }: Props) {
   const scale = boardScale(board);
   const rated = isRated(board);
@@ -266,6 +272,7 @@ export function DesktopWorkspace({
               adviceLevel={adviceLevel}
               surpriseMode={surpriseMode}
               surpriseRegretThreshold={surpriseRegretThreshold}
+              roundUnit={roundUnit}
               onReset={onStartRound}
             />
           </section>
@@ -342,6 +349,21 @@ export function DesktopWorkspace({
                 onChange={(e) => onAdviceLevel(e.target.value as AdviceLevel)}
               >
                 {ADVICE_LEVELS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {/* Same preference, same mirror requirement as the dodge price. */}
+            <label className="field inline">
+              <span>Show numbers as</span>
+              <select
+                value={roundUnit}
+                onChange={(e) => onRoundUnit(e.target.value as Unit)}
+              >
+                {ROUND_UNITS.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.label}
                   </option>
