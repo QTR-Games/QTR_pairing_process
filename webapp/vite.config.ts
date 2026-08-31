@@ -60,6 +60,20 @@ export default defineConfig({
   ],
 
   /*
+   * The About & Help screen imports the end-user guides straight from the
+   * repository-root `docs/` directory, which sits one level above this Vite
+   * root. The production build inlines those `?raw` strings and needs nothing
+   * at runtime, but the dev server refuses to read outside the root unless it
+   * is told to, so `tauri:dev` / `npm run dev` would 403 on the import. Allow
+   * the parent; it still covers everything under `webapp/` as well.
+   */
+  server: {
+    fs: {
+      allow: ['..'],
+    },
+  },
+
+  /*
    * The engine tests are genuinely CPU-bound: they run exhaustive searches over
    * thousands of generated boards. Alone each takes a couple of seconds, but
    * vitest runs files in parallel across every core, so under contention a test

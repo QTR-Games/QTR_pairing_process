@@ -53,6 +53,8 @@ interface HomeMenuProps {
   onContinue: () => void;
   /** Open the saved-boards list. */
   onBoards: () => void;
+  /** Open the About & Help screen. */
+  onHelp: () => void;
   onRestored: (boards: Board[]) => void;
 }
 
@@ -73,6 +75,7 @@ export function HomeMenu({
   onResume,
   onContinue,
   onBoards,
+  onHelp,
   onRestored,
 }: HomeMenuProps) {
   return (
@@ -101,6 +104,10 @@ export function HomeMenu({
 
       <button className="ghost wide" onClick={onBoards}>
         {boardCount > 0 ? `Saved boards (${boardCount})` : "Saved boards"}
+      </button>
+
+      <button className="ghost wide" onClick={onHelp}>
+        Guides &amp; help
       </button>
 
       <details className="home-item">

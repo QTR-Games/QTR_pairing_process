@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BoardTab } from "./components/BoardTab";
 import { LivePanel } from "./components/LivePanel";
 import { HomeMenu } from "./components/HomeMenu";
+import { AboutHelp } from "./components/AboutHelp";
 import { Splash } from "./components/Splash";
 import {
   deleteBoard,
@@ -39,8 +40,10 @@ type Tab = "board" | "round" | "boards";
  *
  * The order is fixed: splash, then menu, then the app. Only the last of the
  * three is reachable in both directions, via the Menu button in the header.
+ * About & Help sits off the menu and returns to it, the same shallow way the
+ * app screen does.
  */
-type Screen = "splash" | "home" | "app";
+type Screen = "splash" | "home" | "about" | "app";
 
 export default function App() {
   const [board, setBoard] = useState<Board>(() => loadBoards()[0] ?? emptyBoard());
@@ -246,8 +249,17 @@ export default function App() {
             enter("board");
           }}
           onBoards={() => enter("boards")}
+          onHelp={() => setScreen("about")}
           onRestored={setBoards}
         />
+      </div>
+    );
+  }
+
+  if (screen === "about") {
+    return (
+      <div className="app app-launch">
+        <AboutHelp onBack={() => setScreen("home")} />
       </div>
     );
   }
