@@ -46,6 +46,7 @@ function renderMenu(over: Partial<Parameters<typeof HomeMenu>[0]> = {}) {
     onResume: vi.fn(),
     onContinue: vi.fn(),
     onBoards: vi.fn(),
+    onHelp: vi.fn(),
     onRestored: vi.fn(),
     ...over,
   };
@@ -175,6 +176,14 @@ describe("HomeMenu settings", () => {
 
     fireEvent.click(saved);
     expect(props.onBoards).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens About & Help without touching the saved list", () => {
+    const props = renderMenu();
+
+    fireEvent.click(screen.getByText(/guides & help/i));
+    expect(props.onHelp).toHaveBeenCalledTimes(1);
+    expect(props.onBoards).not.toHaveBeenCalled();
   });
 
   it("reports changes to surprise mode and threshold", () => {

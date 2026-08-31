@@ -1312,6 +1312,207 @@ a.ghost:hover {
 }
 
 /*
+  About & Help.
+
+  The list and the reader share one container. It borrows the menu's fade-in and
+  bottom safe-area padding, and caps its width so a desktop window does not
+  stretch a paragraph of guide text into an unreadable ruler.
+*/
+.about {
+  padding: 1.5rem 1rem calc(2rem + env(safe-area-inset-bottom, 0px));
+  max-width: 760px;
+  margin: 0 auto;
+  animation: home-in 200ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .about {
+    animation: none;
+  }
+}
+
+.about-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.about-head h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.about-intro {
+  margin-bottom: 1.25rem;
+}
+
+.about-by {
+  margin-top: 1.5rem;
+  text-align: center;
+}
+
+.about-guides {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/*
+  A guide is a title with a line under it saying what it is for, so it is a
+  stacked, left-aligned button rather than one of the centred menu rows.
+*/
+.about-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  width: 100%;
+}
+
+.about-guide:hover {
+  border-color: var(--accent);
+}
+
+.about-guide-title {
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.about-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+}
+
+/*
+  The rendered guide.
+
+  These rules only ever style Markdown output, so they are scoped under `.doc`
+  and name plain elements -- there are no classes to hang onto in generated
+  HTML. The aim is readable-at-a-table, not a second design system: comfortable
+  line length, headings that separate without shouting, and tables that scroll
+  sideways on a phone rather than forcing the whole screen to.
+*/
+.doc {
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.doc h1,
+.doc h2,
+.doc h3,
+.doc h4 {
+  line-height: 1.25;
+  margin: 1.4rem 0 0.6rem;
+}
+
+.doc h1 {
+  font-size: 1.5rem;
+}
+
+.doc h2 {
+  font-size: 1.25rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.3rem;
+}
+
+.doc h3 {
+  font-size: 1.08rem;
+}
+
+.doc h4 {
+  font-size: 0.98rem;
+  color: var(--dim);
+}
+
+.doc p,
+.doc ul,
+.doc ol {
+  margin: 0.6rem 0;
+}
+
+.doc ul,
+.doc ol {
+  padding-left: 1.4rem;
+}
+
+.doc li {
+  margin: 0.25rem 0;
+}
+
+.doc a {
+  color: var(--accent);
+}
+
+.doc code {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.9em;
+}
+
+.doc pre {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem;
+  overflow-x: auto;
+}
+
+.doc pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.doc blockquote {
+  margin: 0.8rem 0;
+  padding: 0.1rem 0 0.1rem 0.9rem;
+  border-left: 3px solid var(--line);
+  color: var(--dim);
+}
+
+.doc hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 1.4rem 0;
+}
+
+/*
+  A wide GFM table on a narrow phone scrolls on its own rather than dragging the
+  whole column with it. `display: block` is what lets a table have its own
+  scrollbar.
+*/
+.doc table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.8rem 0;
+  font-size: 0.9rem;
+}
+
+.doc th,
+.doc td {
+  border: 1px solid var(--line);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc th {
+  background: var(--panel);
+}
+
+/*
   The way back. Without it the menu is a launch screen you see once and can
   never reach again, and the settings inside it go with it.
 */
