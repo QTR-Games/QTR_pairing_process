@@ -498,6 +498,7 @@ class UiManager:
         self._focused_rating_cell = None
         self._shortcut_undo_stack = []
         self._shortcut_redo_stack = []
+        self._back_button = None
 
         # Header name tooltip state
         self._name_tooltip_window = None
@@ -655,6 +656,20 @@ class UiManager:
             bg=theme.get("bg_secondary", "lightgray"),
         )
         self._paste_5x5_button.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
+
+        self._back_button = tk.Button(
+            self.button_row_frame,
+            text="Back",
+            command=self._on_back_button,
+            state=tk.DISABLED,
+            font=control_font,
+            bg=theme.get("bg_secondary", "lightgray"),
+        )
+        self._back_button.pack(side=tk.LEFT, padx=pad_sm, pady=pad_sm)
+        self.create_tooltip(
+            self._back_button,
+            "Undo the last pairing action (sort, flip, or grid paste).\nShortcut: Ctrl+Z",
+        )
 
         # Data Management menu button
         data_mgmt_button = tk.Button(self.button_row_frame, text="Data Management",
@@ -2752,6 +2767,7 @@ class UiManager:
         action = self._shortcut_undo_stack.pop()
         action["undo"]()
         self._shortcut_redo_stack.append(action)
+        self._refresh_undo_button_state()
         return "break"
 
     def _on_shortcut_redo(self, _event=None):
@@ -2760,7 +2776,20 @@ class UiManager:
         action = self._shortcut_redo_stack.pop()
         action["redo"]()
         self._shortcut_undo_stack.append(action)
+        self._refresh_undo_button_state()
         return "break"
+
+    def _on_back_button(self):
+        """Handle the visible "Back" button: undo the most recent pairing action."""
+        self._on_shortcut_undo()
+
+    def _refresh_undo_button_state(self):
+        if not self._back_button:
+            return
+        if self._shortcut_undo_stack:
+            self._back_button.config(state=tk.NORMAL)
+        else:
+            self._back_button.config(state=tk.DISABLED)
 
     def _register_shortcut_action(self, action_label: str, category: str, undo_fn, redo_fn):
         self._shortcut_undo_stack.append(
@@ -2772,6 +2801,7 @@ class UiManager:
             }
         )
         self._shortcut_redo_stack.clear()
+        self._refresh_undo_button_state()
 
     def _register_sort_toggle_action(self, previous_mode):
         current_mode = self.active_sort_mode
