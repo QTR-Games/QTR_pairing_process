@@ -34,7 +34,9 @@ interface Props {
   board: Board;
   onBoard: (b: Board) => void;
   live: LiveState | null;
-  onLive: (s: LiveState | null) => void;
+  onLive: (s: LiveState) => void;
+  onUndo?: () => void;
+  canUndo?: boolean;
   onStartRound: () => void;
   dodgeMode: DodgeMode;
   onDodgeMode: (m: DodgeMode) => void;
@@ -72,6 +74,8 @@ export function DesktopWorkspace({
   onBoard,
   live,
   onLive,
+  onUndo,
+  canUndo,
   onStartRound,
   dodgeMode,
   onDodgeMode,
@@ -275,6 +279,8 @@ export function DesktopWorkspace({
               board={board}
               state={live}
               onState={onLive}
+              onUndo={onUndo}
+              canUndo={canUndo}
               adviceLevel={adviceLevel}
               surpriseMode={surpriseMode}
               surpriseRegretThreshold={surpriseRegretThreshold}

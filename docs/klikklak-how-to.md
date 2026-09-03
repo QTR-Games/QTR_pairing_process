@@ -111,6 +111,25 @@ want the prompt after every pairing.
 
 ---
 
+## Step back a wrong pick
+
+1. In the round header, press **Back**. It undoes the last action — a
+   nomination, an offer, a pick, or a locked-in pairing — and leaves everything
+   before it alone.
+2. Press it again to keep stepping back. It greys out when there's nothing left
+   to undo.
+3. On Android, the **back button and back gesture** do the same thing while a
+   round is on screen. With nothing left to undo they behave normally again.
+
+**Restart** still throws the whole round away and starts it again; **Back** is
+one step. Starting, restarting, or switching board clears the history, so Back
+can never walk you into a different round.
+
+Note that the history lives only as long as the app is open — if it reloads or
+Android reclaims it, your round is resumed but its Back history isn't.
+
+---
+
 ## Back up before installing a new build
 
 1. **Menu → Back up and restore.**

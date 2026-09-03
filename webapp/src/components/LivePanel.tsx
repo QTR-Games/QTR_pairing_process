@@ -29,6 +29,14 @@ interface Props {
   onState: (s: LiveState) => void;
   onReset: () => void;
   /**
+   * Step the round back one action. Optional so the many tests and callers
+   * that drive the panel without a history stack keep the flow they had; the
+   * control only appears when there is something wired up to handle it.
+   */
+  onUndo?: () => void;
+  /** Whether there is a previous state to step back to. */
+  canUndo?: boolean;
+  /**
    * How much the round explains itself. Defaults to full: the engine does the
    * same search either way, so a caller that never sets this gets every "why"
    * exactly as before, which is what the live-round tests rely on.
@@ -148,6 +156,8 @@ export function LivePanel({
   state,
   onState,
   onReset,
+  onUndo,
+  canUndo = false,
   adviceLevel = "full",
   surpriseMode = "off",
   surpriseRegretThreshold = 0,
@@ -521,9 +531,22 @@ export function LivePanel({
               : `${points(rawOptions[0]?.value ?? state.banked)} guaranteed`}
           </p>
         </div>
-        <button type="button" className="ghost" onClick={onReset}>
-          Restart
-        </button>
+        <div className="live-actions">
+          {onUndo && (
+            <button
+              type="button"
+              className="ghost"
+              onClick={onUndo}
+              disabled={!canUndo}
+              aria-label="Undo the last pairing action"
+            >
+              Back
+            </button>
+          )}
+          <button type="button" className="ghost" onClick={onReset}>
+            Restart
+          </button>
+        </div>
       </header>
 
       {decision.kind === "done" ? (

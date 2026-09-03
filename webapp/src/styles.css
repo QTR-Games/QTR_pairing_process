@@ -520,6 +520,23 @@ main {
   font-size: 1.05rem;
 }
 
+/*
+ * Back sits beside Restart rather than with the round's options, so an undo
+ * can never be mistaken for a pick. Kept from wrapping because the header
+ * shares a row with a prompt that can run long.
+ */
+.live-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+
+.live-actions button[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .live-sub {
   margin: 0.25rem 0 0;
   font-size: 0.78rem;
