@@ -93,6 +93,22 @@ explanations**, **Just the picks**, or **No advice**.
 
 ---
 
+## Record which table each game is on
+
+1. Leave **Table popup after a pairing** on (it's on by default).
+2. Lock in a pairing as normal. The round pauses on a popup naming the two
+   players.
+3. Type the table number → **Set table**, or press **Skip** (or tap outside) to
+   move on without one.
+4. Read them back under **Tables set**, or from the final result. **Copy** — or a
+   long press, or a right‑click — puts the whole list on the clipboard to send to
+   your team.
+
+Turn the setting off if your event assigns tables some other way and you don't
+want the prompt after every pairing.
+
+---
+
 ## Back up before installing a new build
 
 1. **Menu → Back up and restore.**

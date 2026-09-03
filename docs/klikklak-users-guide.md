@@ -229,6 +229,19 @@ or protecting a player for a later round. Turn on **Surprise‑pick alerts**
 (experimental) and set the **Surprise threshold (regret)** — the minimum number
 of points "given up" before the alert fires.
 
+### Table tracking
+
+Once both players in a matchup are locked in, KLIK KLAK can pause and ask which
+physical table the game was sent to — the thing that's easiest to forget in the
+rush to the next nomination. **Table popup after a pairing** is **on** by
+default; press **Skip** (or tap outside the popup) for any pairing you don't
+want to record, or turn the setting off for an event that assigns tables another
+way.
+
+Tables you set appear beside each pairing under **Tables set** and in the final
+result. The whole list can be copied to the clipboard with the **Copy** button,
+a long press on a phone, or a right‑click on a laptop.
+
 ---
 
 ## Settings
@@ -243,6 +256,7 @@ and saved immediately.
 | Currency | **Show numbers as** | **Round‑win %** / Rating points |
 | Surprise alerts | **Surprise‑pick alerts** | **Off** / On (experimental) |
 | Surprise threshold | **Surprise threshold (regret)** | number (default **0**) |
+| Table tracking | **Table popup after a pairing** | **On** / Off |
 
 ---
 
