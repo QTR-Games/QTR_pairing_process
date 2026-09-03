@@ -215,6 +215,18 @@ the grid so you can't rate them by accident. The verdict updates after every
 decision, so you always know where the round stands. **Restart** (top‑right)
 clears the round and starts over.
 
+### Stepping back
+
+Next to Restart, **Back** undoes one action — a nomination, an offer, a pick, or
+a locked‑in pairing — so a mistake costs you a step rather than the whole round.
+Press it repeatedly to keep unwinding; it greys out when there's nothing left.
+On Android the back button and back gesture do the same thing while a round is
+on screen, falling back to normal behaviour once there's nothing to undo.
+
+Starting, restarting, or switching board clears the history, so Back can never
+step you into a different round. The history is held in memory only: a round is
+resumed after a reload, but without its Back history.
+
 How much the app explains as you go is set by **Advice during a round**:
 
 - **Full explanations** *(default)* — the reasoning behind each recommended pick.

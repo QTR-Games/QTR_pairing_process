@@ -24,7 +24,9 @@ import {
   type TableTracking,
   type Unit,
 } from "./model/settings";
-import { newRound, type LiveState } from "./engine/live";
+import { newRound } from "./engine/live";
+import { useLiveHistory } from "./hooks/useLiveHistory";
+import { useBackGesture } from "./hooks/useBackGesture";
 import { DesktopWorkspace } from "./components/desktop/DesktopWorkspace";
 import { useWideViewport } from "./components/desktop/useWideViewport";
 import { BOARDS_RESTORED_EVENT } from "./desktop/platform";
@@ -55,7 +57,13 @@ export default function App() {
     const first = loadBoards()[0];
     return first && loadLive(first.id) ? "round" : "board";
   });
-  const [live, setLive] = useState<LiveState | null>(() => {
+  const {
+    live,
+    advance: advanceLive,
+    reset: resetLive,
+    undo: undoLive,
+    canUndo,
+  } = useLiveHistory(() => {
     // Resume whatever was in progress. Reached after a reload, after Android
     // reclaimed the app, or after a new build took over -- none of which should
     // cost you a round you are standing in the middle of.
@@ -181,9 +189,13 @@ export default function App() {
   }, [live]);
 
   function startRound() {
-    setLive(newRound(board.ourPlayers.length, board.ourTeamFirst));
+    resetLive(newRound(board.ourPlayers.length, board.ourTeamFirst));
     setTab("round");
   }
+
+  // Android's back button and back gesture undo a pairing step, the same as
+  // the Back control in the round header, while a round is on screen.
+  useBackGesture(tab === "round" && live !== null, canUndo, undoLive);
 
   /**
    * Leave the menu for the app, landing on a given tab.
@@ -255,7 +267,7 @@ export default function App() {
             const last = boards[0];
             if (last && last.id !== board.id) {
               setBoard(last);
-              setLive(loadLive(last.id));
+              resetLive(loadLive(last.id));
             }
             enter("board");
           }}
@@ -305,13 +317,13 @@ export default function App() {
               scaleId={board.scaleId}
               onNew={(b) => {
                 setBoard(b);
-                setLive(null);
+                resetLive(null);
                 setTab("board");
               }}
               onOpen={(b) => {
                 setBoard(b);
                 const resumed = loadLive(b.id);
-                setLive(resumed);
+                resetLive(resumed);
                 setTab("board");
               }}
               onDelete={(id) => setBoards(deleteBoard(id))}
@@ -321,7 +333,9 @@ export default function App() {
               board={board}
               onBoard={setBoard}
               live={live}
-              onLive={setLive}
+              onLive={advanceLive}
+              onUndo={undoLive}
+              canUndo={canUndo}
               onStartRound={startRound}
               dodgeMode={dodgeMode}
               onDodgeMode={changeDodgeMode}
@@ -382,13 +396,15 @@ export default function App() {
             <LivePanel
               board={board}
               state={live}
-              onState={setLive}
+              onState={advanceLive}
+              onUndo={undoLive}
+              canUndo={canUndo}
               adviceLevel={adviceLevel}
               surpriseMode={surpriseMode}
               surpriseRegretThreshold={surpriseRegretThreshold}
               roundUnit={roundUnit}
               tableTracking={tableTracking}
-              onReset={() => setLive(newRound(board.ourPlayers.length, board.ourTeamFirst))}
+              onReset={() => resetLive(newRound(board.ourPlayers.length, board.ourTeamFirst))}
             />
           ) : (
             <div className="empty">
@@ -405,7 +421,7 @@ export default function App() {
             scaleId={board.scaleId}
             onNew={(b) => {
               setBoard(b);
-              setLive(null);
+              resetLive(null);
               setTab("board");
             }}
             onOpen={(b) => {
@@ -413,7 +429,7 @@ export default function App() {
               // Resume that board's round if it has one, rather than
               // silently discarding it just because you looked away.
               const resumed = loadLive(b.id);
-              setLive(resumed);
+              resetLive(resumed);
               setTab(resumed ? "round" : "board");
             }}
             onDelete={(id) => setBoards(deleteBoard(id))}
