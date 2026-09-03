@@ -12,14 +12,16 @@ import {
   pickTieBreak,
   playerLeverage,
   playerLeverageBy,
+  setCommittedTable,
 } from "../engine/live";
 import { solveCache, type SolveCache } from "../engine/protocol";
 import { toWinProbability } from "../engine/winProbability";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale } from "../model/board";
+import { useLongPress } from "../hooks/useLongPress";
 import { gapInUnit, inUnit, pct, points } from "../model/format";
 import { ratingColor, toFraction, type Scale } from "../model/scale";
-import type { AdviceLevel, SurpriseMode, Unit } from "../model/settings";
+import type { AdviceLevel, SurpriseMode, TableTracking, Unit } from "../model/settings";
 
 interface Props {
   board: Board;
@@ -40,6 +42,13 @@ interface Props {
    * the round-win view the live-round tests rely on.
    */
   roundUnit?: Unit;
+  /**
+   * Whether locking in a pairing offers a table popup before the next
+   * decision. Defaults to off, so a caller that never sets it -- including
+   * the tap-through e2e suite, which asserts every option against the engine
+   * as an oracle -- sees exactly the commit-and-advance flow it always did.
+   */
+  tableTracking?: TableTracking;
 }
 
 /**
@@ -143,6 +152,7 @@ export function LivePanel({
   surpriseMode = "off",
   surpriseRegretThreshold = 0,
   roundUnit = "chance",
+  tableTracking = "off",
 }: Props) {
   const scale = boardScale(board);
   const matrix: Matrix = useMemo(() => boardMatrix(board, scale), [board, scale]);
@@ -298,6 +308,55 @@ export function LivePanel({
   const surpriseEnabled = surpriseMode === "on";
   const surpriseThreshold = Math.max(0, surpriseRegretThreshold);
 
+  /*
+   * A pairing that has been decided but not yet handed to `onState`, because
+   * the table popup is still open on it. Held here rather than committed
+   * straight away so the round genuinely pauses on this decision -- advancing
+   * to the next nomination before the table is chosen is the exact lapse the
+   * feature exists to catch.
+   */
+  const [pendingTable, setPendingTable] = useState<{
+    next: LiveState;
+    ours: number;
+    theirs: number;
+  } | null>(null);
+  const [tableInput, setTableInput] = useState("");
+  const [copyNote, setCopyNote] = useState<string | null>(null);
+
+  /** Commit a pairing, pausing on a table prompt first when tracking is on. */
+  function commitWithTable(next: LiveState, ours: number, theirs: number) {
+    if (tableTracking === "on") {
+      setTableInput("");
+      setPendingTable({ next, ours, theirs });
+    } else {
+      onState(next);
+    }
+  }
+
+  /** Resolve the table popup: `table` is null for the skip button. */
+  function resolvePendingTable(table: string | null) {
+    if (!pendingTable) return;
+    const idx = pendingTable.next.committed.length - 1;
+    onState(table ? setCommittedTable(pendingTable.next, idx, table) : pendingTable.next);
+    setPendingTable(null);
+    setTableInput("");
+  }
+
+  /** Copy the "Tables set" list, one pairing per line, to the clipboard. */
+  async function copyCommitted() {
+    const lines = state.committed.map((c) => {
+      const pair = `${ourName(c.ours)} vs ${theirName(c.theirs)}`;
+      return c.table ? `${pair} — Table ${c.table}` : pair;
+    });
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setCopyNote("Copied.");
+    } catch {
+      setCopyNote("Could not reach the clipboard.");
+    }
+  }
+  const copyPress = useLongPress(copyCommitted);
+
   const checkSurprise = (
     before: LiveState,
     after: LiveState,
@@ -395,7 +454,7 @@ export function LivePanel({
     } else {
       setSurprise(null);
     }
-    onState(next);
+    commitWithTable(next, ours, theirs);
   }
 
   return (
@@ -473,7 +532,11 @@ export function LivePanel({
                     );
                   } else if (decision.kind === "forced") {
                     setSurprise(null);
-                    onState(commitPairing(matrix, state, o.ours!, o.theirs!, null, null));
+                    commitWithTable(
+                      commitPairing(matrix, state, o.ours!, o.theirs!, null, null),
+                      o.ours!,
+                      o.theirs!,
+                    );
                   }
                 }}
                 onPick={(picked) => applyPick(o.pair!, picked, o)}
@@ -488,18 +551,83 @@ export function LivePanel({
       )}
 
       {state.committed.length > 0 && (
-        <div className="committed">
-          <h3>Tables set</h3>
+        <div
+          className="committed"
+          onContextMenu={(e) => {
+            e.preventDefault();
+            copyCommitted();
+          }}
+          {...copyPress}
+        >
+          <div className="committed-head">
+            <h3>Tables set</h3>
+            <button
+              type="button"
+              className="ghost small"
+              onClick={(e) => {
+                e.stopPropagation();
+                copyCommitted();
+              }}
+              aria-label="Copy tables set to clipboard"
+            >
+              Copy
+            </button>
+          </div>
           <ul>
             {state.committed.map((c, i) => (
               <li key={i}>
                 <span>
                   {ourName(c.ours)} vs {theirName(c.theirs)}
+                  {c.table && <span className="table-tag"> — Table {c.table}</span>}
                 </span>
                 <strong>{show(ratingValue(c.value))}</strong>
               </li>
             ))}
           </ul>
+          {copyNote && <p className="hint copy-note">{copyNote}</p>}
+        </div>
+      )}
+
+      {pendingTable && (
+        <div
+          className="sheet-backdrop"
+          role="presentation"
+          onClick={() => resolvePendingTable(null)}
+        >
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <p className="sheet-title">
+              {ourName(pendingTable.ours)}
+              <span className="vs"> vs </span>
+              {theirName(pendingTable.theirs)}
+            </p>
+            <label className="field inline">
+              <span>Table</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoFocus
+                value={tableInput}
+                onChange={(e) => setTableInput(e.target.value)}
+                placeholder="e.g. 5"
+              />
+            </label>
+            <p className="sheet-hint">
+              Which table did this matchup take? Skip if you are not tracking tables
+              this round.
+            </p>
+            <div className="table-prompt-actions">
+              <button type="button" className="ghost wide" onClick={() => resolvePendingTable(null)}>
+                Skip
+              </button>
+              <button
+                type="button"
+                className="primary wide"
+                onClick={() => resolvePendingTable(tableInput.trim() || null)}
+              >
+                Set table
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </section>
@@ -1014,7 +1142,8 @@ function Result({
       <ul className="result-tables">
         {state.committed.map((c, i) => (
           <li key={i}>
-            {ourName(c.ours)} vs {theirName(c.theirs)} — {rating(c.value)}
+            {ourName(c.ours)} vs {theirName(c.theirs)}
+            {c.table && <span className="table-tag"> — Table {c.table}</span>} — {rating(c.value)}
           </li>
         ))}
       </ul>

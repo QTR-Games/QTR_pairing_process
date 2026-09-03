@@ -43,6 +43,7 @@ const {
   CARD_IDS,
   CARD_UNIT_DEFAULTS,
   ROUND_UNITS,
+  TABLE_TRACKING_MODES,
 } =
   await import("./settings");
 
@@ -124,6 +125,21 @@ describe("app settings", () => {
     expect(new Set(ROUND_UNITS.map((u) => u.label)).size).toBe(ROUND_UNITS.length);
   });
 
+  it("prompts for a table by default, and remembers either state", () => {
+    expect(DEFAULTS.tableTracking).toBe("on");
+    expect(loadSettings().tableTracking).toBe("on");
+    for (const mode of TABLE_TRACKING_MODES) {
+      saveSettings({ ...DEFAULTS, tableTracking: mode.id });
+      expect(loadSettings().tableTracking).toBe(mode.id);
+    }
+  });
+
+  it("names exactly the two table-tracking states, once each", () => {
+    const ids = TABLE_TRACKING_MODES.map((m) => m.id);
+    expect(new Set(ids)).toEqual(new Set(["off", "on"]));
+    expect(ids).toHaveLength(2);
+  });
+
   it("falls back to defaults rather than throwing on rubbish", () => {
     for (const junk of [
       "",
@@ -135,6 +151,7 @@ describe("app settings", () => {
       '{"adviceLevel":"banana"}',
       '{"surpriseMode":"banana"}',
       '{"surpriseRegretThreshold":-1}',
+      '{"tableTracking":"banana"}',
       '{"cardUnits":"banana"}',
       '{"cardUnits":{"diceOff":"banana"}}',
     ]) {
@@ -144,6 +161,7 @@ describe("app settings", () => {
       expect(loadSettings().adviceLevel).toBe(DEFAULTS.adviceLevel);
       expect(loadSettings().surpriseMode).toBe(DEFAULTS.surpriseMode);
       expect(loadSettings().surpriseRegretThreshold).toBe(DEFAULTS.surpriseRegretThreshold);
+      expect(loadSettings().tableTracking).toBe(DEFAULTS.tableTracking);
       expect(loadSettings().cardUnits).toEqual({});
     }
   });

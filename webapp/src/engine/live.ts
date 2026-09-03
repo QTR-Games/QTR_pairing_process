@@ -62,7 +62,7 @@ export interface LiveState {
   /** Points already banked by pairings that are locked in. */
   banked: number;
   /** Locked pairings, in the order they were made. */
-  committed: { ours: number; theirs: number; value: number }[];
+  committed: { ours: number; theirs: number; value: number; table: string | null }[];
 }
 
 export function newRound(n: number, ourTeamFirst: boolean): LiveState {
@@ -508,7 +508,25 @@ export function commitPairing(
     attacker: carries ? (leftover as number) : -1,
     attackerSide: carries ? (leftoverSide as Side) : s.attackerSide,
     banked: s.banked + value,
-    committed: [...s.committed, { ours, theirs, value }],
+    committed: [...s.committed, { ours, theirs, value, table: null }],
+  };
+}
+
+/**
+ * Record which physical table a locked-in pairing was sent to, or clear it.
+ *
+ * Table numbers are metadata over what the solver has already committed --
+ * they never touch `banked`, `ourPool` or `theirPool`, and they never change
+ * the recommendation for what comes next. This only ever rewrites the one
+ * entry named by `index`, so a captain filling the popup in after the fact
+ * (or the "skip" button leaving it `null`) can never disturb the pairing
+ * record itself.
+ */
+export function setCommittedTable(s: LiveState, index: number, table: string | null): LiveState {
+  if (index < 0 || index >= s.committed.length) return s;
+  return {
+    ...s,
+    committed: s.committed.map((c, i) => (i === index ? { ...c, table } : c)),
   };
 }
 

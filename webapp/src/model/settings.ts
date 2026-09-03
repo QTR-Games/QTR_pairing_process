@@ -75,6 +75,23 @@ export const SURPRISE_MODES: { id: SurpriseMode; label: string }[] = [
 ];
 
 /**
+ * Whether the live round asks which physical table a pairing was sent to.
+ *
+ * On by default: forgetting to set a table before the next nomination is the
+ * failure mode the feature exists to catch, so a captain who has never seen
+ * the setting still gets the reminder. Off drops the prompt entirely and the
+ * "Tables set" list falls back to just the pairings, exactly as it read before
+ * this existed -- a captain whose event assigns tables another way should not
+ * have to skip a popup after every single tap.
+ */
+export type TableTracking = "off" | "on";
+
+export const TABLE_TRACKING_MODES: { id: TableTracking; label: string }[] = [
+  { id: "on", label: "On" },
+  { id: "off", label: "Off" },
+];
+
+/**
  * The two currencies the app can speak: rating points, or round-win chance.
  *
  * Named once and shared, because the same choice is offered in two places --
@@ -146,6 +163,8 @@ export interface Settings {
   surpriseRegretThreshold: number;
   /** The currency every number in the live round is shown in. */
   roundUnit: Unit;
+  /** Whether the live round prompts for a table after each pairing locks in. */
+  tableTracking: TableTracking;
   /**
    * Per-card currency overrides. Only cards the user has explicitly switched
    * appear here; everything else falls back to `CARD_UNIT_DEFAULTS`, so the
@@ -167,6 +186,7 @@ export const DEFAULTS: Settings = {
   surpriseMode: "off",
   surpriseRegretThreshold: 0,
   roundUnit: "chance",
+  tableTracking: "on",
   cardUnits: {},
 };
 
@@ -179,6 +199,8 @@ const isAdviceLevel = (v: unknown): v is AdviceLevel =>
   v === "full" || v === "brief" || v === "off";
 
 const isSurpriseMode = (v: unknown): v is SurpriseMode => v === "off" || v === "on";
+
+const isTableTracking = (v: unknown): v is TableTracking => v === "off" || v === "on";
 
 const isCardUnit = (v: unknown): v is CardUnit => v === "points" || v === "chance";
 
@@ -229,6 +251,9 @@ export function loadSettings(): Settings {
       surpriseRegretThreshold:
         asNonNegativeNumber(parsed?.surpriseRegretThreshold) ?? DEFAULTS.surpriseRegretThreshold,
       roundUnit: isCardUnit(parsed?.roundUnit) ? parsed.roundUnit : DEFAULTS.roundUnit,
+      tableTracking: isTableTracking(parsed?.tableTracking)
+        ? parsed.tableTracking
+        : DEFAULTS.tableTracking,
       cardUnits: sanitizeCardUnits(parsed?.cardUnits),
     };
   } catch {

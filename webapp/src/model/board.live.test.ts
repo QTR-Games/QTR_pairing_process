@@ -45,8 +45,8 @@ describe("the round in progress survives a reload", () => {
       attackerSide: "their",
       banked: 7,
       committed: [
-        { ours: 0, theirs: 3, value: 4 },
-        { ours: 1, theirs: 4, value: 3 },
+        { ours: 0, theirs: 3, value: 4, table: null },
+        { ours: 1, theirs: 4, value: 3, table: "12" },
       ],
     };
 
@@ -68,7 +68,7 @@ describe("the round in progress survives a reload", () => {
     const a: LiveState = {
       ...newRound(5, true),
       banked: 7,
-      committed: [{ ours: 0, theirs: 3, value: 4 }],
+      committed: [{ ours: 0, theirs: 3, value: 4, table: null }],
     };
     saveLive("board-a", a);
     saveLive("board-b", newRound(5, false));
@@ -122,7 +122,10 @@ describe("the round in progress survives a reload", () => {
       "qtr.live.v2",
       JSON.stringify({ "board-a": { boardId: "board-a", state: good, savedAt: 1 } }),
     );
-    expect(loadLive("board-a")).toEqual(good);
+    expect(loadLive("board-a")).toEqual({
+      ...good,
+      committed: [{ ours: 0, theirs: 1, value: 2, table: null }],
+    });
   });
 
   it("rescues a round left in the single-slot layout this replaced", () => {

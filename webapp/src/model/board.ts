@@ -341,7 +341,17 @@ function writeLiveMap(map: LiveMap, keep?: string): void {
 export function loadLive(boardId: string): LiveState | null {
   const entry = readLiveMap()[boardId];
   if (!entry) return null;
-  return isValidLive(entry.state) ? entry.state : null;
+  if (!isValidLive(entry.state)) return null;
+  // Rounds saved before table tracking existed have no `table` field on their
+  // committed entries. Filling it in as null here, rather than teaching every
+  // reader to tolerate `undefined`, keeps the shape one reader has to know.
+  return {
+    ...entry.state,
+    committed: entry.state.committed.map((c) => ({
+      ...c,
+      table: typeof c.table === "string" ? c.table : null,
+    })),
+  };
 }
 
 export function saveLive(boardId: string, state: LiveState | null): void {
