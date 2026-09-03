@@ -806,6 +806,18 @@ main {
   color: var(--dim);
 }
 
+/*
+ * The hold target for editing a table. Sized to the text rather than the row
+ * so the press lands on the pairing name, and `touch-action: none` so the
+ * hold is not stolen by the scroll gesture on the way past.
+ */
+.committed-pair {
+  cursor: pointer;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .copy-note {
   margin-top: 0.4rem;
 }

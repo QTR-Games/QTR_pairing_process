@@ -117,3 +117,70 @@ describe("table tracking on", () => {
     expect(writeText).toHaveBeenCalledWith("Pete vs Kev — Table 7");
   });
 });
+
+/**
+ * Skip only makes sense as an escape hatch if the table can still be filled in
+ * once it is known -- otherwise skipping silently discards it for the rest of
+ * the round. The gesture is a hold; these drive its keyboard equivalent, which
+ * `useLongPress` fires on Enter/Space.
+ */
+describe("setting a table after the fact", () => {
+  /** The hold target for the one committed pairing. */
+  function row(): HTMLElement {
+    return within(committedPanel()).getByText(/Pete vs Kev/);
+  }
+
+  it("recovers a table that was skipped", () => {
+    render(<Harness tableTracking="on" />);
+    fireEvent.click(document.querySelector(".option-main")!);
+    fireEvent.click(screen.getByText("Skip"));
+    expect(within(committedPanel()).queryByText(/Table \d/)).toBeNull();
+
+    fireEvent.keyDown(row(), { key: "Enter" });
+    fireEvent.change(screen.getByPlaceholderText("e.g. 5"), { target: { value: "4" } });
+    fireEvent.click(screen.getByText("Set table"));
+
+    expect(within(committedPanel()).getByText(/Table 4/)).toBeTruthy();
+  });
+
+  it("prefills the current table and changes it", () => {
+    render(<Harness tableTracking="on" />);
+    fireEvent.click(document.querySelector(".option-main")!);
+    fireEvent.change(screen.getByPlaceholderText("e.g. 5"), { target: { value: "7" } });
+    fireEvent.click(screen.getByText("Set table"));
+
+    fireEvent.keyDown(row(), { key: "Enter" });
+    const input = screen.getByPlaceholderText("e.g. 5") as HTMLInputElement;
+    expect(input.value).toBe("7");
+
+    fireEvent.change(input, { target: { value: "9" } });
+    fireEvent.click(screen.getByText("Set table"));
+
+    expect(within(committedPanel()).getByText(/Table 9/)).toBeTruthy();
+    expect(within(committedPanel()).queryByText(/Table 7/)).toBeNull();
+  });
+
+  it("clears a table that was set by mistake", () => {
+    render(<Harness tableTracking="on" />);
+    fireEvent.click(document.querySelector(".option-main")!);
+    fireEvent.change(screen.getByPlaceholderText("e.g. 5"), { target: { value: "7" } });
+    fireEvent.click(screen.getByText("Set table"));
+
+    fireEvent.keyDown(row(), { key: "Enter" });
+    fireEvent.click(screen.getByText("Clear"));
+
+    expect(within(committedPanel()).queryByText(/Table 7/)).toBeNull();
+    expect(within(committedPanel()).getByText(/Pete vs Kev/)).toBeTruthy();
+  });
+
+  it("offers the editor even when tracking is off", () => {
+    render(<Harness />);
+    fireEvent.click(document.querySelector(".option-main")!);
+
+    fireEvent.keyDown(row(), { key: "Enter" });
+    fireEvent.change(screen.getByPlaceholderText("e.g. 5"), { target: { value: "2" } });
+    fireEvent.click(screen.getByText("Set table"));
+
+    expect(within(committedPanel()).getByText(/Table 2/)).toBeTruthy();
+  });
+});

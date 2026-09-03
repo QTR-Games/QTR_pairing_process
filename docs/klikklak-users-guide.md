@@ -234,13 +234,16 @@ of points "given up" before the alert fires.
 Once both players in a matchup are locked in, KLIK KLAK can pause and ask which
 physical table the game was sent to — the thing that's easiest to forget in the
 rush to the next nomination. **Table popup after a pairing** is **on** by
-default; press **Skip** (or tap outside the popup) for any pairing you don't
-want to record, or turn the setting off for an event that assigns tables another
-way.
+default; press **Skip** (or tap outside the popup) if you don't know the table
+yet, or turn the setting off for an event that assigns tables another way.
+
+Nothing is lost by skipping. **Hold** any pairing under **Tables set** — or
+right‑click it on a laptop — to set, change, or clear its table later in the
+round.
 
 Tables you set appear beside each pairing under **Tables set** and in the final
 result. The whole list can be copied to the clipboard with the **Copy** button,
-a long press on a phone, or a right‑click on a laptop.
+a long press on the heading, or a right‑click.
 
 ---
 
