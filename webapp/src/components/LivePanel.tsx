@@ -12,14 +12,16 @@ import {
   pickTieBreak,
   playerLeverage,
   playerLeverageBy,
+  setCommittedTable,
 } from "../engine/live";
 import { solveCache, type SolveCache } from "../engine/protocol";
 import { toWinProbability } from "../engine/winProbability";
 import type { Board } from "../model/board";
 import { boardMatrix, boardScale } from "../model/board";
+import { useLongPress } from "../hooks/useLongPress";
 import { gapInUnit, inUnit, pct, points } from "../model/format";
 import { ratingColor, toFraction, type Scale } from "../model/scale";
-import type { AdviceLevel, SurpriseMode, Unit } from "../model/settings";
+import type { AdviceLevel, SurpriseMode, TableTracking, Unit } from "../model/settings";
 
 interface Props {
   board: Board;
@@ -40,6 +42,13 @@ interface Props {
    * the round-win view the live-round tests rely on.
    */
   roundUnit?: Unit;
+  /**
+   * Whether locking in a pairing offers a table popup before the next
+   * decision. Defaults to off, so a caller that never sets it -- including
+   * the tap-through e2e suite, which asserts every option against the engine
+   * as an oracle -- sees exactly the commit-and-advance flow it always did.
+   */
+  tableTracking?: TableTracking;
 }
 
 /**
@@ -143,6 +152,7 @@ export function LivePanel({
   surpriseMode = "off",
   surpriseRegretThreshold = 0,
   roundUnit = "chance",
+  tableTracking = "off",
 }: Props) {
   const scale = boardScale(board);
   const matrix: Matrix = useMemo(() => boardMatrix(board, scale), [board, scale]);
@@ -298,6 +308,106 @@ export function LivePanel({
   const surpriseEnabled = surpriseMode === "on";
   const surpriseThreshold = Math.max(0, surpriseRegretThreshold);
 
+  /*
+   * A pairing that has been decided but not yet handed to `onState`, because
+   * the table popup is still open on it. Held here rather than committed
+   * straight away so the round genuinely pauses on this decision -- advancing
+   * to the next nomination before the table is chosen is the exact lapse the
+   * feature exists to catch.
+   */
+  const [pendingTable, setPendingTable] = useState<{
+    next: LiveState;
+    ours: number;
+    theirs: number;
+  } | null>(null);
+  /*
+   * The index of an already-committed pairing whose table is being set or
+   * changed after the fact. Skip exists so an unknown table never traps you on
+   * the popup, which only works if the table can still be filled in once you
+   * know it -- otherwise skipping silently discards it for the rest of the
+   * round. Reuses the same sheet as `pendingTable`; the two are never both set.
+   */
+  const [editingTable, setEditingTable] = useState<number | null>(null);
+  const [tableInput, setTableInput] = useState("");
+  const [copyNote, setCopyNote] = useState<string | null>(null);
+
+  /** Commit a pairing, pausing on a table prompt first when tracking is on. */
+  function commitWithTable(next: LiveState, ours: number, theirs: number) {
+    if (tableTracking === "on") {
+      setTableInput("");
+      setPendingTable({ next, ours, theirs });
+    } else {
+      onState(next);
+    }
+  }
+
+  /** Resolve the table popup: `table` is null for the skip button. */
+  function resolvePendingTable(table: string | null) {
+    if (!pendingTable) return;
+    const idx = pendingTable.next.committed.length - 1;
+    onState(table ? setCommittedTable(pendingTable.next, idx, table) : pendingTable.next);
+    setPendingTable(null);
+    setTableInput("");
+  }
+
+  /** Open the same sheet against a pairing that is already locked in. */
+  function openTableEditor(index: number) {
+    setTableInput(state.committed[index]?.table ?? "");
+    setEditingTable(index);
+  }
+
+  /** Resolve the editor: `table` is null to clear a table that was set. */
+  function resolveEditingTable(table: string | null) {
+    if (editingTable === null) return;
+    onState(setCommittedTable(state, editingTable, table));
+    setEditingTable(null);
+    setTableInput("");
+  }
+
+  /** Dismiss whichever of the two the sheet is currently open for. */
+  function dismissSheet() {
+    if (pendingTable) resolvePendingTable(null);
+    else setEditingTable(null);
+  }
+
+  /** The pairing the sheet is open against, whichever path opened it. */
+  const sheetPair = pendingTable
+    ? { ours: pendingTable.ours, theirs: pendingTable.theirs }
+    : editingTable !== null && state.committed[editingTable]
+      ? { ours: state.committed[editingTable].ours, theirs: state.committed[editingTable].theirs }
+      : null;
+
+  /** Sheet's primary action: commit the typed table down whichever path is open. */
+  function submitTable(table: string | null) {
+    if (pendingTable) resolvePendingTable(table);
+    else resolveEditingTable(table);
+  }
+
+  /**
+   * Sheet's secondary action. On a fresh commit that is "skip" and must leave
+   * the pairing alone; on an existing row it is "clear", which has to write the
+   * null through so a table set by mistake can actually be removed.
+   */
+  function dismissClear() {
+    if (pendingTable) resolvePendingTable(null);
+    else resolveEditingTable(null);
+  }
+
+  /** Copy the "Tables set" list, one pairing per line, to the clipboard. */
+  async function copyCommitted() {
+    const lines = state.committed.map((c) => {
+      const pair = `${ourName(c.ours)} vs ${theirName(c.theirs)}`;
+      return c.table ? `${pair} — Table ${c.table}` : pair;
+    });
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setCopyNote("Copied.");
+    } catch {
+      setCopyNote("Could not reach the clipboard.");
+    }
+  }
+  const copyPress = useLongPress(copyCommitted);
+
   const checkSurprise = (
     before: LiveState,
     after: LiveState,
@@ -395,7 +505,7 @@ export function LivePanel({
     } else {
       setSurprise(null);
     }
-    onState(next);
+    commitWithTable(next, ours, theirs);
   }
 
   return (
@@ -473,7 +583,11 @@ export function LivePanel({
                     );
                   } else if (decision.kind === "forced") {
                     setSurprise(null);
-                    onState(commitPairing(matrix, state, o.ours!, o.theirs!, null, null));
+                    commitWithTable(
+                      commitPairing(matrix, state, o.ours!, o.theirs!, null, null),
+                      o.ours!,
+                      o.theirs!,
+                    );
                   }
                 }}
                 onPick={(picked) => applyPick(o.pair!, picked, o)}
@@ -488,21 +602,130 @@ export function LivePanel({
       )}
 
       {state.committed.length > 0 && (
-        <div className="committed">
-          <h3>Tables set</h3>
+        <div
+          className="committed"
+          onContextMenu={(e) => {
+            e.preventDefault();
+            copyCommitted();
+          }}
+        >
+          <div className="committed-head" {...copyPress}>
+            <h3>Tables set</h3>
+            <button
+              type="button"
+              className="ghost small"
+              onClick={(e) => {
+                e.stopPropagation();
+                copyCommitted();
+              }}
+              aria-label="Copy tables set to clipboard"
+            >
+              Copy
+            </button>
+          </div>
           <ul>
             {state.committed.map((c, i) => (
-              <li key={i}>
-                <span>
-                  {ourName(c.ours)} vs {theirName(c.theirs)}
-                </span>
+              <CommittedRow
+                key={i}
+                pair={`${ourName(c.ours)} vs ${theirName(c.theirs)}`}
+                table={c.table}
+                onEdit={() => openTableEditor(i)}
+              >
                 <strong>{show(ratingValue(c.value))}</strong>
-              </li>
+              </CommittedRow>
             ))}
           </ul>
+          <p className="hint">Hold a pairing to set or change its table.</p>
+          {copyNote && <p className="hint copy-note">{copyNote}</p>}
+        </div>
+      )}
+
+      {sheetPair && (
+        <div className="sheet-backdrop" role="presentation" onClick={dismissSheet}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <p className="sheet-title">
+              {ourName(sheetPair.ours)}
+              <span className="vs"> vs </span>
+              {theirName(sheetPair.theirs)}
+            </p>
+            <label className="field inline">
+              <span>Table</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoFocus
+                value={tableInput}
+                onChange={(e) => setTableInput(e.target.value)}
+                placeholder="e.g. 5"
+              />
+            </label>
+            <p className="sheet-hint">
+              {pendingTable
+                ? "Which table did this matchup take? Skip if you do not know yet -- hold the pairing under \u201cTables set\u201d to fill it in later."
+                : "Which table did this matchup take? Clear leaves it unset."}
+            </p>
+            <div className="table-prompt-actions">
+              <button type="button" className="ghost wide" onClick={dismissClear}>
+                {pendingTable ? "Skip" : "Clear"}
+              </button>
+              <button
+                type="button"
+                className="primary wide"
+                onClick={() => submitTable(tableInput.trim() || null)}
+              >
+                Set table
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * One locked-in pairing under "Tables set".
+ *
+ * Hold-to-edit rather than tap-to-edit for the reason `useLongPress` exists:
+ * this list sits at the bottom of the round screen under a thumb that brushes
+ * it while scrolling, and a stray tap that reopened the table sheet mid-round
+ * would be worse than no shortcut at all. Right-click is the desktop
+ * equivalent, and it stops propagating so it does not also trip the copy
+ * handler on the surrounding block.
+ */
+function CommittedRow({
+  pair,
+  table,
+  onEdit,
+  children,
+}: {
+  pair: string;
+  table: string | null;
+  onEdit: () => void;
+  children: React.ReactNode;
+}) {
+  const press = useLongPress(onEdit);
+  return (
+    <li>
+      <span
+        className="committed-pair"
+        role="button"
+        tabIndex={0}
+        aria-label={
+          table ? `${pair}, table ${table}. Change table.` : `${pair}, no table set. Set table.`
+        }
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onEdit();
+        }}
+        {...press}
+      >
+        {pair}
+        {table && <span className="table-tag"> — Table {table}</span>}
+      </span>
+      {children}
+    </li>
   );
 }
 
@@ -1014,7 +1237,8 @@ function Result({
       <ul className="result-tables">
         {state.committed.map((c, i) => (
           <li key={i}>
-            {ourName(c.ours)} vs {theirName(c.theirs)} — {rating(c.value)}
+            {ourName(c.ours)} vs {theirName(c.theirs)}
+            {c.table && <span className="table-tag"> — Table {c.table}</span>} — {rating(c.value)}
           </li>
         ))}
       </ul>

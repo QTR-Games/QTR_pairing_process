@@ -24,9 +24,11 @@ import {
   ROUND_UNITS,
   DODGE_MODES,
   SURPRISE_MODES,
+  TABLE_TRACKING_MODES,
   type AdviceLevel,
   type DodgeMode,
   type SurpriseMode,
+  type TableTracking,
   type Unit,
 } from "../model/settings";
 import type { Board } from "../model/board";
@@ -47,6 +49,8 @@ interface HomeMenuProps {
   onSurpriseRegretThreshold: (threshold: number) => void;
   roundUnit: Unit;
   onRoundUnit: (unit: Unit) => void;
+  tableTracking: TableTracking;
+  onTableTracking: (mode: TableTracking) => void;
   /** Resume the live round. Only called when `liveOpponent` is set. */
   onResume: () => void;
   /** Open the most recent board on the pairing screen. */
@@ -72,6 +76,8 @@ export function HomeMenu({
   onSurpriseRegretThreshold,
   roundUnit,
   onRoundUnit,
+  tableTracking,
+  onTableTracking,
   onResume,
   onContinue,
   onBoards,
@@ -169,6 +175,26 @@ export function HomeMenu({
             <em>Rating points</em> is the guaranteed total in the numbers you
             wrote on the grid. The recommendation is the same either way &mdash;
             only the figures change.
+          </p>
+          <label className="field inline">
+            <span>Table popup after a pairing</span>
+            <select
+              value={tableTracking}
+              onChange={(e) => onTableTracking(e.target.value as TableTracking)}
+            >
+              {TABLE_TRACKING_MODES.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="hint">
+            When on, locking in a pairing offers a popup asking which table it
+            was sent to, with a skip button for a round you are not tracking
+            tables for. Every pairing set this round appears at the bottom of
+            the round screen, table and all, and can be copied to the
+            clipboard with a long press (or a right-click on a laptop).
           </p>
           <label className="field inline">
             <span>Surprise-pick alerts</span>

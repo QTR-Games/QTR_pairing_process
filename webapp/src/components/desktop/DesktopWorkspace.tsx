@@ -20,6 +20,8 @@ import {
   type DodgeMode,
   SURPRISE_MODES,
   type SurpriseMode,
+  TABLE_TRACKING_MODES,
+  type TableTracking,
 } from "../../model/settings";
 import { Grid, Rosters } from "../Grid";
 import { LivePanel } from "../LivePanel";
@@ -44,6 +46,8 @@ interface Props {
   onSurpriseRegretThreshold: (threshold: number) => void;
   roundUnit: Unit;
   onRoundUnit: (unit: Unit) => void;
+  tableTracking: TableTracking;
+  onTableTracking: (mode: TableTracking) => void;
 }
 
 /**
@@ -79,6 +83,8 @@ export function DesktopWorkspace({
   onSurpriseRegretThreshold,
   roundUnit,
   onRoundUnit,
+  tableTracking,
+  onTableTracking,
 }: Props) {
   const scale = boardScale(board);
   const rated = isRated(board);
@@ -273,6 +279,7 @@ export function DesktopWorkspace({
               surpriseMode={surpriseMode}
               surpriseRegretThreshold={surpriseRegretThreshold}
               roundUnit={roundUnit}
+              tableTracking={tableTracking}
               onReset={onStartRound}
             />
           </section>
@@ -394,6 +401,20 @@ export function DesktopWorkspace({
                 value={Number.isFinite(surpriseRegretThreshold) ? surpriseRegretThreshold : 0}
                 onChange={(e) => onSurpriseRegretThreshold(Number(e.target.value))}
               />
+            </label>
+
+            <label className="field inline">
+              <span>Table popup after a pairing</span>
+              <select
+                value={tableTracking}
+                onChange={(e) => onTableTracking(e.target.value as TableTracking)}
+              >
+                {TABLE_TRACKING_MODES.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
           <p className="hint">{scale.hint}</p>

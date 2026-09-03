@@ -40,6 +40,8 @@ function renderWorkspace(board: Board) {
       onSurpriseMode={noop}
       surpriseRegretThreshold={0}
       onSurpriseRegretThreshold={noop}
+      tableTracking="on"
+      onTableTracking={noop}
     />,
   );
 }

@@ -21,6 +21,7 @@ import {
   type AdviceLevel,
   type Settings,
   type SurpriseMode,
+  type TableTracking,
   type Unit,
 } from "./model/settings";
 import { newRound, type LiveState } from "./engine/live";
@@ -71,6 +72,9 @@ export default function App() {
     () => loadSettings().surpriseRegretThreshold,
   );
   const [roundUnit, setRoundUnit] = useState<Unit>(() => loadSettings().roundUnit);
+  const [tableTracking, setTableTracking] = useState<TableTracking>(
+    () => loadSettings().tableTracking,
+  );
   const [screen, setScreen] = useState<Screen>("splash");
 
   // Set and persist in one call. Both layouts expose these preferences, so the
@@ -102,6 +106,11 @@ export default function App() {
   const changeRoundUnit = (next: Unit) => {
     setRoundUnit(next);
     persist({ roundUnit: next });
+  };
+
+  const changeTableTracking = (next: TableTracking) => {
+    setTableTracking(next);
+    persist({ tableTracking: next });
   };
 
   const changeSurpriseRegretThreshold = (next: number) => {
@@ -232,6 +241,8 @@ export default function App() {
           onSurpriseRegretThreshold={changeSurpriseRegretThreshold}
           roundUnit={roundUnit}
           onRoundUnit={changeRoundUnit}
+          tableTracking={tableTracking}
+          onTableTracking={changeTableTracking}
           onResume={() => enter("round")}
           onContinue={() => {
             /*
@@ -322,6 +333,8 @@ export default function App() {
               onSurpriseRegretThreshold={changeSurpriseRegretThreshold}
               roundUnit={roundUnit}
               onRoundUnit={changeRoundUnit}
+              tableTracking={tableTracking}
+              onTableTracking={changeTableTracking}
             />
           )}
         </main>
@@ -374,6 +387,7 @@ export default function App() {
               surpriseMode={surpriseMode}
               surpriseRegretThreshold={surpriseRegretThreshold}
               roundUnit={roundUnit}
+              tableTracking={tableTracking}
               onReset={() => setLive(newRound(board.ourPlayers.length, board.ourTeamFirst))}
             />
           ) : (

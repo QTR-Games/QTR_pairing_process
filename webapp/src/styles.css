@@ -791,6 +791,47 @@ main {
   margin: 0 0 0.4rem;
 }
 
+.committed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.committed-head h3 {
+  margin: 0;
+}
+
+.table-tag {
+  color: var(--dim);
+}
+
+/*
+ * The hold target for editing a table. Sized to the text rather than the row
+ * so the press lands on the pairing name, and `touch-action: none` so the
+ * hold is not stolen by the scroll gesture on the way past.
+ */
+.committed-pair {
+  cursor: pointer;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.copy-note {
+  margin-top: 0.4rem;
+}
+
+.table-prompt-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.table-prompt-actions .wide {
+  flex: 1;
+}
+
 /* ---------- result ---------- */
 
 .result {
@@ -871,6 +912,11 @@ select {
   min-width: 6rem;
 }
 
+.field.inline input[type="text"] {
+  width: auto;
+  min-width: 6rem;
+}
+
 .roster-cols {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -912,6 +958,11 @@ button.ghost {
   color: var(--dim);
   padding: 0.5rem 0.75rem;
   font-size: 0.85rem;
+}
+
+button.ghost.small {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.78rem;
 }
 
 .wide {
