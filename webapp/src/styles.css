@@ -467,6 +467,36 @@ main {
   margin: 0 0 0.5rem;
   color: var(--dim);
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.opp-list-name {
+  color: var(--dim);
+  font-style: italic;
+}
+
+/* ---------- faction badge ---------- */
+
+/*
+ * Sized in ems so it tracks whatever text it sits beside, and given a fixed
+ * min-width so a run of badges down the Them column lines up regardless of
+ * whether the code is "5D" or "WK".
+ */
+.faction-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.7em;
+  padding: 0.1em 0.35em;
+  border-radius: 0.35em;
+  color: #fff;
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.4;
+  flex: none;
 }
 
 .opp-lists {
@@ -950,6 +980,33 @@ select {
 
 .roster-cols input {
   margin-bottom: 0.4rem;
+}
+
+/*
+ * An opponent's army and leaders, tucked under their name. The input keeps its
+ * own bottom margin off so the tag line reads as belonging to the name above it
+ * rather than floating between two players.
+ */
+.roster-them input {
+  margin-bottom: 0.15rem;
+}
+
+.roster-tags {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.4rem;
+  min-height: 1.1rem;
+}
+
+.roster-leaders {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.74rem;
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hint {

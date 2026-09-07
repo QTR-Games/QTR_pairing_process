@@ -32,7 +32,7 @@
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { getDesktopHttp } from "../desktop/platform";
-import { parseRoster } from "./parse";
+import { parseListPanel, parseRoster } from "./parse";
 import type { Roster } from "./types";
 
 /**
@@ -168,23 +168,45 @@ export function withRetry(fetcher: HtmlFetcher, options: RetryOptions = {}): Htm
 /**
  * Pull an event id out of whatever the owner pasted.
  *
- * Accepts a bare id (`33997`) or any Longshanks URL that carries `/event/<id>/`,
- * with or without scheme or trailing slash. Anything else returns null so the UI
- * can say "that doesn't look like an event" instead of fetching a guess. It does
- * not scrape a loose number out of arbitrary text -- a wrong id would import a
- * whole wrong tournament silently.
+ * Accepts a bare id (`33997`) or any Longshanks URL that carries `/event/<id>/`
+ * or an `event=<id>` query, with or without scheme or trailing slash.
+ *
+ * Host is deliberately ignored. Longshanks serves the same event from several
+ * game-specific subdomains -- copying an event link on a phone, or using the
+ * "public link", routinely yields `warmachine.longshanks.org/event/36052/`
+ * rather than the bare `longshanks.org` the site shows on a desktop. They are
+ * the same tournament, and the id is the only part that identifies it, so the
+ * subdomain is simply dropped: {@link panelUrl} always rebuilds the request
+ * against `longshanks.org`.
+ *
+ * Anything else returns null so the UI can say "that doesn't look like an event"
+ * instead of fetching a guess. It does not scrape a loose number out of
+ * arbitrary text -- a wrong id would import a whole wrong tournament silently.
  */
 export function parseEventId(input: string): string | null {
   const s = input.trim();
   if (!s) return null;
   if (/^\d+$/.test(s)) return s;
-  const m = /\/event\/(\d+)/.exec(s);
-  return m ? m[1] : null;
+  const path = /\/event\/(\d+)/.exec(s);
+  if (path) return path[1];
+  const query = /[?&]event=(\d+)/.exec(s);
+  return query ? query[1] : null;
 }
 
 /** The AJAX standings panel URL for one section of an event. */
 export function panelUrl(eventId: string, section: "team" | "player"): string {
   return `https://longshanks.org/events/detail/panel_standings.php?event=${eventId}&section=${section}`;
+}
+
+/**
+ * The popup URL for one player's registered army lists at an event.
+ *
+ * This is what the little "Text list" icon on a team opens -- `pop_user(<uid>,
+ * <event>, 'list')` in Longshanks' own script. It is one request per player,
+ * which is why {@link fetchRoster} only reaches for it when it has to.
+ */
+export function listUrl(eventId: string, userId: string): string {
+  return `https://longshanks.org/admin/players/pop_info.php?player=${userId}&event=${eventId}&tab=list`;
 }
 
 /**
@@ -217,6 +239,76 @@ export async function fetchHtml(url: string): Promise<string> {
 }
 
 /**
+ * How many list popups to have in flight at once.
+ *
+ * One request per player means a large event is sixty-odd requests, and firing
+ * them all at once is the surest way to be rate-limited by a site that already
+ * refuses a share of well-behaved traffic. Four keeps a full event under a
+ * minute while staying nearer to "a person clicking around" than to a scrape.
+ */
+const LIST_CONCURRENCY = 4;
+
+export interface RosterOptions extends RetryOptions {
+  /**
+   * Also fetch each player's registered army lists.
+   *
+   * Off by default because it costs a request per player. The import turns it
+   * on: it is the only way to know an opponent's leader before the event has
+   * been played, which is exactly when the boards are being prepared.
+   */
+  withLists?: boolean;
+  /** Called as list fetching progresses, so a long import can show where it is. */
+  onProgress?: (done: number, total: number) => void;
+}
+
+/**
+ * Fill in each member's lists from their registered army lists.
+ *
+ * Only players the results panels told us nothing about are looked up. After a
+ * few rounds the panels already carry every leader, exactly and for free, and
+ * re-fetching those players would be sixty requests to learn nothing. Before the
+ * event they carry nothing and every player is fetched. So the cost of this step
+ * falls away over the life of an event, which is the right shape: it is at its
+ * most expensive on the night it is most useful.
+ *
+ * A player whose popup fails is left as they were rather than failing the whole
+ * import. Losing one opponent's leaders is a small hole in reference material;
+ * losing the roster means retyping thirty boards by hand.
+ */
+async function enrichWithLists(
+  roster: Roster,
+  get: HtmlFetcher,
+  onProgress?: (done: number, total: number) => void,
+): Promise<void> {
+  const pending = roster.teams
+    .flatMap((t) => t.members)
+    .filter((m) => m.userId && m.lists.length === 0);
+
+  let done = 0;
+  onProgress?.(0, pending.length);
+
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const i = next++;
+      if (i >= pending.length) return;
+      const member = pending[i];
+      try {
+        const html = await get(listUrl(roster.eventId, member.userId!));
+        member.lists = parseListPanel(html, member.faction);
+      } catch {
+        // Leave this player's lists empty; see the note above.
+      }
+      onProgress?.(++done, pending.length);
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(LIST_CONCURRENCY, pending.length) }, worker),
+  );
+}
+
+/**
  * Fetch both standings panels for an event and parse them into a roster.
  *
  * The two panels are independent GETs, so they run together; the join happens in
@@ -228,11 +320,14 @@ export async function fetchHtml(url: string): Promise<string> {
  * parallel means one import is two chances to be refused, which made a clean
  * import roughly a coin-flip on a bad morning; retrying independently per panel
  * takes that back to negligible.
+ *
+ * With `withLists`, a third pass fetches the army lists of any player the
+ * panels left blank -- see {@link enrichWithLists}.
  */
 export async function fetchRoster(
   input: string,
   fetcher: HtmlFetcher = fetchHtml,
-  options: RetryOptions = {},
+  options: RosterOptions = {},
 ): Promise<Roster> {
   const eventId = parseEventId(input);
   if (!eventId) {
@@ -245,5 +340,9 @@ export async function fetchRoster(
     get(panelUrl(eventId, "team")),
     get(panelUrl(eventId, "player")),
   ]);
-  return parseRoster(teamHtml, playerHtml, eventId);
+  const roster = parseRoster(teamHtml, playerHtml, eventId);
+  if (options.withLists) {
+    await enrichWithLists(roster, get, options.onProgress);
+  }
+  return roster;
 }

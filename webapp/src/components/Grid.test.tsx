@@ -15,7 +15,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { boardScale, emptyBoard, setRating, type Board } from "../model/board";
-import { Grid } from "./Grid";
+import { Grid, Rosters } from "./Grid";
 
 afterEach(cleanup);
 
@@ -147,6 +147,31 @@ describe("Grid opponent roster popup", () => {
     // No theirDetails at all: every name is plain text, no hold targets.
     render(<Grid board={emptyBoard()} onChange={() => {}} />);
     expect(screen.queryByRole("button", { name: /Hold for roster/ })).toBeNull();
+  });
+});
+
+/**
+ * The Them column is where the captain reads the other side while typing it in,
+ * so what an import learned has to be visible there without a tap.
+ */
+describe("Rosters opponent tags", () => {
+  it("shows the faction badge and one leader per registered list", () => {
+    const { container } = render(<Rosters board={boardWithDetail()} onChange={() => {}} />);
+    expect(screen.getByText("Magpie Sorrel / Crow")).toBeTruthy();
+    expect(container.querySelector(".faction-badge")?.getAttribute("title")).toBe("Corvid Compact");
+  });
+
+  it("falls back to the list titles when no leader was recognised", () => {
+    // A blank leader is honest but useless; the title the player chose is not.
+    const board = boardWithDetail();
+    board.theirDetails![0].lists = [{ name: "Potty Break" }, { name: "Made ya look" }];
+    render(<Rosters board={board} onChange={() => {}} />);
+    expect(screen.getByText("Potty Break / Made ya look")).toBeTruthy();
+  });
+
+  it("adds nothing for an opponent an import never described", () => {
+    const { container } = render(<Rosters board={emptyBoard()} onChange={() => {}} />);
+    expect(container.querySelector(".roster-tags")).toBeNull();
   });
 });
 

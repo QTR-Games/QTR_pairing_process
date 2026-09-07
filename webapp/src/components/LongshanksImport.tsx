@@ -57,7 +57,19 @@ export function LongshanksImport({ onImported }: Props) {
     setNote({ tone: "ok", text: "Fetching the event roster from Longshanks…" });
     reset();
     try {
-      const r = await fetchRoster(input);
+      const r = await fetchRoster(input, undefined, {
+        // The armies and leaders are the reason to import the night before, and
+        // before a game is played they only exist on each player's own list
+        // page -- so this is on, and the progress note explains the wait.
+        withLists: true,
+        onProgress: (done, total) => {
+          if (total === 0) return;
+          setNote({
+            tone: "ok",
+            text: `Reading army lists — ${done} of ${total} players…`,
+          });
+        },
+      });
       if (r.teams.length === 0) {
         setNote({ tone: "bad", text: "That event has no teams yet, or is not a team event." });
         return;
@@ -120,7 +132,9 @@ export function LongshanksImport({ onImported }: Props) {
       <h2>Import from Longshanks</h2>
       <p className="hint">
         Paste an event id or link, choose your team, and get a board for every other
-        team in the event with your players already down the side.
+        team in the event with your players already down the side, with the army and
+        leaders each of them registered. Any Longshanks link works, including the
+        <code> warmachine.longshanks.org</code> one a phone copies.
       </p>
 
       <div className="controls">
