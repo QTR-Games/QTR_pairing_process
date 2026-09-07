@@ -52,7 +52,7 @@ export function ReachPanel({ board, scale, matrix, onHighlight }: Props) {
   const shielded = report.floors.filter((f) => f.protectedByProtocol).length;
 
   return (
-    <section className="panel reach">
+    <section className="panel reach" data-help="reach">
       <h2>Reach</h2>
       <p className="hint">
         What the protocol lets either side actually force, against what the grid

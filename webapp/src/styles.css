@@ -1662,6 +1662,98 @@ a.ghost:hover {
   flex: none;
 }
 
+/* ---------- contextual help ---------- */
+
+/*
+  The floating "?" and the card it opens, docked to the bottom of the viewport
+  and fixed there so they travel with the reader down a long board.
+
+  One dock rather than two independently-positioned boxes: the card is a bottom
+  sheet, and a separately-placed button would end up underneath it on exactly
+  the screens where it is needed most. The dock spans the width so the sheet
+  can, but takes no taps of its own -- it sits over the app, and a full-width
+  strip that ate pointer events would be a dead band across the bottom of every
+  screen even with help mode off.
+*/
+.help-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 0 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  pointer-events: none;
+}
+
+.help-dock > * {
+  pointer-events: auto;
+}
+
+.help-fab {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+.help-fab.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/*
+  Decoration. The taps are caught in the capture phase by HelpOverlay, not by
+  this, so it must not be the thing under the finger -- `pointer-events: none`
+  is load-bearing rather than tidy.
+*/
+.help-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.help-card {
+  align-self: stretch;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+.help-card-title {
+  margin: 0 0 0.4rem;
+  font-weight: 600;
+}
+
+.help-card-body {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.help-card-hint {
+  margin: 0.6rem 0;
+  font-size: 0.78rem;
+  color: var(--dim);
+}
+
 /* ==========================================================================
    Desktop workspace -- everything below 1024px is untouched by this block.
    ==========================================================================
