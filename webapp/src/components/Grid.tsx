@@ -1,4 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
+import { FactionBadge } from "./FactionBadge";
 import type { Board, OpponentDetail } from "../model/board";
 import { boardScale, setRating, TEAM_SIZE } from "../model/board";
 import { fromFraction, ratingColor, scaleValues, toFraction } from "../model/scale";
@@ -318,12 +319,22 @@ function OpponentDetailView({ detail }: { detail?: OpponentDetail }) {
   const lists = detail?.lists ?? [];
   return (
     <div className="opp-detail">
-      {detail?.faction ? <p className="opp-faction">{detail.faction}</p> : null}
+      {detail?.faction ? (
+        <p className="opp-faction">
+          <FactionBadge army={detail.faction} />
+          {detail.faction}
+        </p>
+      ) : null}
       {lists.length > 0 ? (
         <ul className="opp-lists">
           {lists.map((l, k) => {
             const label = [l.leader, l.army].filter(Boolean).join(" -- ");
-            return <li key={k}>{label || `List ${k + 1}`}</li>;
+            return (
+              <li key={k}>
+                {label || `List ${k + 1}`}
+                {l.name ? <span className="opp-list-name"> &ldquo;{l.name}&rdquo;</span> : null}
+              </li>
+            );
           })}
         </ul>
       ) : (
@@ -369,18 +380,51 @@ export function Rosters({ board, onChange }: NamesProps) {
         <div>
           <h3>Them</h3>
           {Array.from({ length: TEAM_SIZE }, (_, i) => (
-            <input
-              key={i}
-              value={board.theirPlayers[i]}
-              onChange={(e) => {
-                const theirPlayers = [...board.theirPlayers];
-                theirPlayers[i] = e.target.value;
-                onChange({ ...board, theirPlayers });
-              }}
-            />
+            <div key={i} className="roster-them">
+              <input
+                value={board.theirPlayers[i]}
+                onChange={(e) => {
+                  const theirPlayers = [...board.theirPlayers];
+                  theirPlayers[i] = e.target.value;
+                  onChange({ ...board, theirPlayers });
+                }}
+              />
+              <OpponentTags detail={board.theirDetails?.[i]} />
+            </div>
           ))}
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * What an opponent is bringing, under their name on the Board tab.
+ *
+ * The captain's question at pairing time is not "who is this account" but "what
+ * am I looking at" -- the army, and which two leaders are on the table. Both are
+ * already carried on the board by an import, and until now both were two taps
+ * away behind a long-press on the grid header. Putting them under the name costs
+ * a line each and answers the question without any tap at all.
+ *
+ * Renders nothing at all when the board has no roster detail, which is every
+ * hand-entered board, so the column is unchanged for anyone not importing.
+ * Leaders that could not be identified are skipped rather than shown blank; a
+ * player with neither leader recognised falls back to the list titles they
+ * chose, which is still something to go on.
+ */
+function OpponentTags({ detail }: { detail?: OpponentDetail }) {
+  if (!detail) return null;
+  const lists = detail.lists ?? [];
+  const leaders = lists.map((l) => l.leader).filter((l): l is string => !!l);
+  const labels = leaders.length > 0 ? leaders : lists.map((l) => l.name).filter((n): n is string => !!n);
+  if (!detail.faction && labels.length === 0) return null;
+  return (
+    <p className="roster-tags">
+      <FactionBadge army={detail.faction} />
+      {labels.length > 0 ? (
+        <span className="roster-leaders">{labels.join(" / ")}</span>
+      ) : null}
+    </p>
   );
 }

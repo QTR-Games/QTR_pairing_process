@@ -29,12 +29,32 @@ export interface RosterList {
   army?: string;
   /** The model leading it, e.g. "Hellyth". */
   leader?: string;
+  /**
+   * The title the player gave the list on Longshanks, e.g. "Caine Too".
+   *
+   * Present only for lists read from a player's registered army lists, which is
+   * where a title exists at all -- a list inferred from a played game has none.
+   * Kept because it is the only handle the player themselves chose, and it is
+   * what they will say out loud when asked which list they are running.
+   */
+  name?: string;
 }
 
 export interface RosterMember {
   /** Longshanks user id, used only to join the two panels. May be absent. */
   userId?: string;
   name: string;
+  /**
+   * The army Longshanks shows against this player on the team panel, e.g.
+   * "Kithguard".
+   *
+   * This is the one piece of army information that exists before a single game
+   * is played, because it comes from registration rather than from results. It
+   * is also only one army: a player who registers lists from two armies still
+   * gets a single badge here, so treat it as "what they are mostly playing"
+   * rather than as a constraint on their lists.
+   */
+  faction?: string;
   /** Distinct lists this player brought, in the order first seen. */
   lists: RosterList[];
 }

@@ -47,9 +47,17 @@ function toFive(names: string[], placeholder: (i: number) => string): string[] {
   return Array.from({ length: TEAM_SIZE }, (_, i) => names[i] ?? placeholder(i));
 }
 
-/** The faction for a member is the army of their first list, when known. */
+/**
+ * The faction to show against a member.
+ *
+ * The team panel's own badge is preferred because it exists from registration,
+ * before a game has been played, and is what Longshanks itself shows against
+ * that player. The army on their first list is the fallback for a roster parsed
+ * without that badge -- and for the player who registered a list from a second
+ * army, whose badge and lists genuinely disagree.
+ */
 function factionOf(member: RosterMember): string | undefined {
-  return member.lists[0]?.army;
+  return member.faction ?? member.lists[0]?.army;
 }
 
 function detailFor(member: RosterMember): OpponentDetail {
