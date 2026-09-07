@@ -2219,4 +2219,14 @@ a.ghost:hover {
   .desk-controls button.primary {
     flex: none;
   }
+
+  /*
+    The help card is a phone bottom sheet. Stretched across a 1440px window it
+    is a paragraph nobody can read in one line, so here it stops at a column
+    and stays under the button that opened it.
+  */
+  .app-wide .help-card {
+    align-self: flex-end;
+    width: min(30rem, 100%);
+  }
 }

@@ -6,6 +6,23 @@ Task‑by‑task recipes. For concepts and definitions, see the
 
 ---
 
+## Find out what something on the screen means
+
+1. Anywhere inside the app, tap the floating **“?”** in the bottom‑right corner.
+   The screen dims — you are in **help mode**.
+2. Tap the thing you don't recognise: a verdict card, the **pts / %** pill, an
+   advice line, the grid, the round controls, the header.
+3. Read the card. Nothing you tap acts while help mode is on, so this is safe to
+   do mid‑round.
+4. If the card offers a guide section, tap it to read the full detail; the back
+   control returns you to where you were.
+5. Tap the **“?”** again (or **Done**) to leave help mode.
+
+> The home menu has no **“?”** — from there, the guides are under
+> **About & Help**.
+
+---
+
 ## Set up a board by hand
 
 1. Open the **Board** tab (**Workspace** on desktop) — from the home menu use
