@@ -315,6 +315,16 @@ import panel):
 3. Press **Build boards** to create one board per opposing team, pre‑filled with
    their players.
 
+The event can be given as a full address or just its number, and the address may
+carry a game subdomain — `https://warmachine.longshanks.org/event/36052/` is the
+form a phone's share button and Longshanks' own public link tend to produce, and
+works as well as `https://longshanks.org/event/36052/`.
+
+Fetching also reads each opponent's **registered army lists**, so the Them column
+shows a faction badge and the leader of each list under every opposing name —
+before a single game has been played. Lists nobody could be identified from fall
+back to the title the player gave them, and hand‑entered boards are unaffected.
+
 Teams without five named players are skipped, with a note like *"[N] team was
 skipped for not having five named players. Add them by hand, or download the list
 to check what was missing"* — use **Save the list** to export the skipped teams.

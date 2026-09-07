@@ -35,8 +35,8 @@ export interface OpponentDetail {
   name: string;
   /** Their faction / army, when known. */
   faction?: string;
-  /** The lists they are bringing, each a leader + army pair. */
-  lists?: { army?: string; leader?: string }[];
+  /** The lists they are bringing: a leader, an army, and the title they gave it. */
+  lists?: { army?: string; leader?: string; name?: string }[];
 }
 
 export interface Board {

@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  parseListPanel,
   parsePlayerLists,
   parseRoster,
   parseSubfactionTitle,
@@ -118,6 +119,115 @@ describe("parseTeamPanel", () => {
     expect(teams[1].members).toEqual([
       { userId: "133", name: "Dan Golden Lion Riker", lists: [] },
     ]);
+  });
+});
+
+/**
+ * A team block carrying the `.factions` strip, as event 36052 serves it: one
+ * logo per member, in member order, titled with the army they registered.
+ */
+const TEAM_WITH_FACTIONS = `
+<div class="player" id="player_10994">
+  <div class="data">
+    <div class="name team split">
+      <div><a class='player_link' onclick='pop_team(10994);'>You're So Fane</a></div>
+      <div class="team_members">
+        <a class='player_link' onclick='pop_user(25112,36052);'>Rick Coe</a><br/>
+        <a class='player_link' onclick='pop_user(10566,36052);'>Akers</a><br/>
+      </div>
+    </div>
+    <div class="factions">
+      <div class='logobox'><img class="logo" src="/systems/warmachine/factions/kithguard.png" title="Kithguard" /></div><div class='logobox'><img class="logo" src="/systems/warmachine/factions/cyriss.png" title="Convergence of Cyriss" /></div>
+    </div>
+  </div>
+</div>
+`;
+
+describe("parseTeamPanel factions", () => {
+  it("gives each member the army shown against them, by position", () => {
+    const [team] = parseTeamPanel(TEAM_WITH_FACTIONS);
+    expect(team.members.map((m) => [m.name, m.faction])).toEqual([
+      ["Rick Coe", "Kithguard"],
+      ["Akers", "Convergence of Cyriss"],
+    ]);
+  });
+
+  it("takes no faction at all when the two lists cannot be aligned", () => {
+    // One logo, two members: which member it belongs to is unknowable, and a
+    // faction on the wrong player is worse than none.
+    const html = TEAM_WITH_FACTIONS.replace(
+      /<div class='logobox'><img class="logo" src="\/systems\/warmachine\/factions\/cyriss.png" title="Convergence of Cyriss" \/><\/div>/,
+      "",
+    );
+    const [team] = parseTeamPanel(html);
+    expect(team.members.every((m) => m.faction === undefined)).toBe(true);
+  });
+
+  it("leaves faction unset when the panel has no factions strip at all", () => {
+    expect(parseTeamPanel(TEAM_HTML)[0].members[0].faction).toBeUndefined();
+  });
+});
+
+/**
+ * The `tab=list` popup, in the shape Longshanks moved to when it replaced the
+ * single free-text army-list box with named list objects. Bodies are trimmed
+ * from real event-36052 registrations, `<br />` separators and all.
+ */
+const LIST_HTML = `
+<div class="edit" id="edit_player_list" style='display:block;'>
+  <div class="columns">
+    <div class="column center">
+      <table class='ledger toggles list'><tr><th class='center'>Abe!</th></tr><tr><td>Southern Kriels - Kithguard<br />Grand Melee - 100 pts<br /><br />PC CARD<br /><br />Trapdoor<br /><br />Major Abraham Stormcraw<br /><br />29 Fortress King<br />12 Vorogger</td></tr></table>
+      <div class='game_tabs'><a onclick='copy_list(\`197646\`);'>Copy</a></div>
+      <textarea id='list_197646'>Southern Kriels - Kithguard || Major Abraham Stormcraw</textarea>
+    </div>
+    <div class="column center">
+      <table class='ledger toggles list'><tr><th class='center'>Novamourn</th></tr><tr><td>Wroughtmourn<br />Grand Melee - 100 pts<br /><br />PC CARD<br /><br />Trapdoor<br /><br />Fell Captain Mailis Wroughtmourn<br /><br />9 Steelbacks</td></tr></table>
+    </div>
+  </div>
+</div>
+`;
+
+describe("parseListPanel", () => {
+  it("reads a list object's title and resolves its leader and army", () => {
+    expect(parseListPanel(LIST_HTML, "Kithguard")).toEqual([
+      { name: "Abe!", army: "Kithguard", leader: "Stormcraw" },
+      { name: "Novamourn", army: "Kithguard", leader: "Wroughtmourn" },
+    ]);
+  });
+
+  it("keeps the <br> line breaks, so the army header is its own line", () => {
+    // Without them "Southern Kriels - KithguardGrand Melee" is line one and the
+    // declared army no longer resolves.
+    expect(parseListPanel(LIST_HTML)[0].army).toBe("Kithguard");
+  });
+
+  it("falls back to the hinted army when the list opens with a title instead", () => {
+    // "Novamourn" opens with the caster's surname, not "<Faction> - <Army>".
+    expect(parseListPanel(LIST_HTML, "Kithguard")[1].army).toBe("Kithguard");
+  });
+
+  it("reads the title from the body when the table has no header row", () => {
+    /*
+      Lists saved without a title render as a bare `td`, and the player's own
+      title takes the top line -- pushing "<Faction> - <Army>" down to the
+      second. Reading only the first line loses both the title and the army.
+    */
+    const html = `<div id="edit_player_list"><table class="list"><tr><td>talk shit get crit 3.0<br />Dusk - House Kallyss<br />Grand Melee - 100 pts<br /><br />PC CARD<br /><br />Scyrafael, Nis-Issyr of Desolations<br /><br />14 Eidolon 1</td></tr></table></div>`;
+    expect(parseListPanel(html, "House Kallyss")).toEqual([
+      { name: "talk shit get crit 3.0", army: "House Kallyss", leader: "Scyrafael" },
+    ]);
+  });
+
+  it("still returns a list whose leader cannot be identified", () => {    const html = `<div id="edit_player_list"><table class="list"><tr><th class="center">The OP shit</th></tr><tr><td>Made ya look<br />TOTAL POINTS 100/100</td></tr></table></div>`;
+    expect(parseListPanel(html, "Convergence of Cyriss")).toEqual([
+      { name: "The OP shit", army: "Convergence of Cyriss" },
+    ]);
+  });
+
+  it("ignores a popup with no lists in it", () => {
+    expect(parseListPanel(`<div id="edit_player_list"><div class="columns"></div></div>`)).toEqual([]);
+    expect(parseListPanel("<div>nothing here</div>")).toEqual([]);
   });
 });
 
