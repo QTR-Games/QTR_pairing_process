@@ -262,13 +262,20 @@ export function findLeader(
   const settle = (pool: Hit[]): { leader: string; army: string } | undefined => {
     const distinct = (p: Hit[]) => new Set(p.map((h) => bare(h.leader))).size;
     // The same person can lead two armies ("Caine" is in both First Army and
-    // Gravediggers): still one answer, only the attribution is uncertain.
+    // Gravediggers), and the number on a reprint is Longshanks bookkeeping for
+    // one character rather than a second person: still one answer, only the
+    // attribution is uncertain.
     if (distinct(pool) === 1) return { leader: pool[0].leader, army: pool[0].army };
 
     // Two or more real candidates. Only the ones the list did not pay points for
-    // can be leading it; among those, the first one written leads.
+    // can be leading it; among those, the first one written leads. Where two of
+    // them are written at the same place there is no first, so nothing is
+    // returned rather than whichever the army table happened to reach first.
     const casters = pool.filter((h) => h.free).sort((a, b) => a.at - b.at);
-    return casters.length ? { leader: casters[0].leader, army: casters[0].army } : undefined;
+    if (!casters.length) return undefined;
+    const [first] = casters;
+    const tied = casters.some((h) => h.at === first.at && bare(h.leader) !== bare(first.leader));
+    return tied ? undefined : { leader: first.leader, army: first.army };
   };
 
   if (inHint.size) {
