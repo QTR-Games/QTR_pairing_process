@@ -192,6 +192,30 @@ function unpriced(listText: string): string {
 }
 
 /**
+ * The card title that tells one printing of a character from another.
+ *
+ * Longshanks numbers reprints -- "Skarre 1", "Skarre 3" -- and that number is
+ * bookkeeping that appears nowhere in an army list, so on name alone the two are
+ * indistinguishable. Both are leaders of the same army, so scoping by the badge
+ * does not separate them either.
+ *
+ * What does separate them is the card title, which lists carry in full because
+ * players paste them out of the army builder rather than typing them. Only the
+ * distinguishing part is stored: enough to tell the printings apart, and short
+ * enough not to break when someone's export punctuates differently.
+ *
+ * Only characters whose printings share one army need an entry. A number that is
+ * unique within its army ("Caine 4" is the only Caine in Storm Legion) is
+ * already unambiguous.
+ */
+const TITLES: Record<string, string[]> = {
+  "Lylyth 1": ["Herald of Everblight"],
+  "Lylyth 3": ["Reckoning of Everblight"],
+  "Skarre 1": ["Pirate Queen"],
+  "Skarre 3": ["Admiral of the Black Fleet"],
+};
+
+/**
  * Where in the list a model is first named, or -1.
  *
  * A Grand Melee list can field two warcasters, and the one written first is the
@@ -259,13 +283,34 @@ export function findLeader(
   type Hit = (typeof hits)[number];
 
   /** The leader among these hits, or nothing when they cannot be told apart. */
+  /**
+   * Which printing of a character the list is running.
+   *
+   * Reaching here means the person is settled and only the printing is open.
+   * The card title decides it where the list carries one; where it does not,
+   * the answer is the character without a number, which is what a captain
+   * reading the board wants anyway. Guessing a printing would put a specific
+   * claim on screen that nothing in the list supports.
+   */
+  const printing = (hit: Hit, pool: Hit[]): { leader: string; army: string } => {
+    const same = pool.filter((h) => bare(h.leader) === bare(hit.leader));
+    if (new Set(same.map((h) => h.leader)).size === 1) {
+      return { leader: hit.leader, army: hit.army };
+    }
+    const titled = same.filter((h) => (TITLES[h.leader] ?? []).some((t) => mentions(listText, t)));
+    if (new Set(titled.map((h) => h.leader)).size === 1) {
+      return { leader: titled[0].leader, army: titled[0].army };
+    }
+    return { leader: bare(hit.leader), army: hit.army };
+  };
+
   const settle = (pool: Hit[]): { leader: string; army: string } | undefined => {
     const distinct = (p: Hit[]) => new Set(p.map((h) => bare(h.leader))).size;
     // The same person can lead two armies ("Caine" is in both First Army and
     // Gravediggers), and the number on a reprint is Longshanks bookkeeping for
     // one character rather than a second person: still one answer, only the
     // attribution is uncertain.
-    if (distinct(pool) === 1) return { leader: pool[0].leader, army: pool[0].army };
+    if (distinct(pool) === 1) return printing(pool[0], pool);
 
     // Two or more real candidates. Only the ones the list did not pay points for
     // can be leading it; among those, the first one written leads. Where two of
@@ -275,7 +320,7 @@ export function findLeader(
     if (!casters.length) return undefined;
     const [first] = casters;
     const tied = casters.some((h) => h.at === first.at && bare(h.leader) !== bare(first.leader));
-    return tied ? undefined : { leader: first.leader, army: first.army };
+    return tied ? undefined : printing(first, casters);
   };
 
   if (inHint.size) {

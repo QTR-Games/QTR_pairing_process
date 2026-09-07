@@ -135,4 +135,41 @@ describe("findLeader", () => {
   it("returns nothing for a list with no recognisable leader", () => {
     expect(findLeader("Made ya look\nTOTAL POINTS 100/100", "Convergence of Cyriss")).toBeUndefined();
   });
+
+  it("tells two printings of one character apart by their card titles", () => {
+    // Both Skarres lead Blackfleet, so neither the name nor the badge separates
+    // them. The title the list was exported with does.
+    expect(findLeader("Pirate Queen Skarre\n18 Kraken", "Blackfleet")).toEqual({
+      leader: "Skarre 1",
+      army: "Blackfleet",
+    });
+    expect(findLeader("Skarre, Admiral of the Black Fleet\n18 Kraken", "Blackfleet")).toEqual({
+      leader: "Skarre 3",
+      army: "Blackfleet",
+    });
+    expect(findLeader("Lylyth, Herald of Everblight\n15 Ravagore", "Ravens of War")).toEqual({
+      leader: "Lylyth 1",
+      army: "Ravens of War",
+    });
+    expect(findLeader("Lylyth, Reckoning of Everblight\n15 Ravagore", "Ravens of War")).toEqual({
+      leader: "Lylyth 3",
+      army: "Ravens of War",
+    });
+  });
+
+  it("drops the number when a list names a character without their title", () => {
+    // Nothing in the list says which Skarre, so nothing on screen should either.
+    expect(findLeader("Skarre\n18 Kraken", "Blackfleet")).toEqual({
+      leader: "Skarre",
+      army: "Blackfleet",
+    });
+  });
+
+  it("keeps the number where a character has only one printing in the army", () => {
+    // Storm Legion fields one Caine, so "Caine 4" is not a guess.
+    expect(findLeader("Major Allister Caine\n17 Deuce", "Storm Legion")).toEqual({
+      leader: "Caine 4",
+      army: "Storm Legion",
+    });
+  });
 });
