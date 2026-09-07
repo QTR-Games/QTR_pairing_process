@@ -160,15 +160,21 @@ function Invoke-Adb {
     return $output.Trim()
 }
 
-# The serials of every device adb can actually talk to. `adb devices` also lists
-# transports that exist but cannot be used -- a phone showing an unanswered
-# "Allow debugging?" prompt is `unauthorized`, and one that has dropped off the
-# network lingers as `offline` -- and installing to either fails, so they are
-# filtered out here rather than at each call site.
+# The serials of every device adb can actually talk to. Device lines are matched
+# positively rather than by skipping a header: `Invoke-Adb` merges stderr, so on
+# a cold start adb's two daemon lines ("daemon not running..." / "daemon started
+# successfully") precede the header and a fixed skip would let them through as
+# phantom devices -- and a cold start is the fresh-laptop case that most needs
+# the detection below to work.
+#
+# Matching `<serial> device` also excludes unusable transports structurally: a
+# phone showing an unanswered "Allow debugging?" prompt reports `unauthorized`
+# and one that has dropped off the network lingers as `offline`, and installing
+# to either fails. That beats excluding those words by substring, which would
+# also reject a device whose serial happened to contain one of them.
 function Get-UsableDevice {
     @((Invoke-Adb @('devices')) -split "`r?`n" |
-            Select-Object -Skip 1 |
-            Where-Object { $_ -match '\S' -and $_ -notmatch 'offline|unauthorized' } |
+            Where-Object { $_ -match '^\S+\s+device(\s|$)' } |
             ForEach-Object { ($_ -split '\s+')[0] })
 }
 
