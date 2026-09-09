@@ -223,6 +223,7 @@ export function parseListPanel(html: string, armyHint?: string): RosterList[] {
     if (!body.trim()) continue;
 
     const list: RosterList = {};
+    list.body = body.trim();
 
     /*
       Find the "<Faction> - <Army>" line the list builder emits. It is the first

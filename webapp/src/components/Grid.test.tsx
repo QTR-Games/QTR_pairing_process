@@ -81,8 +81,18 @@ function boardWithDetail(): Board {
       name: "Rook",
       faction: "Corvid Compact",
       lists: [
-        { leader: "Magpie Sorrel", army: "Rookery Vanguard" },
-        { leader: "Crow", army: "Murder" },
+        {
+          leader: "Magpie Sorrel",
+          army: "Rookery Vanguard",
+          name: "Bird Law",
+          body: "Khador - Rookery Vanguard\nMagpie Sorrel\nRavenous Birds",
+        },
+        {
+          leader: "Crow",
+          army: "Murder",
+          name: "Caw Order",
+          body: "Khador - Murder\nCrow\nToo Many Beaks",
+        },
       ],
     },
     { name: "Nobody" },
@@ -107,8 +117,12 @@ describe("Grid opponent roster popup", () => {
     render(<Grid board={boardWithDetail()} onChange={() => {}} />);
     fireEvent.keyDown(holdName("Rook")!, { key: "Enter" });
     expect(screen.getByText("Corvid Compact")).toBeTruthy();
+    expect(screen.getByText("Leaders")).toBeTruthy();
     expect(screen.getByText("Magpie Sorrel -- Rookery Vanguard")).toBeTruthy();
     expect(screen.getByText("Crow -- Murder")).toBeTruthy();
+    expect(screen.getByText("Army lists")).toBeTruthy();
+    expect(screen.getByText("Bird Law")).toBeTruthy();
+    expect(screen.getByText(/Khador - Rookery Vanguard/)).toBeTruthy();
   });
 
   it("opens on a hold but not on a quick tap", () => {
@@ -141,6 +155,14 @@ describe("Grid opponent roster popup", () => {
     fireEvent.keyDown(holdName("Halfknown")!, { key: "Enter" });
     expect(screen.getByText("Iron Host")).toBeTruthy();
     expect(screen.getByText(/No lists recorded/)).toBeTruthy();
+  });
+
+  it("makes the imported army-list section separately scrollable", () => {
+    const { container } = render(<Grid board={boardWithDetail()} onChange={() => {}} />);
+    fireEvent.keyDown(holdName("Rook")!, { key: "Enter" });
+    expect(container.querySelector(".opp-detail-scroll")).toBeTruthy();
+    expect(container.querySelectorAll(".opp-section")).toHaveLength(2);
+    expect(container.querySelectorAll(".opp-army-card")).toHaveLength(2);
   });
 
   it("leaves the header untouched on a hand-entered board", () => {

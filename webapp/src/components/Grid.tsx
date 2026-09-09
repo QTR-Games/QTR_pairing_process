@@ -317,6 +317,7 @@ function OppName({
 /** The roster popup body: the faction and the lists an opponent registered. */
 function OpponentDetailView({ detail }: { detail?: OpponentDetail }) {
   const lists = detail?.lists ?? [];
+  const fullLists = lists.filter((l) => !!l.body?.trim());
   return (
     <div className="opp-detail">
       {detail?.faction ? (
@@ -326,17 +327,35 @@ function OpponentDetailView({ detail }: { detail?: OpponentDetail }) {
         </p>
       ) : null}
       {lists.length > 0 ? (
-        <ul className="opp-lists">
-          {lists.map((l, k) => {
-            const label = [l.leader, l.army].filter(Boolean).join(" -- ");
-            return (
-              <li key={k}>
-                {label || `List ${k + 1}`}
-                {l.name ? <span className="opp-list-name"> &ldquo;{l.name}&rdquo;</span> : null}
-              </li>
-            );
-          })}
-        </ul>
+        <div className="opp-detail-scroll">
+          <section className="opp-section" aria-label="Leaders">
+            <p className="opp-section-title">Leaders</p>
+            <ul className="opp-lists">
+              {lists.map((l, k) => {
+                const label = [l.leader, l.army].filter(Boolean).join(" -- ");
+                return (
+                  <li key={k}>
+                    {label || `List ${k + 1}`}
+                    {l.name ? <span className="opp-list-name"> &ldquo;{l.name}&rdquo;</span> : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+          {fullLists.length > 0 ? (
+            <section className="opp-section" aria-label="Army lists">
+              <p className="opp-section-title">Army lists</p>
+              <div className="opp-army-lists">
+                {fullLists.map((l, k) => (
+                  <article key={k} className="opp-army-card">
+                    <p className="opp-army-title">{l.name || l.leader || `Army list ${k + 1}`}</p>
+                    <pre className="opp-army-body">{l.body}</pre>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </div>
       ) : (
         <p className="sheet-hint">No lists recorded for this player.</p>
       )}

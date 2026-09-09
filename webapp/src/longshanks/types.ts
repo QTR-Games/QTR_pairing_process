@@ -38,6 +38,13 @@ export interface RosterList {
    * what they will say out loud when asked which list they are running.
    */
   name?: string;
+  /**
+   * The full imported list body, line-broken as Longshanks shows it.
+   *
+   * Present for lists read from the registered-list popup (`tab=list`), absent
+   * for lists inferred later from played games, which expose only leader/army.
+   */
+  body?: string;
 }
 
 export interface RosterMember {
