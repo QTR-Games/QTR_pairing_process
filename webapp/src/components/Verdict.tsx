@@ -469,7 +469,7 @@ export function VerdictHeadline({ model }: { model: VerdictModel }) {
     <>
       <div className={`chip ${o.verdict}`}>{verdictLabel}</div>
 
-      <div className="numbers">
+      <div className="numbers" data-help="verdict-numbers">
         <Stat
           label="Guaranteed"
           value={pct(protect.base)}
@@ -718,19 +718,20 @@ export function VerdictCards({
           Offered rather than shown. One tap, and it stays open for this board.
         */}
         {dodgeMode === "onDemand" && !asked && (
-          <button className="ghost wide" onClick={() => setAsked(true)}>
+          <button className="ghost wide" data-help="dodge" onClick={() => setAsked(true)}>
             Price your worst matchup
           </button>
         )}
 
         {wantDodge && worstDodge === null && (
-          <p className="hint">
+          <p className="hint" data-help="dodge">
             Nothing on this board is rated badly enough to be worth dodging.
           </p>
         )}
 
         {worstDodge && (
           <Insight
+            help="dodge"
             title={
               worstDodge.cheapest === null
                 ? `You cannot avoid ${board.ourPlayers[worstDodge.example.ours]} into ${board.theirPlayers[worstDodge.example.theirs]}`
@@ -1008,13 +1009,21 @@ function Insight({
   title,
   body,
   onFocus,
+  help = "insight-card",
 }: {
   title: string;
   body: string;
   onFocus?: () => void;
+  /** Contextual-help topic id; cards with a subject of their own name it. */
+  help?: string;
 }) {
   return (
-    <div className="insight" onClick={onFocus} role={onFocus ? "button" : undefined}>
+    <div
+      className="insight"
+      data-help={help}
+      onClick={onFocus}
+      role={onFocus ? "button" : undefined}
+    >
       <p className="insight-title">{title}</p>
       <p className="insight-body">{body}</p>
     </div>
@@ -1045,18 +1054,22 @@ function ToggleableInsight({
   points,
   chance,
   onFocus,
+  help = "insight-card",
 }: {
   unit: CardUnit;
   onToggle: () => void;
   points: { title: string; body: string };
   chance: { title: string; body: string };
   onFocus?: () => void;
+  /** Contextual-help topic id; cards with a subject of their own name it. */
+  help?: string;
 }) {
   const active = unit === "points" ? points : chance;
   const hold = useLongPress(onToggle);
   return (
     <div
       className="insight toggleable"
+      data-help={help}
       onClick={onFocus}
       role={onFocus ? "button" : undefined}
       onContextMenu={(e) => {
@@ -1068,6 +1081,7 @@ function ToggleableInsight({
       <button
         type="button"
         className="insight-unit"
+        data-help="currency-toggle"
         aria-label={
           unit === "points"
             ? "Showing rating points. Switch to round-win chance."
@@ -1108,7 +1122,7 @@ function ProtectChoice({
   onSelect: (i: number | null) => void;
 }) {
   return (
-    <div className="protect-choice">
+    <div className="protect-choice" data-help="protect-choice">
       <p className="protect-choice-label">Protect first, if you have to choose:</p>
       <div className="protect-choice-options" role="radiogroup" aria-label="Protect first">
         <label className="protect-choice-option">

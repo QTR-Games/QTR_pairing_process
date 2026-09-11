@@ -520,7 +520,7 @@ export function LivePanel({
 
   return (
     <section className="live">
-      <header className="live-head">
+      <header className="live-head" data-help="round-prompt">
         <div>
           <h2>{prompt(decision, ourName, theirName)}</h2>
           <p className="live-sub">
@@ -531,7 +531,7 @@ export function LivePanel({
               : `${points(rawOptions[0]?.value ?? state.banked)} guaranteed`}
           </p>
         </div>
-        <div className="live-actions">
+        <div className="live-actions" data-help="round-controls">
           {onUndo && (
             <button
               type="button"
@@ -554,13 +554,13 @@ export function LivePanel({
       ) : (
         <>
           {showProse && tieBreak && (
-            <div className="tiebreak">
+            <div className="tiebreak" data-help="round-advice">
               <p className="tiebreak-lead">{tieBreak.lead}</p>
               <p className="tiebreak-body">{tieBreak.body}</p>
             </div>
           )}
           {surprise && (
-            <div className="surprise-flag" role="alert">
+            <div className="surprise-flag" role="alert" data-help="surprise-alert">
               <p className="surprise-lead">
                 !!! Opponent previous choice is suspiciously outside expectations. Be careful!
               </p>
@@ -577,7 +577,7 @@ export function LivePanel({
             </div>
           )}
 
-          <ol className="options">
+          <ol className="options" data-help="round-options">
             {rows.map(({ o, pShown }, idx) => (
               <OptionRow
                 key={idx}
@@ -627,6 +627,7 @@ export function LivePanel({
       {state.committed.length > 0 && (
         <div
           className="committed"
+          data-help="committed"
           onContextMenu={(e) => {
             e.preventDefault();
             copyCommitted();
@@ -1187,7 +1188,7 @@ function Leverage({
   // signal; an empty space is not. See docs/WTC2024_GROUND_TRUTH.md Finding 15.
   if (spread <= 0) {
     return (
-      <div className="leverage flat">
+      <div className="leverage flat" data-help="round-advice">
         <h3>Hold or play</h3>
         <p className="leverage-lead">
           Nothing in it. Every player is worth the same to hold, so this pick
@@ -1203,7 +1204,7 @@ function Leverage({
   const now = leverage[leverage.length - 1];
 
   return (
-    <div className="leverage">
+    <div className="leverage" data-help="round-advice">
       <h3>Hold or play</h3>
       <p className="leverage-lead">
         Holding <strong>{ourName(hold.player)}</strong> is worth{" "}

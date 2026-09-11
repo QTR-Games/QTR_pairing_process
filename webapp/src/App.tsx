@@ -3,6 +3,7 @@ import { BoardTab } from "./components/BoardTab";
 import { LivePanel } from "./components/LivePanel";
 import { HomeMenu } from "./components/HomeMenu";
 import { AboutHelp } from "./components/AboutHelp";
+import { HelpLayer } from "./components/HelpOverlay";
 import { Splash } from "./components/Splash";
 import {
   deleteBoard,
@@ -84,6 +85,19 @@ export default function App() {
     () => loadSettings().tableTracking,
   );
   const [screen, setScreen] = useState<Screen>("splash");
+
+  /*
+    Which guide section About & Help should open on, and where its back control
+    returns to. Set only by the contextual help "?" following a link out of an
+    explanation; null is the ordinary route in from the menu, which opens the
+    list of guides and goes back to the menu.
+  */
+  const [aboutGuide, setAboutGuide] = useState<{ id: string; anchor: string } | null>(null);
+
+  const openGuide = (id: string, anchor: string) => {
+    setAboutGuide({ id, anchor });
+    setScreen("about");
+  };
 
   // Set and persist in one call. Both layouts expose these preferences, so the
   // write has to live in one place or one of them will change a setting without
@@ -272,7 +286,10 @@ export default function App() {
             enter("board");
           }}
           onBoards={() => enter("boards")}
-          onHelp={() => setScreen("about")}
+          onHelp={() => {
+            setAboutGuide(null);
+            setScreen("about");
+          }}
           onRestored={setBoards}
         />
       </div>
@@ -282,7 +299,17 @@ export default function App() {
   if (screen === "about") {
     return (
       <div className="app app-launch">
-        <AboutHelp onBack={() => setScreen("home")} />
+        <AboutHelp
+          /*
+            Back where you came from. Reached from the menu it returns there;
+            reached from a help card mid-round it returns to the app, because
+            sending a captain to the front screen for reading a definition
+            would cost them their place.
+          */
+          onBack={() => setScreen(aboutGuide ? "app" : "home")}
+          backLabel={aboutGuide ? "Back" : "Menu"}
+          initialGuide={aboutGuide}
+        />
       </div>
     );
   }
@@ -290,14 +317,14 @@ export default function App() {
   if (wide) {
     return (
       <div className="app app-wide">
-        <header className="app-head">
+        <header className="app-head" data-help="header">
           <div className="app-title">
             <button className="ghost app-menu" onClick={() => setScreen("home")}>
               Menu
             </button>
             <h1>{board.opponent || "New board"}</h1>
           </div>
-          <nav className="tabs">
+          <nav className="tabs" data-help="tabs">
             {/*
               Two tabs, not three. Board and Round are the same screen here,
               which is the whole reason to have a bigger one.
@@ -352,20 +379,21 @@ export default function App() {
             />
           )}
         </main>
+        <HelpLayer onOpenGuide={openGuide} />
       </div>
     );
   }
 
   return (
     <div className="app">
-      <header className="app-head">
+      <header className="app-head" data-help="header">
         <div className="app-title">
           <button className="ghost app-menu" onClick={() => setScreen("home")}>
             Menu
           </button>
           <h1>{board.opponent || "New board"}</h1>
         </div>
-        <nav className="tabs">
+        <nav className="tabs" data-help="tabs">
           <button className={tab === "board" ? "on" : ""} onClick={() => setTab("board")}>
             Board
           </button>
@@ -436,6 +464,7 @@ export default function App() {
           />
         )}
       </main>
+      <HelpLayer onOpenGuide={openGuide} />
     </div>
   );
 }
@@ -465,7 +494,7 @@ interface BoardsPanelProps {
  */
 function BoardsPanel({ boards, scaleId, onNew, onOpen, onDelete }: BoardsPanelProps) {
   return (
-    <div className="boards">
+    <div className="boards" data-help="boards">
       <button className="primary wide" onClick={() => onNew(emptyBoard(scaleId))}>
         New board
       </button>

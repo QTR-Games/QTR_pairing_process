@@ -12,14 +12,42 @@
   is open -- which keeps the phone's back button doing whatever the browser
   does and nothing this screen has to promise.
 */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BRAND, LINKS } from "../brand";
 import { GUIDES } from "../content/docs";
 import { DocViewer } from "./DocViewer";
 
-export function AboutHelp({ onBack }: { onBack: () => void }) {
-  const [openId, setOpenId] = useState<string | null>(null);
+export interface AboutHelpProps {
+  onBack: () => void;
+  /** Names where the back control returns to, which is not always the menu. */
+  backLabel?: string;
+  /**
+   * Open straight onto a section of a guide, as the contextual help "?" does.
+   * Null is the ordinary route in from the menu: the list of guides.
+   */
+  initialGuide?: { id: string; anchor: string } | null;
+}
+
+export function AboutHelp({ onBack, backLabel = "Menu", initialGuide = null }: AboutHelpProps) {
+  const [openId, setOpenId] = useState<string | null>(initialGuide?.id ?? null);
   const open = openId ? (GUIDES.find((g) => g.id === openId) ?? null) : null;
+
+  /*
+    Land on the section that was asked for rather than the top of a long
+    document. Once only: reopening the same guide by hand afterwards is a
+    deliberate act, and yanking the reader back to the anchor then would be the
+    screen fighting them. jsdom leaves scrollIntoView undefined, so it is
+    guarded the same way DocViewer guards its own anchor jumps.
+  */
+  const jumped = useRef(false);
+  useEffect(() => {
+    if (jumped.current || !initialGuide || open?.id !== initialGuide.id) return;
+    jumped.current = true;
+    const el = document.getElementById(initialGuide.anchor);
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [open, initialGuide]);
 
   if (open) {
     return (
@@ -43,7 +71,7 @@ export function AboutHelp({ onBack }: { onBack: () => void }) {
     <div className="about" data-testid="about">
       <header className="about-head">
         <button className="ghost app-menu" onClick={onBack}>
-          ‹ Menu
+          ‹ {backLabel}
         </button>
         <h1>About &amp; Help</h1>
       </header>
