@@ -263,8 +263,32 @@ describe("fetchRoster with lists", () => {
     const roster = await fetchRoster("36052", preEventFetcher(), { withLists: true });
 
     expect(roster.teams[0].members).toEqual([
-      { userId: "10", name: "Ann", faction: "Kithguard", lists: [{ name: "Abe!", army: "Kithguard", leader: "Stormcraw" }] },
-      { userId: "11", name: "Bo", faction: "Storm Legion", lists: [{ name: "Caine Too", army: "Storm Legion", leader: "Caine 4" }] },
+      {
+        userId: "10",
+        name: "Ann",
+        faction: "Kithguard",
+        lists: [
+          {
+            name: "Abe!",
+            army: "Kithguard",
+            leader: "Stormcraw",
+            body: "Southern Kriels - Kithguard\nMajor Abraham Stormcraw",
+          },
+        ],
+      },
+      {
+        userId: "11",
+        name: "Bo",
+        faction: "Storm Legion",
+        lists: [
+          {
+            name: "Caine Too",
+            army: "Storm Legion",
+            leader: "Caine 4",
+            body: "Cygnar - Storm Legion\nMajor Allister Caine",
+          },
+        ],
+      },
     ]);
   });
 

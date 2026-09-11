@@ -191,8 +191,20 @@ const LIST_HTML = `
 describe("parseListPanel", () => {
   it("reads a list object's title and resolves its leader and army", () => {
     expect(parseListPanel(LIST_HTML, "Kithguard")).toEqual([
-      { name: "Abe!", army: "Kithguard", leader: "Stormcraw" },
-      { name: "Novamourn", army: "Kithguard", leader: "Wroughtmourn" },
+      {
+        name: "Abe!",
+        army: "Kithguard",
+        leader: "Stormcraw",
+        body:
+          "Southern Kriels - Kithguard\nGrand Melee - 100 pts\n\nPC CARD\n\nTrapdoor\n\nMajor Abraham Stormcraw\n\n29 Fortress King\n12 Vorogger",
+      },
+      {
+        name: "Novamourn",
+        army: "Kithguard",
+        leader: "Wroughtmourn",
+        body:
+          "Wroughtmourn\nGrand Melee - 100 pts\n\nPC CARD\n\nTrapdoor\n\nFell Captain Mailis Wroughtmourn\n\n9 Steelbacks",
+      },
     ]);
   });
 
@@ -215,13 +227,24 @@ describe("parseListPanel", () => {
     */
     const html = `<div id="edit_player_list"><table class="list"><tr><td>talk shit get crit 3.0<br />Dusk - House Kallyss<br />Grand Melee - 100 pts<br /><br />PC CARD<br /><br />Scyrafael, Nis-Issyr of Desolations<br /><br />14 Eidolon 1</td></tr></table></div>`;
     expect(parseListPanel(html, "House Kallyss")).toEqual([
-      { name: "talk shit get crit 3.0", army: "House Kallyss", leader: "Scyrafael" },
+      {
+        name: "talk shit get crit 3.0",
+        army: "House Kallyss",
+        leader: "Scyrafael",
+        body:
+          "talk shit get crit 3.0\nDusk - House Kallyss\nGrand Melee - 100 pts\n\nPC CARD\n\nScyrafael, Nis-Issyr of Desolations\n\n14 Eidolon 1",
+      },
     ]);
   });
 
-  it("still returns a list whose leader cannot be identified", () => {    const html = `<div id="edit_player_list"><table class="list"><tr><th class="center">The OP shit</th></tr><tr><td>Made ya look<br />TOTAL POINTS 100/100</td></tr></table></div>`;
+  it("still returns a list whose leader cannot be identified", () => {
+    const html = `<div id="edit_player_list"><table class="list"><tr><th class="center">The OP shit</th></tr><tr><td>Made ya look<br />TOTAL POINTS 100/100</td></tr></table></div>`;
     expect(parseListPanel(html, "Convergence of Cyriss")).toEqual([
-      { name: "The OP shit", army: "Convergence of Cyriss" },
+      {
+        name: "The OP shit",
+        army: "Convergence of Cyriss",
+        body: "Made ya look\nTOTAL POINTS 100/100",
+      },
     ]);
   });
 

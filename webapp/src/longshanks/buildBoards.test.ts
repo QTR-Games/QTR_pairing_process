@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { buildBoards } from "./buildBoards";
 import type { Roster } from "./types";
 
-function team(teamId: string, name: string, members: [string, string][], lists: Record<string, { army?: string; leader?: string }[]> = {}) {
+function team(
+  teamId: string,
+  name: string,
+  members: [string, string][],
+  lists: Record<string, { army?: string; leader?: string; body?: string }[]> = {},
+) {
   return {
     teamId,
     name,
@@ -20,7 +25,7 @@ const roster: Roster = {
       h0: [{ army: "Gravediggers", leader: "Caine" }, { army: "Gravediggers", leader: "Hasker" }],
     }),
     team("2", "Rivals", five("r"), {
-      r0: [{ army: "Shadowflame Shard", leader: "Lylyth" }],
+      r0: [{ army: "Shadowflame Shard", leader: "Lylyth", body: "Lylyth\nNephilim" }],
     }),
     team("3", "Also Rans", five("a")),
   ],
@@ -53,7 +58,7 @@ describe("buildBoards", () => {
     expect(rivals.theirDetails?.[0]).toEqual({
       name: "r P0",
       faction: "Shadowflame Shard",
-      lists: [{ army: "Shadowflame Shard", leader: "Lylyth" }],
+      lists: [{ army: "Shadowflame Shard", leader: "Lylyth", body: "Lylyth\nNephilim" }],
     });
     // A player with no imported list carries just a name, not a fabricated faction.
     expect(rivals.theirDetails?.[1]).toEqual({ name: "r P1" });
