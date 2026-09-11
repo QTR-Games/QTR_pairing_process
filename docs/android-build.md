@@ -227,9 +227,31 @@ The connect address is then remembered in
 rather than project configuration, since another laptop pairs with a different
 phone on a different network -- and later runs need no arguments.
 
+### Picking a device
+
 Android issues a **new port** every time wireless debugging is toggled off and
-on, and after most reboots. Pairing survives that; the port does not. When a
-remembered address stops connecting, pass the current one with `-Device`.
+on, and after most reboots. Pairing survives that; the port does not, so a
+remembered address goes stale routinely.
+
+That is handled automatically. adb reconnects a paired phone by itself over
+mDNS, giving a live transport whose serial is a service name such as
+`adb-66181FDDJ00165-JQFAfI._adb-tls-connect._tcp` rather than a `host:port`. So
+when no `-Device` is passed:
+
+- if exactly one usable device is already attached, that device is used and no
+  `adb connect` is attempted at all;
+- otherwise the remembered address is tried, and if it fails while exactly one
+  device is attached, that device is used instead and the stale entry is
+  dropped rather than retried on every later run.
+
+Only a real `host:port` is ever written back to `phone-device.json`, since an
+mDNS service name is a usable target *now* but cannot be handed to
+`adb connect` later.
+
+An explicit `-Device` is always honoured as given: it is connected to, and still
+fails loudly if it cannot be reached, so asking for a specific phone never
+silently installs onto a different one. `-Usb` remains available but is no
+longer needed just to work around a stale remembered port.
 
 ### Other sources
 
@@ -240,6 +262,7 @@ remembered address stops connecting, pass the current one with `-Device`.
 | `-Local -DebugVariant` | A debug build from the working tree |
 | `-ApkPath <file>` | A specific APK |
 | `-Usb` | Same, over a cable instead of Wi-Fi |
+| `-Device <host:port>` | A specific phone, instead of auto-detecting |
 
 `-DebugVariant` is off by default on purpose. A debug APK is signed with a
 throwaway key, so Android refuses to install it over the release build already

@@ -38,10 +38,11 @@
     The six-digit code shown alongside PairAddress. Expires in a few minutes.
 
 .PARAMETER Device
-    host:port from the main "Wireless debugging" screen. Remembered after the
-    first successful connect, so later runs need no arguments at all. Android
-    issues a new port every time wireless debugging is toggled off and on, so
-    pass this again when a remembered address stops connecting.
+    host:port from the main "Wireless debugging" screen. Rarely needed: adb
+    reconnects a paired phone by itself over mDNS, and this script uses an
+    already-attached device when there is exactly one, so the usual run takes no
+    arguments. Pass it to pick a specific phone, or on the first connect. An
+    explicit -Device is always honoured, and still fails loudly if unreachable.
 
 .PARAMETER Usb
     Skip wireless entirely and use whatever device is already attached.
@@ -159,6 +160,34 @@ function Invoke-Adb {
     return $output.Trim()
 }
 
+# The serials of every device adb can actually talk to. Device lines are matched
+# positively rather than by skipping a header: `Invoke-Adb` merges stderr, so on
+# a cold start adb's two daemon lines ("daemon not running..." / "daemon started
+# successfully") precede the header and a fixed skip would let them through as
+# phantom devices -- and a cold start is the fresh-laptop case that most needs
+# the detection below to work.
+#
+# Matching `<serial> device` also excludes unusable transports structurally: a
+# phone showing an unanswered "Allow debugging?" prompt reports `unauthorized`
+# and one that has dropped off the network lingers as `offline`, and installing
+# to either fails. That beats excluding those words by substring, which would
+# also reject a device whose serial happened to contain one of them.
+function Get-UsableDevice {
+    @((Invoke-Adb @('devices')) -split "`r?`n" |
+            Where-Object { $_ -match '^\S+\s+device(\s|$)' } |
+            ForEach-Object { ($_ -split '\s+')[0] })
+}
+
+# Only a host:port serial can be handed back to `adb connect` on a later run.
+# When adb reconnects a paired phone by itself it does so over mDNS, and the
+# resulting serial is a service name like
+# `adb-66181FDDJ00165-JQFAfI._adb-tls-connect._tcp`, which is a valid target for
+# `adb -s` right now but meaningless to `adb connect` tomorrow.
+function Test-ConnectableAddress {
+    param([string]$Serial)
+    return [bool]($Serial -match '^\S+:\d+$')
+}
+
 $script:adb = Find-Adb
 Write-Host "adb: $script:adb" -ForegroundColor DarkGray
 
@@ -189,12 +218,29 @@ The usual causes, in order of likelihood:
         }
     }
 
-    if (-not $Device -and (Test-Path $statePath)) {
+    # An explicit -Device is an instruction, not a hint: honour it exactly, and
+    # let it fail loudly if it cannot be reached. Everything below only applies
+    # when the caller left the choice to the script.
+    $deviceWasRequested = [bool]$Device
+
+    # Wireless debugging survives more than the address does. Android re-issues
+    # a port on every toggle and most reboots, but the pairing persists, so adb
+    # routinely re-establishes the phone by itself over mDNS before this script
+    # runs. Checking for that first means the common case needs no address at
+    # all -- and the remembered one being stale stops mattering.
+    $attached = @(Get-UsableDevice)
+
+    if (-not $Device -and $attached.Count -eq 1) {
+        $target = $attached[0]
+        Write-Host "Using $target -- already attached, so no connect is needed." -ForegroundColor DarkGray
+    }
+
+    if (-not $target -and -not $Device -and (Test-Path $statePath)) {
         $Device = (Get-Content $statePath -Raw | ConvertFrom-Json).device
         if ($Device) { Write-Host "Using remembered device $Device" -ForegroundColor DarkGray }
     }
 
-    if (-not $Device) {
+    if (-not $target -and -not $Device -and $attached.Count -eq 0) {
         throw @'
 No device address.
 
@@ -205,11 +251,32 @@ with this laptop, tap "Pair device with pairing code" and pass -PairAddress and
 '@
     }
 
-    Write-Host "Connecting to $Device..." -ForegroundColor Cyan
-    $connectResult = Invoke-Adb @('connect', $Device)
-    Write-Host $connectResult
-    if ($connectResult -match 'cannot connect|failed to connect|unable to connect') {
-        throw @"
+    # With no target and no remembered address, but devices attached, there is
+    # nothing to connect to; the resolution below names the real problem.
+    if (-not $target -and $Device) {
+        Write-Host "Connecting to $Device..." -ForegroundColor Cyan
+        $connectResult = Invoke-Adb @('connect', $Device)
+        Write-Host $connectResult
+        if ($connectResult -match 'cannot connect|failed to connect|unable to connect') {
+            # Re-list rather than trust the earlier snapshot: the first `adb
+            # devices` may itself have started the adb server, and mDNS
+            # discovery of an already-paired phone lands a moment after that, so
+            # a device that was invisible at the top of the run can be present
+            # by now.
+            $attached = @(Get-UsableDevice)
+            if (-not $deviceWasRequested -and $attached.Count -eq 1) {
+                Write-Host "The remembered address $Device is stale -- Android issues a new port on every wireless debugging toggle and most reboots." -ForegroundColor Yellow
+                Write-Host "Using the already-attached $($attached[0]) instead." -ForegroundColor Yellow
+                $target = $attached[0]
+
+                # The remembered address is now known dead, so drop it rather
+                # than replay a failing connect on every later run. Nothing is
+                # lost: the address it held is one Android will never hand out
+                # again, and the next successful connect writes a fresh one.
+                Remove-Item -LiteralPath $statePath -Force -ErrorAction SilentlyContinue
+            }
+            else {
+                throw @"
 Could not connect to $Device.
 
 Android issues a NEW port every time wireless debugging is toggled off and on,
@@ -218,26 +285,33 @@ current host:port on the phone and pass it with -Device.
 
 If the port is right and it still fails, the pairing was lost -- pair again.
 "@
+            }
+        }
+        else {
+            $target = $Device
+        }
     }
 
-    New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
-    @{ device = $Device } | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding utf8
-    $target = $Device
+    # Only ever remember something `adb connect` can use again. An mDNS serial
+    # works as a target for this run but is not an address, so writing one here
+    # would leave the next run with a remembered value that can never connect.
+    if ($target -and (Test-ConnectableAddress $target)) {
+        New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+        @{ device = $target } | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding utf8
+    }
 }
 
 # With several devices attached, adb refuses to guess. Resolve to exactly one.
-$deviceLines = @((Invoke-Adb @('devices')) -split "`r?`n" |
-        Select-Object -Skip 1 |
-        Where-Object { $_ -match '\S' -and $_ -notmatch 'offline|unauthorized' })
+$deviceSerials = @(Get-UsableDevice)
 
-if ($deviceLines.Count -eq 0) {
+if ($deviceSerials.Count -eq 0) {
     throw 'No usable device is connected. If the phone shows an "Allow debugging?" prompt, accept it and rerun.'
 }
 if (-not $target) {
-    if ($deviceLines.Count -gt 1) {
-        throw "More than one device is attached:`n$($deviceLines -join "`n")`nPass -Device to choose one."
+    if ($deviceSerials.Count -gt 1) {
+        throw "More than one device is attached:`n$($deviceSerials -join "`n")`nPass -Device to choose one."
     }
-    $target = ($deviceLines[0] -split '\s+')[0]
+    $target = $deviceSerials[0]
 }
 Write-Host "Target: $target" -ForegroundColor DarkGray
 
