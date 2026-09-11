@@ -82,6 +82,27 @@ On a **phone** the app has three tabs — **Board**, **Round**, **Saved**. On a
 **wide/desktop** window it collapses to two — **Workspace** (board + round + the
 verdict all at once) and **Saved**.
 
+### The “?” button
+
+Every screen inside the app carries a floating **“?”** in the bottom‑right
+corner. It travels with you as you scroll, and it is there for the moment you
+look at something — a verdict card, a currency pill, an advice line, the grid,
+the round controls — and think *what is that?*
+
+- Tap the **“?”**. The screen dims: you are now in **help mode**.
+- Tap **anything else on the screen**. A card explains what that piece of the
+  app is and what it is for.
+- While help mode is on, **nothing you tap actually does anything** — you cannot
+  rate a cell, commit a pairing or change a setting by accident.
+- Where there is more to say, the card offers the matching section of this
+  guide, or of the [How‑to Guide](klikklak-how-to.md), and takes you straight
+  to it.
+- Tap the **“?”** again, or **Done** on the card (or press Escape on a
+  keyboard), to hand the screen back.
+
+The home menu has no **“?”** — it is a short list of labelled buttons, and the
+guides are one tap away on it under **About & Help**.
+
 ---
 
 ## Setting up a board

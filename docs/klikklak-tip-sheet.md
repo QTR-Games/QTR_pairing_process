@@ -74,6 +74,8 @@ Set how chatty it is in **Advice during a round** (Full / Just the picks / None)
 - **Tap a cell** → rate it.
 - **Long‑press a cell** (phone) / **hover** (desktop) → opening cost + dodge price.
 - **Long‑press an opponent's name** (Longshanks boards) → their faction/lists.
+- **Tap the floating “?”** → help mode: tap anything to have it explained;
+  nothing you tap acts while it is on. Tap **“?”** again to leave.
 - **Menu** (header) → back to home.
 
 ---
