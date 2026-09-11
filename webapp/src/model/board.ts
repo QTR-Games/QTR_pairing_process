@@ -35,8 +35,11 @@ export interface OpponentDetail {
   name: string;
   /** Their faction / army, when known. */
   faction?: string;
-  /** The lists they are bringing: a leader, an army, and the title they gave it. */
-  lists?: { army?: string; leader?: string; name?: string }[];
+  /**
+   * The lists they are bringing: a leader, an army, the title they gave it,
+   * and when imported pre-event the full list body Longshanks showed.
+   */
+  lists?: { army?: string; leader?: string; name?: string; body?: string }[];
 }
 
 export interface Board {
