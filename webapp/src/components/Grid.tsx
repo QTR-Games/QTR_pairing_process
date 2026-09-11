@@ -78,7 +78,7 @@ export function Grid({ board, onChange, locked, highlight, overlay, cellInfo }: 
       : null;
 
   return (
-    <div className="grid-wrap">
+    <div className="grid-wrap" data-help="grid">
       <table className="grid">
         <thead>
           <tr>
@@ -371,7 +371,7 @@ interface NamesProps {
 /** Roster entry. Kept separate so the grid stays the focus of the board screen. */
 export function Rosters({ board, onChange }: NamesProps) {
   return (
-    <div className="rosters">
+    <div className="rosters" data-help="rosters">
       <label className="field">
         <span>Opponent team</span>
         <input

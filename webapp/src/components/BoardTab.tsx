@@ -67,12 +67,12 @@ export function BoardTab({
 
   return (
     <>
-      <section className="verdict">
+      <section className="verdict" data-help="verdict-reading">
         <VerdictHeadline model={model} />
       </section>
 
       <div className="controls">
-        <label className="field inline">
+        <label className="field inline" data-help="scale">
           <span>Scale</span>
           <select
             // Resolved id, not the stored one -- see the matching note in
@@ -88,9 +88,9 @@ export function BoardTab({
             ))}
           </select>
         </label>
-        <p className="hint">{scale.hint}</p>
+        <p className="hint" data-help="scale">{scale.hint}</p>
 
-        <label className="field inline">
+        <label className="field inline" data-help="first-up">
           <span>Who puts a player up first?</span>
           <select
             value={board.ourTeamFirst ? "us" : "them"}
@@ -108,13 +108,14 @@ export function BoardTab({
         */}
         {opening && opening.gain >= 0.005 && (
           opening.weOpen === board.ourTeamFirst ? (
-            <p className="hint">
+            <p className="hint" data-help="first-up">
               If you win the dice-off, {opening.weOpen ? "go first" : "make them go first"}
               {" "}-- worth {opening.gain.toFixed(2)} here. Already set.
             </p>
           ) : (
             <button
               className="ghost wide"
+              data-help="first-up"
               onClick={() => onBoardChange({ ...board, ourTeamFirst: opening.weOpen })}
             >
               Win the dice-off and{" "}
@@ -132,7 +133,7 @@ export function BoardTab({
         cards below scroll. Opaque background so the transparent gaps in the
         grid's border-spacing do not show the cards sliding underneath.
       */}
-      <div className="board-grid-sticky">
+      <div className="board-grid-sticky" data-help="grid">
         <Grid
           board={board}
           onChange={onBoardChange}
@@ -143,7 +144,7 @@ export function BoardTab({
       </div>
 
       {model.rated && (
-        <section className="verdict">
+        <section className="verdict" data-help="insight-card">
           <VerdictCards model={model} onHighlight={onHighlight} />
         </section>
       )}
@@ -153,7 +154,7 @@ export function BoardTab({
         grid and the reading, because it is the last thing you do on this
         screen rather than the first.
       */}
-      <button className="primary wide" onClick={onStartRound}>
+      <button className="primary wide" data-help="start-round" onClick={onStartRound}>
         Start the round
       </button>
     </>
