@@ -102,13 +102,9 @@ export function getBugReportUrl(): string {
   ].join("\n");
 
   try {
-    const appVersion = import.meta.env.VITE_APP_VERSION;
     const params = new URLSearchParams();
     params.append("template", "bug_report.yml");
     params.append("area", "Web app (phone / browser)");
-    if (appVersion) {
-      params.append("version", appVersion);
-    }
     params.append("python", `${os} / ${browser}`);
     params.append("logs", diagnostics);
     return `${defaultUrl}?${params.toString()}`;
