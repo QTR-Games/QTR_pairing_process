@@ -34,13 +34,14 @@ export function getBugReportUrl(): string {
   const ua = typeof navigator !== "undefined" ? navigator.userAgent || "" : "";
   const platform = typeof navigator !== "undefined" ? navigator.platform || "" : "";
   const language = typeof navigator !== "undefined" ? navigator.language || "" : "";
+  const maxTouchPoints = typeof navigator !== "undefined" ? navigator.maxTouchPoints || 0 : 0;
   const onLine = typeof navigator !== "undefined" ? navigator.onLine : true;
 
   // Determine OS
   let os = "Unknown";
   if (/android/i.test(ua)) {
     os = "Android";
-  } else if (/ipad|iphone|ipod/i.test(ua)) {
+  } else if (/ipad|iphone|ipod/i.test(ua) || (platform === "MacIntel" && maxTouchPoints > 1)) {
     os = "iOS";
   } else if (/macintosh|mac os x/i.test(ua)) {
     os = "macOS";
@@ -56,14 +57,14 @@ export function getBugReportUrl(): string {
   let browser = "Other / WebView";
   if (/chrome|crios/i.test(ua) && !/edge|edg/i.test(ua) && !/opr/i.test(ua)) {
     browser = "Chrome";
-  } else if (/safari/i.test(ua) && !/chrome|crios/i.test(ua)) {
-    browser = "Safari";
   } else if (/firefox|fxios/i.test(ua)) {
     browser = "Firefox";
   } else if (/edge|edg/i.test(ua)) {
     browser = "Edge";
   } else if (/opr/i.test(ua)) {
     browser = "Opera";
+  } else if (/safari/i.test(ua) && !/chrome|crios/i.test(ua)) {
+    browser = "Safari";
   }
 
   // Determine App Environment
@@ -101,10 +102,13 @@ export function getBugReportUrl(): string {
   ].join("\n");
 
   try {
+    const appVersion = import.meta.env.VITE_APP_VERSION;
     const params = new URLSearchParams();
     params.append("template", "bug_report.yml");
     params.append("area", "Web app (phone / browser)");
-    params.append("version", "2.1.4");
+    if (appVersion) {
+      params.append("version", appVersion);
+    }
     params.append("python", `${os} / ${browser}`);
     params.append("logs", diagnostics);
     return `${defaultUrl}?${params.toString()}`;

@@ -6,6 +6,7 @@ describe("getBugReportUrl", () => {
   const originalUserAgent = typeof navigator !== "undefined" ? navigator.userAgent : "";
   const originalPlatform = typeof navigator !== "undefined" ? navigator.platform : "";
   const originalLanguage = typeof navigator !== "undefined" ? navigator.language : "";
+  const originalMaxTouchPoints = typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0;
 
   afterEach(() => {
     vi.restoreAllMocks();
@@ -19,6 +20,10 @@ describe("getBugReportUrl", () => {
     });
     Object.defineProperty(window.navigator, "language", {
       value: originalLanguage,
+      configurable: true,
+    });
+    Object.defineProperty(window.navigator, "maxTouchPoints", {
+      value: originalMaxTouchPoints,
       configurable: true,
     });
     // Remove custom window overrides
@@ -45,7 +50,7 @@ describe("getBugReportUrl", () => {
     expect(url.pathname).toBe("/QTR-Games/QTR_pairing_process/issues/new");
     expect(url.searchParams.get("template")).toBe("bug_report.yml");
     expect(url.searchParams.get("area")).toBe("Web app (phone / browser)");
-    expect(url.searchParams.get("version")).toBe("2.1.4");
+    expect(url.searchParams.get("version")).toBeNull();
     expect(url.searchParams.get("python")).toContain("macOS / Chrome");
 
     const logs = url.searchParams.get("logs") || "";
@@ -106,6 +111,57 @@ describe("getBugReportUrl", () => {
     expect(logs).toContain("App Environment: Standalone PWA");
     expect(logs).toContain("OS: iOS");
     expect(logs).toContain("Browser: Safari");
+  });
+
+  it("detects iPadOS Safari reported as Macintosh", () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      configurable: true,
+    });
+    Object.defineProperty(window.navigator, "platform", {
+      value: "MacIntel",
+      configurable: true,
+    });
+    Object.defineProperty(window.navigator, "maxTouchPoints", {
+      value: 5,
+      configurable: true,
+    });
+
+    const urlStr = getBugReportUrl();
+    const url = new URL(urlStr);
+
+    expect(url.searchParams.get("python")).toContain("iOS / Safari");
+    const logs = url.searchParams.get("logs") || "";
+    expect(logs).toContain("OS: iOS");
+    expect(logs).toContain("Browser: Safari");
+  });
+
+  it("detects Firefox on iOS before Safari", () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/131.0 Mobile/15E148 Safari/605.1.15",
+      configurable: true,
+    });
+
+    const urlStr = getBugReportUrl();
+    const url = new URL(urlStr);
+
+    expect(url.searchParams.get("python")).toContain("iOS / Firefox");
+    const logs = url.searchParams.get("logs") || "";
+    expect(logs).toContain("Browser: Firefox");
+  });
+
+  it("detects Edge on iOS before Safari", () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) EdgiOS/131.0 Mobile/15E148 Safari/605.1.15",
+      configurable: true,
+    });
+
+    const urlStr = getBugReportUrl();
+    const url = new URL(urlStr);
+
+    expect(url.searchParams.get("python")).toContain("iOS / Edge");
+    const logs = url.searchParams.get("logs") || "";
+    expect(logs).toContain("Browser: Edge");
   });
 
   it("is accessible via LINKS.bugs getter", () => {
