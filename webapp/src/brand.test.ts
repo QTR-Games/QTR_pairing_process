@@ -164,6 +164,62 @@ describe("getBugReportUrl", () => {
     expect(logs).toContain("Browser: Edge");
   });
 
+  it("detects desktop Opera despite its Chrome token", () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 OPR/106.0.0.0",
+      configurable: true,
+    });
+
+    const urlStr = getBugReportUrl();
+    const url = new URL(urlStr);
+
+    expect(url.searchParams.get("python")).toContain("Windows / Opera");
+    const logs = url.searchParams.get("logs") || "";
+    expect(logs).toContain("Browser: Opera");
+  });
+
+  it("detects Opera on iOS before Safari", () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) OPiOS/16.0.0.0 Mobile/15E148 Safari/9537.53",
+      configurable: true,
+    });
+
+    const urlStr = getBugReportUrl();
+    const url = new URL(urlStr);
+
+    expect(url.searchParams.get("python")).toContain("iOS / Opera");
+    const logs = url.searchParams.get("logs") || "";
+    expect(logs).toContain("Browser: Opera");
+  });
+
+  it("detects Opera Mini on Android", () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      value: "Opera/9.80 (Android; Opera Mini/7.5.33361/37.6866; U; en) Presto/2.12.423 Version/12.16",
+      configurable: true,
+    });
+
+    const urlStr = getBugReportUrl();
+    const url = new URL(urlStr);
+
+    expect(url.searchParams.get("python")).toContain("Android / Opera");
+    const logs = url.searchParams.get("logs") || "";
+    expect(logs).toContain("Browser: Opera");
+  });
+
+  it("detects Presto-era desktop Opera", () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      value: "Opera/9.80 (Windows NT 6.0) Presto/2.12.388 Version/12.14",
+      configurable: true,
+    });
+
+    const urlStr = getBugReportUrl();
+    const url = new URL(urlStr);
+
+    expect(url.searchParams.get("python")).toContain("Windows / Opera");
+    const logs = url.searchParams.get("logs") || "";
+    expect(logs).toContain("Browser: Opera");
+  });
+
   it("is accessible via LINKS.bugs getter", () => {
     const bugsUrl = LINKS.bugs;
     expect(bugsUrl).toContain("https://github.com/QTR-Games/QTR_pairing_process/issues/new");

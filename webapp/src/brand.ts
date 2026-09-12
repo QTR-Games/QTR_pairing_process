@@ -25,6 +25,9 @@ export const BRAND = {
   tagline: "Play like you've got a pairing.",
 } as const;
 
+/** Chromium Opera (`OPR/`), Opera on iOS (`OPiOS`), and legacy/mobile Opera (`Opera/`). */
+const OPERA_UA = /opr\/|opios|opera/i;
+
 export function getBugReportUrl(): string {
   const defaultUrl = "https://github.com/QTR-Games/QTR_pairing_process/issues/new";
   if (typeof window === "undefined") {
@@ -55,13 +58,13 @@ export function getBugReportUrl(): string {
 
   // Determine Browser
   let browser = "Other / WebView";
-  if (/chrome|crios/i.test(ua) && !/edge|edg/i.test(ua) && !/opr/i.test(ua)) {
+  if (/chrome|crios/i.test(ua) && !/edge|edg/i.test(ua) && !OPERA_UA.test(ua)) {
     browser = "Chrome";
   } else if (/firefox|fxios/i.test(ua)) {
     browser = "Firefox";
   } else if (/edge|edg/i.test(ua)) {
     browser = "Edge";
-  } else if (/opr/i.test(ua)) {
+  } else if (OPERA_UA.test(ua)) {
     browser = "Opera";
   } else if (/safari/i.test(ua) && !/chrome|crios/i.test(ua)) {
     browser = "Safari";
