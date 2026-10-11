@@ -33,6 +33,14 @@ This document consolidates and supersedes the working notes in
 notes recorded a claim that was later corrected, this paper carries the corrected
 result and cites the correction rather than re-deriving the error.
 
+> **Follow-up:** [`WHITEPAPER_2026.md`](WHITEPAPER_2026.md) supplements this paper
+> with the WTC 2026 evidence. It records which claims below still hold, confirms the
+> *bus* of §12.3 against real nomination logs, flags §11 Finding 11's terrain axis as
+> confounded with turn order, and adds the first direct observation of an opponent's
+> own matchup valuations — which §13 lists here as beyond this paper's data. **No
+> result below is edited by it**; disagreements are stated there and the text here is
+> left as written.
+
 ---
 
 ## Notation
