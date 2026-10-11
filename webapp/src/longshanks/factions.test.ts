@@ -57,6 +57,8 @@ describe("armyInfo", () => {
   it("knows an army the table was missing entirely", () => {
     // A Covenant list resolved to the right faction and the wrong army, so the
     // rendered badge looked correct and nothing ever flagged the gap.
+    // Without the rows this fails as `expected undefined to be ...`, the badge
+    // lookup missing outright while findLeader still answered confidently.
     expect(armyInfo("Covenant of the Flame")?.faction).toBe("Protectorate of Menoth");
     expect(armyInfo("Dread Armada")?.faction).toBe("Cryx");
   });
@@ -172,6 +174,14 @@ describe("findLeader", () => {
     // Blackfleet and Dread Armada. Both directions are asserted on purpose: a
     // one-sided check passes trivially while one of the two armies is missing
     // from the table, which is how these sat undetected in two catalogues.
+    //
+    // Confirmed to fail for the right reason. With the two army rows removed,
+    // this does not report undefined -- the unknown badge contributes nothing,
+    // the search widens, and the single remaining match wins outright:
+    //   Feora  + "Covenant of the Flame" -> Feora @ Temple Guardians
+    //   Aiakos + "Dread Armada"          -> Aiakos @ Blackfleet
+    // Right faction, wrong army, full confidence. That is the failure being
+    // guarded, and it is invisible in the rendered badge.
     const feora = "Army List\n[Leader] Feora\nRepenter 8\n";
     expect(findLeader(feora, "Covenant of the Flame")?.army).toBe("Covenant of the Flame");
     expect(findLeader(feora, "Temple Guardians")?.army).toBe("Temple Guardians");

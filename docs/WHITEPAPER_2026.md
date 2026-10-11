@@ -509,7 +509,30 @@ Four cautions specific to this supplement:
   our catalogue and the sibling's independently, because no WTC 2026 player
   fielded either. The third instance is the one that settles the point: what was
   missing was not a record but a whole army with its full roster, and no amount
-  of attendance could have revealed it. All are now **closed**.
+  of attendance could have revealed it. Those four gaps are **closed**.
+
+  What is *not* established is that the catalogue is now complete, and this
+  section is the wrong place to imply it. Reconciling our table against the
+  upstream active set leaves a measured shortfall:
+
+  | | ours | upstream active |
+  |---|---|---|
+  | armies | 42 | 42 **[reported]** |
+  | leader entries | 186 | 204 **[reported]** |
+
+  **Leader-level reconciliation is outstanding**: roughly eighteen entries
+  unaccounted for, not yet attributed between genuine gaps in ours and leaders
+  belonging to armies the two tables model differently.
+
+  The army row deserves more suspicion than a match normally earns. Ours
+  includes `Unlimited` — faction `Unlimited`, empty roster, a format
+  pseudo-entry rather than an army — so unless upstream carries an equivalent,
+  the real comparison is 41 against 42 and the equality is arithmetic
+  coincidence concealing a one-army gap. Treating it as reconciliation would
+  repeat, inside the document that diagnoses the error, the exact move §8.2
+  retracts. The honest claim is narrower and still worth having: we have moved
+  from not knowing armies were missing to knowing precisely what remains
+  unchecked.
 - **Retired entries persist upstream behind an `active` flag, and we carry none
   of them** — checked directly: no Convergence `Locke`, no Mercenaries
   `Mortenebra`, no `Aurora 1` **[reported]**. Worth stating as a property that
