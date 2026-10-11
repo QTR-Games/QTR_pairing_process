@@ -394,6 +394,24 @@ collision appears only once Longshanks' reprint numbering is stripped. It is a
 reading the table. **The four above are confirmed instances, not a closed
 enumeration.**
 
+A sixth is **latent rather than live**, and is recorded because the thing
+suppressing it is not ours to rely on. `Locke` is a *suffix* of `Athanor Locke`,
+which the prefix-shadow rule does not catch — suffixes shadow in the opposite
+direction. Upstream has two `Locke` rows in different factions, Convergence's
+(id 1239) and Crucible Guard's (id 1245), so a list naming Athanor Locke could
+resolve to the wrong one. It cannot today only because 1239 is `active=0`,
+leaving a single active `Locke`. That is upstream's retirement decision doing
+the work, not a property of our matcher, and it reverts the moment Longshanks
+reactivates him.
+
+Those two rows also settle a separate question. Longshanks' `code` field looks
+like a stable per-character key and is not one: 1239 and 1245 both carry
+`code=locke` while naming different characters in different factions. This is a
+cleaner counter-example than the typo-shaped ones (`lytyth`, `kythos`, a
+trailing space in `'sparkhammer '`), because it is not a data-entry mistake that
+might be corrected — the field is genuinely non-unique by design, so joining on
+it is unsound no matter how clean the data gets.
+
 **The rule that follows: never infer faction from leader.** The badge names the army
 or its parent faction and is stable; the leader is then searched *within that scope*,
 so an ambiguous name never has to be resolved globally. This is what
@@ -464,18 +482,36 @@ from a retitle with additions, because a caster nobody brought is invisible to
 it. It returned the right answer here and would have returned the same answer had
 the roster genuinely grown. The authoritative list is what settles it, and an
 intermediate draft of this section asserted a missing caster on the strength of a
-roster that turned out to be wrong. Attendance is a biased sample of a catalogue,
+roster that disagreed with ours. Attendance is a biased sample of a catalogue,
 and no quantity of it establishes completeness — which is the same error, in the
 same direction, as reading a strategy off five rounds of one team (§6.4).
 
-The upstream table later explained where that phantom came from, which is worth
-recording because the explanation is not "someone invented a name". `Locke` is a
-real Longshanks record (id 1239) filed under Clockwork Legions — but flagged
-`active=0`, retired. A roster assembled without reading that flag picks him up
-and reports seven casters where the current list has six. The claim was not
-fabricated; it was a true statement about the wrong set of rows, which is a
-failure mode no amount of care in transcription prevents and one the
-reconciliation test of §9 now catches outright.
+**That disagreement turns out not to have been an error at all, and the reason
+is worth more than the correction.** `Locke` is a real warcaster. Longshanks
+carries him as id 1239, correctly filed under Clockwork Legions, flagged
+`active=0` — retired. The published card list that reported seven counts him,
+and counts Aurora once rather than as the two printings `Aurora 1` and
+`Aurora 2`; six active plus Locke, with Aurora merged, is exactly seven. Our six
+is the active set. Both numbers are right, because the two sources were never
+answering the same question.
+
+The distinction that collapsed is between **existing as a printed card** and
+**being legal in this event's format**. `active=0` is a tournament-legality
+judgement, not an assertion that a card was never made. A catalogue of what may
+be fielded should exclude Locke; a catalogue of what exists should not. This
+document is about pairing decisions at a tournament, so the active set is the
+correct one — which makes our handling deliberate rather than lucky, and makes
+§9's *invents no leader upstream lacks* assertion a guard on that boundary
+rather than a formality.
+
+The mechanism matters because a plausible wrong one was tried first and had to
+be discarded. The appealing explanation was that someone had read the table
+without filtering on `active`. It is appealing precisely because it indicts a
+discipline we had already adopted — but it predicts the wrong number. Clockwork
+Legions has **eight** leader rows, six active; an unfiltered read reports eight,
+not seven. An explanation that reaches the right conclusion by the wrong
+arithmetic is still the wrong explanation, and only going back to the rows
+distinguishes the two.
 
 A separate defect in the same area did prove real and is fixed here. Longshanks
 writes `di Morray`; the catalogue carried `Lukas`, the other half of Aurum Legate
@@ -557,9 +593,12 @@ Four cautions specific to this supplement:
   Three properties are now asserted rather than believed: no army is missing or
   misfiled by faction, no leader is **invented** that upstream lacks, and none
   of the four retired entries (`Aurora 1`, `Locke`, `Mortenebra`, `Asphyxious`)
-  has leaked in. That second one matters as much as the first — §8.2 records a
-  phantom caster that was argued into existence and had to be withdrawn, and an
-  extra-leader check is precisely what would have refused it on sight.
+  has leaked in. The last two are the same property seen from both sides, and
+  §8.2 is why it is worth asserting: `Locke` is a real card that Longshanks has
+  retired, so a roster built from what *exists* rather than from what is
+  *legal* would add him in good faith and with a published source to cite. The
+  check draws that line explicitly instead of leaving it to whoever is
+  transcribing.
 
   **The guarantee is continuous, which is new.** Every other assurance in this
   document is of the form *we looked, on this date, and it was fine*. This one
@@ -600,7 +639,7 @@ Four cautions specific to this supplement:
 | Same-faction hedge explains the partition | **rejected** | expected 0.93 vs observed 1 **[reported]** |
 | Variance minimisation explains the singleton | **rejected** | flattest player was blocked, not seated |
 | Faction inferable from leader name | **refuted** | 5 cross-faction collisions; resolver now refuses unbadged |
-| `Wicked Harvest` / `Clockwork Legions` are new armies | **refuted** | 6/6 and 6/6 against official rosters; retitles |
+| `Wicked Harvest` / `Clockwork Legions` are new armies | **refuted** | 6/6 and 6/6 against official rosters, active sets; retitles |
 | Our catalogue matches Longshanks' | **reconciled** | 42/42 armies, 186/200 leaders, 0 retired carried; asserted continuously |
 
 ---
