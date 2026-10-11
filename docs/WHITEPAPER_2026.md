@@ -431,6 +431,13 @@ The first clause is reliable: it recovers both migrations in the catalogue,
 only those, and without any knowledge of the setting. It is what should have
 been consulted before any of the `Locke` claims was written down.
 
+The table is also not a curated selection. Grouping the 204 leader rows by code
+and keeping every code that spans more than one faction returns exactly these
+five, and the division between the table's two rows is nothing but the `active`
+column. The partition is therefore recoverable by query; the rulings confirm it
+rather than produce it, which is what makes it a property of the data instead of
+a reading imposed on it.
+
 **The second clause is deliberately empty, and an earlier draft of this table
 filled it in wrongly.** It read *distinct characters*, which is a complement
 rather than a finding — and it is false. Of the three groups, `Butcher` and
@@ -508,6 +515,19 @@ convention all three would collapse to one code. The same defect that caused the
 Gravediggers failure incidentally prevents this one, which is a fair summary of
 what an unreliable key is like to work with.
 
+It is worth stating how little of this an automated audit can see. Of the 14
+duplicated codes, exactly **one** — `caine` — carries more than one distinct
+name, so a scan for *this code maps to two names* surfaces that collision and
+no other. The rest are invisible to it, for different reasons. `butcher` and
+`gunnbjorn` share a code *and* a name with their counterparts, so they read as
+well-behaved duplicates, and they are indistinguishable on every column from
+`rahera`, who genuinely is one character. `Khythos` never reaches the scan's
+output at all: the typo gives the two rows different codes, so a code-keyed
+join happens to hold them apart — and whether holding them apart is correct
+depends on a question nobody has ruled on. One case is machine-detectable and
+the rest are separable only by a ruling, which is this section's gate
+justification restated as a count rather than an argument.
+
 **The rule that follows: never infer faction from leader.** The badge names the army
 or its parent faction and is stable; the leader is then searched *within that scope*,
 so an ambiguous name never has to be resolved globally. This is what
@@ -519,9 +539,21 @@ faction flipped on exactly the rounds the shared-name caster was fielded.
 
 The rule is now enforced on the path that previously escaped it. Where no badge is
 available the resolver used to collapse a repeated name to a single answer, which
-is right for one character fielded in two armies of the same faction — `Caine`
-across First Army and Gravediggers, `Sorscha` across 5th Division and Armored
-Korps — but cannot be justified when the two armies sit in different factions.
+is right for one character fielded in two armies of the same faction —
+`Sparkhammer` across Storm Legion and Gravediggers, `Sorscha` across 5th
+Division and Armored Korps, each carrying the identical name in both rows — but
+cannot be justified when the two armies sit in different factions.
+
+This paragraph previously illustrated the rule with `Caine`, who is the one
+Cygnar character it does not fit: First Army fields `Caine` and Gravediggers
+fields `Caine 4`, so collapsing those two returns the wrong card. The example
+was falsified by a fix earlier in this same work, and it survived here after
+the identical claim had already been corrected in the resolver's comment and in
+its tests — a third copy of a retracted premise, in a third file, found while
+checking something unrelated. It is recorded rather than quietly amended
+because §8.2 closes on exactly this, and an uncorrected instance sitting inside
+the section that states the lesson is better evidence for it than the two that
+were caught.
 All five collisions above returned a confident army, and therefore a faction,
 chosen on nothing better than table order. The collapse is now gated on
 the candidates sharing a faction and returns nothing when they do not, which is
@@ -687,9 +719,10 @@ reconciliation test of §9 does. This one was true when it was written and
 *stopped* being true, and no test either repository could write would catch it,
 because there is no assertion for *is this still the reason*.
 
-Its source was also the closest to hand. Two justifications in `factions.ts`
-and its tests were left describing a world the fix in this very branch had
-removed. A test named *treats one person shared
+Its source was also the closest to hand. Three justifications — in
+`factions.ts`, in its tests, and in §8.1 of this document — were left
+describing a world the fix in this very branch had removed. A test named
+*treats one person shared
 by two armies as a single answer* illustrated that rule with `Caine` — the one
 character in the table for whom it is false, and false **because of a commit two
 steps earlier in this PR**, which split Gravediggers' `Caine 4` from First
@@ -698,6 +731,13 @@ exception that sets the rule's limit*. The file contradicted itself about the
 distinction this document exists to establish. Separately, that comment
 justified the cross-faction refusal as *it would name the wrong person*, which
 `Rahera` falsifies in the same way she falsifies the signature rule above.
+
+The third copy is the instructive one, because it was found last and by
+accident. §8.1 went on using `Caine` as its example of a character shared by
+two armies for two further rounds *after* the code and the tests had both been
+corrected — the fix was applied where the problem had been noticed and not
+where the premise had been used, which is the lesson this entry exists to
+state, committed inside the section that states it.
 
 Both assertions passed, and would have passed forever: each stated something
 true for a reason that had stopped being true, and a green test cannot report
@@ -840,6 +880,15 @@ Four cautions specific to this supplement:
   no behaviour in the application. Anyone keying on `code` must therefore trim
   — while noting that trimming is a different normalisation from repairing a
   misspelling, and it is the latter that would merge `kythos` with `khythos`.
+
+  One practical note on reporting these at all. A trailing space has no
+  rendering, so `'sparkhammer '` and `'sparkhammer'` are distinguishable in
+  prose only by a quoting convention and a reader's attention to one character
+  of whitespace — which is presumably how six defects survived in a table that
+  had been read many times, and how a correctly measured pair of them reached a
+  written report as an identical pair. The cheap habit is to **state the field
+  rather than the rendered value**: *1347 trailing, 2216 clean* cannot be
+  mistyped into agreement, and `[sparkhammer ]` versus `[sparkhammer]` can.
 
 
   misfiled by faction, no leader is **invented** that upstream lacks, and none
