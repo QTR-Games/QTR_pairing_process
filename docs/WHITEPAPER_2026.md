@@ -639,14 +639,56 @@ drop a named printing** (`Skarre 1`, `Skarre 3`, `Lylyth 1`, `Lylyth 3`), and th
 severe case — wrong caster *and* wrong army — appears only off the army-badged
 path, where `Caine 4` resolves to `Caine @ First Army`.
 
+There is a third face, and it is the mechanism's opposite symptom: **a refusal
+where no ambiguity exists.**
+
+```
+"Lylyth 1"  no badge  -> undefined        globally unique, declined
+"Lylyth 3"  no badge  -> undefined        globally unique, declined
+"Lylyth"    no badge  -> undefined        an exact row exists, declined
+"Skarre 1"  no badge  -> Skarre @ Blackfleet
+```
+
+`Lylyth 1` and `Lylyth 3` each appear in exactly one army in the entire
+catalogue. Nothing about them is ambiguous and nothing needs a tie-break. They
+are declined because `bare()` collapses them to `Lylyth`, which widens the pool
+across Legion of Everblight and Khymaera, and the cross-faction gate — correctly,
+on the question it was asked — refuses. The gate is not at fault; it is answering
+a question about a stem the player never typed. Bare `Lylyth` is refused on the
+same grounds even though Shadowflame Shard carries an exact row for it, because
+literals are never compared before collapsing.
+
+Which face appears is decided by something irrelevant to the input: how many
+factions happen to share the collapsed stem.
+
+| collapsed stem spans | outcome | example |
+|---|---|---|
+| one faction | `printing()` asserts | `Caine 4` → `Caine @ First Army`, wrong caster |
+| two factions | the gate refuses | `Lylyth 1` → nothing, though it is unique |
+
+**The false-refusal class is exactly two literals.** Of the five cross-faction
+stems, only `lylyth` carries printing suffixes — `butcher`, `gunnbjorn`,
+`khythos` and `rahera` are bare names in both factions, so their refusals are
+genuine ambiguity and correct. Stating it as a closed set is deliberate: it
+should fail loudly if a future printing-suffixed caster ever lands in a
+cross-faction stem.
+
 That changes the fix. Refusing when the collapsed form is itself a card addresses
-the severe case alone and leaves the four lossy cells. **Matching the literal
-name before falling back to the bare one addresses both**, because `Lylyth 1`
-then matches `Lylyth 1` and `Caine 4` matches `Caine 4`, and neither pool ever
-widens far enough to need a tie-break. A second, independently written resolver
-over the same catalogue does exactly this, and **[reported]** does not exhibit
-the severe case at all — which is evidence that the ordering, rather than the
-catalogue, is what produces it.
+the severe case alone and leaves the four lossy cells and both false refusals.
+**Matching the literal name before falling back to the bare one addresses all
+three**, because `Lylyth 1` then matches `Lylyth 1` and `Caine 4` matches
+`Caine 4`, and neither pool ever widens far enough to need a tie-break or to
+reach the gate. One change, three faces, which is a far easier thing to justify
+than a special case for `Caine`. A second, independently written resolver over
+the same catalogue runs exactly this exact-literal pass before any loose
+matching, and **[reported]** does not exhibit the severe case at all — which is
+evidence that the ordering, rather than the catalogue, is what produces it.
+
+One cost should be taken deliberately rather than inherited from match order:
+under literal-first, bare `Lylyth` would match Khymaera's real row and stop
+refusing. That is arguable either way — it is a genuine exact match, but the
+player may well have meant one of the Legion printings — and it is a decision,
+not a side effect.
 
 The faction-badged row is not a contrived input. The scoping note above records
 that Longshanks titles the badge with an army for some players and with the parent
