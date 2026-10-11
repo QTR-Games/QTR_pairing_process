@@ -623,6 +623,48 @@ there was no acquisition cost to plead. It is the cheapest failure in this
 document to commit and the cheapest to prevent, which is presumably why it
 survived three times.
 
+A fourth belongs with them but is a different species, and it is the only one
+whose *detection* is instructive:
+
+| claim | actually | what was measured |
+|---|---|---|
+| upstream has **204 active** leader records | 204 **total**, 200 active | the row count, correctly, under the wrong label |
+
+Nothing here was miscounted. 204 is exactly the number of leader rows; only
+the word *active* was wrong, and no amount of recounting would have found it,
+because the count was right. What found it was arithmetic. The figure was used
+as a completeness checksum against our 186, predicting a shortfall of
+$204-186=18$; the reconciliation returned 14. The two did not agree, and the
+disagreement is what sent someone back to the definition rather than to the
+data. The correct subtraction is $200-186=14$.
+
+> **A wrong number in prose is inert. The moment someone computes with it, it
+> either reconciles or it does not.**
+
+That is the one detection result in this section, and it argues for a specific
+practice: put figures into checksums rather than into sentences. A quoted
+number is believed indefinitely; a number that participates in an equation is
+tested every time the equation is evaluated. The reconciliation test of §9 is
+that principle at its limit — every figure in it is computed on each run, so
+no label in it can drift away from what it names without the suite going red.
+
+The same episode supplies a caution about the discipline this document keeps
+recommending. An attempt was made, after the fact, to overturn that very
+correction: a third party asserted that no mislabelling had occurred and that
+both figures had always been right, alongside a set of arithmetic — 204 rows,
+200 active, 42 armies, 246 unique — that is entirely correct and verifies on
+inspection. The correction was briefly withdrawn on the strength of it, and
+then reinstated by the party who had originally issued it. The disclaimer that
+should have governed the whole message was present in it: the third party
+noted it had no record of the exchange in question, which is precisely the
+visibility required to say that nothing had been retracted. **A checkable
+claim and an uncheckable one travelled together, and verifying the first felt
+like verifying the second.** *Verify before accepting* offers no protection
+when the proposition verified is not the proposition in dispute — which is a
+sharper statement of the §8.1 failure, where a shared surname was checked
+against the catalogue repeatedly without anyone asking whether the two rows
+were one person.
+
 A separate defect in the same area did prove real and is fixed here. Longshanks
 writes `di Morray`; the catalogue carried `Lukas`, the other half of Aurum Legate
 Lukas di Morray's name, so lists naming him resolved to nothing at all. The
