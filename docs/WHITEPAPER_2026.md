@@ -604,6 +604,25 @@ hand. The signature of a migration — a shared code with one row retired and on
 active — was sitting in the table throughout. What was missing was not evidence
 but the question: *are these two rows one person?*
 
+**The same failure recurred in a second, more mundane form, three times in one
+working session, in three different hands.** Each time a count was reported that
+described the rows someone had met rather than the rows that exist:
+
+| claim | actually | what was measured |
+|---|---|---|
+| the catalogue has 246 rows | 1722 in the payload, 246 after dedupe by id | a property of the reader's dictionary |
+| same code and both active ⇒ different characters | `Rahera` is one character | the two cases checked |
+| three whitespace defects in the table | six, across five rows | the three encountered during other work |
+
+None of these was a limit on the available data. In all three the complete
+record was already in the repository and the full scan cost a single command;
+what was reported was the sample, and the sample was mistaken for the
+population. That is the same error as reading a strategy off five rounds
+(§6.4) or a roster off one event's attendance (§9), with the excuse removed —
+there was no acquisition cost to plead. It is the cheapest failure in this
+document to commit and the cheapest to prevent, which is presumably why it
+survived three times.
+
 A separate defect in the same area did prove real and is fixed here. Longshanks
 writes `di Morray`; the catalogue carried `Lukas`, the other half of Aurum Legate
 Lukas di Morray's name, so lists naming him resolved to nothing at all. The
@@ -681,7 +700,34 @@ Four cautions specific to this supplement:
   rather than by coincidence — an earlier draft of this section hedged that
   they might not, and that hedge was wrong.
 
-  Three properties are now asserted rather than believed: no army is missing or
+  The omissions match upstream's spelling **exactly**, including the double
+  space in `Cygnar  Unlimited`. That is upstream's typo and is preserved rather
+  than tidied, for the same reason the `Huxely` misspelling is kept: these
+  strings are join keys, not prose, and a formatter that collapses the space
+  breaks the check — which is the check working.
+
+  A full scan of all eight fields of all 246 rows finds **six whitespace
+  defects across five rows**, and the count is worth stating as a scan rather
+  than as a list of encounters:
+
+  ```
+  1226  name  'Cygnar  Unlimited'   double inner space   (Unlimited)
+  1347  code  'sparkhammer '        trailing             (Cygnar)
+  1392  code  'absylonia '          trailing             (Legion of Everblight)
+  1394  code  'asphyxious '         trailing             (Mercenaries)
+  1400  code  'kaelyssa '           trailing             (Retribution of Scyrah)
+  1402  code  'ragemonger '         trailing             (Southern Kriels)
+  ```
+
+  Five factions, non-contiguous ids, clean neighbours throughout — sporadic
+  entry noise rather than one bad import, so there is no structural reason to
+  expect the next payload stops at six. None of it is actionable here: we key
+  on `(name, army)`, the `name` column is clean apart from 1226, and every one
+  of these rows resolves correctly today. It matters only as a bound on anyone
+  who later keys on `code`, where trimming becomes mandatory — and trimming
+  *silently* is how `kythos` and `khythos` become one key (§8.1).
+
+
   misfiled by faction, no leader is **invented** that upstream lacks, and none
   of the four retired entries (`Aurora 1`, `Locke`, `Mortenebra`, `Asphyxious`)
   has leaked in. The last two are the same property seen from both sides, and
