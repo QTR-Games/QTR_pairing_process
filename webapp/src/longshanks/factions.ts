@@ -49,7 +49,7 @@ export const ARMIES: ArmyInfo[] = [
   { army: "Blindwater Congregation", faction: "Mercenaries", code: "BW", color: "#4b5563", leaders: ["Barnabas", "Calaban", "Jaga-Jaga", "Maelok"] },
   { army: "Brineblood Marauders", faction: "Southern Kriels", code: "BM", color: "#0891b2", leaders: ["Bagadibawm", "Firequill", "Foulblood", "Ragemonger", "Shadowtongue", "Thorga"] },
   { army: "Convergence of Cyriss", faction: "Convergence of Cyriss", code: "CC", color: "#0369a1", leaders: ["Aurora 2", "Axis", "Directrix", "Lucant", "Orion", "Syntherion"] },
-  { army: "Crucible Guard", faction: "Crucible Guard", code: "CG", color: "#ca8a04", leaders: ["Bennet", "Gearhart", "Locke", "Lukas", "Mackay", "Syvestro"] },
+  { army: "Crucible Guard", faction: "Crucible Guard", code: "CG", color: "#ca8a04", leaders: ["Bennet", "di Morray", "Gearhart", "Locke", "Mackay", "Syvestro"] },
   { army: "Dark Host", faction: "Cryx", code: "DH", color: "#15803d", leaders: ["Agathia", "Deneghra", "Goreshade", "Scaverous"] },
   { army: "Dark Operations", faction: "Mercenaries", code: "DO", color: "#4b5563", leaders: ["Cyphon", "Khythos", "Thexus"] },
   { army: "Devourer's Host", faction: "Circle Orboros", code: "DV", color: "#047857", leaders: ["Iona", "Kromac", "Tanith", "Wurmwood"] },
@@ -152,6 +152,7 @@ function hintedArmies(hint: string | undefined | null): ArmyInfo[] {
  */
 const ALIASES: Record<string, string[]> = {
   Butcher: ["Orsus"],
+  "di Morray": ["Lukas"],
   Huxely: ["Huxley"],
   "Old Witch": ["Zevanna"],
 };

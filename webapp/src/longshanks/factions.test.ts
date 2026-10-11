@@ -157,6 +157,21 @@ describe("findLeader", () => {
     });
   });
 
+  it("reads the leader name Longshanks prints, not the one on the card", () => {
+    // Aurum Legate Lukas di Morray. Longshanks writes "di Morray", so that is
+    // what the table carries -- the half of the name we used to hold, "Lukas",
+    // matched nothing Longshanks ever sends.
+    expect(findLeader("Crucible Guard Army\n[Leader] di Morray\nVulcan 36\n", "Crucible Guard")?.leader)
+      .toBe("di Morray");
+  });
+
+  it("settles both spellings of one character on the same leader", () => {
+    const body = (name: string) => `Crucible Guard Army\n[Leader] ${name}\nVulcan 36\n`;
+    expect(findLeader(body("Lukas"), "Crucible Guard")).toEqual(
+      findLeader(body("di Morray"), "Crucible Guard"),
+    );
+  });
+
   it("returns nothing for a list with no recognisable leader", () => {
     expect(findLeader("Made ya look\nTOTAL POINTS 100/100", "Convergence of Cyriss")).toBeUndefined();
   });

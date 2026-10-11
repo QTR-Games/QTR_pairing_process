@@ -421,34 +421,36 @@ subset test against the casters fielded in 2026 found every one already present 
 five of five for Wicked Harvest under Grymkin, four of four for Clockwork Legions
 under Convergence of Cyriss.
 
-That test is weaker than it looks, and it is worth saying why before leaning on
-it. Attendance is a biased sample of a catalogue: a caster nobody brought is
-invisible to it by construction, so a subset test can show that nothing *new*
-appeared while saying nothing about what is *missing*. On its own it cannot
-separate a retitle from a retitle *with additions*. Official card lists settle
-what attendance cannot:
+Official card lists, obtained afterwards, confirm both as pure retitles:
 
 | new title | existing entry | official roster | ours | verdict |
 |---|---|---:|---:|---|
 | Wicked Harvest | Grymkin | 6 | 6 | pure alias |
 | Clockwork Legions | Convergence of Cyriss | 6 | 6 | pure alias |
 
-Both rosters are matched in full, with nothing left over on either side. Wicked
-Harvest's six resolve under Grymkin, including *Zevanna Agha, The Fate Keeper*
-through the existing legacy alias `Old Witch`. Clockwork Legions' six map
-one-for-one onto Convergence of Cyriss — *Axis*, *Orion*, *Lucant*, *Syntherion*
-and *Directrix* by name, leaving *Archnumen Aurora* against the `Aurora 2`
-printing already in the table.
+Wicked Harvest resolves all six, including *Zevanna Agha, The Fate Keeper*
+through the existing legacy alias `Old Witch`. Clockwork Legions resolves
+Archnumen Aurora, Axis, Eminent Configurator Orion, Father Lucant, Forge Master
+Syntherion and Iron Mother Directrix against the six Convergence already carries.
+The names are therefore aliased onto the existing entries, which inherits each
+complete roster — including casters nobody fielded in 2026 — and invents nothing.
 
-These are therefore **renames of existing armies**, and the names are aliased onto
-the existing entries — which inherits each complete roster, including casters
-nobody fielded in 2026, and invents nothing. The fix and its regression tests ship
-with this document.
+**The conclusion held; the test that produced it should not have been trusted.**
+A subset check over casters *observed at one event* cannot distinguish a retitle
+from a retitle with additions, because a caster nobody brought is invisible to
+it. It returned the right answer here and would have returned the same answer had
+the roster genuinely grown. The authoritative list is what settles it, and an
+intermediate draft of this section asserted a missing caster on the strength of a
+roster that turned out to be wrong. Attendance is a biased sample of a catalogue,
+and no quantity of it establishes completeness — which is the same error, in the
+same direction, as reading a strategy off five rounds of one team (§6.4).
 
-One methodological point survives independently of the answer it produced here:
-**test against an authoritative roster rather than an observed one**. The two
-agreed in this instance, but only the card lists could establish that they did,
-and the subset test would have looked equally convincing had it been wrong.
+A separate defect in the same area did prove real and is fixed here. Longshanks
+writes `di Morray`; the catalogue carried `Lukas`, the other half of Aurum Legate
+Lukas di Morray's name, so lists naming him resolved to nothing at all. The
+Longshanks string is now canonical with `Lukas` kept as an alias, so both forms
+settle on one leader — the §8.1 principle applied to our own table rather than to
+someone else's.
 
 ---
 
