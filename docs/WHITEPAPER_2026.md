@@ -412,6 +412,22 @@ trailing space in `'sparkhammer '`), because it is not a data-entry mistake that
 might be corrected — the field is genuinely non-unique by design, so joining on
 it is unsound no matter how clean the data gets.
 
+The field fails in the other direction too, and the same code that caused the
+Gravediggers defect demonstrates it. Fourteen leader codes repeat across the
+table; `caine` repeats three times:
+
+```
+1388  Caine    Cygnar / First Army
+1996  Caine 4  Cygnar / Storm Legion
+2215  Caine 4  Cygnar / Gravediggers
+```
+
+One code spanning **two different cards inside one faction**. So `code` neither
+identifies a character (the `Locke` pair) nor a printing (the `Caine` triple) —
+it fails both halves of the identity model, in a single row group, and the
+`(name, army)` pair this table keys on is the only thing that survives contact
+with the data.
+
 **The rule that follows: never infer faction from leader.** The badge names the army
 or its parent faction and is stable; the leader is then searched *within that scope*,
 so an ambiguous name never has to be resolved globally. This is what
@@ -608,13 +624,47 @@ Four cautions specific to this supplement:
   refresh the fixture and reconcile against it — **never** to widen the
   exception list, which would convert the only check that can see a missing
   record back into one that cannot.
-- **Retired entries persist upstream behind an `active` flag, and we carry none
-  of them.** This was a spot-check of three names in an earlier draft and is now
-  an assertion over the full retired set. Worth stating as a property that was
-  verified rather than assumed, since a table built by transcription could
-  easily have inherited them. One of the four is `Locke` under Convergence of
-  Cyriss — retired upstream rather than absent, which is the source of the
-  phantom seventh caster §8.2 withdraws.
+- **A retired row is not a dead record; it is a record of a previous state.**
+  Four entries upstream carry `active=0`, and the instinct is to treat them as
+  one class of debris. They are not — they are four different relationships to
+  the live table, and the differences decide what the no-retired assertion is
+  actually for:
+
+  | row | relationship to the active set |
+  |---|---|
+  | `Aurora 1` (1235) | superseded printing; `Aurora 2` (1236) is active in the same army |
+  | `Locke` (1239) | different character sharing a name with the active Crucible Guard `Locke` (1245) |
+  | `Mortenebra` (1300) | **migrated faction**; retired under Mercenaries, recreated active as Cryx (2240) |
+  | `Asphyxious` (1394) | no active counterpart anywhere, under any name or numbering |
+
+  `Mortenebra` is the consequential one. She was not retired, she was *moved* —
+  and upstream performs that move by retiring one row and creating another
+  rather than by editing `parent_id`. **Re-parenting is therefore invisible to
+  anyone diffing only active rows**, which qualifies the reassurance that
+  earlier additions were "purely additive with no re-parenting": that was true
+  of those rows, but the mechanism it was checked against is not the mechanism
+  upstream uses.
+
+  This is also what the no-retired assertion is really defending, and it is not
+  tidiness. Restoring those rows would **manufacture two cross-faction
+  collisions that do not exist today**. `Mortenebra` currently resolves cleanly
+  to Necrofactorium; carry the Mercenaries row as well and she becomes ambiguous
+  across factions, so §8.1's gate would begin refusing a caster it answers
+  correctly now. `Locke` would turn the latent `Athanor Locke` suffix hazard
+  live. The trigger is entirely plausible — someone notices `Asphyxious`, a
+  major Cryx warcaster, is absent, finds his row in the export, and adds it in
+  good faith with a source to cite. That is the §8.2 mistake exactly, and the
+  assertion is what refuses it.
+
+  The two benign rows are benign for reasons worth separating from luck.
+  `Aurora 1` degrades gracefully because `bare()` strips the printing number, so
+  a list naming the old card still identifies the character and `printing()`
+  settles which one. `Asphyxious` we match by accident rather than by judgement:
+  we are right because we mirror the active set, not because anyone decided
+  about him. The safe operation on the retired set is the one performed here —
+  **assert its absence, and read it for history** — because treating it as
+  uniformly restorable and treating it as uniformly discardable are both wrong,
+  and only inspecting each row tells you which.
 
 ---
 
@@ -641,6 +691,7 @@ Four cautions specific to this supplement:
 | Faction inferable from leader name | **refuted** | 5 cross-faction collisions; resolver now refuses unbadged |
 | `Wicked Harvest` / `Clockwork Legions` are new armies | **refuted** | 6/6 and 6/6 against official rosters, active sets; retitles |
 | Our catalogue matches Longshanks' | **reconciled** | 42/42 armies, 186/200 leaders, 0 retired carried; asserted continuously |
+| Upstream re-parents by editing `parent_id` | **refuted** | `Mortenebra` retired under Mercenaries, recreated active under Cryx; invisible to an active-only diff |
 
 ---
 
