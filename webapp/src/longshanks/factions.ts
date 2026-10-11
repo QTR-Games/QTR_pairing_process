@@ -49,16 +49,18 @@ export const ARMIES: ArmyInfo[] = [
   { army: "Blindwater Congregation", faction: "Mercenaries", code: "BW", color: "#4b5563", leaders: ["Barnabas", "Calaban", "Jaga-Jaga", "Maelok"] },
   { army: "Brineblood Marauders", faction: "Southern Kriels", code: "BM", color: "#0891b2", leaders: ["Bagadibawm", "Firequill", "Foulblood", "Ragemonger", "Shadowtongue", "Thorga"] },
   { army: "Convergence of Cyriss", faction: "Convergence of Cyriss", code: "CC", color: "#0369a1", leaders: ["Aurora 2", "Axis", "Directrix", "Lucant", "Orion", "Syntherion"] },
-  { army: "Crucible Guard", faction: "Crucible Guard", code: "CG", color: "#ca8a04", leaders: ["Bennet", "Gearhart", "Locke", "Lukas", "Mackay", "Syvestro"] },
+  { army: "Covenant of the Flame", faction: "Protectorate of Menoth", code: "CF", color: "#b45309", leaders: ["Feora", "Malekus", "Stallos", "Thyra"] },
+  { army: "Crucible Guard", faction: "Crucible Guard", code: "CG", color: "#ca8a04", leaders: ["Bennet", "di Morray", "Gearhart", "Locke", "Mackay", "Syvestro"] },
   { army: "Dark Host", faction: "Cryx", code: "DH", color: "#15803d", leaders: ["Agathia", "Deneghra", "Goreshade", "Scaverous"] },
   { army: "Dark Operations", faction: "Mercenaries", code: "DO", color: "#4b5563", leaders: ["Cyphon", "Khythos", "Thexus"] },
   { army: "Devourer's Host", faction: "Circle Orboros", code: "DV", color: "#047857", leaders: ["Iona", "Kromac", "Tanith", "Wurmwood"] },
   { army: "Dragon's Host", faction: "Legion of Everblight", code: "DR", color: "#4338ca", leaders: ["Absylonia", "Anamag", "Kallus", "Thagrosh"] },
+  { army: "Dread Armada", faction: "Cryx", code: "DA", color: "#15803d", leaders: ["Aiakos"] },
   { army: "Exalted", faction: "Skorne", code: "EX", color: "#c2410c", leaders: ["Hexeris", "Mordikaar", "Xekaar", "Zaal"] },
-  { army: "Fane of Nyrro", faction: "Dusk", code: "FN", color: "#7c3aed", leaders: ["Ashmael", "Hysene", "Nymara", "Vorsalys"] },
+  { army: "Fane of Nyrro", faction: "Dusk", code: "FN", color: "#7c3aed", leaders: ["Ashmael", "Harasheth", "Hysene", "Nymara", "Vorsalys"] },
   { army: "Final Interdiction", faction: "Protectorate of Menoth", code: "FI", color: "#b45309", leaders: ["Cyrenia", "Kreoss", "Reznik", "Severius"] },
   { army: "First Army", faction: "Cygnar", code: "FA", color: "#2563eb", leaders: ["Brisbane", "Caine", "Darius", "Kraye"] },
-  { army: "Gravediggers", faction: "Cygnar", code: "GD", color: "#2563eb", leaders: ["Caine", "Cyn", "Hasker", "Jakes", "McCoy", "Sparkhammer", "Vargus"] },
+  { army: "Gravediggers", faction: "Cygnar", code: "GD", color: "#2563eb", leaders: ["Caine 4", "Cyn", "Hasker", "Jakes", "McCoy", "Sparkhammer", "Vargus"] },
   { army: "Grymkin", faction: "Grymkin", code: "GK", color: "#e11d48", leaders: ["Old Witch", "The Child", "The Dreamer", "The Heretic", "The King of Nothing", "The Wanderer"] },
   { army: "House Kallyss", faction: "Dusk", code: "HK", color: "#7c3aed", leaders: ["Hazaroth", "Hellyth", "Morayne", "Scyrafael", "Tyrus"] },
   { army: "Infernals", faction: "Infernals", code: "IN", color: "#9333ea", leaders: ["Agathon", "Omodamos", "Vorgoroth", "Zaateroth"] },
@@ -74,7 +76,7 @@ export const ARMIES: ArmyInfo[] = [
   { army: "Shadows of the Retribution", faction: "Retribution of Scyrah", code: "SH", color: "#0f766e", leaders: ["Garryth", "Kaelyssa", "Ravyn", "Thyron"] },
   { army: "Soldiers of Fortune", faction: "Mercenaries", code: "SF", color: "#4b5563", leaders: ["Ashlynn", "Damiano", "MacBain", "Magnus"] },
   { army: "Storm Knights", faction: "Cygnar", code: "SK", color: "#2563eb", leaders: ["Jakes", "Maddox", "Nemo", "Stryker"] },
-  { army: "Storm Legion", faction: "Cygnar", code: "SL", color: "#2563eb", leaders: ["Caine 4", "Calder", "Di Baro", "Huxely", "Sparkhammer", "Wolfe"] },
+  { army: "Storm Legion", faction: "Cygnar", code: "SL", color: "#2563eb", leaders: ["Caine 4", "Calder", "di Baro", "Huxely", "Sparkhammer", "Wolfe"] },
   { army: "Storm of the North", faction: "Trollbloods", code: "SN", color: "#4d7c0f", leaders: ["Borka", "Doomshaper", "Grim", "Kolgrima"] },
   { army: "Talion Charter", faction: "Mercenaries", code: "TC", color: "#4b5563", leaders: ["Fiona", "Montador", "Rahera", "Shae"] },
   { army: "Temple Guardians", faction: "Protectorate of Menoth", code: "TG", color: "#b45309", leaders: ["Amon", "Feora", "Malekus", "Thyra"] },
@@ -89,10 +91,35 @@ export const ARMIES: ArmyInfo[] = [
 
 const BY_ARMY = new Map(ARMIES.map((a) => [a.army.toLowerCase(), a]));
 
+/**
+ * Armies Longshanks has retitled, pointing at the entry they are still.
+ *
+ * An army can be renamed without its roster changing, and Longshanks adopts the
+ * new title while events already recorded keep the old one. Both spellings turn
+ * up in real data, so both have to resolve, and an unrecognised one is worse
+ * than it looks: the badge still draws, but the leader search has no army to
+ * scope to and gives up, which before an event has been played is the only
+ * route to a leader there is.
+ *
+ * These are renames rather than new armies, and that is what makes pointing
+ * them at an existing entry safe rather than a guess. Official card lists put
+ * both at six casters, and all six of each are already leaders of the entry
+ * named here, so the retitle adds nobody. The alias therefore inherits a
+ * complete leader list, where transcribing the names a single event happened to
+ * show would bake in whoever nobody brought -- and checking only against what
+ * was fielded would not have been enough to tell the two apart.
+ */
+const ARMY_ALIASES: Record<string, string> = {
+  "clockwork legions": "Convergence of Cyriss",
+  "nonokrion order": "Infernals",
+  "wicked harvest": "Grymkin",
+};
+
 /** The table entry for an army, by its Longshanks name. Case-insensitive. */
 export function armyInfo(army: string | undefined | null): ArmyInfo | undefined {
   if (!army) return undefined;
-  return BY_ARMY.get(army.trim().toLowerCase());
+  const name = army.trim().toLowerCase();
+  return BY_ARMY.get(ARMY_ALIASES[name]?.toLowerCase() ?? name);
 }
 
 /**
@@ -128,6 +155,7 @@ function hintedArmies(hint: string | undefined | null): ArmyInfo[] {
  */
 const ALIASES: Record<string, string[]> = {
   Butcher: ["Orsus"],
+  "di Morray": ["Lukas"],
   Huxely: ["Huxley"],
   "Old Witch": ["Zevanna"],
 };
@@ -135,8 +163,9 @@ const ALIASES: Record<string, string[]> = {
 /**
  * A leader name without its Longshanks disambiguating number.
  *
- * The number distinguishes reprints of one character ("Caine 4" is the Storm
- * Legion Caine) and is Longshanks bookkeeping, so it never appears in a list.
+ * The number distinguishes reprints of one character ("Caine 4" is a later
+ * Caine, printed into both Storm Legion and Gravediggers) and is Longshanks
+ * bookkeeping, so it never appears in a list.
  */
 function bare(leader: string): string {
   return leader.replace(/\s+\d+$/, "");
@@ -306,11 +335,58 @@ export function findLeader(
 
   const settle = (pool: Hit[]): { leader: string; army: string } | undefined => {
     const distinct = (p: Hit[]) => new Set(p.map((h) => bare(h.leader))).size;
-    // The same person can lead two armies ("Caine" is in both First Army and
-    // Gravediggers), and the number on a reprint is Longshanks bookkeeping for
-    // one character rather than a second person: still one answer, only the
-    // attribution is uncertain.
-    if (distinct(pool) === 1) return printing(pool[0], pool);
+    // The same person can lead two armies ("Sparkhammer" is in both Storm Legion
+    // and Gravediggers, one card legal in each), so a repeated name inside a
+    // faction is still one answer with only the attribution uncertain.
+    //
+    // Caine is the exception that sets the rule's limit: First Army's Caine and
+    // Gravediggers' Caine 4 are different cards. Longshanks distinguishes them
+    // by the number, which is why that number has to survive into the table --
+    // it is what lets an army-badged list resolve Caine 4 correctly.
+    //
+    // KNOWN DEFECT, pre-existing and deliberately not fixed here: with no badge,
+    // or with one naming only the faction, a list containing "Caine 4" still
+    // resolves to Caine @ First Army. "Caine 4" also matches the bare "Caine"
+    // row as a prefix, and prefix-shadowing cannot drop it because bare() makes
+    // the two equal, so both survive into the pool; printing() then finds two
+    // distinct literal names, no matching title, and falls back to
+    // bare(hit.leader) with pool[0].army. That fallback is a widening for
+    // Skarre -- no bare "Skarre" row exists, so it names a real caster and
+    // leaves the printing open -- but an assertion for Caine, whose collapsed
+    // form is itself a card in a different army.
+    //
+    // The same mechanism is lossy even on the badged path whenever one army
+    // holds two printings: "Lylyth 1" badged Ravens of War answers "Lylyth",
+    // discarding a number the list supplied. It also has an opposite symptom,
+    // a refusal where nothing is ambiguous: unbadged "Lylyth 1" and "Lylyth 3"
+    // resolve to nothing at all, though each appears in exactly one army,
+    // because collapsing to "Lylyth" widens the pool across two factions and
+    // the cross-faction gate below then correctly refuses a stem the player
+    // never typed. Prefer matching the literal name before falling back to the
+    // bare one -- that fixes the lossy cells, the Caine case and both false
+    // refusals together, where refusing on "collapsed form is a real card"
+    // would fix only the Caine case. One deliberate consequence: bare "Lylyth"
+    // would then match Shadowflame Shard's real row instead of refusing.
+    // It wants its own branch and its own tests.
+    //
+    // That holds only inside a faction. Across factions the table cannot say
+    // what a repeated name means: Khador's Butcher is not Orgoth's, and
+    // Southern Kriels' Gunnbjorn is not Trollbloods' -- different models that
+    // share a short name -- but Cryx's Rahera and the Talion Charter's are one
+    // character fielded in two factions, and nothing in these rows separates
+    // the two situations. So the refusal cannot rest on "it would name the
+    // wrong person": for Rahera it would name the right one and invent a
+    // faction for her. Either way there is nothing to choose on without a
+    // badge, and a blank leader beats a confident wrong one.
+    //
+    // Within a faction the printing is still open, and {@link printing} answers
+    // with the unnumbered character rather than picking one. That is what keeps
+    // "Skarre 1" and "Skarre 3" from being pooled: the collapse settles who, not
+    // which card.
+    if (distinct(pool) === 1) {
+      const factions = new Set(pool.map((h) => BY_ARMY.get(h.army.toLowerCase())?.faction));
+      return factions.size === 1 ? printing(pool[0], pool) : undefined;
+    }
 
     // Two or more real candidates. Only the ones the list did not pay points for
     // can be leading it; among those, the first one written leads. Where two of

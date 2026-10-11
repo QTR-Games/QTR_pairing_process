@@ -1,0 +1,247 @@
+id,kind,active,faction,code,name,parent_id,parent_name
+1078,army,1,Circle Orboros,circle_orboros+devourers_host,Devourer's Host,,
+1079,army,1,Circle Orboros,circle_orboros+secret_dominion,Secret Dominion,,
+1080,army,1,Crucible Guard,crucible_guard,Crucible Guard,,
+1081,army,1,Cryx,cryx+dark_host,Dark Host,,
+1082,army,1,Cygnar,cygnar+first_army,First Army,,
+1083,army,1,Convergence of Cyriss,cyriss,Clockwork Legions,,
+1084,army,1,Khador,khador+armored_korps,Armored Korps,,
+1085,army,1,Retribution of Scyrah,scyrah+legions_dawn,Legions of Dawn,,
+1086,army,1,Grymkin,grymkin,Wicked Harvest,,
+1087,army,1,Skorne,skorne+army_western_reaches,Army of the Western Reaches,,
+1088,army,1,Trollbloods,trollbloods+storm_north,Storm of the North,,
+1089,army,1,Infernals,infernals,Nonokrion Order,,
+1090,army,1,Khador,winter_korps,Winter Korps,,
+1091,army,1,Cygnar,storm_legion,Storm Legion,,
+1092,army,1,Dusk,house_kallyss,House Kallyss,,
+1093,army,1,Orgoth,orgoth,Sea Raiders,,
+1094,army,1,Protectorate of Menoth,menoth+final_interdiction,Final Interdiction,,
+1095,army,1,Legion of Everblight,everblight+dragons_host,Dragon's Host,,
+1096,army,1,Mercenaries,mercenaries+blindwater,Blindwater Congregation,,
+1097,army,1,Legion of Everblight,everblight+ravens_war,Ravens of War,,
+1098,army,1,Mercenaries,mercenaries+rhul,Rhul Guard,,
+1099,army,1,Mercenaries,mercenaries+soldiers_fortune,Soldiers of Fortune,,
+1100,army,1,Mercenaries,mercenaries+talion,Talion Charter,,
+1101,army,1,Mercenaries,mercenaries+thornfall,Thornfall Alliance,,
+1150,army,1,Cryx,cryx+blackfleet,Blackfleet,,
+1151,army,1,Protectorate of Menoth,menoth+temple_guardians,Temple Guardians,,
+1173,army,1,Cygnar,cygnar+storm_knights,Storm Knights,,
+1176,army,1,Khador,khador+5th_division,5th Division,,
+1177,army,1,Mercenaries,dark_operations,Dark Operations,,
+1178,army,1,Retribution of Scyrah,scyrah+shadows_retribution,Shadows of the Retribution,,
+1179,army,1,Skorne,skorne+exalted,Exalted,,
+1180,army,1,Trollbloods,trollbloods+united_kriels,United Kriels,,
+1181,army,1,Southern Kriels,brineblood_marauders,Brineblood Marauders,,
+1208,army,1,Khymaera,shadowflame_shard,Shadowflame Shard,,
+1213,leader,1,Unlimited,circle_orboros,Circle Orboros Unlimited,1229,Unlimited
+1214,leader,1,Unlimited,crucible_guard,Crucible Guard Unlimited,1229,Unlimited
+1215,leader,1,Unlimited,cyriss,Convergence of Cyriss Unlimited,1229,Unlimited
+1216,leader,1,Unlimited,everblight,Legion of Everblight Unlimited,1229,Unlimited
+1217,leader,1,Unlimited,cryx,Cryx Unlimited,1229,Unlimited
+1218,leader,1,Unlimited,grymkin,Grymkin Unlimited,1229,Unlimited
+1219,leader,1,Unlimited,infernals,Infernals Unlimited,1229,Unlimited
+1220,leader,1,Unlimited,khador,Khador Unlimited,1229,Unlimited
+1221,leader,1,Unlimited,menoth,Protectorate of Menoth Unlimited,1229,Unlimited
+1222,leader,1,Unlimited,mercenaries,Mercenaries Unlimited,1229,Unlimited
+1223,leader,1,Unlimited,scyrah,Retribution of Scyrah Unlimited,1229,Unlimited
+1224,leader,1,Unlimited,skorne,Skorne Unlimited,1229,Unlimited
+1225,leader,1,Unlimited,trollbloods,Trollbloods Unlimited,1229,Unlimited
+1226,leader,1,Unlimited,cygnar,Cygnar  Unlimited,1229,Unlimited
+1228,leader,1,Circle Orboros,iona,Iona,1078,Devourer's Host
+1229,army,1,Unlimited,z_unlimited,Unlimited,,
+1230,leader,1,Circle Orboros,kromac,Kromac,1078,Devourer's Host
+1231,leader,1,Circle Orboros,wurmwood,Wurmwood,1078,Devourer's Host
+1232,leader,1,Circle Orboros,grayle,Grayle,1079,Secret Dominion
+1233,leader,1,Circle Orboros,krueger,Krueger,1079,Secret Dominion
+1234,leader,1,Circle Orboros,thorle,Thorle,1079,Secret Dominion
+1235,leader,0,Convergence of Cyriss,aurora1,Aurora 1,1083,Clockwork Legions
+1236,leader,1,Convergence of Cyriss,aurora2,Aurora 2,1083,Clockwork Legions
+1237,leader,1,Convergence of Cyriss,axis,Axis,1083,Clockwork Legions
+1238,leader,1,Convergence of Cyriss,directrix,Directrix,1083,Clockwork Legions
+1239,leader,0,Convergence of Cyriss,locke,Locke,1083,Clockwork Legions
+1240,leader,1,Convergence of Cyriss,lucant,Lucant,1083,Clockwork Legions
+1241,leader,1,Convergence of Cyriss,orion,Orion,1083,Clockwork Legions
+1242,leader,1,Convergence of Cyriss,syntherion,Syntherion,1083,Clockwork Legions
+1243,leader,1,Crucible Guard,bennet,Bennet,1080,Crucible Guard
+1244,leader,1,Crucible Guard,gearhart,Gearhart,1080,Crucible Guard
+1245,leader,1,Crucible Guard,locke,Locke,1080,Crucible Guard
+1246,leader,1,Crucible Guard,lukas,di Morray,1080,Crucible Guard
+1247,leader,1,Crucible Guard,mackay,Mackay,1080,Crucible Guard
+1248,leader,1,Crucible Guard,syvestro,Syvestro,1080,Crucible Guard
+1249,leader,1,Cryx,aiakos,Aiakos,1150,Blackfleet
+1250,leader,1,Cryx,rahera,Rahera,1150,Blackfleet
+1251,leader,1,Cryx,skarre1,Skarre 1,1150,Blackfleet
+1252,leader,1,Cryx,skarre3,Skarre 3,1150,Blackfleet
+1253,leader,1,Cryx,agathia,Agathia,1081,Dark Host
+1254,leader,1,Cryx,deneghra,Deneghra,1081,Dark Host
+1255,leader,1,Cryx,goreshade,Goreshade,1081,Dark Host
+1256,leader,1,Cryx,scaverous,Scaverous,1081,Dark Host
+1257,leader,1,Cygnar,brisbane,Brisbane,1082,First Army
+1258,leader,1,Cygnar,darius,Darius,1082,First Army
+1259,leader,1,Cygnar,kraye,Kraye,1082,First Army
+1260,leader,1,Cygnar,maddox,Maddox,1173,Storm Knights
+1261,leader,1,Cygnar,nemo,Nemo,1173,Storm Knights
+1262,leader,1,Cygnar,stryker,Stryker,1173,Storm Knights
+1263,leader,1,Cygnar,calder,Calder,1091,Storm Legion
+1264,leader,1,Cygnar,di_baro,di Baro,1091,Storm Legion
+1265,leader,1,Cygnar,wolfe,Wolfe,1091,Storm Legion
+1266,leader,1,Dusk,hazaroth,Hazaroth,1092,House Kallyss
+1267,leader,1,Dusk,hellyth,Hellyth,1092,House Kallyss
+1268,leader,1,Dusk,tyrus,Tyrus,1092,House Kallyss
+1269,leader,1,Grymkin,dreamer,The Dreamer,1086,Wicked Harvest
+1270,leader,1,Grymkin,heretic,The Heretic,1086,Wicked Harvest
+1271,leader,1,Grymkin,king_nothing,The King of Nothing,1086,Wicked Harvest
+1272,leader,1,Grymkin,old_witch,Old Witch,1086,Wicked Harvest
+1273,leader,1,Grymkin,child,The Child,1086,Wicked Harvest
+1274,leader,1,Grymkin,wanderer,The Wanderer,1086,Wicked Harvest
+1275,leader,1,Infernals,agathon,Agathon,1089,Nonokrion Order
+1276,leader,1,Infernals,omodamos,Omodamos,1089,Nonokrion Order
+1277,leader,1,Infernals,zaateroth,Zaateroth,1089,Nonokrion Order
+1278,leader,1,Khador,malakov,Malakov,1176,5th Division
+1279,leader,1,Khador,sorscha,Sorscha,1176,5th Division
+1280,leader,1,Khador,strakhov,Strakhov,1176,5th Division
+1281,leader,1,Khador,harkevich,Harkevich,1084,Armored Korps
+1282,leader,1,Khador,irusk,Irusk,1084,Armored Korps
+1283,leader,1,Khador,sorscha,Sorscha,1084,Armored Korps
+1284,leader,1,Khador,baranova,Baranova,1090,Winter Korps
+1285,leader,1,Khador,borisyuk,Borisyuk,1090,Winter Korps
+1286,leader,1,Khador,savaryn,Savaryn,1090,Winter Korps
+1287,leader,1,Khymaera,rassyk,Rassyk,1208,Shadowflame Shard
+1288,leader,1,Legion of Everblight,anamag,Anamag,1095,Dragon's Host
+1289,leader,1,Legion of Everblight,kallus,Kallus,1095,Dragon's Host
+1290,leader,1,Legion of Everblight,thagrosh,Thagrosh,1095,Dragon's Host
+1291,leader,1,Legion of Everblight,kryssa,Kryssa,1097,Ravens of War
+1292,leader,1,Legion of Everblight,lylyth1,Lylyth 1,1097,Ravens of War
+1293,leader,1,Legion of Everblight,lylyth3,Lylyth 3,1097,Ravens of War
+1294,leader,1,Legion of Everblight,vayl,Vayl,1097,Ravens of War
+1295,leader,1,Mercenaries,barnabas,Barnabas,1096,Blindwater Congregation
+1296,leader,1,Mercenaries,calaban,Calaban,1096,Blindwater Congregation
+1297,leader,1,Mercenaries,maelok,Maelok,1096,Blindwater Congregation
+1298,leader,1,Mercenaries,cyphon,Cyphon,1177,Dark Operations
+1299,leader,1,Mercenaries,thexus,Thexus,1177,Dark Operations
+1300,leader,0,Mercenaries,mortenebra,Mortenebra,1177,Dark Operations
+1301,leader,1,Mercenaries,durgen,Durgen,1098,Rhul Guard
+1302,leader,1,Mercenaries,gorten,Gorten,1098,Rhul Guard
+1303,leader,1,Mercenaries,ossrum,Ossrum,1098,Rhul Guard
+1304,leader,1,Mercenaries,damiano,Damiano,1099,Soldiers of Fortune
+1305,leader,1,Mercenaries,macbain,MacBain,1099,Soldiers of Fortune
+1306,leader,1,Mercenaries,magnus,Magnus,1099,Soldiers of Fortune
+1307,leader,1,Mercenaries,fiona,Fiona,1100,Talion Charter
+1308,leader,1,Mercenaries,montador,Montador,1100,Talion Charter
+1309,leader,1,Mercenaries,shae,Shae,1100,Talion Charter
+1310,leader,1,Mercenaries,arkadius,Arkadius,1101,Thornfall Alliance
+1311,leader,1,Mercenaries,carver,Carver,1101,Thornfall Alliance
+1312,leader,1,Mercenaries,midas,Midas,1101,Thornfall Alliance
+1313,leader,1,Orgoth,horruskh,Horruskh,1093,Sea Raiders
+1314,leader,1,Orgoth,kishtaar,Kishtaar,1093,Sea Raiders
+1315,leader,1,Orgoth,sabbreth,Sabbreth,1093,Sea Raiders
+1316,leader,1,Protectorate of Menoth,cyrenia,Cyrenia,1094,Final Interdiction
+1317,leader,1,Protectorate of Menoth,kreoss,Kreoss,1094,Final Interdiction
+1318,leader,1,Protectorate of Menoth,reznik,Reznik,1094,Final Interdiction
+1319,leader,1,Protectorate of Menoth,severius,Severius,1094,Final Interdiction
+1320,leader,1,Protectorate of Menoth,feora,Feora,1151,Temple Guardians
+1321,leader,1,Protectorate of Menoth,malekus,Malekus,1151,Temple Guardians
+1322,leader,1,Protectorate of Menoth,thyra,Thyra,1151,Temple Guardians
+1323,leader,1,Retribution of Scyrah,helynna,Helynna,1085,Legions of Dawn
+1324,leader,1,Retribution of Scyrah,issyria,Issyria,1085,Legions of Dawn
+1325,leader,1,Retribution of Scyrah,vyros,Vyros,1085,Legions of Dawn
+1326,leader,1,Retribution of Scyrah,garryth,Garryth,1178,Shadows of the Retribution
+1327,leader,1,Retribution of Scyrah,ravyn,Ravyn,1178,Shadows of the Retribution
+1328,leader,1,Retribution of Scyrah,thyron,Thyron,1178,Shadows of the Retribution
+1329,leader,1,Skorne,jalaam,Jalaam,1087,Army of the Western Reaches
+1330,leader,1,Skorne,makeda,Makeda,1087,Army of the Western Reaches
+1331,leader,1,Skorne,xerxis,Xerxis,1087,Army of the Western Reaches
+1332,leader,1,Skorne,zaadesh,Zaadesh,1087,Army of the Western Reaches
+1333,leader,1,Skorne,hexeris,Hexeris,1179,Exalted
+1334,leader,1,Skorne,mordikaar,Mordikaar,1179,Exalted
+1335,leader,1,Skorne,zaal,Zaal,1179,Exalted
+1336,leader,1,Southern Kriels,firequill,Firequill,1181,Brineblood Marauders
+1337,leader,1,Southern Kriels,shadowtongue,Shadowtongue,1181,Brineblood Marauders
+1338,leader,1,Southern Kriels,thorga,Thorga,1181,Brineblood Marauders
+1339,leader,1,Trollbloods,borka,Borka,1088,Storm of the North
+1340,leader,1,Trollbloods,doomshaper,Doomshaper,1088,Storm of the North
+1341,leader,1,Trollbloods,kolgrima,Kolgrima,1088,Storm of the North
+1342,leader,1,Trollbloods,grissel,Grissel,1180,United Kriels
+1343,leader,1,Trollbloods,gunnbjorn,Gunnbjorn,1180,United Kriels
+1344,leader,1,Trollbloods,madrak,Madrak,1180,United Kriels
+1347,leader,1,Cygnar,sparkhammer ,Sparkhammer,1091,Storm Legion
+1361,leader,1,Dusk,scyrafael,Scyrafael,1092,House Kallyss
+1362,leader,1,Khador,sikora,Sikora,1090,Winter Korps
+1363,leader,1,Cygnar,huxely,Huxely,1091,Storm Legion
+1364,leader,1,Dusk,morayne,Morayne,1092,House Kallyss
+1365,leader,1,Khymaera,shyryss,Shyryss,1208,Shadowflame Shard
+1366,leader,1,Khymaera,kyrrax,Kyrrax,1208,Shadowflame Shard
+1367,leader,1,Khymaera,nyxyan,Nyxyan,1208,Shadowflame Shard
+1368,leader,1,Orgoth,oriax,Oriax,1093,Sea Raiders
+1385,leader,1,Circle Orboros,tanith,Tanith,1078,Devourer's Host
+1387,leader,1,Circle Orboros,baldur,Baldur,1079,Secret Dominion
+1388,leader,1,Cygnar,caine,Caine,1082,First Army
+1389,leader,1,Cygnar,jakes,Jakes,1173,Storm Knights
+1390,leader,1,Khador,butcher,Butcher,1176,5th Division
+1391,leader,1,Khador,karchev,Karchev,1084,Armored Korps
+1392,leader,1,Legion of Everblight,absylonia ,Absylonia,1095,Dragon's Host
+1393,leader,1,Mercenaries,jagajaga,Jaga-Jaga,1096,Blindwater Congregation
+1394,leader,0,Mercenaries,asphyxious ,Asphyxious,1177,Dark Operations
+1395,leader,1,Mercenaries,ashlynn,Ashlynn,1099,Soldiers of Fortune
+1396,leader,1,Mercenaries,rahera,Rahera,1100,Talion Charter
+1397,leader,1,Mercenaries,helga,Helga,1101,Thornfall Alliance
+1398,leader,1,Protectorate of Menoth,amon,Amon,1151,Temple Guardians
+1399,leader,1,Retribution of Scyrah,ossyan,Ossyan,1085,Legions of Dawn
+1400,leader,1,Retribution of Scyrah,kaelyssa ,Kaelyssa,1178,Shadows of the Retribution
+1401,leader,1,Skorne,xekaar,Xekaar,1179,Exalted
+1402,leader,1,Southern Kriels,ragemonger ,Ragemonger,1181,Brineblood Marauders
+1403,leader,1,Trollbloods,grim,Grim,1088,Storm of the North
+1404,leader,1,Trollbloods,jarl,Jarl,1180,United Kriels
+1405,leader,1,Southern Kriels,bagadibawm,Bagadibawm,1181,Brineblood Marauders
+1992,army,1,Cryx,necrofactorium,Necrofactorium,,
+1993,leader,1,Cryx,eviscerus,Eviscerus,1992,Necrofactorium
+1994,leader,1,Cryx,sepsira,Sepsira,1992,Necrofactorium
+1995,leader,1,Cryx,nekane,Nekane,1992,Necrofactorium
+1996,leader,1,Cygnar,caine,Caine 4,1091,Storm Legion
+1997,leader,1,Khador,kovoskiy,Kovoskiy,1090,Winter Korps
+1998,leader,1,Khador,vilkul,Vilkul,1090,Winter Korps
+1999,leader,1,Orgoth,butcher,Butcher,1093,Sea Raiders
+2019,leader,1,Cryx,dekathus,Dekathus,1992,Necrofactorium
+2208,leader,1,Khymaera,lytyth,Lylyth,1208,Shadowflame Shard
+2212,army,1,Cygnar,gravediggers,Gravediggers,,
+2213,leader,1,Cygnar,hasker,Hasker,2212,Gravediggers
+2214,leader,1,Cygnar,cyn,Cyn,2212,Gravediggers
+2215,leader,1,Cygnar,caine,Caine 4,2212,Gravediggers
+2216,leader,1,Cygnar,sparkhammer,Sparkhammer,2212,Gravediggers
+2217,leader,1,Khymaera,vallyx,Vallyx,1208,Shadowflame Shard
+2218,leader,1,Southern Kriels,foulblood,Foulblood,1181,Brineblood Marauders
+2239,leader,1,Cryx,kythos,Khythos,1992,Necrofactorium
+2240,leader,1,Cryx,mortenebra,Mortenebra,1992,Necrofactorium
+2241,leader,1,Cygnar,vargus,Vargus,2212,Gravediggers
+2249,leader,1,Cygnar,jakes,Jakes,2212,Gravediggers
+2260,leader,1,Cygnar,mccoy,McCoy,2212,Gravediggers
+2263,army,1,Khador,old_umbrey,Old Umbrey,,
+2264,leader,1,Khador,lesnoi,Lesnoi,2263,Old Umbrey
+2265,leader,1,Khador,lissya,Lissya,2263,Old Umbrey
+2342,leader,1,Khador,kovoskiy,Kovoskiy,2263,Old Umbrey
+2345,leader,1,Mercenaries,khythos,Khythos,1177,Dark Operations
+2359,leader,1,Khador,azlanov,Azlanov,2263,Old Umbrey
+2380,leader,1,Khador,reznikova,Reznikova,2263,Old Umbrey
+2381,leader,1,Khador,morozov,Morozov,2263,Old Umbrey
+2419,leader,1,Mercenaries,sturmdrang,Sturm & Drang,1101,Thornfall Alliance
+2430,army,1,Southern Kriels,kithguard,Kithguard,,
+2431,leader,1,Southern Kriels,wroughtmourn,Wroughtmourn,2430,Kithguard
+2432,leader,1,Southern Kriels,craghorn,Craghorn,2430,Kithguard
+2433,leader,1,Southern Kriels,bagadibawm,Bagadibawm,2430,Kithguard
+2435,leader,1,Infernals,vorgoroth,Vorgoroth,1089,Nonokrion Order
+2447,leader,1,Southern Kriels,grimtusk,Grimtusk,2430,Kithguard
+2448,leader,1,Southern Kriels,stormcraw,Stormcraw,2430,Kithguard
+2449,leader,1,Southern Kriels,gunnbjorn,Gunnbjorn,2430,Kithguard
+2462,army,1,Dusk,fane_nyrro,Fane of Nyrro,,
+2470,leader,1,Dusk,hysene,Hysene,2462,Fane of Nyrro
+2585,leader,1,Dusk,ashmael,Ashmael,2462,Fane of Nyrro
+2588,leader,1,Dusk,vorsalys,Vorsalys,2462,Fane of Nyrro
+2589,leader,1,Dusk,nymara,Nymara,2462,Fane of Nyrro
+2592,leader,1,Dusk,harasheth,Harasheth,2462,Fane of Nyrro
+2593,army,1,Protectorate of Menoth,covenant_flame,Covenant of the Flame,,
+2594,leader,1,Protectorate of Menoth,feora,Feora,2593,Covenant of the Flame
+2618,leader,1,Protectorate of Menoth,malekus,Malekus,2593,Covenant of the Flame
+2619,leader,1,Protectorate of Menoth,stallos,Stallos,2593,Covenant of the Flame
+2620,leader,1,Protectorate of Menoth,thyra,Thyra,2593,Covenant of the Flame
+2622,army,1,Cryx,dread_armada,Dread Armada,,
+2649,leader,1,Cryx,aiakos,Aiakos,2622,Dread Armada

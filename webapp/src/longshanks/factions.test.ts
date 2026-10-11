@@ -44,6 +44,24 @@ describe("armyInfo", () => {
     expect(armyInfo(undefined)).toBeUndefined();
     expect(armyInfo("")).toBeUndefined();
   });
+
+  it("resolves an army Longshanks has since retitled", () => {
+    expect(armyInfo("Wicked Harvest")?.army).toBe("Grymkin");
+    expect(armyInfo("  clockwork legions ")?.faction).toBe("Convergence of Cyriss");
+  });
+
+  it("reads a badge Longshanks retitled onto an army we already carry", () => {
+    expect(armyInfo("Nonokrion Order")?.army).toBe("Infernals");
+  });
+
+  it("knows an army the table was missing entirely", () => {
+    // A Covenant list resolved to the right faction and the wrong army, so the
+    // rendered badge looked correct and nothing ever flagged the gap.
+    // Without the rows this fails as `expected undefined to be ...`, the badge
+    // lookup missing outright while findLeader still answered confidently.
+    expect(armyInfo("Covenant of the Flame")?.faction).toBe("Protectorate of Menoth");
+    expect(armyInfo("Dread Armada")?.faction).toBe("Cryx");
+  });
 });
 
 describe("findLeader", () => {
@@ -101,8 +119,100 @@ describe("findLeader", () => {
   });
 
   it("treats one person shared by two armies as a single answer", () => {
-    // Caine leads both First Army and Gravediggers. Two rows, one caster.
+    // Sparkhammer leads both Gravediggers and Storm Legion off one card. Two
+    // rows, one caster, so collapsing them is right: measured Sparkhammer @
+    // Gravediggers with no badge, and the badge picks the army within Cygnar.
+    expect(findLeader("Sparkhammer\n9 Trencher Infantry")?.leader).toBe("Sparkhammer");
+    expect(findLeader("Sparkhammer\n9 Trencher Infantry", "Storm Legion")?.army).toBe(
+      "Storm Legion",
+    );
+  });
+
+  it("picks the bare printing when the list names no number", () => {
+    // Cygnar has three rows under "caine": a bare Caine in First Army and a
+    // Caine 4 in each of Storm Legion and Gravediggers. These are NOT one
+    // caster -- see the exception settle() calls out -- so this is the limit of
+    // the rule above, not an instance of it. An unnumbered list name selects
+    // the bare card rather than either numbered one.
     expect(findLeader("Major Allister Caine\n9 Trencher Infantry")?.leader).toBe("Caine");
+  });
+
+  it("refuses a leader whose name belongs to two factions", () => {
+    // Khador's Butcher and Orgoth's are different men who share a short name,
+    // so there is nothing to collapse: with no badge the answer would be an
+    // array-order coin toss reported as a faction. The badge settles it.
+    const list = "Army List\n[Leader] Butcher\nJuggernaut 15\n";
+    expect(findLeader(list)).toBeUndefined();
+    expect(findLeader(list, "Khador")?.army).toBe("5th Division");
+    expect(findLeader(list, "Orgoth")?.army).toBe("Sea Raiders");
+  });
+
+  it("refuses a name that collides only once numbering is stripped", () => {
+    // Legion carries "Lylyth 1"/"Lylyth 3", Khymaera a bare "Lylyth". The
+    // literal strings never match, so a scan for repeated names misses this
+    // entirely; it only collides after the reprint number is stripped.
+    // Whether these are one character or two is not ruled on, and the refusal
+    // does not depend on it: the badge is what settles the army either way.
+    const list = "Army List\n[Leader] Lylyth\nCarnivean 18\n";
+    expect(findLeader(list)).toBeUndefined();
+    expect(findLeader(list, "Khymaera")?.army).toBe("Shadowflame Shard");
+    expect(findLeader(list, "Legion of Everblight")?.army).toBe("Ravens of War");
+  });
+
+  it("still settles a character who leads two armies in one faction", () => {
+    expect(findLeader("Army List\n[Leader] Sorscha\nJuggernaut 15\n")?.leader).toBe("Sorscha");
+    expect(findLeader("Army List\n[Leader] Caine\nStormclad 18\n")?.leader).toBe("Caine");
+  });
+
+  it("keeps two Cygnar Caines apart by the number Longshanks gives them", () => {
+    // Longshanks has three records under "caine": a bare Caine in First Army
+    // and a Caine 4 in each of Storm Legion and Gravediggers. First Army fields
+    // a different card, so dropping the number names the wrong one.
+    const list = "Army List\n[Leader] Major Allister Caine\nStormclad 18\n";
+    expect(findLeader(list, "Gravediggers")?.leader).toBe("Caine 4");
+    expect(findLeader(list, "First Army")?.leader).toBe("Caine");
+    // Nothing in the list separates them, so the unbadged answer stays the
+    // character rather than either card.
+    expect(findLeader(list)?.leader).toBe("Caine");
+  });
+
+  it("finds a leader the army table was missing", () => {
+    // Harasheth leads Fane of Nyrro upstream but was absent from our row, so a
+    // list naming him resolved to nothing at all.
+    expect(findLeader("Harasheth, Blade of the Fane\n12 Wraith")).toEqual({
+      leader: "Harasheth",
+      army: "Fane of Nyrro",
+    });
+  });
+
+  it("separates two armies of one faction that share a caster", () => {
+    // Feora leads Temple Guardians and Covenant of the Flame; Aiakos leads
+    // Blackfleet and Dread Armada. Both directions are asserted on purpose: a
+    // one-sided check passes trivially while one of the two armies is missing
+    // from the table, which is how these sat undetected in two catalogues.
+    //
+    // Confirmed to fail for the right reason. With the two army rows removed,
+    // this does not report undefined -- the unknown badge contributes nothing,
+    // the search widens, and the single remaining match wins outright:
+    //   Feora  + "Covenant of the Flame" -> Feora @ Temple Guardians
+    //   Aiakos + "Dread Armada"          -> Aiakos @ Blackfleet
+    // Right faction, wrong army, full confidence. That is the failure being
+    // guarded, and it is invisible in the rendered badge.
+    const feora = "Army List\n[Leader] Feora\nRepenter 8\n";
+    expect(findLeader(feora, "Covenant of the Flame")?.army).toBe("Covenant of the Flame");
+    expect(findLeader(feora, "Temple Guardians")?.army).toBe("Temple Guardians");
+
+    const aiakos = "Army List\n[Leader] Aiakos\nDeathripper 7\n";
+    expect(findLeader(aiakos, "Dread Armada")?.army).toBe("Dread Armada");
+    expect(findLeader(aiakos, "Blackfleet")?.army).toBe("Blackfleet");
+  });
+
+  it("settles the character without guessing which printing", () => {
+    // Both Skarres are Blackfleet, so the faction gate above never fires on
+    // them: the collapse settles who, and the card title settles which card.
+    const body = (n: string) => `Blackfleet Army\n[Leader] ${n}\nDeathripper 7\n`;
+    expect(findLeader(body("Skarre"), "Blackfleet")?.leader).toBe("Skarre");
+    expect(findLeader(body("Skarre, Pirate Queen"), "Blackfleet")?.leader).toBe("Skarre 1");
   });
 
   it("does not match a leader name buried inside a longer word", () => {
@@ -124,12 +234,47 @@ describe("findLeader", () => {
     });
   });
 
+  it("scopes the leader search through an army's new name", () => {
+    // Without the alias "Wicked Harvest" matches no army and no faction, the
+    // search has nothing to scope to, and a player who has a leader on the page
+    // comes back with none.
+    expect(findLeader("Zevanna Agha, the Fate Keeper\n12 Cage Rager", "Wicked Harvest")).toEqual({
+      leader: "Old Witch",
+      army: "Grymkin",
+    });
+  });
+
+  it("keeps a retitled army's whole roster, not the part one event happened to field", () => {
+    // Nobody brought The Wanderer to WTC 2026, so a leader list transcribed
+    // from that event alone would not contain him. Pointing the new name at the
+    // existing army inherits the full roster instead.
+    expect(findLeader("The Wanderer\n12 Cage Rager", "Wicked Harvest")).toEqual({
+      leader: "The Wanderer",
+      army: "Grymkin",
+    });
+  });
+
   it("finds a leader the list writes under another name", () => {
     // Longshanks calls her "Old Witch"; the card says "Zevanna Agha".
     expect(findLeader("Zevanna Agha, the Fate Keeper\n12 Cage Rager", "Grymkin")).toEqual({
       leader: "Old Witch",
       army: "Grymkin",
     });
+  });
+
+  it("reads the leader name Longshanks prints, not the one on the card", () => {
+    // Aurum Legate Lukas di Morray. Longshanks writes "di Morray", so that is
+    // what the table carries -- the half of the name we used to hold, "Lukas",
+    // matched nothing Longshanks ever sends.
+    expect(findLeader("Crucible Guard Army\n[Leader] di Morray\nVulcan 36\n", "Crucible Guard")?.leader)
+      .toBe("di Morray");
+  });
+
+  it("settles both spellings of one character on the same leader", () => {
+    const body = (name: string) => `Crucible Guard Army\n[Leader] ${name}\nVulcan 36\n`;
+    expect(findLeader(body("Lukas"), "Crucible Guard")).toEqual(
+      findLeader(body("di Morray"), "Crucible Guard"),
+    );
   });
 
   it("returns nothing for a list with no recognisable leader", () => {
