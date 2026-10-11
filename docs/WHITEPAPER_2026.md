@@ -394,39 +394,61 @@ collision appears only once Longshanks' reprint numbering is stripped. It is a
 reading the table. **The four above are confirmed instances, not a closed
 enumeration.**
 
-A sixth is **latent rather than live**, and is recorded because the thing
-suppressing it is not ours to rely on. `Locke` is a *suffix* of `Athanor Locke`,
-which the prefix-shadow rule does not catch — suffixes shadow in the opposite
-direction. Upstream has two `Locke` rows in different factions, Convergence's
-(id 1239) and Crucible Guard's (id 1245), so a list naming Athanor Locke could
-resolve to the wrong one. It cannot today only because 1239 is `active=0`,
-leaving a single active `Locke`. That is upstream's retirement decision doing
-the work, not a property of our matcher, and it reverts the moment Longshanks
-reactivates him.
+A sixth was claimed and is **withdrawn**. `Locke` is a suffix of `Athanor Locke`,
+which the prefix-shadow rule does not catch, and upstream carries two `Locke`
+rows in different factions — which looked like a collision waiting to happen.
+It is not one. Athanor Locke is a single character who **moved** from Convergence
+of Cyriss to Crucible Guard, so the two rows are her previous and current homes,
+and the resolver answering `Locke @ Crucible Guard` is returning the right
+answer rather than being saved by luck. Nothing becomes live if upstream touches
+those rows. **Cross-faction collisions stand at five**; there was never a sixth.
 
-Those two rows also settle a separate question. Longshanks' `code` field looks
-like a stable per-character key and is not one: 1239 and 1245 both carry
-`code=locke` while naming different characters in different factions. This is a
-cleaner counter-example than the typo-shaped ones (`lytyth`, `kythos`, a
-trailing space in `'sparkhammer '`), because it is not a data-entry mistake that
-might be corrected — the field is genuinely non-unique by design, so joining on
-it is unsound no matter how clean the data gets.
+That retraction is more useful than the claim would have been, because the
+evidence to settle it was present the entire time. A migration and a collision
+have different signatures in the table, and the distinction is mechanical:
 
-The field fails in the other direction too, and the same code that caused the
-Gravediggers defect demonstrates it. Fourteen leader codes repeat across the
-table; `caine` repeats three times:
+| signature | meaning | instances |
+|---|---|---|
+| same code, one retired + one active | one character who changed faction | `locke`, `mortenebra` |
+| same code, all rows active | distinct characters, or one legal in two places | `butcher`, `rahera`, `gunnbjorn` |
+
+Both migrations in the catalogue are recovered by that rule without any
+knowledge of the setting, and it is what should have been consulted before
+either `Locke` claim was written down.
+
+**It does not follow that `code` is a usable join key**, and the reason is worth
+stating precisely because an earlier draft of this paragraph overreached in the
+opposite direction. Tracking one character across a faction change is exactly
+what a character key *should* do, so `locke` and `mortenebra` are evidence for
+the field, not against it. Whether it also separates genuinely distinct
+characters is **unresolved here**: `butcher`, `rahera` and `gunnbjorn` each share
+a code across two active factions, and this document does not establish whether
+those are two people or one person legal in two places.
+
+What *is* established is that the field does not key a **printing**, and it fails
+in the more awkward way — inconsistently, rather than never. Longshanks encodes
+the reprint number in the code for some characters and not others, in the same
+table:
 
 ```
-1388  Caine    Cygnar / First Army
-1996  Caine 4  Cygnar / Storm Legion
-2215  Caine 4  Cygnar / Gravediggers
+1251 Skarre 1  skarre1      1292 Lylyth 1  lylyth1      1235 Aurora 1  aurora1
+1252 Skarre 3  skarre3      1293 Lylyth 3  lylyth3      1236 Aurora 2  aurora2
+
+1388 Caine     caine        1996 Caine 4   caine        2215 Caine 4   caine
 ```
 
-One code spanning **two different cards inside one faction**. So `code` neither
-identifies a character (the `Locke` pair) nor a printing (the `Caine` triple) —
-it fails both halves of the identity model, in a single row group, and the
-`(name, army)` pair this table keys on is the only thing that survives contact
-with the data.
+Three characters whose codes distinguish their printings, and one — the one that
+produced the Gravediggers defect — whose three rows, two of them different and
+simultaneously legal cards, collapse to a single code. A key that follows a
+convention most of the time is worse than one that never does, because it reads
+as reliable right up to the case that matters. The `(name, army)` pair is what
+this table actually supports.
+
+A smaller caution in the same vein: two of the five confirmed collisions avoid a
+code clash only through typos. `Khythos` is `kythos` under Cryx and `khythos`
+under Mercenaries; Khymaera's `Lylyth` is `lytyth`. Any analysis keyed on code
+would silently treat those as distinct, and would stop doing so the moment
+someone upstream fixes a spelling.
 
 **The rule that follows: never infer faction from leader.** The badge names the army
 or its parent faction and is stable; the leader is then searched *within that scope*,
@@ -441,13 +463,20 @@ The rule is now enforced on the path that previously escaped it. Where no badge 
 available the resolver used to collapse a repeated name to a single answer, which
 is right for one character fielded in two armies of the same faction — `Caine`
 across First Army and Gravediggers, `Sorscha` across 5th Division and Armored
-Korps — but names the wrong person outright when the two armies sit in different
-factions. All five collisions above returned a confident army, and therefore a
-faction, chosen on nothing better than table order. The collapse is now gated on
+Korps — but cannot be justified when the two armies sit in different factions.
+All five collisions above returned a confident army, and therefore a faction,
+chosen on nothing better than table order. The collapse is now gated on
 the candidates sharing a faction and returns nothing when they do not, which is
 the module's own standard: a blank leader sends someone to the real list, a wrong
 one does not. Badged lookups were always correct, which is why this survived —
 the scoping rule was covering for it.
+
+The refusal is correct whichever way the open question above resolves. If
+`Butcher` is two characters, the old behaviour named the wrong one; if he is one
+character legal in both Khador and Orgoth, it named the right person and still
+invented an army and a faction for him. Nothing in an unbadged list distinguishes
+the two armies, so there is no answer to give — which is why the gate keys on the
+faction being ambiguous rather than on any claim about identity.
 
 Two caveats worth preserving. **Southern Kriels and Trollbloods are distinct
 factions**, each with their own armies, and must not be merged as synonyms despite
@@ -503,31 +532,47 @@ and no quantity of it establishes completeness — which is the same error, in t
 same direction, as reading a strategy off five rounds of one team (§6.4).
 
 **That disagreement turns out not to have been an error at all, and the reason
-is worth more than the correction.** `Locke` is a real warcaster. Longshanks
-carries him as id 1239, correctly filed under Clockwork Legions, flagged
-`active=0` — retired. The published card list that reported seven counts him,
-and counts Aurora once rather than as the two printings `Aurora 1` and
-`Aurora 2`; six active plus Locke, with Aurora merged, is exactly seven. Our six
-is the active set. Both numbers are right, because the two sources were never
-answering the same question.
+is worth more than the correction.** Athanor Locke is a real warcaster who
+**changed faction**: Longshanks carries her former Convergence row as id 1239
+(`active=0`) and her current Crucible Guard row as id 1245 (`active=1`). A
+Convergence card list naming her is enumerating the characters that faction has
+had, not the ones it currently fields. Clockwork Legions has eight leader rows;
+merge the two Aurora printings into the one character they represent and seven
+remain, which is the published figure. Our six is the current active roster, and
+the difference is Locke — who is **not missing from our table at all**. We carry
+her under Crucible Guard, where she now belongs. Both numbers were right; the
+two sources were answering different questions.
 
-The distinction that collapsed is between **existing as a printed card** and
-**being legal in this event's format**. `active=0` is a tournament-legality
-judgement, not an assertion that a card was never made. A catalogue of what may
-be fielded should exclude Locke; a catalogue of what exists should not. This
-document is about pairing decisions at a tournament, so the active set is the
-correct one — which makes our handling deliberate rather than lucky, and makes
-§9's *invents no leader upstream lacks* assertion a guard on that boundary
-rather than a formality.
+That makes the guard §9 asserts more pointed, not less. The plausible mistake
+here is not inventing anyone — it is reading a Convergence card list, noticing
+Locke absent from our Convergence roster, and adding her back **in good faith
+with a published source to cite**. Doing so would both misfile a character who
+moved and manufacture a cross-faction collision where none exists. An
+*invents no leader upstream lacks* assertion refuses that on sight, which is why
+it is a boundary rather than a formality.
 
-The mechanism matters because a plausible wrong one was tried first and had to
-be discarded. The appealing explanation was that someone had read the table
-without filtering on `active`. It is appealing precisely because it indicts a
-discipline we had already adopted — but it predicts the wrong number. Clockwork
-Legions has **eight** leader rows, six active; an unfiltered read reports eight,
-not seven. An explanation that reaches the right conclusion by the wrong
-arithmetic is still the wrong explanation, and only going back to the rows
-distinguishes the two.
+The general distinction still holds and is worth keeping, because `active=0` is
+a statement about current legality rather than about whether a card was ever
+printed — `Asphyxious` is retired with no active home anywhere, and a catalogue
+of what *exists* would carry him where a catalogue of what may be *fielded* must
+not. This document is about pairing decisions at a tournament, so the active set
+is the correct one throughout.
+
+The mechanism matters because the claims that preceded it were wrong three times
+over, about one character, in three different directions. She was reported as a
+**seventh Convergence caster missing from our roster** (§8.2 — she had moved, and
+we already carried her); as a **sixth cross-faction collision** (§8.1 — two rows,
+one person); and as a **latent suffix hazard held off by her retirement** (§8.1 —
+nothing to hold off). A fourth explanation, that someone had read the table
+without filtering on `active`, was appealing precisely because it indicted a
+discipline we had already adopted, and was wrong too: it predicts eight rows, not
+seven.
+
+Every one of those was a confident structural claim about a character none of the
+analyses could field or look up, and every one was refutable from data already in
+hand. The signature of a migration — a shared code with one row retired and one
+active — was sitting in the table throughout. What was missing was not evidence
+but the question: *are these two rows one person?*
 
 A separate defect in the same area did prove real and is fixed here. Longshanks
 writes `di Morray`; the catalogue carried `Lukas`, the other half of Aurum Legate
@@ -610,11 +655,10 @@ Four cautions specific to this supplement:
   misfiled by faction, no leader is **invented** that upstream lacks, and none
   of the four retired entries (`Aurora 1`, `Locke`, `Mortenebra`, `Asphyxious`)
   has leaked in. The last two are the same property seen from both sides, and
-  §8.2 is why it is worth asserting: `Locke` is a real card that Longshanks has
-  retired, so a roster built from what *exists* rather than from what is
-  *legal* would add him in good faith and with a published source to cite. The
-  check draws that line explicitly instead of leaving it to whoever is
-  transcribing.
+  §8.2 is why it is worth asserting: a published card list can name a character
+  who has since moved faction or been retired, so a roster built from one in
+  good faith will file her in the wrong place or restore her outright. The check
+  draws that line explicitly instead of leaving it to whoever is transcribing.
 
   **The guarantee is continuous, which is new.** Every other assurance in this
   document is of the form *we looked, on this date, and it was fine*. This one
@@ -633,38 +677,46 @@ Four cautions specific to this supplement:
   | row | relationship to the active set |
   |---|---|
   | `Aurora 1` (1235) | superseded printing; `Aurora 2` (1236) is active in the same army |
-  | `Locke` (1239) | different character sharing a name with the active Crucible Guard `Locke` (1245) |
+  | `Locke` (1239) | **migrated faction**; retired under Convergence, active as Crucible Guard (1245) |
   | `Mortenebra` (1300) | **migrated faction**; retired under Mercenaries, recreated active as Cryx (2240) |
   | `Asphyxious` (1394) | no active counterpart anywhere, under any name or numbering |
 
-  `Mortenebra` is the consequential one. She was not retired, she was *moved* —
-  and upstream performs that move by retiring one row and creating another
-  rather than by editing `parent_id`. **Re-parenting is therefore invisible to
-  anyone diffing only active rows**, which qualifies the reassurance that
-  earlier additions were "purely additive with no re-parenting": that was true
-  of those rows, but the mechanism it was checked against is not the mechanism
-  upstream uses.
+  `Locke` and `Mortenebra` are the consequential pair, and they are the same
+  phenomenon: neither was retired, both were **moved**. Upstream performs a
+  faction change by retiring one row and creating another rather than by editing
+  `parent_id`, so **re-parenting is invisible to anyone diffing only active
+  rows**. That qualifies the reassurance that earlier additions were "purely
+  additive with no re-parenting": true of those rows, but checked against a
+  mechanism upstream does not use.
+
+  It also gives the retired set a signature worth more than the four rows
+  themselves. A shared code with one row retired and one active means a
+  migration; a shared code with every row active means something else (§8.1).
+  Both migrations here are recovered by that rule mechanically, without any
+  knowledge of the setting — which is exactly what was not done before three
+  separate wrong claims were made about `Locke` (§8.2).
 
   This is also what the no-retired assertion is really defending, and it is not
-  tidiness. Restoring those rows would **manufacture two cross-faction
-  collisions that do not exist today**. `Mortenebra` currently resolves cleanly
-  to Necrofactorium; carry the Mercenaries row as well and she becomes ambiguous
-  across factions, so §8.1's gate would begin refusing a caster it answers
-  correctly now. `Locke` would turn the latent `Athanor Locke` suffix hazard
-  live. The trigger is entirely plausible — someone notices `Asphyxious`, a
-  major Cryx warcaster, is absent, finds his row in the export, and adds it in
-  good faith with a source to cite. That is the §8.2 mistake exactly, and the
-  assertion is what refuses it.
+  tidiness. Restoring either migration row would **manufacture a cross-faction
+  collision that does not exist today**: `Locke` resolves cleanly to Crucible
+  Guard and `Mortenebra` to Necrofactorium, and carrying their former homes
+  alongside their current ones would make both ambiguous across factions, so
+  §8.1's gate would begin refusing two casters it answers correctly now. The
+  trigger is entirely plausible — someone notices `Asphyxious`, a major Cryx
+  warcaster, is absent, finds his row in the export, and adds it in good faith
+  with a source to cite. That is the §8.2 mistake exactly, and the assertion is
+  what refuses it.
 
-  The two benign rows are benign for reasons worth separating from luck.
-  `Aurora 1` degrades gracefully because `bare()` strips the printing number, so
-  a list naming the old card still identifies the character and `printing()`
-  settles which one. `Asphyxious` we match by accident rather than by judgement:
-  we are right because we mirror the active set, not because anyone decided
-  about him. The safe operation on the retired set is the one performed here —
-  **assert its absence, and read it for history** — because treating it as
-  uniformly restorable and treating it as uniformly discardable are both wrong,
-  and only inspecting each row tells you which.
+  The other two rows are harmless for different reasons, worth separating from
+  luck. `Aurora 1` is a superseded printing and degrades gracefully: `bare()`
+  strips the number, so a list naming the old card still identifies the
+  character, and since `Aurora 2` is the only Aurora now live there is no second
+  card to confuse it with. `Asphyxious` we match by accident rather than by
+  judgement — we are right because we mirror the active set, not because anyone
+  decided about him. The safe operation on the retired set is the one performed
+  here — **assert its absence, and read it for history** — because treating it
+  as uniformly restorable and treating it as uniformly discardable are both
+  wrong, and only inspecting each row tells you which.
 
 ---
 
