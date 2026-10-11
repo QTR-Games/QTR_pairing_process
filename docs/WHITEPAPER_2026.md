@@ -419,40 +419,36 @@ Transcribing the casters observed at one event would bake in a partial roster, s
 the question is whether these are **new armies** or **retitled existing ones**. A
 subset test against the casters fielded in 2026 found every one already present —
 five of five for Wicked Harvest under Grymkin, four of four for Clockwork Legions
-under Convergence of Cyriss — which appeared to settle it as a pure rename.
+under Convergence of Cyriss.
 
-**That inference was wrong, and the way it was wrong is the point.** A test drawn
-from one event's attendance cannot distinguish a retitle from a retitle *with
-additions*: a caster nobody brought is invisible to it. Official card lists,
-obtained after the test, split the two cases:
+That test is weaker than it looks, and it is worth saying why before leaning on
+it. Attendance is a biased sample of a catalogue: a caster nobody brought is
+invisible to it by construction, so a subset test can show that nothing *new*
+appeared while saying nothing about what is *missing*. On its own it cannot
+separate a retitle from a retitle *with additions*. Official card lists settle
+what attendance cannot:
 
 | new title | existing entry | official roster | ours | verdict |
 |---|---|---:|---:|---|
 | Wicked Harvest | Grymkin | 6 | 6 | pure alias |
-| Clockwork Legions | Convergence of Cyriss | 7 | 6 | alias **+ one missing caster** |
+| Clockwork Legions | Convergence of Cyriss | 6 | 6 | pure alias |
 
-Wicked Harvest is confirmed — all six resolve, including *Zevanna Agha, The Fate
-Keeper* through the existing legacy alias `Old Witch`. Clockwork Legions is not:
-the catalogue is short **Aurum Lucanum Athanor Locke**, and aliasing alone would
-leave it short.
+Both rosters are matched in full, with nothing left over on either side. Wicked
+Harvest's six resolve under Grymkin, including *Zevanna Agha, The Fate Keeper*
+through the existing legacy alias `Old Witch`. Clockwork Legions' six map
+one-for-one onto Convergence of Cyriss — *Axis*, *Orion*, *Lucant*, *Syntherion*
+and *Directrix* by name, leaving *Archnumen Aurora* against the `Aurora 2`
+printing already in the table.
 
-The alias ships with this document because it is correct and independently
-necessary. The missing caster does not, for the reason §8.1 exists: our leader
-strings are deliberately *Longshanks' strings*, typos included, so that a leader
-parsed from an army list and one parsed from a game row dedupe. Writing the card
-title into the table without knowing what Longshanks prints risks creating two
-leaders where there is one. The entry is pending that confirmation, and will land
-with a regression test resolving him to Convergence.
+These are therefore **renames of existing armies**, and the names are aliased onto
+the existing entries — which inherits each complete roster, including casters
+nobody fielded in 2026, and invents nothing. The fix and its regression tests ship
+with this document.
 
-Two observations survive the correction. First, **the generalisable rule is to
-test against an authoritative roster rather than an observed one** — attendance
-is a biased sample of a catalogue, and no amount of it establishes completeness.
-Second, the gap was invisible to every check either side ran *because* nobody
-fielded him, which makes it a latent collision rather than a live defect: our
-catalogue already contains a leader named `Locke` under Crucible Guard, and that
-name is a **suffix** of the missing one. Badge scoping (§8.1) prevents it from
-ever mis-resolving on the normal path; the collision is reachable only where no
-badge is available. The rule holds. The roster did not.
+One methodological point survives independently of the answer it produced here:
+**test against an authoritative roster rather than an observed one**. The two
+agreed in this instance, but only the card lists could establish that they did,
+and the subset test would have looked equally convincing had it been wrong.
 
 ---
 
@@ -503,7 +499,7 @@ Two cautions specific to this supplement:
 | Same-faction hedge explains the partition | **rejected** | expected 0.93 vs observed 1 **[reported]** |
 | Variance minimisation explains the singleton | **rejected** | flattest player was blocked, not seated |
 | Faction inferable from leader name | **refuted** | 4 cross-faction collisions enumerated |
-| `Wicked Harvest` / `Clockwork Legions` are new armies | **refuted** | retitles, not additions; Clockwork Legions short one caster, §8.2 |
+| `Wicked Harvest` / `Clockwork Legions` are new armies | **refuted** | 6/6 and 6/6 against official rosters; retitles |
 
 ---
 

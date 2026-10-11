@@ -100,12 +100,12 @@ const BY_ARMY = new Map(ARMIES.map((a) => [a.army.toLowerCase(), a]));
  * route to a leader there is.
  *
  * These are renames rather than new armies, and that is what makes pointing
- * them at an existing entry safe rather than a guess. Across WTC 2026 every
- * caster fielded under the new titles -- five under Wicked Harvest, four under
- * Clockwork Legions -- is already a leader of the entry named here, with none
- * unaccounted for. The alias therefore inherits a complete leader list, where
- * transcribing the names a single event happened to show would bake in whoever
- * nobody brought.
+ * them at an existing entry safe rather than a guess. Official card lists put
+ * both at six casters, and all six of each are already leaders of the entry
+ * named here, so the retitle adds nobody. The alias therefore inherits a
+ * complete leader list, where transcribing the names a single event happened to
+ * show would bake in whoever nobody brought -- and checking only against what
+ * was fielded would not have been enough to tell the two apart.
  */
 const ARMY_ALIASES: Record<string, string> = {
   "clockwork legions": "Convergence of Cyriss",
