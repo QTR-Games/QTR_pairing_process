@@ -70,7 +70,9 @@ describe("findLeader is monotone in the badge", () => {
     the catalogue, for a reason having nothing to do with monotonicity -- which
     is exactly the staleness a property test exists to avoid. The floor below
     only guards against the property passing vacuously over an empty table; the
-    ambiguous-set guard owns the job of noticing the catalogue moved.
+    ambiguous-set guard owns the job of noticing the catalogue moved. The
+    substring block further down pins its population for exactly the opposite
+    reason, and says there why the two are not in conflict.
   */
   it("never answers worse for being told more", () => {
     const violations: string[] = [];
@@ -264,8 +266,20 @@ describe("leaders whose names contain one another", () => {
   );
 
   it("finds every pair the catalogue currently contains", () => {
-    // Pinned so a new collision is announced rather than silently covered. The
-    // guard below would still test it; this says a human should look.
+    /*
+      Pinned so a new collision is announced rather than silently covered. The
+      guard below would still test it; this says a human should look.
+
+      Deliberately the opposite choice from the monotonicity block above, which
+      refuses to pin its 186 literals. The rule that separates them: pin the
+      value when a change to it IS the finding, never when a change to it is
+      noise against the property under test. A new pair is the event this file
+      exists to report, the same way the ambiguous-set guard owns catalogue
+      drift -- a drift guard with no pinned expectation is not a guard. The 186
+      was incidental to monotonicity and could move for reasons having nothing
+      to do with the property, which is what it did when it fired during an
+      unrelated control.
+    */
     expect(pairs.map((p) => `${p.short} < ${p.long}`).sort()).toEqual([
       "Caine < Caine 4",
       "Grim < Grimtusk",
