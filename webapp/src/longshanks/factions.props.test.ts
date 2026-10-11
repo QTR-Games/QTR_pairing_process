@@ -212,6 +212,123 @@ describe("the leaders a list cannot settle without a badge", () => {
   });
 });
 
+describe("leaders whose names contain one another", () => {
+  /*
+    A separate hazard from the printing numbers, and guarded by a separate
+    mechanism, which is why it gets its own test rather than riding on the sets
+    above: two unrelated characters in different factions whose Longshanks names
+    happen to share letters.
+
+    {@link mentions} is anchored on the left and deliberately open on the right,
+    because a leader's name is a prefix of what the list calls them -- "Cyn" is
+    written "Captain Cynthia Rosko". That openness is what makes both classes
+    possible:
+
+      Reznik < Reznikova    right-side overrun
+      Grim   < Grimtusk
+      Lylyth < Lylyth 1/3
+
+      Iona   < Fiona        interior match
+      Grim   < Kolgrima
+
+    Measured, because the obvious story about these is wrong. Removing the
+    prefix-shadow filter at 309 breaks the first class immediately -- naming
+    "Reznikova" then answers undefined, the two tying on position -- so that
+    filter is load-bearing and this test catches its loss.
+
+    The second class is NOT held up by the left boundary alone, which is what
+    reading the regex suggests. Deleting `(?:^|[^a-z])` from both matchers
+    entirely leaves "Fiona" and "Kolgrima" still resolving correctly, and the
+    whole longshanks suite still green. Position rescues them: an interior match
+    necessarily starts later than the containing name, so the longer leader is
+    written first and wins outright without ever tying. Two independent defences,
+    which is why no single-mechanism control can make this particular assertion
+    fail.
+
+    That is worth stating precisely rather than claiming more than it does: the
+    pairs below are pinned by behaviour, and the behaviour is currently
+    over-determined. The case where the left boundary IS the only thing standing
+    in the way is not leader-versus-leader at all -- it is a leader's name inside
+    an ordinary word, which the test below it covers.
+
+    Derived from ARMIES so it grows with the catalogue. A new leader whose name
+    sits inside an existing one arrives already covered.
+  */
+  const named = new Map<string, string>();
+  for (const { info, leader } of rows) if (!named.has(leader)) named.set(leader, info.army);
+
+  const pairs = [...named.keys()].flatMap((short) =>
+    [...named.keys()]
+      .filter((long) => long !== short && long.toLowerCase().includes(short.toLowerCase()))
+      .map((long) => ({ short, long })),
+  );
+
+  it("finds every pair the catalogue currently contains", () => {
+    // Pinned so a new collision is announced rather than silently covered. The
+    // guard below would still test it; this says a human should look.
+    expect(pairs.map((p) => `${p.short} < ${p.long}`).sort()).toEqual([
+      "Caine < Caine 4",
+      "Grim < Grimtusk",
+      "Grim < Kolgrima",
+      "Iona < Fiona",
+      "Lylyth < Lylyth 1",
+      "Lylyth < Lylyth 3",
+      "Reznik < Reznikova",
+    ]);
+  });
+
+  it("never answers one member of a pair when the list named the other", () => {
+    for (const { short, long } of pairs) {
+      const context = `${short} < ${long}`;
+
+      // The longer name is written out in full, so there is no excuse for
+      // anything but itself -- not the shorter name, and not a refusal.
+      const whole = findLeader(listNaming(long));
+      expect(whole?.leader, `${context}: naming "${long}" answered ${show(whole)}`).toBe(long);
+
+      // The shorter name may legitimately refuse -- it is genuinely ambiguous
+      // for Lylyth-shaped stems -- but it must never answer the longer one,
+      // whose extra letters the list never wrote.
+      const part = findLeader(listNaming(short));
+      if (part) {
+        expect(part.leader, `${context}: naming "${short}" answered ${show(part)}`).toBe(short);
+      }
+    }
+  });
+
+  it("does not find a leader inside an ordinary word of the list", () => {
+    /*
+      Where the left boundary is genuinely the only thing standing in the way,
+      and -- before this -- pinned by nothing: the suite passed in full with
+      `(?:^|[^a-z])` deleted from both matchers.
+
+      Leader-versus-leader is over-determined, so it cannot show this. A leader
+      name inside an ordinary list word can: there is no second leader to beat
+      on position, so the spurious hit stands alone and wins outright. Measured
+      with the boundary removed, each of these answers a confident wrong leader
+      from a list that never named one:
+
+        "Pilgrim Escort"    -> Grim @ Storm of the North
+        "Legionary Captain" -> Iona @ Devourer's Host
+        "Praxis Adept"      -> Axis @ Convergence of Cyriss
+
+      Iona is the same character the leader-versus-leader pair above is about,
+      which is the point: the hazard was real and the pair was not where it
+      lived.
+
+      Note what is NOT asserted. "Cynical" resolves to Cyn in both states,
+      because the name sits at the START of the word and the boundary is
+      satisfied. That is the accepted cost of being open on the right -- "Cyn"
+      has to match "Cynthia" -- and pinning it as a refusal would contradict the
+      matcher's whole design.
+    */
+    for (const word of ["Pilgrim Escort", "Legionary Captain", "Praxis Adept"]) {
+      const list = `Army List\n${word}\nRepenter 8\n`;
+      expect(findLeader(list), `"${word}" named a leader it does not contain`).toBeUndefined();
+    }
+  });
+});
+
 describe("the printings that collapse", () => {
   /*
     Three different populations, pinned separately because conflating them is
