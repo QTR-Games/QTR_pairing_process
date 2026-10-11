@@ -406,8 +406,17 @@ rows in different factions — which looked like a collision waiting to happen.
 It is not one. Athanor Locke is a single character who **moved** from Convergence
 of Cyriss to Crucible Guard, so the two rows are her previous and current homes,
 and the resolver answering `Locke @ Crucible Guard` is returning the right
-answer rather than being saved by luck. Nothing becomes live if upstream touches
-those rows. **Cross-faction collisions stand at five**; there was never a sixth.
+answer rather than being saved by luck. **Cross-faction collisions stand at
+five**; there was never a sixth.
+
+No *suffix* hazard becomes live if upstream touches those rows either —
+resolving `Athanor Locke` to Crucible Guard is correct under any state of 1239,
+because it is the same person in both. But that is a narrower statement than
+*nothing* changes, and an earlier draft of this paragraph made the wider one.
+Carrying both rows at once would put one character in two factions, and §8.1's
+gate would then refuse a name it resolves cleanly today. That hazard is
+**suppressed by the retired-entry assertion of §9 rather than being absent** —
+which is the second, independent reason that assertion earns its place.
 
 That retraction is more useful than the claim would have been, because the
 evidence to settle it was present the entire time. A migration and a collision
@@ -564,7 +573,9 @@ same direction, as reading a strategy off five rounds of one team (§6.4).
 **That disagreement turns out not to have been an error at all, and the reason
 is worth more than the correction.** Athanor Locke is a real warcaster who
 **changed faction**: Longshanks carries her former Convergence row as id 1239
-(`active=0`) and her current Crucible Guard row as id 1245 (`active=1`). A
+(`active=0` — she is **not** currently legal in Convergence, whatever
+third-party sources describing her as dual-faction may say) and her current
+Crucible Guard row as id 1245 (`active=1`). A
 Convergence card list naming her is enumerating the characters that faction has
 had, not the ones it currently fields. Clockwork Legions has eight leader rows;
 merge the two Aurora printings into the one character they represent and seven
@@ -640,6 +651,25 @@ data. The correct subtraction is $200-186=14$.
 
 > **A wrong number in prose is inert. The moment someone computes with it, it
 > either reconciles or it does not.**
+
+A fifth instance is worth recording because its source was closest to hand.
+Two justifications in `factions.ts` and its tests were left describing a world
+the fix in this very branch had removed. A test named *treats one person shared
+by two armies as a single answer* illustrated that rule with `Caine` — the one
+character in the table for whom it is false, and false **because of a commit two
+steps earlier in this PR**, which split Gravediggers' `Caine 4` from First
+Army's `Caine`. Twenty lines away, `settle()`'s own comment named Caine as *the
+exception that sets the rule's limit*. The file contradicted itself about the
+distinction this document exists to establish. Separately, that comment
+justified the cross-faction refusal as *it would name the wrong person*, which
+`Rahera` falsifies in the same way she falsifies the signature rule above.
+
+Both assertions passed, and would have passed forever: each stated something
+true for a reason that had stopped being true, and a green test cannot report
+that. Nothing in CI can. The lesson is the one §8.1 arrived at from the other
+direction — **a correction propagates to wherever its premise was used, not to
+where it was found** — demonstrated here against our own work, by nobody
+re-reading the comments our own rename had invalidated.
 
 That is the one detection result in this section, and it argues for a specific
 practice: put figures into checksums rather than into sentences. A quoted
