@@ -48,6 +48,7 @@ function renderMenu(over: Partial<Parameters<typeof HomeMenu>[0]> = {}) {
     onResume: vi.fn(),
     onContinue: vi.fn(),
     onBoards: vi.fn(),
+    onLoadDemo: vi.fn(),
     onHelp: vi.fn(),
     onRestored: vi.fn(),
     ...over,
@@ -207,5 +208,34 @@ describe("HomeMenu settings", () => {
     expect(threshold.value).toBe("1.2");
     fireEvent.change(threshold, { target: { value: "2.5" } });
     expect(props.onSurpriseRegretThreshold).toHaveBeenCalledWith(2.5);
+  });
+});
+
+/*
+  The cold start.
+
+  With nothing saved there is no board to open, so the examples are the only
+  route to a screen that says anything. The button is deliberately absent once
+  boards exist -- it would otherwise sit between a captain and their round -- so
+  both halves of that condition are asserted.
+*/
+describe("the example boards", () => {
+  it("offers a one-tap demo only when nothing is saved", () => {
+    const props = renderMenu({ boardCount: 0 });
+    const button = screen.getByTestId("home-demo");
+    fireEvent.click(button);
+    expect(props.onLoadDemo).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the cold-start button once there are boards", () => {
+    renderMenu({ boardCount: 3, lastBoard: board("Harbour Watch") });
+    expect(screen.queryByTestId("home-demo")).toBeNull();
+  });
+
+  it("keeps the examples reachable from the menu either way", () => {
+    renderMenu({ boardCount: 3, lastBoard: board("Harbour Watch") });
+    // Still listed under its own section, so the demo is not lost after the
+    // first board is created.
+    expect(screen.getByTestId("demo-boards")).toBeTruthy();
   });
 });

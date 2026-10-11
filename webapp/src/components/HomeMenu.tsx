@@ -17,6 +17,7 @@
   and the whole screen remains one scrollable thing on a phone.
 */
 import { BoardBackup } from "./BoardBackup";
+import { DemoBoards } from "./DemoBoards";
 import { LongshanksImport } from "./LongshanksImport";
 import { BRAND, LINKS } from "../brand";
 import {
@@ -57,6 +58,8 @@ interface HomeMenuProps {
   onContinue: () => void;
   /** Open the saved-boards list. */
   onBoards: () => void;
+  /** Install the example boards and open the first one. */
+  onLoadDemo: () => void;
   /** Open the About & Help screen. */
   onHelp: () => void;
   onRestored: (boards: Board[]) => void;
@@ -81,6 +84,7 @@ export function HomeMenu({
   onResume,
   onContinue,
   onBoards,
+  onLoadDemo,
   onHelp,
   onRestored,
 }: HomeMenuProps) {
@@ -111,6 +115,20 @@ export function HomeMenu({
       <button className="ghost wide" onClick={onBoards}>
         {boardCount > 0 ? `Saved boards (${boardCount})` : "Saved boards"}
       </button>
+
+      {/*
+        The cold start. With nothing saved, every other route into the app asks
+        for twenty-five judgements before it can say anything at all, which is a
+        lot to ask of someone still deciding whether to trust it. One tap to a
+        board that is already rated is the shortest honest answer to "what does
+        this do". Hidden once there are boards, so it never costs a regular user
+        a line on the way to their round.
+      */}
+      {boardCount === 0 && (
+        <button className="ghost wide" onClick={onLoadDemo} data-testid="home-demo">
+          See it working &mdash; load 3 examples
+        </button>
+      )}
 
       <button className="ghost wide" onClick={onHelp}>
         Guides &amp; help
@@ -223,6 +241,13 @@ export function HomeMenu({
             Experimental. Alerts fire when an opponent move gives up at least this
             many points versus your grid&apos;s expected best move.
           </p>
+        </div>
+      </details>
+
+      <details className="home-item">
+        <summary>Example boards</summary>
+        <div className="home-body">
+          <DemoBoards onLoad={onLoadDemo} />
         </div>
       </details>
 

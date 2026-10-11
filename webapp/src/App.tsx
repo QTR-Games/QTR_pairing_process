@@ -26,6 +26,7 @@ import {
   type Unit,
 } from "./model/settings";
 import { newRound } from "./engine/live";
+import { installDemoBoards } from "./model/demoBoards";
 import { useLiveHistory } from "./hooks/useLiveHistory";
 import { useBackGesture } from "./hooks/useBackGesture";
 import { DesktopWorkspace } from "./components/desktop/DesktopWorkspace";
@@ -286,6 +287,22 @@ export default function App() {
             enter("board");
           }}
           onBoards={() => enter("boards")}
+          onLoadDemo={() => {
+            /*
+              Land on a rated board rather than back on this menu. The whole
+              point of the examples is to show what the app says once it has
+              something to say, and a menu that silently gained three entries
+              does not show it.
+            */
+            const next = installDemoBoards();
+            setBoards(next);
+            const first = next[0];
+            if (first) {
+              setBoard(first);
+              resetLive(loadLive(first.id));
+            }
+            enter("board");
+          }}
           onHelp={() => {
             setAboutGuide(null);
             setScreen("about");
