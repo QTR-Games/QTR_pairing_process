@@ -89,10 +89,34 @@ export const ARMIES: ArmyInfo[] = [
 
 const BY_ARMY = new Map(ARMIES.map((a) => [a.army.toLowerCase(), a]));
 
+/**
+ * Armies Longshanks has retitled, pointing at the entry they are still.
+ *
+ * An army can be renamed without its roster changing, and Longshanks adopts the
+ * new title while events already recorded keep the old one. Both spellings turn
+ * up in real data, so both have to resolve, and an unrecognised one is worse
+ * than it looks: the badge still draws, but the leader search has no army to
+ * scope to and gives up, which before an event has been played is the only
+ * route to a leader there is.
+ *
+ * These are renames rather than new armies, and that is what makes pointing
+ * them at an existing entry safe rather than a guess. Across WTC 2026 every
+ * caster fielded under the new titles -- five under Wicked Harvest, four under
+ * Clockwork Legions -- is already a leader of the entry named here, with none
+ * unaccounted for. The alias therefore inherits a complete leader list, where
+ * transcribing the names a single event happened to show would bake in whoever
+ * nobody brought.
+ */
+const ARMY_ALIASES: Record<string, string> = {
+  "clockwork legions": "Convergence of Cyriss",
+  "wicked harvest": "Grymkin",
+};
+
 /** The table entry for an army, by its Longshanks name. Case-insensitive. */
 export function armyInfo(army: string | undefined | null): ArmyInfo | undefined {
   if (!army) return undefined;
-  return BY_ARMY.get(army.trim().toLowerCase());
+  const name = army.trim().toLowerCase();
+  return BY_ARMY.get(ARMY_ALIASES[name]?.toLowerCase() ?? name);
 }
 
 /**

@@ -44,6 +44,11 @@ describe("armyInfo", () => {
     expect(armyInfo(undefined)).toBeUndefined();
     expect(armyInfo("")).toBeUndefined();
   });
+
+  it("resolves an army Longshanks has since retitled", () => {
+    expect(armyInfo("Wicked Harvest")?.army).toBe("Grymkin");
+    expect(armyInfo("  clockwork legions ")?.faction).toBe("Convergence of Cyriss");
+  });
 });
 
 describe("findLeader", () => {
@@ -121,6 +126,26 @@ describe("findLeader", () => {
     expect(findLeader("Scyrafael, Nis-Issyr of Desolations\n14 Eidolon 1", "Dusk")).toEqual({
       leader: "Scyrafael",
       army: "House Kallyss",
+    });
+  });
+
+  it("scopes the leader search through an army's new name", () => {
+    // Without the alias "Wicked Harvest" matches no army and no faction, the
+    // search has nothing to scope to, and a player who has a leader on the page
+    // comes back with none.
+    expect(findLeader("Zevanna Agha, the Fate Keeper\n12 Cage Rager", "Wicked Harvest")).toEqual({
+      leader: "Old Witch",
+      army: "Grymkin",
+    });
+  });
+
+  it("keeps a retitled army's whole roster, not the part one event happened to field", () => {
+    // Nobody brought The Wanderer to WTC 2026, so a leader list transcribed
+    // from that event alone would not contain him. Pointing the new name at the
+    // existing army inherits the full roster instead.
+    expect(findLeader("The Wanderer\n12 Cage Rager", "Wicked Harvest")).toEqual({
+      leader: "The Wanderer",
+      army: "Grymkin",
     });
   });
 
