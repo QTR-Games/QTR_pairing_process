@@ -343,13 +343,15 @@ export function findLeader(
     // by the number, which is why that number has to survive into the table --
     // printing() can then refuse to guess instead of naming the wrong card.
     //
-    // That holds only inside a faction. A name repeated across factions is a
-    // different character who happens to share a short one -- Khador's Butcher
-    // is not Orgoth's, Southern Kriels' Gunnbjorn is not Trollbloods', and the
-    // Lylyth of Ravens of War is not the Lylyth of Shadowflame Shard -- so
-    // collapsing those would not blur an attribution, it would name the wrong
-    // person. With no badge to separate them there is nothing to choose on, and
-    // a blank leader beats a confident wrong one.
+    // That holds only inside a faction. Across factions the table cannot say
+    // what a repeated name means: Khador's Butcher is not Orgoth's, and
+    // Southern Kriels' Gunnbjorn is not Trollbloods' -- different models that
+    // share a short name -- but Cryx's Rahera and the Talion Charter's are one
+    // character fielded in two factions, and nothing in these rows separates
+    // the two situations. So the refusal cannot rest on "it would name the
+    // wrong person": for Rahera it would name the right one and invent a
+    // faction for her. Either way there is nothing to choose on without a
+    // badge, and a blank leader beats a confident wrong one.
     //
     // Within a faction the printing is still open, and {@link printing} answers
     // with the unnumbered character rather than picking one. That is what keeps

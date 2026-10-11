@@ -119,7 +119,21 @@ describe("findLeader", () => {
   });
 
   it("treats one person shared by two armies as a single answer", () => {
-    // Caine leads both First Army and Gravediggers. Two rows, one caster.
+    // Sparkhammer leads both Gravediggers and Storm Legion off one card. Two
+    // rows, one caster, so collapsing them is right: measured Sparkhammer @
+    // Gravediggers with no badge, and the badge picks the army within Cygnar.
+    expect(findLeader("Sparkhammer\n9 Trencher Infantry")?.leader).toBe("Sparkhammer");
+    expect(findLeader("Sparkhammer\n9 Trencher Infantry", "Storm Legion")?.army).toBe(
+      "Storm Legion",
+    );
+  });
+
+  it("picks the bare printing when the list names no number", () => {
+    // Cygnar has three rows under "caine": a bare Caine in First Army and a
+    // Caine 4 in each of Storm Legion and Gravediggers. These are NOT one
+    // caster -- see the exception settle() calls out -- so this is the limit of
+    // the rule above, not an instance of it. An unnumbered list name selects
+    // the bare card rather than either numbered one.
     expect(findLeader("Major Allister Caine\n9 Trencher Infantry")?.leader).toBe("Caine");
   });
 
@@ -133,10 +147,12 @@ describe("findLeader", () => {
     expect(findLeader(list, "Orgoth")?.army).toBe("Sea Raiders");
   });
 
-  it("separates two characters whose names collide only once numbering is stripped", () => {
+  it("refuses a name that collides only once numbering is stripped", () => {
     // Legion carries "Lylyth 1"/"Lylyth 3", Khymaera a bare "Lylyth". The
     // literal strings never match, so a scan for repeated names misses this
     // entirely; it only collides after the reprint number is stripped.
+    // Whether these are one character or two is not ruled on, and the refusal
+    // does not depend on it: the badge is what settles the army either way.
     const list = "Army List\n[Leader] Lylyth\nCarnivean 18\n";
     expect(findLeader(list)).toBeUndefined();
     expect(findLeader(list, "Khymaera")?.army).toBe("Shadowflame Shard");
