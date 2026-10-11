@@ -163,8 +163,9 @@ const ALIASES: Record<string, string[]> = {
 /**
  * A leader name without its Longshanks disambiguating number.
  *
- * The number distinguishes reprints of one character ("Caine 4" is the Storm
- * Legion Caine) and is Longshanks bookkeeping, so it never appears in a list.
+ * The number distinguishes reprints of one character ("Caine 4" is a later
+ * Caine, printed into both Storm Legion and Gravediggers) and is Longshanks
+ * bookkeeping, so it never appears in a list.
  */
 function bare(leader: string): string {
   return leader.replace(/\s+\d+$/, "");
@@ -356,10 +357,17 @@ export function findLeader(
     //
     // The same mechanism is lossy even on the badged path whenever one army
     // holds two printings: "Lylyth 1" badged Ravens of War answers "Lylyth",
-    // discarding a number the list supplied. Prefer matching the literal name
-    // before falling back to the bare one -- that fixes the lossy cells and the
-    // Caine case together, where refusing on "collapsed form is a real card"
-    // would fix only the latter. It wants its own branch and its own tests.
+    // discarding a number the list supplied. It also has an opposite symptom,
+    // a refusal where nothing is ambiguous: unbadged "Lylyth 1" and "Lylyth 3"
+    // resolve to nothing at all, though each appears in exactly one army,
+    // because collapsing to "Lylyth" widens the pool across two factions and
+    // the cross-faction gate below then correctly refuses a stem the player
+    // never typed. Prefer matching the literal name before falling back to the
+    // bare one -- that fixes the lossy cells, the Caine case and both false
+    // refusals together, where refusing on "collapsed form is a real card"
+    // would fix only the Caine case. One deliberate consequence: bare "Lylyth"
+    // would then match Shadowflame Shard's real row instead of refusing.
+    // It wants its own branch and its own tests.
     //
     // That holds only inside a faction. Across factions the table cannot say
     // what a repeated name means: Khador's Butcher is not Orgoth's, and
