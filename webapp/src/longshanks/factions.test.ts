@@ -53,6 +53,13 @@ describe("armyInfo", () => {
   it("reads a badge Longshanks retitled onto an army we already carry", () => {
     expect(armyInfo("Nonokrion Order")?.army).toBe("Infernals");
   });
+
+  it("knows an army the table was missing entirely", () => {
+    // A Covenant list resolved to the right faction and the wrong army, so the
+    // rendered badge looked correct and nothing ever flagged the gap.
+    expect(armyInfo("Covenant of the Flame")?.faction).toBe("Protectorate of Menoth");
+    expect(armyInfo("Dread Armada")?.faction).toBe("Cryx");
+  });
 });
 
 describe("findLeader", () => {
@@ -158,6 +165,20 @@ describe("findLeader", () => {
       leader: "Harasheth",
       army: "Fane of Nyrro",
     });
+  });
+
+  it("separates two armies of one faction that share a caster", () => {
+    // Feora leads Temple Guardians and Covenant of the Flame; Aiakos leads
+    // Blackfleet and Dread Armada. Both directions are asserted on purpose: a
+    // one-sided check passes trivially while one of the two armies is missing
+    // from the table, which is how these sat undetected in two catalogues.
+    const feora = "Army List\n[Leader] Feora\nRepenter 8\n";
+    expect(findLeader(feora, "Covenant of the Flame")?.army).toBe("Covenant of the Flame");
+    expect(findLeader(feora, "Temple Guardians")?.army).toBe("Temple Guardians");
+
+    const aiakos = "Army List\n[Leader] Aiakos\nDeathripper 7\n";
+    expect(findLeader(aiakos, "Dread Armada")?.army).toBe("Dread Armada");
+    expect(findLeader(aiakos, "Blackfleet")?.army).toBe("Blackfleet");
   });
 
   it("settles the character without guessing which printing", () => {
