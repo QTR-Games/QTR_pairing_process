@@ -964,6 +964,43 @@ Four cautions specific to this supplement:
   — while noting that trimming is a different normalisation from repairing a
   misspelling, and it is the latter that would merge `kythos` with `khythos`.
 
+  Generalised, these are all one failure: **a census keyed on a rendered
+  identifier is blind exactly where the rendering varies** — and the rendering
+  varies precisely where the data is irregular, which is where the collisions
+  are. The table carries three instances, each of which suppresses a true
+  collision from the scan built to list collisions, so the audit returns clean
+  and the count goes *up* under repair. Two are keyed on `code` — the trailing
+  space on `sparkhammer `, and the `kythos`/`khythos` typo — and one is keyed
+  on `name`: `Lylyth`, whose rows are `Lylyth 1` and `Lylyth 3`, so a scan
+  comparing exact leader strings finds no collision at all.
+
+  That last one produced the most instructive measurement in this work, because
+  of how nearly it escaped. The same table, grouped two ways:
+
+  | grouping | cross-faction | within-faction |
+  |---|---|---|
+  | exact leader literal | 4 | **10** |
+  | printing-collapsed | 5 | **10** |
+
+  The cross-faction figures disagree, which is the correction: the resolver
+  collapses printings before it compares, so the collapsed grouping is the one
+  that describes its behaviour, and `Lylyth` is a real fifth collision that the
+  literal scan cannot see. But the within-faction figures **agree at ten while
+  describing different sets**. The literal ten contains `Caine 4`, spanning two
+  armies. The collapsed ten contains `Caine`, spanning three, because collapsing
+  pulls the bare row 1388 into the same bucket — the §8.1 defect appearing as a
+  *member* of the set rather than as a separate note. One member each, different
+  rows, identical cardinality.
+
+  So two measurements of different fields agreed on the count and disagreed
+  about the population, and had the two been compared only on their numbers the
+  agreement would have been read as corroboration. **The matching figure is the
+  thing that stops anyone looking.** It is worth stating as a rule, because it
+  inverts the usual instinct: when two independent methods produce the same
+  number, that is evidence they measured the same field, not evidence the number
+  is right — and the cheapest way to tell the difference is to diff the
+  populations rather than compare the totals.
+
   One practical note on reporting these at all. A trailing space has no
   rendering, so `'sparkhammer '` and `'sparkhammer'` are distinguishable in
   prose only by a quoting convention and a reader's attention to one character
