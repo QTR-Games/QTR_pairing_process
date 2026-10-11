@@ -371,10 +371,16 @@ account for the anomalies one-for-one:
 
 | collision | factions | mechanism |
 |---|---|---|
-| Butcher | Khador *5th Division* / Orgoth *Sea Raiders* | one character, two factions |
-| Khythos | Cryx *Necrofactorium* / Mercenaries *Dark Operations* | shared leader |
-| Rahera | Cryx *Blackfleet* / Mercenaries *Talion Charter* | shared leader |
-| Gunnbjorn | Southern Kriels *Kithguard* / Trollbloods *United Kriels* | shared leader |
+| Butcher | Khador *5th Division* / Orgoth *Sea Raiders* | **two different models** sharing a name **[reported]** |
+| Gunnbjorn | Southern Kriels *Kithguard* / Trollbloods *United Kriels* | **two different models** sharing a name **[reported]** |
+| Rahera | Cryx *Blackfleet* / Mercenaries *Talion Charter* | **one character** fielded in two factions **[reported]** |
+| Khythos | Cryx *Necrofactorium* / Mercenaries *Dark Operations* | unruled; name shared across two factions |
+
+The mechanism column is not decoration, and nothing in the catalogue supplies it
+— all four rows look identical in the table, and the distinctions above come
+from the upstream maintainer rather than from any field. That is the point: the
+resolver cannot tell these cases apart either, which is why §8.1's gate refuses
+all of them rather than trying to.
 
 A fifth anomaly is a different mechanism — `Reznik` is a **prefix** of `Reznikova`,
 so an unanchored substring match silently rewrites one caster as another. Scanning
@@ -410,25 +416,37 @@ have different signatures in the table, and the distinction is mechanical:
 | signature | meaning | instances |
 |---|---|---|
 | same code, one retired + one active | one character who changed faction | `locke`, `mortenebra` |
-| same code, all rows active | distinct characters, or one legal in two places | `butcher`, `rahera`, `gunnbjorn` |
+| same code, all rows active | **undetermined** | `butcher`, `gunnbjorn`, `rahera` |
 
-Both migrations in the catalogue are recovered by that rule without any
-knowledge of the setting, and it is what should have been consulted before
-either `Locke` claim was written down.
+The first clause is reliable: it recovers both migrations in the catalogue,
+only those, and without any knowledge of the setting. It is what should have
+been consulted before any of the `Locke` claims was written down.
 
-**It does not follow that `code` is a usable join key**, and the reason is worth
-stating precisely because an earlier draft of this paragraph overreached in the
-opposite direction. Tracking one character across a faction change is exactly
-what a character key *should* do, so `locke` and `mortenebra` are evidence for
-the field, not against it. Whether it also separates genuinely distinct
-characters is **unresolved here**: `butcher`, `rahera` and `gunnbjorn` each share
-a code across two active factions, and this document does not establish whether
-those are two people or one person legal in two places.
+**The second clause is deliberately empty, and an earlier draft of this table
+filled it in wrongly.** It read *distinct characters*, which is a complement
+rather than a finding — and it is false. Of the three groups, `Butcher` and
+`Gunnbjorn` are each two different models, while `Rahera` is **one character
+appearing in two factions** **[reported]**, all three looking identical in the
+table. A signature that identifies migrations exactly and says nothing about
+everything else is the honest form; extending it to a complete partition
+repeated, in miniature, the error of §8.2's unfiltered-read mechanism — a rule
+fitted to the cases checked and overreaching on the ones that were not.
 
-What *is* established is that the field does not key a **printing**, and it fails
-in the more awkward way — inconsistently, rather than never. Longshanks encodes
-the reprint number in the code for some characters and not others, in the same
-table:
+**`code` is not a usable join key, and it fails as both kinds of key** — but the
+evidence for each half is narrower than it first appears, and three of the five
+shared-code groups are not evidence of anything wrong.
+
+It fails as a **character** key on `butcher` and `gunnbjorn`. Each is a single
+code spanning two confirmed-different models **[reported]**, so a join on code
+merges two characters outright. It does *not* fail on `locke` or `mortenebra`,
+where one code tracking one character across a faction change is precisely
+correct behaviour, nor on `rahera`, where the shared code reflects a genuinely
+shared character. Those three are the field working; only the first two are the
+field breaking.
+
+It fails as a **printing** key in the more awkward way — inconsistently, rather
+than never. Longshanks encodes the reprint number in the code for some
+characters and not others, in the same table:
 
 ```
 1251 Skarre 1  skarre1      1292 Lylyth 1  lylyth1      1235 Aurora 1  aurora1
@@ -444,11 +462,19 @@ convention most of the time is worse than one that never does, because it reads
 as reliable right up to the case that matters. The `(name, army)` pair is what
 this table actually supports.
 
-A smaller caution in the same vein: two of the five confirmed collisions avoid a
-code clash only through typos. `Khythos` is `kythos` under Cryx and `khythos`
-under Mercenaries; Khymaera's `Lylyth` is `lytyth`. Any analysis keyed on code
-would silently treat those as distinct, and would stop doing so the moment
-someone upstream fixes a spelling.
+A smaller caution in the same vein: one of the five confirmed collisions avoids a
+code clash only through a typo. `Khythos` is `kythos` under Cryx and `khythos`
+under Mercenaries, so an analysis keyed on code treats them as distinct — and
+would stop doing so the moment someone upstream fixes the spelling.
+
+Khymaera's `Lylyth` is also misspelled, as `lytyth`, but correcting it collides
+with nothing: Legion's rows are `lylyth1` and `lylyth3`, and a repaired `lylyth`
+matches neither. The reason is the inconsistency just described. Those two rows
+happen to follow the printing-encoding convention, and that is the only thing
+keeping them clear of a bare `Lylyth` from another faction; under the `caine`
+convention all three would collapse to one code. The same defect that caused the
+Gravediggers failure incidentally prevents this one, which is a fair summary of
+what an unreliable key is like to work with.
 
 **The rule that follows: never infer faction from leader.** The badge names the army
 or its parent faction and is stable; the leader is then searched *within that scope*,
@@ -471,12 +497,16 @@ the module's own standard: a blank leader sends someone to the real list, a wron
 one does not. Badged lookups were always correct, which is why this survived —
 the scoping rule was covering for it.
 
-The refusal is correct whichever way the open question above resolves. If
-`Butcher` is two characters, the old behaviour named the wrong one; if he is one
-character legal in both Khador and Orgoth, it named the right person and still
-invented an army and a faction for him. Nothing in an unbadged list distinguishes
-the two armies, so there is no answer to give — which is why the gate keys on the
-faction being ambiguous rather than on any claim about identity.
+The refusal is correct for all five collisions, and for **two different reasons**
+— which is the strongest argument for gating on ambiguity rather than on
+identity. For `Butcher` and `Gunnbjorn`, two different models each, the old
+behaviour named the **wrong character**. For `Rahera`, one character in two
+factions, it named the **right** character and still invented an army and a
+faction for her. A justification written around either case alone would have
+been factually wrong about the other; nothing in an unbadged list distinguishes
+the two armies, so in every case there is simply no answer to give. The gate
+therefore keys on the faction being ambiguous, and needs no claim about who the
+candidates are.
 
 Two caveats worth preserving. **Southern Kriels and Trollbloods are distinct
 factions**, each with their own armies, and must not be merged as synonyms despite
@@ -691,10 +721,13 @@ Four cautions specific to this supplement:
 
   It also gives the retired set a signature worth more than the four rows
   themselves. A shared code with one row retired and one active means a
-  migration; a shared code with every row active means something else (§8.1).
-  Both migrations here are recovered by that rule mechanically, without any
-  knowledge of the setting — which is exactly what was not done before three
-  separate wrong claims were made about `Locke` (§8.2).
+  migration; a shared code with every row active means **nothing in
+  particular** — it covers two different models as readily as one character in
+  two factions, and §8.1 records that the table cannot separate those. The
+  signature is useful in one direction only, which is the direction that
+  matters here: both migrations are recovered by it mechanically, without any
+  knowledge of the setting — exactly what was not done before three separate
+  wrong claims were made about `Locke` (§8.2).
 
   This is also what the no-retired assertion is really defending, and it is not
   tidiness. Restoring either migration row would **manufacture a cross-faction
