@@ -352,9 +352,14 @@ export function findLeader(
     // bare(hit.leader) with pool[0].army. That fallback is a widening for
     // Skarre -- no bare "Skarre" row exists, so it names a real caster and
     // leaves the printing open -- but an assertion for Caine, whose collapsed
-    // form is itself a card in a different army. The fix is a signature rather
-    // than a special case: refuse when the collapsed name is itself a leader in
-    // the table. It wants its own branch and its own tests.
+    // form is itself a card in a different army.
+    //
+    // The same mechanism is lossy even on the badged path whenever one army
+    // holds two printings: "Lylyth 1" badged Ravens of War answers "Lylyth",
+    // discarding a number the list supplied. Prefer matching the literal name
+    // before falling back to the bare one -- that fixes the lossy cells and the
+    // Caine case together, where refusing on "collapsed form is a real card"
+    // would fix only the latter. It wants its own branch and its own tests.
     //
     // That holds only inside a faction. Across factions the table cannot say
     // what a repeated name means: Khador's Butcher is not Orgoth's, and
