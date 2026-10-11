@@ -139,6 +139,27 @@ describe("findLeader", () => {
     expect(findLeader("Army List\n[Leader] Caine\nStormclad 18\n")?.leader).toBe("Caine");
   });
 
+  it("keeps two Cygnar Caines apart by the number Longshanks gives them", () => {
+    // Longshanks has three records under "caine": a bare Caine in First Army
+    // and a Caine 4 in each of Storm Legion and Gravediggers. First Army fields
+    // a different card, so dropping the number names the wrong one.
+    const list = "Army List\n[Leader] Major Allister Caine\nStormclad 18\n";
+    expect(findLeader(list, "Gravediggers")?.leader).toBe("Caine 4");
+    expect(findLeader(list, "First Army")?.leader).toBe("Caine");
+    // Nothing in the list separates them, so the unbadged answer stays the
+    // character rather than either card.
+    expect(findLeader(list)?.leader).toBe("Caine");
+  });
+
+  it("finds a leader the army table was missing", () => {
+    // Harasheth leads Fane of Nyrro upstream but was absent from our row, so a
+    // list naming him resolved to nothing at all.
+    expect(findLeader("Harasheth, Blade of the Fane\n12 Wraith")).toEqual({
+      leader: "Harasheth",
+      army: "Fane of Nyrro",
+    });
+  });
+
   it("settles the character without guessing which printing", () => {
     // Both Skarres are Blackfleet, so the faction gate above never fires on
     // them: the collapse settles who, and the card title settles which card.

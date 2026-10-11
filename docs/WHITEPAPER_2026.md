@@ -490,7 +490,7 @@ Carried forward from §13 (2024), amended:
 - **The terrain prior** needs a specification that separates terrain from turn order
   (§4.3).
 
-Three cautions specific to this supplement:
+Four cautions specific to this supplement:
 
 - **The 14,400-leaf figure is hand-derived and untested.** It should not enter
   published copy without a test asserting it, in the manner of
@@ -500,11 +500,20 @@ Three cautions specific to this supplement:
   findings.
 - **The army table is known-incomplete, and §8.2's lesson applies to it.** That
   the two retitles needed no additions is a result about two armies, not about
-  the catalogue. One gap is already confirmed: Fane of Nyrro carries four leaders
-  here, and Longshanks records `Harasheth` leading under that badge
-  **[reported]**, which resolves to nothing at all. The table is a working
-  approximation of an authoritative list nobody has transcribed in full, and the
-  collision enumeration in §8.1 is bounded the same way.
+  the catalogue. The sound method arrived late: Longshanks ships its **own
+  catalogue table embedded as JSON inside every event payload**, so our rows can
+  be reconciled against the authoritative list rather than against attendance.
+  Every gap found this cycle — `Harasheth`, and two entire missing armies — was
+  invisible to event-derived scans and visible immediately in that table.
+  `Harasheth` under Fane of Nyrro is now **closed** from that record (id 2592,
+  Dusk, `active=1`) **[reported]**. Two armies remain outstanding and are
+  deliberately not added here: `Covenant of the Flame` (Protectorate) and
+  `Dread Armada` (Cryx).
+- **Retired entries persist upstream behind an `active` flag, and we carry none
+  of them** — checked directly: no Convergence `Locke`, no Mercenaries
+  `Mortenebra`, no `Aurora 1` **[reported]**. Worth stating as a property that
+  was verified rather than assumed, since a table built by transcription could
+  easily have inherited them.
 
 ---
 

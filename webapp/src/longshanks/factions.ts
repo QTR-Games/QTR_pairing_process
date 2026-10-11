@@ -55,10 +55,10 @@ export const ARMIES: ArmyInfo[] = [
   { army: "Devourer's Host", faction: "Circle Orboros", code: "DV", color: "#047857", leaders: ["Iona", "Kromac", "Tanith", "Wurmwood"] },
   { army: "Dragon's Host", faction: "Legion of Everblight", code: "DR", color: "#4338ca", leaders: ["Absylonia", "Anamag", "Kallus", "Thagrosh"] },
   { army: "Exalted", faction: "Skorne", code: "EX", color: "#c2410c", leaders: ["Hexeris", "Mordikaar", "Xekaar", "Zaal"] },
-  { army: "Fane of Nyrro", faction: "Dusk", code: "FN", color: "#7c3aed", leaders: ["Ashmael", "Hysene", "Nymara", "Vorsalys"] },
+  { army: "Fane of Nyrro", faction: "Dusk", code: "FN", color: "#7c3aed", leaders: ["Ashmael", "Harasheth", "Hysene", "Nymara", "Vorsalys"] },
   { army: "Final Interdiction", faction: "Protectorate of Menoth", code: "FI", color: "#b45309", leaders: ["Cyrenia", "Kreoss", "Reznik", "Severius"] },
   { army: "First Army", faction: "Cygnar", code: "FA", color: "#2563eb", leaders: ["Brisbane", "Caine", "Darius", "Kraye"] },
-  { army: "Gravediggers", faction: "Cygnar", code: "GD", color: "#2563eb", leaders: ["Caine", "Cyn", "Hasker", "Jakes", "McCoy", "Sparkhammer", "Vargus"] },
+  { army: "Gravediggers", faction: "Cygnar", code: "GD", color: "#2563eb", leaders: ["Caine 4", "Cyn", "Hasker", "Jakes", "McCoy", "Sparkhammer", "Vargus"] },
   { army: "Grymkin", faction: "Grymkin", code: "GK", color: "#e11d48", leaders: ["Old Witch", "The Child", "The Dreamer", "The Heretic", "The King of Nothing", "The Wanderer"] },
   { army: "House Kallyss", faction: "Dusk", code: "HK", color: "#7c3aed", leaders: ["Hazaroth", "Hellyth", "Morayne", "Scyrafael", "Tyrus"] },
   { army: "Infernals", faction: "Infernals", code: "IN", color: "#9333ea", leaders: ["Agathon", "Omodamos", "Vorgoroth", "Zaateroth"] },
@@ -332,10 +332,14 @@ export function findLeader(
 
   const settle = (pool: Hit[]): { leader: string; army: string } | undefined => {
     const distinct = (p: Hit[]) => new Set(p.map((h) => bare(h.leader))).size;
-    // The same person can lead two armies ("Caine" is in both First Army and
-    // Gravediggers), and the number on a reprint is Longshanks bookkeeping for
-    // one character rather than a second person: still one answer, only the
-    // attribution is uncertain.
+    // The same person can lead two armies ("Sparkhammer" is in both Storm Legion
+    // and Gravediggers, one card legal in each), so a repeated name inside a
+    // faction is still one answer with only the attribution uncertain.
+    //
+    // Caine is the exception that sets the rule's limit: First Army's Caine and
+    // Gravediggers' Caine 4 are different cards. Longshanks distinguishes them
+    // by the number, which is why that number has to survive into the table --
+    // printing() can then refuse to guess instead of naming the wrong card.
     //
     // That holds only inside a faction. A name repeated across factions is a
     // different character who happens to share a short one -- Khador's Butcher
