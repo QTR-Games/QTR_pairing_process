@@ -471,6 +471,29 @@ convention most of the time is worse than one that never does, because it reads
 as reliable right up to the case that matters. The `(name, army)` pair is what
 this table actually supports.
 
+There is a third failure, and this document caught it rather than catalogued it.
+`Sparkhammer` leads Storm Legion and Gravediggers off one card, so his two rows
+should share a code. They do not, because one carries a trailing space:
+
+```
+1347  Sparkhammer  Storm Legion   'sparkhammer '
+2216  Sparkhammer  Gravediggers   'sparkhammer'
+```
+
+Grouping the 204 leader rows by code gives **14** duplicate groups; grouping by
+*trimmed* code gives **15**, and the single group that appears is `sparkhammer`.
+So the defect does not merely sit in the table being untidy — it removes a real
+shared-leader pair from any census taken on the raw field. The enumeration of
+"all 14 duplicate-code groups" earlier in this work was one short for exactly
+that reason, and the shortfall went unnoticed because 14 is what the data
+answers when the question is put carelessly.
+
+The *direction* is what makes this worth separating from the other two, because
+it is the reverse of `caine`'s. `caine` gives two different characters one key;
+`sparkhammer` gives one character two keys. A normaliser repairs the second and
+is powerless against the first, so a pipeline that trims and then trusts the
+result is strictly more confident without being any more correct.
+
 A smaller caution in the same vein: one of the five confirmed collisions avoids a
 code clash only through a typo. `Khythos` is `kythos` under Cryx and `khythos`
 under Mercenaries, so an analysis keyed on code treats them as distinct — and
@@ -615,9 +638,14 @@ hand. The signature of a migration — a shared code with one row retired and on
 active — was sitting in the table throughout. What was missing was not evidence
 but the question: *are these two rows one person?*
 
-**The same failure recurred in a second, more mundane form, three times in one
-working session, in three different hands.** Each time a count was reported that
-described the rows someone had met rather than the rows that exist:
+**The same failure has a second, more mundane form.** The instances below were
+all collected while writing this document, which bounds what they can be used
+for: they establish that the error is easy, varied, and survives scrutiny, and
+they establish nothing whatever about how often it happens. A ledger assembled
+from a single piece of work cannot support a frequency, and claiming one would
+commit, in the act of recording the mistake, the mistake being recorded. Each
+entry is a count that described the rows someone had met rather than the rows
+that exist:
 
 | claim | actually | what was measured |
 |---|---|---|
@@ -630,9 +658,9 @@ record was already in the repository and the full scan cost a single command;
 what was reported was the sample, and the sample was mistaken for the
 population. That is the same error as reading a strategy off five rounds
 (§6.4) or a roster off one event's attendance (§9), with the excuse removed —
-there was no acquisition cost to plead. It is the cheapest failure in this
-document to commit and the cheapest to prevent, which is presumably why it
-survived three times.
+there was no acquisition cost to plead. What the set supports is that this
+failure is cheap to commit, cheap to prevent, and perfectly capable of
+surviving in hands that are actively looking for it.
 
 A fourth belongs with them but is a different species, and it is the only one
 whose *detection* is instructive:
@@ -652,9 +680,16 @@ data. The correct subtraction is $200-186=14$.
 > **A wrong number in prose is inert. The moment someone computes with it, it
 > either reconciles or it does not.**
 
-A fifth instance is worth recording because its source was closest to hand.
-Two justifications in `factions.ts` and its tests were left describing a world
-the fix in this very branch had removed. A test named *treats one person shared
+A fifth belongs to neither kind above, and the distinction is practical rather
+than taxonomic. The first four are claims that were never true of the
+population, and a measurement excludes them — which is exactly what the
+reconciliation test of §9 does. This one was true when it was written and
+*stopped* being true, and no test either repository could write would catch it,
+because there is no assertion for *is this still the reason*.
+
+Its source was also the closest to hand. Two justifications in `factions.ts`
+and its tests were left describing a world the fix in this very branch had
+removed. A test named *treats one person shared
 by two armies as a single answer* illustrated that rule with `Caine` — the one
 character in the table for whom it is false, and false **because of a commit two
 steps earlier in this PR**, which split Gravediggers' `Caine 4` from First
@@ -671,8 +706,9 @@ direction — **a correction propagates to wherever its premise was used, not to
 where it was found** — demonstrated here against our own work, by nobody
 re-reading the comments our own rename had invalidated.
 
-That is the one detection result in this section, and it argues for a specific
-practice: put figures into checksums rather than into sentences. A quoted
+That is the one *detection* result among the five — it belongs to the
+mislabelled count above, not to the stale premises just described — and it
+argues for a specific practice: put figures into checksums rather than into sentences. A quoted
 number is believed indefinitely; a number that participates in an equation is
 tested every time the equation is evaluated. The reconciliation test of §9 is
 that principle at its limit — every figure in it is computed on each run, so
@@ -793,11 +829,17 @@ Four cautions specific to this supplement:
 
   Five factions, non-contiguous ids, clean neighbours throughout — sporadic
   entry noise rather than one bad import, so there is no structural reason to
-  expect the next payload stops at six. None of it is actionable here: we key
-  on `(name, army)`, the `name` column is clean apart from 1226, and every one
-  of these rows resolves correctly today. It matters only as a bound on anyone
-  who later keys on `code`, where trimming becomes mandatory — and trimming
-  *silently* is how `kythos` and `khythos` become one key (§8.1).
+  expect the next payload stops at six. None of it changes a resolution today:
+  we key on `(name, army)`, the `name` column is clean apart from 1226, and
+  every one of these rows resolves correctly.
+
+  It is not, however, inert. Grouping the leader rows by raw code finds 14
+  duplicate groups; by trimmed code, 15. The difference is `Sparkhammer`, whose
+  two rows are one character (§8.1). The defect is invisible to resolution and
+  visible to counting, which is why it perturbed a figure in this document and
+  no behaviour in the application. Anyone keying on `code` must therefore trim
+  — while noting that trimming is a different normalisation from repairing a
+  misspelling, and it is the latter that would merge `kythos` with `khythos`.
 
 
   misfiled by faction, no leader is **invented** that upstream lacks, and none
