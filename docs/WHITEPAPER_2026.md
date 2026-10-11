@@ -375,9 +375,13 @@ account for the anomalies one-for-one:
 | Gunnbjorn | Southern Kriels *Kithguard* / Trollbloods *United Kriels* | shared leader |
 
 A fifth anomaly is a different mechanism — `Reznik` is a **prefix** of `Reznikova`,
-so an unanchored substring match silently rewrites one caster as another. Three
-further prefix hazards are latent in the catalogue: `Iona` ⊂ `Fiona`,
-`Grim` ⊂ `Grimtusk`, and `Lylyth` ⊂ `Lylyth 1`/`Lylyth 3`.
+so an unanchored substring match silently rewrites one caster as another. Scanning
+the catalogue for containments under our *actual* word-anchored matching, rather
+than naive substring, finds **exactly two cross-faction prefix hazards**:
+`Reznik` ⊂ `Reznikova` and `Grim` ⊂ `Grimtusk` — the latter live in this event.
+Apparent hazards like `Iona` ⊂ `Fiona` are artefacts of the naive scan and cannot
+fire against a word-anchored matcher, and `Lylyth` ⊂ `Lylyth 1` is confined to a
+single faction, where it is a printing ambiguity rather than a faction one.
 
 **The rule that follows: never infer faction from leader.** The badge names the army
 or its parent faction and is stable; the leader is then searched *within that scope*,
@@ -393,6 +397,17 @@ factions**, each with their own armies, and must not be merged as synonyms despi
 sharing Gunnbjorn. And Longshanks' `Unlimited` is a catch-all whose "leaders" are
 faction names rather than models; it is excluded from leader work deliberately.
 
+Leader names are **not unique even within one faction**. Cygnar alone carries
+`Caine` three times across First Army, Gravediggers and Storm Legion, plus `Jakes`
+and `Sparkhammer` twice each; Khador has `Sorscha` and `Kovoskiy` doubled, Cryx
+`Skarre`, Legion `Lylyth`, Southern Kriels `Bagadibawm`. Only the badge separates
+them. The resolver therefore returns the **unnumbered** form where the printing is
+undetermined rather than guessing one — answering `Caine`, never `Caine 4`, unless
+a card title says which. The broader lesson is that a matcher which *writes* a
+canonical name back into a record destroys evidence, so the write path warrants a
+higher bar than the read path: a mis-resolved faction is recoverable from the
+badge, an overwritten caster name is not.
+
 ### 8.2 Two armies were renamed, not added
 
 Two badge titles — `Wicked Harvest` and `Clockwork Legions` — appear in WTC 2026 and
@@ -400,18 +415,44 @@ are absent from both catalogues, which broke leader inference for the players
 carrying them. Before this event there are no game rows to read a leader from, so an
 unrecognised army leaves the only available route blocked.
 
-Transcribing the casters observed at one event would have baked in a partial roster.
-The subset test shows it is unnecessary:
+Transcribing the casters observed at one event would bake in a partial roster, so
+the question is whether these are **new armies** or **retitled existing ones**. A
+subset test against the casters fielded in 2026 found every one already present —
+five of five for Wicked Harvest under Grymkin, four of four for Clockwork Legions
+under Convergence of Cyriss — which appeared to settle it as a pure rename.
 
-| new title | casters observed | already in our catalogue | novel |
-|---|---:|---:|---:|
-| Wicked Harvest | 5 | 5 (Grymkin) | **0** |
-| Clockwork Legions | 4 | 4 (Convergence of Cyriss) | **0** |
+**That inference was wrong, and the way it was wrong is the point.** A test drawn
+from one event's attendance cannot distinguish a retitle from a retitle *with
+additions*: a caster nobody brought is invisible to it. Official card lists,
+obtained after the test, split the two cases:
 
-Nine of nine, with no unrecognised caster. These are **renames of existing armies**,
-so the names are now aliased onto the existing entries — which inherits the complete
-roster, including casters nobody fielded in 2026, and invents nothing. The fix and
-its regression tests ship with this document.
+| new title | existing entry | official roster | ours | verdict |
+|---|---|---:|---:|---|
+| Wicked Harvest | Grymkin | 6 | 6 | pure alias |
+| Clockwork Legions | Convergence of Cyriss | 7 | 6 | alias **+ one missing caster** |
+
+Wicked Harvest is confirmed — all six resolve, including *Zevanna Agha, The Fate
+Keeper* through the existing legacy alias `Old Witch`. Clockwork Legions is not:
+the catalogue is short **Aurum Lucanum Athanor Locke**, and aliasing alone would
+leave it short.
+
+The alias ships with this document because it is correct and independently
+necessary. The missing caster does not, for the reason §8.1 exists: our leader
+strings are deliberately *Longshanks' strings*, typos included, so that a leader
+parsed from an army list and one parsed from a game row dedupe. Writing the card
+title into the table without knowing what Longshanks prints risks creating two
+leaders where there is one. The entry is pending that confirmation, and will land
+with a regression test resolving him to Convergence.
+
+Two observations survive the correction. First, **the generalisable rule is to
+test against an authoritative roster rather than an observed one** — attendance
+is a biased sample of a catalogue, and no amount of it establishes completeness.
+Second, the gap was invisible to every check either side ran *because* nobody
+fielded him, which makes it a latent collision rather than a live defect: our
+catalogue already contains a leader named `Locke` under Crucible Guard, and that
+name is a **suffix** of the missing one. Badge scoping (§8.1) prevents it from
+ever mis-resolving on the normal path; the collision is reachable only where no
+badge is available. The rule holds. The roster did not.
 
 ---
 
@@ -462,7 +503,7 @@ Two cautions specific to this supplement:
 | Same-faction hedge explains the partition | **rejected** | expected 0.93 vs observed 1 **[reported]** |
 | Variance minimisation explains the singleton | **rejected** | flattest player was blocked, not seated |
 | Faction inferable from leader name | **refuted** | 4 cross-faction collisions enumerated |
-| `Wicked Harvest` / `Clockwork Legions` are new armies | **refuted** | 9/9 casters already catalogued; renames |
+| `Wicked Harvest` / `Clockwork Legions` are new armies | **refuted** | retitles, not additions; Clockwork Legions short one caster, §8.2 |
 
 ---
 
