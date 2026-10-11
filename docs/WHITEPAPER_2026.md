@@ -1000,15 +1000,29 @@ Four cautions specific to this supplement:
   her a second home, and because `printing()`'s last resort returns
   `pool[0].army` she now resolves to `Covenant of the Flame`, which wins only
   because it sorts earlier. `Malekus` and `Thyra` moved the same way, for the
-  same reason, in the same commit.
+  same reason, in the same commit — and so did `Aiakos`, by way of the other
+  army that commit added, `Dread Armada`, which shares him with `Blackfleet`.
 
-  The army addition was still correct and would be made again: before it, a
+  The measurement worth publishing is not the list of names, which goes stale,
+  but the size of the set the proposed guard would pin: **the leaders whose
+  armyless resolution is ambiguous went from six to ten in this PR**, while the
+  **cross-faction set was unchanged at five**. Two new armies therefore produced
+  **zero new refusals and four new silent guesses**.
+
+  That split is structural rather than a quirk of this commit. A new army is
+  usually another printing of an existing faction's roster, so the names it
+  repeats collide *within* a faction — the side with no gate. The guarded path
+  rarely gains members; the quiet path absorbs nearly all catalogue growth, so
+  the ratio degrades with every upstream release, and the number that grows is
+  the one nothing reports.
+
+  The army additions were still correct and would be made again: before them, a
   Covenant player's Feora was attributed to the Temple Guardians printing with
-  no error raised, and one silently-wrong answer removed is worth three
-  arbitrary-but-plausible ones created. What is worth recording is that the
+  no error raised, and one silently-wrong answer removed is worth an
+  arbitrary-but-plausible one created. What is worth recording is that the
   change was **invisible** — every test stayed green, the counts did not move,
   and nothing in the suite asserts anything about the armyless path for these
-  three. Reconciliation checks that we carry what upstream carries; it says
+  four. Reconciliation checks that we carry what upstream carries; it says
   nothing about a row appearing and changing the answer for a row that did not
   move.
 
@@ -1017,8 +1031,12 @@ Four cautions specific to this supplement:
   armyless path, so a future catalogue refresh that creates a new ambiguity
   fails rather than passes quietly — the same shape as the §8.1 fix, since both
   are about the fallback asserting where it should decline. That guard would
-  have failed on the commit that added `Covenant of the Flame`, because three
-  leaders joined the ambiguous set.
+  have failed on the commit that added the two missing armies, because four
+  leaders joined the ambiguous set — and an equivalent guard has since been
+  shown to fail, on exactly its four newly-ambiguous leaders, against a second
+  catalogue maintained independently of ours. **[reported]** It is the only
+  measure proposed here that would have caught the change as it happened rather
+  than described it afterwards.
 
   The trap is the obvious remedy. The tie-break is `pool[0]`, i.e. array order,
   and `ARMIES` is alphabetically sorted today — verified, all 42 entries — so
