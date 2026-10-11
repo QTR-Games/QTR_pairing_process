@@ -252,9 +252,15 @@ export function HomeMenu({
       </details>
 
       <details className="home-item">
-        <summary>Back up and restore</summary>
+        <summary>Import a tournament</summary>
         <div className="home-body">
           <LongshanksImport onImported={onRestored} />
+        </div>
+      </details>
+
+      <details className="home-item">
+        <summary>Back up and restore</summary>
+        <div className="home-body">
           <BoardBackup onRestored={onRestored} />
         </div>
       </details>
