@@ -1012,16 +1012,38 @@ Four cautions specific to this supplement:
   nothing about a row appearing and changing the answer for a row that did not
   move.
 
-  Two notes for whoever takes the resolver work. The real protection is a guard
-  that pins *which* leaders are ambiguous on the armyless path, so a future
-  catalogue refresh that creates a new ambiguity fails rather than passes
-  quietly — the same shape as the §8.1 fix, since both are about the fallback
-  asserting where it should decline. And the tie-break is `pool[0]`, i.e. array
-  order; `ARMIES` happens to be alphabetically sorted today — verified, all 42
-  entries — but that is a maintenance convention rather than something the code
-  enforces, so appending a new army out of order would change the tie-break
-  silently. Asserting the sort costs two lines and converts the convention into
-  a guarantee.
+  Two notes for whoever takes the resolver work, the second of which is a trap.
+  The real protection is a guard that pins *which* leaders are ambiguous on the
+  armyless path, so a future catalogue refresh that creates a new ambiguity
+  fails rather than passes quietly — the same shape as the §8.1 fix, since both
+  are about the fallback asserting where it should decline. That guard would
+  have failed on the commit that added `Covenant of the Flame`, because three
+  leaders joined the ambiguous set.
+
+  The trap is the obvious remedy. The tie-break is `pool[0]`, i.e. array order,
+  and `ARMIES` is alphabetically sorted today — verified, all 42 entries — so
+  the natural proposal is to assert the sort and convert a convention into a
+  guarantee. **That assertion neither detects nor prevents this hazard; it
+  mandates it.** Measured by moving `Covenant of the Flame` to the end of the
+  array and changing nothing else: `Feora`, `Malekus` and `Thyra` all stay at
+  Temple Guardians, and the other repeated names do not move at all. The three
+  attributions shifted *because* the new army was inserted in sorted position.
+  A sort assertion would have passed before that commit and after it, reporting
+  nothing, while requiring the insertion discipline that caused it — under an
+  enforced alphabetical rule, every future army sorting before an existing one
+  silently re-points any leader the two share.
+
+  What preserves existing answers is not *principled* order but *append-only*
+  order, where nothing can displace an incumbent `pool[0]`. Those are different
+  goods and they point opposite ways here: stateable and stable are not the
+  same property. Nor is append-only a fix, which is the second half of the
+  trap — under it a Covenant player's unbadged `Feora` returns Temple Guardians,
+  which is precisely the silently-wrong attribution that adding the army
+  removed. Append-only buys stability by freezing whichever attribution
+  arrived first, right or wrong. Neither ordering rule has anything to say
+  about which answer is correct, because the fallback's defect is that it
+  answers at all. Only the ambiguous-set guard addresses that, which is why it
+  is the one recommendation here.
 - **A retired row is not a dead record; it is a record of a previous state.**
   Four entries upstream carry `active=0`, and the instinct is to treat them as
   one class of debris. They are not — they are four different relationships to
