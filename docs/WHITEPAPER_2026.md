@@ -572,6 +572,30 @@ the two armies, so in every case there is simply no answer to give. The gate
 therefore keys on the faction being ambiguous, and needs no claim about who the
 candidates are.
 
+Enumerating the complete class confirms it end to end. Deriving every leader name
+that appears in more than one army directly from the table — rather than
+hand-listing the pairs the tests happen to cover — gives 15 repeated names, 5 of
+them spanning two factions. **All five refuse when no badge is present**, and all
+five resolve correctly when badged with either army. The five are `Butcher`,
+`Gunnbjorn`, `Khythos`, `Rahera` and `Lylyth`, and the last is worth noting: it
+is the collision §8.1 introduced as the one neither inventory had, and it is also
+the one most easily missed when the class is listed by hand rather than derived,
+because its rows carry printing numbers and never match as literal strings.
+
+The ten remaining names repeat *within* a faction, where the collapse is by
+design — but the answer still carries an army, and with no badge, or a badge
+naming only the faction, that army is simply the first matching row in table
+order. `settle()` is candid that only the attribution is uncertain. Nothing
+downstream preserves that caveat: `parse.ts` assigns `declared?.army ?? found?.army
+?? armyInfo(armyHint)?.army` to the list's army of record, so an inferred army
+outranks even the faction the badge actually stated. For nine of the ten this
+names the right caster in an arbitrary one of their two armies; for the tenth,
+`Caine`, it names the wrong caster outright, as below. The uncertainty is real,
+documented in the resolver, and unrepresentable in the value the resolver
+returns — which is a type problem rather than a logic one, and is recorded here
+because it bounds how much weight a downstream consumer should put on an
+unbadged army.
+
 Two caveats worth preserving. **Southern Kriels and Trollbloods are distinct
 factions**, each with their own armies, and must not be merged as synonyms despite
 sharing Gunnbjorn. And Longshanks' `Unlimited` is a catch-all whose "leaders" are
@@ -587,18 +611,42 @@ title says which.
 
 That is a safe widening in every case but one, and the exception is a live defect
 rather than a hypothetical. It is safe for `Skarre`: no bare `Skarre` row exists,
-so the collapsed form names a real caster with the printing left open, and a list
-reading `Skarre 1, Pirate Queen` recovers `Skarre 1` from the title. It is **not**
-safe for `Caine`, because there the collapsed form is itself a card — row 1388,
-First Army — so the fallback stops widening and starts asserting. Measured on this
-branch:
+so the collapsed form names a real caster, and a list reading `Skarre 1, Pirate
+Queen` recovers `Skarre 1` from the title. It is **not** safe for `Caine`,
+because there the collapsed form is itself a card — row 1388, First Army — so the
+fallback stops widening and starts asserting. Measured on this branch:
 
 ```
-"Caine 4"   no badge              -> Caine @ First Army        wrong caster, wrong army
-"Caine 4"   badge "Cygnar"        -> Caine @ First Army        wrong caster, wrong army
-"Caine 4"   badge "Gravediggers"  -> Caine 4 @ Gravediggers    correct
-"Skarre 1"  no badge              -> Skarre @ Blackfleet       correct, printing open
+"Caine 4"   no badge                 -> Caine @ First Army        wrong caster, wrong army
+"Caine 4"   badge "Cygnar"           -> Caine @ First Army        wrong caster, wrong army
+"Caine 4"   badge "Gravediggers"     -> Caine 4 @ Gravediggers    correct
+"Skarre 1"  no badge                 -> Skarre @ Blackfleet       right caster, printing dropped
+"Lylyth 1"  badge "Ravens of War"    -> Lylyth @ Ravens of War    right caster, printing dropped
 ```
+
+The last two rows matter more than they look, and they correct the sentence
+above. The fallback does not only fire where the printing is *undetermined* — it
+fires wherever the badged army holds two printings of one character, **including
+when the list text names the printing explicitly.** `Lylyth 1` and `Lylyth 3` are
+both Ravens of War, so a list saying `Lylyth 1` is answered `Lylyth`; the number
+the reader supplied is discarded. `Caine 4` badged Gravediggers survives only
+because Gravediggers holds a single `caine` printing and the pool never widens.
+
+So this is one mechanism at two severities, not two defects. Enumerating every
+repeated leader name in the table and every badge for each gives 32 army-badged
+cells: **30 return exactly what the list named, 4 of the remaining comparisons
+drop a named printing** (`Skarre 1`, `Skarre 3`, `Lylyth 1`, `Lylyth 3`), and the
+severe case — wrong caster *and* wrong army — appears only off the army-badged
+path, where `Caine 4` resolves to `Caine @ First Army`.
+
+That changes the fix. Refusing when the collapsed form is itself a card addresses
+the severe case alone and leaves the four lossy cells. **Matching the literal
+name before falling back to the bare one addresses both**, because `Lylyth 1`
+then matches `Lylyth 1` and `Caine 4` matches `Caine 4`, and neither pool ever
+widens far enough to need a tie-break. A second, independently written resolver
+over the same catalogue does exactly this, and **[reported]** does not exhibit
+the severe case at all — which is evidence that the ordering, rather than the
+catalogue, is what produces it.
 
 The faction-badged row is not a contrived input. The scoping note above records
 that Longshanks titles the badge with an army for some players and with the parent
@@ -942,6 +990,38 @@ Four cautions specific to this supplement:
   refresh the fixture and reconcile against it — **never** to widen the
   exception list, which would convert the only check that can see a missing
   record back into one that cannot.
+
+  There is a second kind of drift the reconciliation cannot see, and this PR
+  committed it. **Adding an army can silently re-point an existing leader's
+  armyless resolution.** Before `Covenant of the Flame` was added, `Feora`
+  appeared in exactly one army, so a list naming her with no badge — or a badge
+  reading only `Protectorate of Menoth` — resolved to Temple Guardians
+  unambiguously. That was a certainty, not a guess. Adding the missing army gave
+  her a second home, and because `printing()`'s last resort returns
+  `pool[0].army` she now resolves to `Covenant of the Flame`, which wins only
+  because it sorts earlier. `Malekus` and `Thyra` moved the same way, for the
+  same reason, in the same commit.
+
+  The army addition was still correct and would be made again: before it, a
+  Covenant player's Feora was attributed to the Temple Guardians printing with
+  no error raised, and one silently-wrong answer removed is worth three
+  arbitrary-but-plausible ones created. What is worth recording is that the
+  change was **invisible** — every test stayed green, the counts did not move,
+  and nothing in the suite asserts anything about the armyless path for these
+  three. Reconciliation checks that we carry what upstream carries; it says
+  nothing about a row appearing and changing the answer for a row that did not
+  move.
+
+  Two notes for whoever takes the resolver work. The real protection is a guard
+  that pins *which* leaders are ambiguous on the armyless path, so a future
+  catalogue refresh that creates a new ambiguity fails rather than passes
+  quietly — the same shape as the §8.1 fix, since both are about the fallback
+  asserting where it should decline. And the tie-break is `pool[0]`, i.e. array
+  order; `ARMIES` happens to be alphabetically sorted today — verified, all 42
+  entries — but that is a maintenance convention rather than something the code
+  enforces, so appending a new army out of order would change the tie-break
+  silently. Asserting the sort costs two lines and converts the convention into
+  a guarantee.
 - **A retired row is not a dead record; it is a record of a previous state.**
   Four entries upstream carry `active=0`, and the instinct is to treat them as
   one class of debris. They are not — they are four different relationships to
