@@ -581,9 +581,44 @@ Leader names are **not unique even within one faction**. Cygnar alone carries
 `Caine` three times across First Army, Gravediggers and Storm Legion, plus `Jakes`
 and `Sparkhammer` twice each; Khador has `Sorscha` and `Kovoskiy` doubled, Cryx
 `Skarre`, Legion `Lylyth`, Southern Kriels `Bagadibawm`. Only the badge separates
-them. The resolver therefore returns the **unnumbered** form where the printing is
-undetermined rather than guessing one — answering `Caine`, never `Caine 4`, unless
-a card title says which. The broader lesson is that a matcher which *writes* a
+them. Where the printing is undetermined the resolver returns the **unnumbered**
+form rather than guessing one — answering `Caine`, never `Caine 4`, unless a card
+title says which.
+
+That is a safe widening in every case but one, and the exception is a live defect
+rather than a hypothetical. It is safe for `Skarre`: no bare `Skarre` row exists,
+so the collapsed form names a real caster with the printing left open, and a list
+reading `Skarre 1, Pirate Queen` recovers `Skarre 1` from the title. It is **not**
+safe for `Caine`, because there the collapsed form is itself a card — row 1388,
+First Army — so the fallback stops widening and starts asserting. Measured on this
+branch:
+
+```
+"Caine 4"   no badge              -> Caine @ First Army        wrong caster, wrong army
+"Caine 4"   badge "Cygnar"        -> Caine @ First Army        wrong caster, wrong army
+"Caine 4"   badge "Gravediggers"  -> Caine 4 @ Gravediggers    correct
+"Skarre 1"  no badge              -> Skarre @ Blackfleet       correct, printing open
+```
+
+The faction-badged row is not a contrived input. The scoping note above records
+that Longshanks titles the badge with an army for some players and with the parent
+faction for others, and that a faction badge deliberately widens to every army
+beneath it — so a Cygnar-badged `Caine 4` list takes exactly that path, and lands
+on the one answer this document argues hardest against: a confident wrong one
+where a blank was available.
+
+It is **pre-existing and is not fixed here.** It predates this work; the
+army-badged row above is the part this branch repaired, and a behavioural change
+to the resolver wants its own branch and its own tests rather than a late commit
+on a branch whose remaining purpose is documentation. It is recorded because the
+alternative was to leave this paragraph describing a refusal the code does not
+perform — which is precisely the failure §8.2 closes on, and which had already
+been committed twice in this branch before being caught here a third time. The
+shape of the fix is a signature rather than a `Caine` special case: refuse in that
+fallback when the collapsed name is itself a leader somewhere in the table, which
+keeps `Skarre` and refuses `Caine`.
+
+The broader lesson is that a matcher which *writes* a
 canonical name back into a record destroys evidence, so the write path warrants a
 higher bar than the read path: a mis-resolved faction is recoverable from the
 badge, an overwritten caster name is not.
