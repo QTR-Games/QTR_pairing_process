@@ -165,7 +165,14 @@ const ALIASES: Record<string, string[]> = {
  *
  * The number distinguishes reprints of one character ("Caine 4" is a later
  * Caine, printed into both Storm Legion and Gravediggers) and is Longshanks
- * bookkeeping, so it never appears in a list.
+ * bookkeeping, so it is not what a list calls the model -- a list writes
+ * "Major Allister Caine" and leaves the printing to be worked out.
+ *
+ * Not quite never, though, and the difference matters: captions and exports do
+ * sometimes carry the Longshanks name verbatim, number included. Treating that
+ * as impossible is what let collapsing run ahead of comparing literals. See
+ * {@link findLeader}'s literalFirst, which looks for the full name first and
+ * only falls back to this.
  */
 function bare(leader: string): string {
   return leader.replace(/\s+\d+$/, "");
@@ -233,9 +240,18 @@ function unpriced(listText: string): string {
  * distinguishing part is stored: enough to tell the printings apart, and short
  * enough not to break when someone's export punctuates differently.
  *
- * Only characters whose printings share one army need an entry. A number that is
- * unique within its army ("Caine 4" is the only Caine in Storm Legion) is
- * already unambiguous.
+ * An entry is needed wherever two printings of one character can reach
+ * {@link printing} together without the list having named either in full --
+ * which in practice means an army holding two of them, since the badge cannot
+ * separate what one army contains.
+ *
+ * It does NOT follow that a number unique within its army can be left out
+ * because it is "already unambiguous". That was the rule here, and the premise
+ * was true while the inference was not: matching collapses the number before
+ * comparing, so "Caine 4" being the only Caine in Storm Legion said nothing
+ * about what happened to a list that named it without a badge. What makes
+ * "Caine 4" safe without an entry is {@link literalFirst} -- the list naming a
+ * printing outright wins -- not its uniqueness within an army.
  */
 const TITLES: Record<string, string[]> = {
   "Lylyth 1": ["Herald of Everblight"],
@@ -311,7 +327,6 @@ export function findLeader(
 
   type Hit = (typeof hits)[number];
 
-  /** The leader among these hits, or nothing when they cannot be told apart. */
   /**
    * Which printing of a character the list is running.
    *
@@ -320,6 +335,17 @@ export function findLeader(
    * the answer is the character without a number, which is what a captain
    * reading the board wants anyway. Guessing a printing would put a specific
    * claim on screen that nothing in the list supports.
+   *
+   * That argument only holds while the collapsed name is not itself a card, and
+   * it used to be applied where it was not: a list saying "Caine 4" fell to
+   * here and was answered "Caine", which is a different Cygnar warcaster rather
+   * than a vaguer description of the same one. {@link literalFirst} now settles
+   * those before they arrive. Measured over every leader in the table under
+   * every true badge, exactly two calls still reach this line -- "Skarre"
+   * standing for Skarre 1 or Skarre 3, and "Lylyth" standing for Lylyth 1 or
+   * Lylyth 3 within Ravens of War -- and both are the widening the docblock
+   * describes, naming a real character and leaving the card open. Neither army
+   * holds a bare row of its own, so neither answer can be mistaken for one.
    */
   const printing = (hit: Hit, pool: Hit[]): { leader: string; army: string } => {
     const same = pool.filter((h) => bare(h.leader) === bare(hit.leader));
@@ -333,7 +359,58 @@ export function findLeader(
     return { leader: bare(hit.leader), army: hit.army };
   };
 
-  const settle = (pool: Hit[]): { leader: string; army: string } | undefined => {
+  /**
+   * Did the list write this leader's Longshanks name in full, number and all?
+   *
+   * Almost always no, because the number is bookkeeping -- but "almost" is
+   * where the damage was. Exports and hand-typed captions do sometimes carry
+   * it, and when they do it is the most specific thing the list says.
+   */
+  const spoken = (hit: Hit) => mentions(listText, hit.leader);
+
+  /**
+   * The hits that survive once the list's own words are allowed to choose.
+   *
+   * {@link needles} searches for the collapsed name, so "Caine 4" is hunted as
+   * "Caine" and a list that said "Caine 4" is answered as though it had not.
+   * That is harmless where collapsing merely widens the field, and wrong in two
+   * ways where the collapsed form is itself a card: it can name a different
+   * character ("Caine 4" answered as First Army's Caine), and it can pool one
+   * army's printings with another faction's bare card until the cross-faction
+   * gate refuses a stem nobody typed ("Lylyth 1" answered as nothing at all).
+   *
+   * So where the list names a printing outright, that printing wins. Two bounds
+   * keep this from reaching further than the problem:
+   *
+   * Only within one collapsed name. A hit is compared against the printings of
+   * the same character, never against other leaders, so a list naming one
+   * caster in full does not silence another matched through an alias -- the
+   * Grand Melee ordering below still sees both.
+   *
+   * And only after the badge has been applied. {@link mentions} is open on the
+   * right, so a plain "Caine" is spoken by a list that says "Caine 4" but not
+   * the reverse: a list reading "Major Allister Caine" speaks only the bare
+   * card. Run before the hint, that would delete Storm Legion's Caine 4 from a
+   * list badged Storm Legion. Run after, the hint has already chosen the army
+   * and the only question left is which of its printings the list named.
+   *
+   * The strict-prefix step is the same shadowing {@link findLeader} does on
+   * collapsed names, applied here to the literals: "Lylyth" is spoken by a list
+   * that says "Lylyth 1", and the longer name is the one the list means.
+   */
+  const literalFirst = (pool: Hit[]): Hit[] => {
+    const named = pool.filter(spoken).map((h) => h.leader);
+    if (!named.length) return pool;
+    return pool.filter((h) => {
+      const rivals = named.filter((n) => bare(n) === bare(h.leader));
+      if (!rivals.length) return true;
+      return spoken(h) && !rivals.some((n) => n !== h.leader && n.startsWith(h.leader));
+    });
+  };
+
+  /** The leader among these hits, or nothing when they cannot be told apart. */
+  const settle = (candidates: Hit[]): { leader: string; army: string } | undefined => {
+    const pool = literalFirst(candidates);
     const distinct = (p: Hit[]) => new Set(p.map((h) => bare(h.leader))).size;
     // The same person can lead two armies ("Sparkhammer" is in both Storm Legion
     // and Gravediggers, one card legal in each), so a repeated name inside a
@@ -344,30 +421,34 @@ export function findLeader(
     // by the number, which is why that number has to survive into the table --
     // it is what lets an army-badged list resolve Caine 4 correctly.
     //
-    // KNOWN DEFECT, pre-existing and deliberately not fixed here: with no badge,
-    // or with one naming only the faction, a list containing "Caine 4" still
-    // resolves to Caine @ First Army. "Caine 4" also matches the bare "Caine"
-    // row as a prefix, and prefix-shadowing cannot drop it because bare() makes
-    // the two equal, so both survive into the pool; printing() then finds two
-    // distinct literal names, no matching title, and falls back to
-    // bare(hit.leader) with pool[0].army. That fallback is a widening for
-    // Skarre -- no bare "Skarre" row exists, so it names a real caster and
-    // leaves the printing open -- but an assertion for Caine, whose collapsed
-    // form is itself a card in a different army.
+    // FIXED, and recorded because the shape of it is instructive: a list
+    // containing "Caine 4" used to resolve to Caine @ First Army with no badge
+    // or a faction-only one. Collapsing ran before the literals were compared,
+    // so "Caine 4" matched the bare "Caine" row as a prefix, prefix-shadowing
+    // could not drop it because bare() made the two equal, and printing() fell
+    // back to the collapsed name -- which for Caine is itself a card in another
+    // army. The same ordering produced the opposite symptom too: unbadged
+    // "Lylyth 1" and "Lylyth 3" resolved to nothing at all, each appearing in
+    // exactly one army, because collapsing pooled them with Khymaera's bare
+    // Lylyth and the cross-faction gate below then refused a stem the player
+    // never typed. One wrong answer and one refusal from one cause, which is
+    // why {@link literalFirst} fixes both and a narrower rule -- refuse when
+    // the collapsed form is a real card -- would have fixed only the first.
     //
-    // The same mechanism is lossy even on the badged path whenever one army
-    // holds two printings: "Lylyth 1" badged Ravens of War answers "Lylyth",
-    // discarding a number the list supplied. It also has an opposite symptom,
-    // a refusal where nothing is ambiguous: unbadged "Lylyth 1" and "Lylyth 3"
-    // resolve to nothing at all, though each appears in exactly one army,
-    // because collapsing to "Lylyth" widens the pool across two factions and
-    // the cross-faction gate below then correctly refuses a stem the player
-    // never typed. Prefer matching the literal name before falling back to the
-    // bare one -- that fixes the lossy cells, the Caine case and both false
-    // refusals together, where refusing on "collapsed form is a real card"
-    // would fix only the Caine case. One deliberate consequence: bare "Lylyth"
-    // would then match Shadowflame Shard's real row instead of refusing.
-    // It wants its own branch and its own tests.
+    // DELIBERATE COST of that fix, chosen rather than incurred: a bare "Lylyth"
+    // with no badge now answers Lylyth @ Shadowflame Shard instead of refusing.
+    // Legion players who write the name without its number get Khymaera's
+    // caster, confidently. Taken because the bare literal is a real row naming
+    // a distinct character, so reading it at face value is defensible, and
+    // because a false refusal on a determinate "Lylyth 1" is the worse failure
+    // of the two -- it loses information the list actually supplied. A badge
+    // still settles it either way.
+    //
+    // STILL OPEN, and out of scope here because the return type cannot express
+    // it: where one character leads two armies of one faction, the army is
+    // whichever the table reached first. "Caine 4" unbadged now names the right
+    // character and an arbitrary one of Gravediggers or Storm Legion. Fixing
+    // that needs a way to say "army uncertain" rather than a better guess.
     //
     // That holds only inside a faction. Across factions the table cannot say
     // what a repeated name means: Khador's Butcher is not Orgoth's, and

@@ -147,16 +147,81 @@ describe("findLeader", () => {
     expect(findLeader(list, "Orgoth")?.army).toBe("Sea Raiders");
   });
 
-  it("refuses a name that collides only once numbering is stripped", () => {
-    // Legion carries "Lylyth 1"/"Lylyth 3", Khymaera a bare "Lylyth". The
-    // literal strings never match, so a scan for repeated names misses this
-    // entirely; it only collides after the reprint number is stripped.
-    // Whether these are one character or two is not ruled on, and the refusal
-    // does not depend on it: the badge is what settles the army either way.
+  it("takes a bare name at face value where it is a card in its own right", () => {
+    // THE DELIBERATE COST of matching literals before collapsing, recorded as a
+    // decision rather than discovered as a side effect.
+    //
+    // Legion carries "Lylyth 1"/"Lylyth 3", Khymaera a bare "Lylyth". This used
+    // to refuse: the literal strings never match each other, so only after the
+    // reprint number was stripped did the three collide, across two factions,
+    // and the cross-faction gate declined. Now the list's own word wins --
+    // "Lylyth" is a real row naming a distinct character -- so a Legion player
+    // who omits the number gets Khymaera's caster, confidently.
+    //
+    // Taken knowingly, for two reasons. Reading a bare literal as the card that
+    // literally bears it is defensible in a way that guessing between numbered
+    // printings is not. And the refusal it replaces was not free: the same
+    // collapse made determinate lists -- "Lylyth 1" names exactly one army --
+    // resolve to nothing at all, which is the worse failure because it discards
+    // what the list actually supplied. The badge still settles it either way.
     const list = "Army List\n[Leader] Lylyth\nCarnivean 18\n";
-    expect(findLeader(list)).toBeUndefined();
+    expect(findLeader(list)).toEqual({ leader: "Lylyth", army: "Shadowflame Shard" });
     expect(findLeader(list, "Khymaera")?.army).toBe("Shadowflame Shard");
     expect(findLeader(list, "Legion of Everblight")?.army).toBe("Ravens of War");
+  });
+
+  it("answers a list that names the printing in full", () => {
+    // The two faces of the old ordering, pinned as one matrix. Measured before
+    // the fix: "Caine 4" gave Caine @ First Army both unbadged and with a
+    // faction badge -- a different character in a different army -- while
+    // "Lylyth 1" and "Lylyth 3" gave nothing at all, though each names exactly
+    // one army in the whole table. One cause, two symptoms: collapsing ran
+    // before the literals were compared, so a list saying "Caine 4" was
+    // answered as though it had said "Caine".
+    const list = (n: string) => `Army List\n[Leader] ${n}\nStormclad 18\n`;
+
+    // Right character. The army is arbitrary between Gravediggers and Storm
+    // Legion -- the separate open problem the return type cannot express -- so
+    // it is asserted loosely on purpose, rather than reading as a settled claim.
+    for (const hint of [undefined, "Cygnar"]) {
+      const caine = findLeader(list("Caine 4"), hint);
+      expect(caine?.leader).toBe("Caine 4");
+      expect(["Gravediggers", "Storm Legion"]).toContain(caine?.army);
+    }
+
+    // Determinate with no badge at all: one army in the table carries each.
+    expect(findLeader(list("Lylyth 1"))).toEqual({ leader: "Lylyth 1", army: "Ravens of War" });
+    expect(findLeader(list("Lylyth 3"))).toEqual({ leader: "Lylyth 3", army: "Ravens of War" });
+
+    // And the badged path stops discarding the number the list handed it.
+    expect(findLeader(list("Lylyth 1"), "Ravens of War")?.leader).toBe("Lylyth 1");
+  });
+
+  it("still collapses a printing the list did not name", () => {
+    // The controls. Neither says a number, so neither is touched by matching
+    // literals first, and both must answer exactly as they did before.
+    const list = (n: string) => `Army List\n[Leader] ${n}\nStormclad 18\n`;
+
+    // Skarre widens: no bare "Skarre" row exists, so the collapsed name is a
+    // real caster with the card left open rather than a different model.
+    expect(findLeader(list("Skarre"))).toEqual({ leader: "Skarre", army: "Blackfleet" });
+    expect(findLeader(list("Skarre"), "Blackfleet")?.leader).toBe("Skarre");
+
+    // Aurora is the control that proves collapsing is not itself the defect:
+    // "Aurora 2" collapses like the rest and resolves correctly, because it is
+    // the only literal under its stem and so never has a rival to be confused
+    // with. Collapsing AND THEN having more than one candidate is the defect.
+    expect(findLeader(list("Aurora"))).toEqual({
+      leader: "Aurora 2",
+      army: "Convergence of Cyriss",
+    });
+
+    // An unnumbered Caine still selects the bare card, not either numbered one.
+    expect(findLeader(list("Major Allister Caine"))?.leader).toBe("Caine");
+    expect(findLeader(list("Major Allister Caine"), "First Army")?.leader).toBe("Caine");
+    // And the badge still reaches the numbered card it always did -- the
+    // literal pass runs after the hint precisely so this keeps working.
+    expect(findLeader(list("Major Allister Caine"), "Storm Legion")?.leader).toBe("Caine 4");
   });
 
   it("still settles a character who leads two armies in one faction", () => {
