@@ -341,7 +341,20 @@ export function findLeader(
     // Caine is the exception that sets the rule's limit: First Army's Caine and
     // Gravediggers' Caine 4 are different cards. Longshanks distinguishes them
     // by the number, which is why that number has to survive into the table --
-    // printing() can then refuse to guess instead of naming the wrong card.
+    // it is what lets an army-badged list resolve Caine 4 correctly.
+    //
+    // KNOWN DEFECT, pre-existing and deliberately not fixed here: with no badge,
+    // or with one naming only the faction, a list containing "Caine 4" still
+    // resolves to Caine @ First Army. "Caine 4" also matches the bare "Caine"
+    // row as a prefix, and prefix-shadowing cannot drop it because bare() makes
+    // the two equal, so both survive into the pool; printing() then finds two
+    // distinct literal names, no matching title, and falls back to
+    // bare(hit.leader) with pool[0].army. That fallback is a widening for
+    // Skarre -- no bare "Skarre" row exists, so it names a real caster and
+    // leaves the printing open -- but an assertion for Caine, whose collapsed
+    // form is itself a card in a different army. The fix is a signature rather
+    // than a special case: refuse when the collapsed name is itself a leader in
+    // the table. It wants its own branch and its own tests.
     //
     // That holds only inside a faction. Across factions the table cannot say
     // what a repeated name means: Khador's Butcher is not Orgoth's, and
