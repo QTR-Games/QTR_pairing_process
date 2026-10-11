@@ -74,7 +74,7 @@ export const ARMIES: ArmyInfo[] = [
   { army: "Shadows of the Retribution", faction: "Retribution of Scyrah", code: "SH", color: "#0f766e", leaders: ["Garryth", "Kaelyssa", "Ravyn", "Thyron"] },
   { army: "Soldiers of Fortune", faction: "Mercenaries", code: "SF", color: "#4b5563", leaders: ["Ashlynn", "Damiano", "MacBain", "Magnus"] },
   { army: "Storm Knights", faction: "Cygnar", code: "SK", color: "#2563eb", leaders: ["Jakes", "Maddox", "Nemo", "Stryker"] },
-  { army: "Storm Legion", faction: "Cygnar", code: "SL", color: "#2563eb", leaders: ["Caine 4", "Calder", "Di Baro", "Huxely", "Sparkhammer", "Wolfe"] },
+  { army: "Storm Legion", faction: "Cygnar", code: "SL", color: "#2563eb", leaders: ["Caine 4", "Calder", "di Baro", "Huxely", "Sparkhammer", "Wolfe"] },
   { army: "Storm of the North", faction: "Trollbloods", code: "SN", color: "#4d7c0f", leaders: ["Borka", "Doomshaper", "Grim", "Kolgrima"] },
   { army: "Talion Charter", faction: "Mercenaries", code: "TC", color: "#4b5563", leaders: ["Fiona", "Montador", "Rahera", "Shae"] },
   { army: "Temple Guardians", faction: "Protectorate of Menoth", code: "TG", color: "#b45309", leaders: ["Amon", "Feora", "Malekus", "Thyra"] },
@@ -109,6 +109,7 @@ const BY_ARMY = new Map(ARMIES.map((a) => [a.army.toLowerCase(), a]));
  */
 const ARMY_ALIASES: Record<string, string> = {
   "clockwork legions": "Convergence of Cyriss",
+  "nonokrion order": "Infernals",
   "wicked harvest": "Grymkin",
 };
 
@@ -335,7 +336,23 @@ export function findLeader(
     // Gravediggers), and the number on a reprint is Longshanks bookkeeping for
     // one character rather than a second person: still one answer, only the
     // attribution is uncertain.
-    if (distinct(pool) === 1) return printing(pool[0], pool);
+    //
+    // That holds only inside a faction. A name repeated across factions is a
+    // different character who happens to share a short one -- Khador's Butcher
+    // is not Orgoth's, Southern Kriels' Gunnbjorn is not Trollbloods', and the
+    // Lylyth of Ravens of War is not the Lylyth of Shadowflame Shard -- so
+    // collapsing those would not blur an attribution, it would name the wrong
+    // person. With no badge to separate them there is nothing to choose on, and
+    // a blank leader beats a confident wrong one.
+    //
+    // Within a faction the printing is still open, and {@link printing} answers
+    // with the unnumbered character rather than picking one. That is what keeps
+    // "Skarre 1" and "Skarre 3" from being pooled: the collapse settles who, not
+    // which card.
+    if (distinct(pool) === 1) {
+      const factions = new Set(pool.map((h) => BY_ARMY.get(h.army.toLowerCase())?.faction));
+      return factions.size === 1 ? printing(pool[0], pool) : undefined;
+    }
 
     // Two or more real candidates. Only the ones the list did not pay points for
     // can be leading it; among those, the first one written leads. Where two of

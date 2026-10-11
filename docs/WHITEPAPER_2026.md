@@ -380,8 +380,17 @@ the catalogue for containments under our *actual* word-anchored matching, rather
 than naive substring, finds **exactly two cross-faction prefix hazards**:
 `Reznik` ⊂ `Reznikova` and `Grim` ⊂ `Grimtusk` — the latter live in this event.
 Apparent hazards like `Iona` ⊂ `Fiona` are artefacts of the naive scan and cannot
-fire against a word-anchored matcher, and `Lylyth` ⊂ `Lylyth 1` is confined to a
-single faction, where it is a printing ambiguity rather than a faction one.
+fire against a word-anchored matcher.
+
+`Lylyth` is a different matter, and an earlier draft of this section dismissed it
+wrongly as an intra-faction printing ambiguity. Legion of Everblight's Ravens of
+War carries `Lylyth 1` and `Lylyth 3`; Khymaera's Shadowflame Shard carries a bare
+`Lylyth`. The literal strings never match, so the enumeration behind the table
+above — which counts repeated names *as written* — cannot see it, and the
+collision appears only once Longshanks' reprint numbering is stripped. It is a
+**fifth cross-faction collision**, found by hardening the resolver rather than by
+reading the table. **The four above are confirmed instances, not a closed
+enumeration.**
 
 **The rule that follows: never infer faction from leader.** The badge names the army
 or its parent faction and is stable; the leader is then searched *within that scope*,
@@ -391,6 +400,18 @@ matching, prefix-shadow dropping, and card-title disambiguation for reprints sha
 an army. **[reported]**: the scoping key was independently measured as invariant —
 **0 of 288 players changed army badge across five rounds**, while the leader-derived
 faction flipped on exactly the rounds the shared-name caster was fielded.
+
+The rule is now enforced on the path that previously escaped it. Where no badge is
+available the resolver used to collapse a repeated name to a single answer, which
+is right for one character fielded in two armies of the same faction — `Caine`
+across First Army and Gravediggers, `Sorscha` across 5th Division and Armored
+Korps — but names the wrong person outright when the two armies sit in different
+factions. All five collisions above returned a confident army, and therefore a
+faction, chosen on nothing better than table order. The collapse is now gated on
+the candidates sharing a faction and returns nothing when they do not, which is
+the module's own standard: a blank leader sends someone to the real list, a wrong
+one does not. Badged lookups were always correct, which is why this survived —
+the scoping rule was covering for it.
 
 Two caveats worth preserving. **Southern Kriels and Trollbloods are distinct
 factions**, each with their own armies, and must not be merged as synonyms despite
@@ -469,7 +490,7 @@ Carried forward from §13 (2024), amended:
 - **The terrain prior** needs a specification that separates terrain from turn order
   (§4.3).
 
-Two cautions specific to this supplement:
+Three cautions specific to this supplement:
 
 - **The 14,400-leaf figure is hand-derived and untested.** It should not enter
   published copy without a test asserting it, in the manner of
@@ -477,6 +498,13 @@ Two cautions specific to this supplement:
 - **Single-team, single-event.** Every §6 and §7 result describes one team across
   five rounds. They are offered as located hypotheses with explicit nulls, not as
   findings.
+- **The army table is known-incomplete, and §8.2's lesson applies to it.** That
+  the two retitles needed no additions is a result about two armies, not about
+  the catalogue. One gap is already confirmed: Fane of Nyrro carries four leaders
+  here, and Longshanks records `Harasheth` leading under that badge
+  **[reported]**, which resolves to nothing at all. The table is a working
+  approximation of an authoritative list nobody has transcribed in full, and the
+  collision enumeration in §8.1 is bounded the same way.
 
 ---
 
@@ -500,7 +528,7 @@ Two cautions specific to this supplement:
 | $(1/15)^4$ null for partition invariance | **retired** | strawman; re-derivation predicts it equally |
 | Same-faction hedge explains the partition | **rejected** | expected 0.93 vs observed 1 **[reported]** |
 | Variance minimisation explains the singleton | **rejected** | flattest player was blocked, not seated |
-| Faction inferable from leader name | **refuted** | 4 cross-faction collisions enumerated |
+| Faction inferable from leader name | **refuted** | 5 cross-faction collisions; resolver now refuses unbadged |
 | `Wicked Harvest` / `Clockwork Legions` are new armies | **refuted** | 6/6 and 6/6 against official rosters; retitles |
 
 ---

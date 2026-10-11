@@ -49,6 +49,10 @@ describe("armyInfo", () => {
     expect(armyInfo("Wicked Harvest")?.army).toBe("Grymkin");
     expect(armyInfo("  clockwork legions ")?.faction).toBe("Convergence of Cyriss");
   });
+
+  it("reads a badge Longshanks retitled onto an army we already carry", () => {
+    expect(armyInfo("Nonokrion Order")?.army).toBe("Infernals");
+  });
 });
 
 describe("findLeader", () => {
@@ -108,6 +112,39 @@ describe("findLeader", () => {
   it("treats one person shared by two armies as a single answer", () => {
     // Caine leads both First Army and Gravediggers. Two rows, one caster.
     expect(findLeader("Major Allister Caine\n9 Trencher Infantry")?.leader).toBe("Caine");
+  });
+
+  it("refuses a leader whose name belongs to two factions", () => {
+    // Khador's Butcher and Orgoth's are different men who share a short name,
+    // so there is nothing to collapse: with no badge the answer would be an
+    // array-order coin toss reported as a faction. The badge settles it.
+    const list = "Army List\n[Leader] Butcher\nJuggernaut 15\n";
+    expect(findLeader(list)).toBeUndefined();
+    expect(findLeader(list, "Khador")?.army).toBe("5th Division");
+    expect(findLeader(list, "Orgoth")?.army).toBe("Sea Raiders");
+  });
+
+  it("separates two characters whose names collide only once numbering is stripped", () => {
+    // Legion carries "Lylyth 1"/"Lylyth 3", Khymaera a bare "Lylyth". The
+    // literal strings never match, so a scan for repeated names misses this
+    // entirely; it only collides after the reprint number is stripped.
+    const list = "Army List\n[Leader] Lylyth\nCarnivean 18\n";
+    expect(findLeader(list)).toBeUndefined();
+    expect(findLeader(list, "Khymaera")?.army).toBe("Shadowflame Shard");
+    expect(findLeader(list, "Legion of Everblight")?.army).toBe("Ravens of War");
+  });
+
+  it("still settles a character who leads two armies in one faction", () => {
+    expect(findLeader("Army List\n[Leader] Sorscha\nJuggernaut 15\n")?.leader).toBe("Sorscha");
+    expect(findLeader("Army List\n[Leader] Caine\nStormclad 18\n")?.leader).toBe("Caine");
+  });
+
+  it("settles the character without guessing which printing", () => {
+    // Both Skarres are Blackfleet, so the faction gate above never fires on
+    // them: the collapse settles who, and the card title settles which card.
+    const body = (n: string) => `Blackfleet Army\n[Leader] ${n}\nDeathripper 7\n`;
+    expect(findLeader(body("Skarre"), "Blackfleet")?.leader).toBe("Skarre");
+    expect(findLeader(body("Skarre, Pirate Queen"), "Blackfleet")?.leader).toBe("Skarre 1");
   });
 
   it("does not match a leader name buried inside a longer word", () => {
