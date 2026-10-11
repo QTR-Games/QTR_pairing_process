@@ -69,7 +69,9 @@ every number below. It is therefore stated up front rather than in a footnote.
 screenshots by two independent OCR passes and cross-checked line by line; the
 arithmetic reconciliation of all five rounds; the 25-cell label grid of §5.2; the
 catalogue comparison of §8; and the leader-collision enumeration of §8.1. These can
-be re-derived from artefacts held in this project.
+be re-derived from artefacts held in this project. The catalogue comparison is the
+strongest of them: the upstream table it reconciles against is committed as a test
+fixture, so that claim is not merely reproducible but re-checked on every test run.
 
 **Reported by the sibling analysis effort and *not* independently verified here.**
 The 600-game WTC 2026 corpus and its 120/120 fixture reconciliation; the
@@ -466,6 +468,15 @@ roster that turned out to be wrong. Attendance is a biased sample of a catalogue
 and no quantity of it establishes completeness — which is the same error, in the
 same direction, as reading a strategy off five rounds of one team (§6.4).
 
+The upstream table later explained where that phantom came from, which is worth
+recording because the explanation is not "someone invented a name". `Locke` is a
+real Longshanks record (id 1239) filed under Clockwork Legions — but flagged
+`active=0`, retired. A roster assembled without reading that flag picks him up
+and reports seven casters where the current list has six. The claim was not
+fabricated; it was a true statement about the wrong set of rows, which is a
+failure mode no amount of care in transcription prevents and one the
+reconciliation test of §9 now catches outright.
+
 A separate defect in the same area did prove real and is fixed here. Longshanks
 writes `di Morray`; the catalogue carried `Lukas`, the other half of Aurum Legate
 Lukas di Morray's name, so lists naming him resolved to nothing at all. The
@@ -511,33 +522,60 @@ Four cautions specific to this supplement:
   missing was not a record but a whole army with its full roster, and no amount
   of attendance could have revealed it. Those four gaps are **closed**.
 
-  What is *not* established is that the catalogue is now complete, and this
-  section is the wrong place to imply it. Reconciling our table against the
-  upstream active set leaves a measured shortfall:
+  What makes this more than an anecdote is that the argument is now executable.
+  `webapp/src/longshanks/catalogue.test.ts` reconciles our table against a
+  fixture of that payload (event 37180, 246 rows deduped by id — the payload
+  repeats the table verbatim about seven times, so an undeduped count is
+  meaningless). Run against the table as it stood before this work, it names
+  every defect listed above without being told what to look for: five missing
+  armies, and twenty-five missing leaders including `di Morray`, `di Baro`,
+  `Caine 4` under Gravediggers, `Harasheth`, and the full rosters of both
+  absent armies. A day of argument, three reversals and several contradictory
+  inventories were needed to find those by reasoning. The test rederives them
+  in nine milliseconds, from the upstream record, without reference to who
+  played what — which is the §8.2 lesson stated as a procedure instead of a
+  regret.
 
-  | | ours | upstream active |
-  |---|---|---|
-  | armies | 42 | 42 **[reported]** |
-  | leader entries | 186 | 204 **[reported]** |
+  Reconciliation is accordingly **complete and mechanically enforced**, not
+  outstanding:
 
-  **Leader-level reconciliation is outstanding**: roughly eighteen entries
-  unaccounted for, not yet attributed between genuine gaps in ours and leaders
-  belonging to armies the two tables model differently.
+  | | ours | upstream active | status |
+  |---|---|---|---|
+  | armies | 42 | 42 | reconciled; three carried under our names via `ARMY_ALIASES` |
+  | leader entries | 186 | 200 | reconciled; 14 format markers knowingly omitted |
+  | retired entries carried | 0 | 4 exist | asserted, not spot-checked |
 
-  The army row deserves more suspicion than a match normally earns. Ours
-  includes `Unlimited` — faction `Unlimited`, empty roster, a format
-  pseudo-entry rather than an army — so unless upstream carries an equivalent,
-  the real comparison is 41 against 42 and the equality is arithmetic
-  coincidence concealing a one-army gap. Treating it as reconciliation would
-  repeat, inside the document that diagnoses the error, the exact move §8.2
-  retracts. The honest claim is narrower and still worth having: we have moved
-  from not knowing armies were missing to knowing precisely what remains
-  unchecked.
+  The fourteen are Longshanks' `X Unlimited` rows: it models the Unlimited
+  *format* as an army and each faction's entry in it as a leader. They are not
+  warcasters, so we carry the army with an empty roster and omit them by name,
+  with the reason recorded at the point of omission. `Unlimited` is itself a
+  genuine upstream army (id 1229, `code=z_unlimited`, a sort hack pinning it
+  last in their menus), so the army totals agree as a real reconciliation
+  rather than by coincidence — an earlier draft of this section hedged that
+  they might not, and that hedge was wrong.
+
+  Three properties are now asserted rather than believed: no army is missing or
+  misfiled by faction, no leader is **invented** that upstream lacks, and none
+  of the four retired entries (`Aurora 1`, `Locke`, `Mortenebra`, `Asphyxious`)
+  has leaked in. That second one matters as much as the first — §8.2 records a
+  phantom caster that was argued into existence and had to be withdrawn, and an
+  extra-leader check is precisely what would have refused it on sight.
+
+  **The guarantee is continuous, which is new.** Every other assurance in this
+  document is of the form *we looked, on this date, and it was fine*. This one
+  fails by itself when the catalogue drifts. The honest caveat is the other
+  edge of that: the fixture is a point-in-time snapshot of one event's payload,
+  so when upstream changes the test will fail, and the correct response is to
+  refresh the fixture and reconcile against it — **never** to widen the
+  exception list, which would convert the only check that can see a missing
+  record back into one that cannot.
 - **Retired entries persist upstream behind an `active` flag, and we carry none
-  of them** — checked directly: no Convergence `Locke`, no Mercenaries
-  `Mortenebra`, no `Aurora 1` **[reported]**. Worth stating as a property that
-  was verified rather than assumed, since a table built by transcription could
-  easily have inherited them.
+  of them.** This was a spot-check of three names in an earlier draft and is now
+  an assertion over the full retired set. Worth stating as a property that was
+  verified rather than assumed, since a table built by transcription could
+  easily have inherited them. One of the four is `Locke` under Convergence of
+  Cyriss — retired upstream rather than absent, which is the source of the
+  phantom seventh caster §8.2 withdraws.
 
 ---
 
@@ -563,6 +601,7 @@ Four cautions specific to this supplement:
 | Variance minimisation explains the singleton | **rejected** | flattest player was blocked, not seated |
 | Faction inferable from leader name | **refuted** | 5 cross-faction collisions; resolver now refuses unbadged |
 | `Wicked Harvest` / `Clockwork Legions` are new armies | **refuted** | 6/6 and 6/6 against official rosters; retitles |
+| Our catalogue matches Longshanks' | **reconciled** | 42/42 armies, 186/200 leaders, 0 retired carried; asserted continuously |
 
 ---
 
@@ -571,6 +610,8 @@ Four cautions specific to this supplement:
 - `docs/WHITEPAPER.md` — the 2024 paper. Supplemented, not superseded.
 - `docs/WTC2024_GROUND_TRUTH.md` — Findings 7–22, including Finding 11 (§4 here).
 - `webapp/src/longshanks/factions.ts` — catalogue, resolution rules, and the §8.2 fix.
+- `webapp/src/longshanks/catalogue.test.ts` and its fixture — Longshanks' own
+  catalogue table for event 37180, and the reconciliation asserted against it (§9).
 - `webapp/src/engine/protocol.ts` — the protocol engine whose shape §3.2 confirms.
 - Five Pear Master navigation logs, USA Death Valley, WTC 2026 rounds 1–5, held as
   OCR transcripts outside the repository (§1).
