@@ -1,0 +1,34 @@
+{
+  "corpus_id": "wtc2026_usa",
+  "event": "WTC 2026",
+  "team": "USA Death Valley",
+  "rival_tool": "Pear Master",
+  "rounds": 5,
+  "files": {
+    "pairing_cells": "as_supplied/wtc2026_usa_pairing_cells.csv",
+    "our_decisions": "as_supplied/wtc2026_usa_decisions.csv",
+    "opponent_decisions": "opponent_decisions.csv",
+    "guarantees": "guarantees.csv",
+    "round_values": "round_values.csv"
+  },
+  "label_alphabet": ["GOOD", "EVEN", "SOFT DODGE", "HARD DODGE"],
+  "label_column_map": {
+    "good": "GOOD",
+    "even": "EVEN",
+    "soft_dodge": "SOFT DODGE",
+    "hard_dodge": "HARD DODGE"
+  },
+  "counts": {
+    "pairing_cells": 25,
+    "our_decisions": 20,
+    "opponent_decisions_free": 20,
+    "opponent_decisions_forced": 1,
+    "guarantee_steps": 40
+  },
+  "caveats": [
+    "HARD DODGE occurs zero times, so its utility weight is not identified.",
+    "One team, one event, one rival tool. No generalisation claim is supported.",
+    "Opponent verdicts are Pear Master's judgement, not an outcome.",
+    "No rating matrix exists for these boards, so rating-space models cannot be scored."
+  ]
+}

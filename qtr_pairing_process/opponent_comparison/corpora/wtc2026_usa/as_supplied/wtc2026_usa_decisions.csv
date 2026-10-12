@@ -1,0 +1,21 @@
+round,opponent_team,usa_side,step,decision_type,detail,engine_verdict
+1,Finland Sarvikellopollo,B,1,proffer,Justin Du,optimal
+1,Finland Sarvikellopollo,B,3,select,Jaakko Uusitupa,optimal
+1,Finland Sarvikellopollo,B,4,nominate,Danny McGeehan + Derek Sennstrom,optimal
+1,Finland Sarvikellopollo,B,7,select,Jarkko Vahamaa,optimal
+2,South Africa Abelungu,B,1,proffer,Justin Du,optimal
+2,South Africa Abelungu,B,3,select,Duane Havenga,optimal
+2,South Africa Abelungu,B,4,nominate,Danny McGeehan + Derek Sennstrom,optimal
+2,South Africa Abelungu,B,7,select,Eli Golovey,optimal
+3,England Lancelot,B,1,proffer,Justin Du,optimal
+3,England Lancelot,B,3,select,Matt Goligher,optimal
+3,England Lancelot,B,4,nominate,Eric Eikermann + Alex Kosma,optimal
+3,England Lancelot,B,7,select,Zilvinas Aleksa,optimal
+4,Canada Moose,A,2,nominate,Eric Eikermann + Alex Kosma,optimal
+4,Canada Moose,A,5,select,Chandler Davidson,optimal
+4,Canada Moose,A,6,nominate,Danny McGeehan + Derek Sennstrom,optimal
+4,Canada Moose,A,8,select,Paul Kingston,optimal
+5,Australia Salty Crocs,B,1,proffer,Justin Du,optimal
+5,Australia Salty Crocs,B,3,select,Christopher Davies,optimal
+5,Australia Salty Crocs,B,4,nominate,Eric Eikermann + Alex Kosma,SUBOPTIMAL: engine preferred Alex Kosma + Danny McGeehan
+5,Australia Salty Crocs,B,7,select,Super64 Wale,optimal

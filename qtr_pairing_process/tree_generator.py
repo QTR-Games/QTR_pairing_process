@@ -13,6 +13,10 @@ from qtr_pairing_process.distribution_scoring import (
     annotate_risk,
     win_threshold,
 )
+from qtr_pairing_process.opponent_models import (
+    DEFAULT_STRATEGIC3_MODEL,
+    SoftenedMirror,
+)
 from qtr_pairing_process.pairing_model import PairingNode, TreeProjector
 
 
@@ -51,6 +55,13 @@ class TreeGenerator:
         # Runtime-tunable strategic/v2 parameters.
         self.strategic_preferences = strategic_preferences or {}
         self.cumulative2_alpha = self._read_numeric_pref(("cumulative2", "alpha"), 0.80, 0.0, 1.0)
+
+        # How opponent-choice nodes collapse their children. These defaults
+        # reproduce the previous inline behaviour exactly; see
+        # qtr_pairing_process/opponent_models.py for why they are named rather
+        # than spelled out at each of the five sites that need them.
+        self.strategic3_opponent_model = DEFAULT_STRATEGIC3_MODEL
+        self._cumulative2_model_cache = {}
         self.confidence2_k = self._read_numeric_pref(("confidence2", "k"), 0.85, 0.0, 5.0)
         self.confidence2_u = self._read_numeric_pref(("confidence2", "u"), 12.0, 0.0, 100.0)
         self.resistance2_beta = self._read_numeric_pref(("resistance2", "beta"), 1.0, 0.0, 10.0)
@@ -733,12 +744,11 @@ class TreeGenerator:
             for child in children
         ]
         if current is not None:
-            if children[0].is_opponent_choice:
-                min_child = min(child_scores)
-                mean_child = sum(child_scores) / max(1, len(child_scores))
-                child_component = alpha * min_child + (1.0 - alpha) * mean_child
-            else:
-                child_component = max(child_scores)
+            child_component = self._collapse_children(
+                child_scores,
+                children[0].is_opponent_choice,
+                self._cumulative2_model_for(alpha),
+            )
             total_value = int(round(current.base + child_component))
             self._apply_cumulative2_memo_model(current, total_value)
             if memo is not None:
@@ -1201,12 +1211,11 @@ class TreeGenerator:
 
         if "cumulative2" in missing_metrics:
             child_scores = [result["cumulative2"] for result in child_results]
-            if children[0].is_opponent_choice:
-                min_child = min(child_scores)
-                mean_child = sum(child_scores) / max(1, len(child_scores))
-                child_component = alpha * min_child + (1.0 - alpha) * mean_child
-            else:
-                child_component = max(child_scores)
+            child_component = self._collapse_children(
+                child_scores,
+                children[0].is_opponent_choice,
+                self._cumulative2_model_for(alpha),
+            )
             total_value = int(round(current.base + child_component))
             results["cumulative2"] = self._apply_cumulative2_memo_model(current, total_value)
             if memos:
@@ -1368,7 +1377,11 @@ class TreeGenerator:
             utility = (-t_core) + (rho * smooth) - (lam * downside) + guardrail_term
             node_gain = utility * 100.0
             if children:
-                child_component = min(child_scores) if children[0].is_opponent_choice else max(child_scores)
+                child_component = self._collapse_children(
+                    child_scores,
+                    children[0].is_opponent_choice,
+                    self.strategic3_opponent_model,
+                )
                 exploitability = max(child_scores) - min(child_scores)
             else:
                 child_component = 0.0
@@ -2365,12 +2378,11 @@ class TreeGenerator:
                 node_value = 0
 
             is_opp_level = self._is_opponent_choice_level(children[0]) if children else False
-            if is_opp_level:
-                min_child = min(child_scores)
-                mean_child = sum(child_scores) / max(1, len(child_scores))
-                child_component = alpha * min_child + (1.0 - alpha) * mean_child
-            else:
-                child_component = max(child_scores)
+            child_component = self._collapse_children(
+                child_scores,
+                is_opp_level,
+                self._cumulative2_model_for(alpha),
+            )
 
             total_value = int(round(node_value + child_component))
             self._replace_prefixed_tag(node, 'cumulative2_', total_value)
@@ -2691,7 +2703,11 @@ class TreeGenerator:
 
             if children:
                 is_opp_level = self._is_opponent_choice_level(children[0])
-                child_component = min(child_scores) if is_opp_level else max(child_scores)
+                child_component = self._collapse_children(
+                    child_scores,
+                    is_opp_level,
+                    self.strategic3_opponent_model,
+                )
                 exploitability = max(child_scores) - min(child_scores)
             else:
                 child_component = 0.0
@@ -3168,6 +3184,36 @@ class TreeGenerator:
         except (ValueError, TypeError):
             pass
         return 0
+
+    def _cumulative2_model_for(self, alpha):
+        """The cumulative2 opponent model at a given rationality weight.
+
+        ``alpha`` is per-call because callers may override the preference, so
+        the model is cached by value rather than built once in ``__init__``.
+        """
+        key = round(float(alpha), 9)
+        model = self._cumulative2_model_cache.get(key)
+        if model is None:
+            model = SoftenedMirror(key)
+            self._cumulative2_model_cache[key] = model
+        return model
+
+    def _collapse_children(self, child_scores, is_opponent_level, model):
+        """Collapse a decision node's children into the value its parent inherits.
+
+        Opponent levels defer to the supplied opponent model; our own levels
+        take the best branch available, which needs no model because we are the
+        ones choosing.
+
+        This existed inline at five sites in two different shapes -- plain
+        ``min`` on the strategic3 path, ``alpha*min + (1-alpha)*mean`` on the
+        cumulative2 path -- with nothing keeping them consistent. Routing both
+        through one function means changing the opponent model is one decision
+        rather than five edits that can disagree.
+        """
+        if is_opponent_level:
+            return model.combine(child_scores)
+        return max(child_scores)
 
     def _is_opponent_choice_level(self, node):
         """

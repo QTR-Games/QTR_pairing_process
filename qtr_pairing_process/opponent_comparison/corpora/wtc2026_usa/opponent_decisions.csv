@@ -1,0 +1,22 @@
+round,opponent_team,usa_side,step,decision_type,choice_set,chosen,verdict,forced
+1,Finland Sarvikellopollo,B,2,nominate,Joonas Heinonen + Jaakko Uusitupa,,slipped,no
+1,Finland Sarvikellopollo,B,5,select,Danny McGeehan + Derek Sennstrom,Derek Sennstrom,strongest_line,no
+1,Finland Sarvikellopollo,B,6,nominate,Jarkko Vahamaa + Samu Jarvinen,,strongest_line,no
+1,Finland Sarvikellopollo,B,8,select,Eric Eikermann + Alex Kosma,Alex Kosma,slipped,no
+2,South Africa Abelungu,B,2,nominate,Duane Havenga + Evan Hurwitz,,slipped,no
+2,South Africa Abelungu,B,5,select,Danny McGeehan + Derek Sennstrom,Danny McGeehan,strongest_line,no
+2,South Africa Abelungu,B,6,nominate,Jan du Toit + Eli Golovey,,slipped,no
+2,South Africa Abelungu,B,8,select,Eric Eikermann + Alex Kosma,Alex Kosma,slipped,no
+3,England Lancelot,B,2,nominate,Jamie Perkins + Matt Goligher,,strongest_line,no
+3,England Lancelot,B,5,select,Eric Eikermann + Alex Kosma,Alex Kosma,strongest_line,no
+3,England Lancelot,B,6,nominate,Christopher Clare + Zilvinas Aleksa,,slipped,no
+3,England Lancelot,B,8,select,Danny McGeehan + Derek Sennstrom,Derek Sennstrom,strongest_line,no
+4,Canada Moose,A,1,proffer,,Luke Rowan,slipped,no
+4,Canada Moose,A,3,select,Eric Eikermann + Alex Kosma,Eric Eikermann,slipped,no
+4,Canada Moose,A,4,nominate,Chandler Davidson + Charles Soong,,slipped,no
+4,Canada Moose,A,7,select,Danny McGeehan + Derek Sennstrom,Danny McGeehan,strongest_line,no
+4,Canada Moose,A,7,nominate,Paul Kingston + Seva V,,forced,yes
+5,Australia Salty Crocs,B,2,nominate,Christopher Davies + Come What May James,,strongest_line,no
+5,Australia Salty Crocs,B,5,select,Eric Eikermann + Alex Kosma,Eric Eikermann,slipped,no
+5,Australia Salty Crocs,B,6,nominate,Super64 Wale + Pete Bates,,strongest_line,no
+5,Australia Salty Crocs,B,8,select,Danny McGeehan + Derek Sennstrom,Derek Sennstrom,slipped,no
