@@ -1,0 +1,26 @@
+round,opponent_team,usa_side,pairing,usa_player,opponent_player,label,usa_seat,opponent_seat,engine_verdict_our_step
+1,Finland Sarvikellopollo,B,1,Justin Du,Jaakko Uusitupa,EVEN,proffer,selected_by_us,optimal
+1,Finland Sarvikellopollo,B,2,Derek Sennstrom,Joonas Heinonen,SOFT DODGE,nominated_selected_by_them,bus_forced,optimal
+1,Finland Sarvikellopollo,B,3,Danny McGeehan,Jarkko Vahamaa,GOOD,bus_forced,selected_by_us,optimal
+1,Finland Sarvikellopollo,B,4,Alex Kosma,Samu Jarvinen,EVEN,nominated_selected_by_them,bus_forced,forced
+1,Finland Sarvikellopollo,B,5,Eric Eikermann,Tuomas Toimela,GOOD,final_forced,final_forced,forced
+2,South Africa Abelungu,B,1,Justin Du,Duane Havenga,EVEN,proffer,selected_by_us,optimal
+2,South Africa Abelungu,B,2,Danny McGeehan,Evan Hurwitz,EVEN,nominated_selected_by_them,bus_forced,optimal
+2,South Africa Abelungu,B,3,Derek Sennstrom,Eli Golovey,EVEN,bus_forced,selected_by_us,optimal
+2,South Africa Abelungu,B,4,Alex Kosma,Jan du Toit,GOOD,nominated_selected_by_them,bus_forced,forced
+2,South Africa Abelungu,B,5,Eric Eikermann,Ryan TotalGee,EVEN,final_forced,final_forced,forced
+3,England Lancelot,B,1,Justin Du,Matt Goligher,EVEN,proffer,selected_by_us,optimal
+3,England Lancelot,B,2,Alex Kosma,Jamie Perkins,EVEN,nominated_selected_by_them,bus_forced,optimal
+3,England Lancelot,B,3,Eric Eikermann,Zilvinas Aleksa,EVEN,bus_forced,selected_by_us,optimal
+3,England Lancelot,B,4,Derek Sennstrom,Christopher Clare,EVEN,nominated_selected_by_them,bus_forced,forced
+3,England Lancelot,B,5,Danny McGeehan,Leo Robinson,SOFT DODGE,final_forced,final_forced,forced
+4,Canada Moose,A,1,Eric Eikermann,Luke Rowan,EVEN,nominated_selected_by_them,proffer,optimal
+4,Canada Moose,A,2,Alex Kosma,Chandler Davidson,GOOD,bus_forced,selected_by_us,optimal
+4,Canada Moose,A,3,Danny McGeehan,Charles Soong,GOOD,nominated_selected_by_them,bus_forced,optimal
+4,Canada Moose,A,4,Derek Sennstrom,Paul Kingston,EVEN,bus_forced,selected_by_us,optimal
+4,Canada Moose,A,5,Justin Du,Seva V,EVEN,final_forced,final_forced,forced
+5,Australia Salty Crocs,B,1,Justin Du,Christopher Davies,SOFT DODGE,proffer,selected_by_us,optimal
+5,Australia Salty Crocs,B,2,Eric Eikermann,Come What May James,GOOD,nominated_selected_by_them,bus_forced,SUBOPTIMAL
+5,Australia Salty Crocs,B,3,Alex Kosma,Super64 Wale,SOFT DODGE,bus_forced,selected_by_us,optimal
+5,Australia Salty Crocs,B,4,Derek Sennstrom,Pete Bates,EVEN,nominated_selected_by_them,bus_forced,forced
+5,Australia Salty Crocs,B,5,Danny McGeehan,Aleks Glavas,GOOD,final_forced,final_forced,forced

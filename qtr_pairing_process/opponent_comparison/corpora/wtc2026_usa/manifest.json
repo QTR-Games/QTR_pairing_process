@@ -1,0 +1,84 @@
+{
+  "corpus_id": "wtc2026_usa",
+  "event": "WTC 2026",
+  "team": "USA Death Valley",
+  "rival_tool": "Pear Master",
+  "rounds": 5,
+  "files": {
+    "pairing_cells": "as_supplied/wtc2026_usa_pairing_cells.csv",
+    "our_decisions": "as_supplied/wtc2026_usa_decisions.csv",
+    "opponent_decisions": "opponent_decisions.csv",
+    "guarantees": "guarantees.csv",
+    "round_values": "round_values.csv"
+  },
+  "label_alphabet": ["GOOD", "EVEN", "SOFT DODGE", "HARD DODGE"],
+  "label_column_map": {
+    "good": "GOOD",
+    "even": "EVEN",
+    "soft_dodge": "SOFT DODGE",
+    "hard_dodge": "HARD DODGE"
+  },
+  "counts": {
+    "pairing_cells": 25,
+    "our_decisions": 20,
+    "opponent_decisions_free": 20,
+    "opponent_decisions_forced": 1,
+    "guarantee_steps": 40
+  },
+  "provenance": {
+    "primary_artefact": "WTC_2026_USA_PEAR_MASTER_1.jpg .. _5.jpg -- five screenshots of the Pear Master navigation log, not committed (personal captures).",
+    "legibility": "The screenshots are clean monospace text and are directly readable. Every field used here was read from them by eye.",
+    "do_not_use": "Machine-OCR .txt transcriptions of these screenshots exist in some session folders. They are lossy and corrupt digits in the count position ('OG SN 0S OH' for '0G 5N 0S 0H'). The images win. If you are extending this corpus, open the images.",
+    "residual_risk": "Hand transcription of a legible source can still slip. That is what the reconciliation tests guard, and it is a different and much smaller risk than a noisy source."
+  },
+  "reliability": {
+    "_note": "Per-file transcription grade. Lives here, not only in the README, because a consumer loads the manifest and may never open the prose beside it. load_corpus() refuses a corpus whose files are not all graded.",
+    "_grades": {
+      "AS_SUPPLIED": "Received as a data file. Not transcribed by us.",
+      "TRANSCRIBED": "Read by eye from the primary artefact, with no independent check yet. Treat individual fields as provisional.",
+      "RECONCILED": "Read by eye from the primary artefact, then checked against an independent equation that would break if a field were wrong.",
+      "UNRELIABLE_OCR": "Machine-OCR output, not checked against the source. Treat individual fields as suspect even where aggregates pass. Carried by no file here -- the motivating referent is the lossy .txt dumps that exist alongside the screenshots, which corrupt the count position and must not be used. See provenance.do_not_use."
+    },
+    "as_supplied/wtc2026_usa_pairing_cells.csv": {
+      "grade": "AS_SUPPLIED",
+      "reason": "Arrived as a CSV. Lossy relative to the logs, but not a transcription of them."
+    },
+    "as_supplied/wtc2026_usa_decisions.csv": {
+      "grade": "AS_SUPPLIED",
+      "reason": "Arrived as a CSV."
+    },
+    "round_values.csv": {
+      "grade": "RECONCILED",
+      "reason": "Each row's label counts must reproduce the value the tool PRINTED under GOOD=+1/EVEN=0/SOFT=-10. All five rounds reconcile at zero residual, and rounds 1 and 5 are out-of-sample. A misread count breaks the equation.",
+      "checked_by": [
+        "test_every_round_reconciles_at_zero_residual",
+        "test_rounds_one_and_five_are_out_of_sample_confirmations",
+        "test_round_value_counts_match_the_cell_labels"
+      ]
+    },
+    "opponent_decisions.csv": {
+      "grade": "RECONCILED",
+      "reason": "Counts cross-check against round_values.opponent_slips per round, transcribed from a different part of each log, and the free/forced split is independently asserted.",
+      "checked_by": [
+        "test_four_free_opponent_decisions_per_round",
+        "test_slip_counts_agree_with_the_round_value_rows",
+        "test_twenty_free_opponent_decisions_plus_one_forced"
+      ]
+    },
+    "guarantees.csv": {
+      "grade": "RECONCILED",
+      "reason": "Three independent checks hold across all 40 rows. Every vector totals exactly 5 (80 assertions, 40 rows x before/after, all passing -- more integrity evidence than any other file here carries); each step's 'after' chains to the next step's 'before'; and each round's final vector equals its outcome in round_values.csv. Any single misread digit breaks at least one, demonstrated by mutation control. NOTE: intermediate guarantee vectors carry no printed value in the logs -- only final outcomes do -- so these rows constrain the TRANSCRIPTION, not the utility weights. They add no equations to the GOOD/EVEN/SOFT recovery, which still rests on five printed values.",
+      "checked_by": [
+        "test_guarantee_vectors_always_total_five",
+        "test_each_round_ends_at_its_final_outcome",
+        "test_each_step_chains_to_the_next"
+      ]
+    }
+  },
+  "caveats": [
+    "HARD DODGE occurs zero times, so its utility weight is not identified.",
+    "One team, one event, one rival tool. No generalisation claim is supported.",
+    "Opponent verdicts are Pear Master's judgement, not an outcome.",
+    "No rating matrix exists for these boards, so rating-space models cannot be scored."
+  ]
+}
