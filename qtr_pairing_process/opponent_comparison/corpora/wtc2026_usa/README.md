@@ -31,30 +31,54 @@ graded, with a reason, so a future corpus cannot quietly skip this.
 |---|---|---|
 | `round_values.csv` | `RECONCILED` | Counts must reproduce the value the tool **printed**. All five rounds at zero residual; rounds 1 and 5 out-of-sample. |
 | `opponent_decisions.csv` | `RECONCILED` | Slip counts cross-check against `round_values.opponent_slips`, transcribed from a different part of each log. |
-| `guarantees.csv` | `UNRELIABLE_OCR` | See below. |
+| `guarantees.csv` | `RECONCILED` | 80 integrity checks across 40 rows, all passing. See below. |
 | `as_supplied/*.csv` | `AS_SUPPLIED` | Arrived as data files; not transcribed by us. |
 
-### Why `guarantees.csv` is graded unreliable
+### Which artefact wins, and why it matters
 
-The label letters sit immediately beside the counts in low-contrast screenshot
-text, which produces a specific confusion set: `S`/`5` (the SOFT glyph against
-a digit in the count position), `1`/`I`, and `0`/`O`. Raw examples:
+**The screenshots are the primary artefact and they are directly readable** —
+clean monospace text, no ambiguity between `S` and `5`, `1` and `I`, or `0`
+and `O`. Read them.
+
+**Machine-OCR `.txt` dumps of these same screenshots exist in some session
+folders. They are lossy and they corrupt the count position:**
 
 ```
-"OG SN 0S OH"   ->  0G 5N 0S 0H
-"IG 3N IS OH"   ->  1G 3N 1S 0H
+"OG SN 0S OH"   <- a lossy OCR dump of what the image renders as   0G 5N 0S 0H
+"IG 3N IS OH"   <- ... 1G 3N 1S 0H
 ```
 
-Three aggregate checks hold — every vector totals exactly 5, each step chains
-to the next, and each round ends at its final outcome — and any single misread
-digit breaks at least one of them. But they **cannot** catch a compensating
-pair of errors inside one vector. So this file is for reverse-direction
-consistency checking only. Nothing is fitted to it.
+Those strings are artefacts of the OCR pass, **not** of the source. An earlier
+revision of this corpus graded `guarantees.csv` `UNRELIABLE_OCR` and named the
+images as the reason, on the strength of exactly those two strings. That was
+wrong in the direction that destroys data: it would have retired 40 usable
+rows because a derivative was noisy. If you are extending this corpus and you
+find both forms, **the image wins and the `.txt` is not evidence of anything.**
+
+### Why `guarantees.csv` is nonetheless checked
+
+A hand transcription of a legible image can still slip. That — not a noisy
+source — is the residual risk, and it is what the three checks guard: every
+vector totals exactly 5, each step's `after` chains to the next step's
+`before`, and each round's final vector equals its outcome in
+`round_values.csv`. Any single misread digit breaks at least one. The totals
+check alone is 80 independent assertions over 40 rows, all passing, which is
+more integrity evidence than any other file in this corpus carries.
 
 One caution learned the hard way: the earlier form of the total check was
 `sum(after) >= sum(before)`, which is **vacuous** here because every vector
 totals 5 on both sides. It compared `5 >= 5` and guarded nothing. The equality
 form is the one that actually trips.
+
+### What the guarantee vectors do *not* unlock
+
+They do not improve identification of the utility weights. It is tempting to
+think 40 transcribed vectors must constrain `GOOD`/`EVEN`/`SOFT` more tightly
+than five round values do — but **the logs print a value only for the final
+outcome of a round.** Intermediate guarantee states are printed as bare label
+vectors with no number attached, so they yield no equations. They constrain
+the transcription, not the weights. The recovery still rests on five printed
+values, exactly as `manifest.json` says.
 
 `as_supplied/` holds the two CSVs exactly as they arrived from the sibling
 session, unmodified, for audit.
@@ -78,9 +102,14 @@ corpus, so that the loss is visible instead of baked in.
 
 ## Known limits
 
-- **`HARD DODGE` is unidentified.** It occurs zero times in all five rounds, so
-  any weight at all reconciles the data. `RivalLabelUtility.value_of` raises
-  `UnidentifiedLabel` rather than silently scoring it as 0.
+- **`HARD DODGE` is unidentified.** It occurs zero times across every
+  observation in the corpus: zero in all five round outcomes, and zero in all
+  80 intermediate guarantee counts (40 steps × before/after). Any weight at
+  all reconciles the data. `RivalLabelUtility.value_of` raises
+  `UnidentifiedLabel` rather than silently scoring it as 0. Note the two
+  facts are different in strength: "we never saw one in an outcome" is n=5,
+  while "the tool never once guaranteed one at any intermediate step" is
+  n=80 and much harder to dismiss as a small-sample accident.
 - **n = 1 team, 1 event, 1 tool.** No generalisation claim is supported. The
   whitepaper names "reading a strategy off five rounds of one team" as its own
   signature failure mode.

@@ -71,10 +71,17 @@ GOOD = "GOOD"
 EVEN = "EVEN"
 SOFT_DODGE = "SOFT DODGE"
 
-#: The fourth category. It occurs ZERO times across all five logged rounds, so
-#: its weight is not identified by the corpus: any value whatsoever reconciles
-#: the observed round totals. Treating it as 0 would be inventing a parameter
-#: and calling it a measurement, so ``RivalLabelUtility`` refuses it instead.
+#: The fourth category. It occurs ZERO times anywhere in the corpus: zero in
+#: all five logged round outcomes, and zero in all 80 intermediate guarantee
+#: counts (40 protocol steps x before/after). Its weight is therefore not
+#: identified -- any value whatsoever reconciles the observed totals.
+#:
+#: The two observations differ in force and the second is the one worth
+#: quoting. "No round ended on a HARD DODGE" is n=5 and reads like a small
+#: sample. "The tool never once guaranteed one at any intermediate step" is
+#: n=80 and says the category never entered its computed state space at all.
+#: Treating it as 0 would be inventing a parameter and calling it a
+#: measurement, so ``RivalLabelUtility`` refuses it instead.
 HARD_DODGE = "HARD DODGE"
 
 LABEL_ALPHABET = (GOOD, EVEN, SOFT_DODGE, HARD_DODGE)
@@ -216,8 +223,10 @@ class RivalLabelUtility:
         """Value one labelled pairing. Raises on the unidentified fourth label."""
         if label == HARD_DODGE:
             raise UnidentifiedLabel(
-                "HARD DODGE occurs zero times in the logged corpus, so its weight "
-                "is not identified. Scoring it would invent a parameter."
+                "HARD DODGE occurs zero times in the logged corpus -- in no "
+                "round outcome (n=5) and in no intermediate guarantee count "
+                "(n=80) -- so its weight is not identified. Scoring it would "
+                "invent a parameter."
             )
         try:
             return self.weights[label]

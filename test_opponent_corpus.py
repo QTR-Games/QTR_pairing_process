@@ -1,9 +1,11 @@
 """Tests for the WTC 2026 USA corpus and its loader.
 
 The fixtures in this corpus were transcribed by eye from five screenshots of a
-Pear Master session log. A hand transcription needs an independent check, and
-these are it: the arithmetic below is over-determined, so a slip of the eye in
-any single cell shows up as a non-zero residual somewhere.
+Pear Master session log. The screenshots are clean monospace text and are
+directly readable -- they are a primary source, not OCR output. But a hand
+transcription of a legible image can still slip, and these tests are the
+independent check: the arithmetic below is over-determined, so a slip of the
+eye in any single cell shows up as a non-zero residual somewhere.
 """
 
 import json
@@ -13,8 +15,11 @@ import pytest
 
 from qtr_pairing_process.opponent_comparison import available_corpora, load_corpus
 from qtr_pairing_process.opponent_comparison.corpus import (
+    AS_SUPPLIED,
     CORPORA_ROOT,
+    RECONCILED,
     RELIABILITY_GRADES,
+    TRANSCRIBED,
     UNRELIABLE_OCR,
     UngradedCorpusFile,
 )
@@ -135,6 +140,28 @@ class TestHardDodgeIsUnidentified:
         assert all(rv.hard_dodge == 0 for rv in corpus.round_values)
         assert not any(c.label == HARD_DODGE for c in corpus.cells)
 
+    def test_hard_dodge_is_zero_in_all_eighty_guarantee_counts(self, corpus):
+        """The stronger form of the same claim, at n=80 rather than n=5.
+
+        Readmitting guarantees.csv (previously misgraded unreliable) makes
+        this measurable. The two facts differ in force:
+
+          - "no round *ended* on a HARD DODGE" is 5 observations, and is
+            dismissible as a small-sample accident.
+          - "the tool never once *guaranteed* one at any intermediate step"
+            is 80 observations across 40 steps, and is not.
+
+        So refusing to score H is no longer a conservative default. It is a
+        measured claim about what this tool's state space ever contained.
+        """
+        observations = [
+            value
+            for step in corpus.guarantees
+            for value in (step.before[3], step.after[3])
+        ]
+        assert len(observations) == 80
+        assert set(observations) == {0}
+
     def test_any_hard_dodge_weight_reconciles_the_corpus(self, corpus):
         """The formal statement of 'unidentified': the data cannot tell.
 
@@ -187,9 +214,10 @@ class TestGuaranteeConsistency:
         and guarded nothing. A sibling session's question about a step-1 vector
         of (1,2,2,0) is what exposed it.
 
-        The equality form is a genuine OCR tripwire. guarantees.csv is graded
-        UNRELIABLE_OCR precisely because 'S' is ambiguous with '5' in the count
-        position; any single digit misread changes a total and fails here.
+        The equality form is a genuine tripwire against transcription slip --
+        which is the real residual risk here, since the source screenshots are
+        clean monospace text read directly, not OCR output. 80 assertions over
+        40 rows; any single misread digit changes a total and fails here.
         """
         for step in corpus.guarantees:
             assert sum(step.before) == 5, f"r{step.round} s{step.step} before"
@@ -214,6 +242,42 @@ class TestGuaranteeConsistency:
                     f"round {round_no} breaks between steps "
                     f"{previous.step} and {following.step}"
                 )
+
+    def test_guarantee_vectors_add_no_identification(self, corpus):
+        """Readmitting 40 vectors does NOT tighten the weight recovery.
+
+        A sibling session suggested that with guarantees.csv admissible "the
+        utility is constrained by far more than five round values". It is not,
+        and the mechanism is worth stating because the opposite is the
+        intuitive guess: **the logs print a value only for a round's final
+        outcome.** Intermediate guarantee states are printed as bare label
+        vectors with no number beside them, so they yield no equations.
+
+        Demonstrated by consequence rather than assertion. (+2, +1, -9) is
+        refuted by the printed round values. Nothing in guarantees.csv can
+        refute it, because there is no quantity for it to disagree with.
+        """
+        alternative = {GOOD: 2.0, EVEN: 1.0, SOFT_DODGE: -9.0}
+
+        refuted_by_printed_values = any(
+            (
+                alternative[GOOD] * rv.good
+                + alternative[EVEN] * rv.even
+                + alternative[SOFT_DODGE] * rv.soft_dodge
+            )
+            != rv.printed_value
+            for rv in corpus.round_values
+        )
+        assert refuted_by_printed_values, "the alternative must be a live rival"
+
+        assert not hasattr(corpus.guarantees[0], "printed_value")
+        header = (
+            CORPORA_ROOT / "wtc2026_usa" / "guarantees.csv"
+        ).read_text(encoding="utf-8").splitlines()[0]
+        assert "value" not in header, (
+            "a value column would overturn this test's premise -- re-derive "
+            "the identification argument rather than deleting the assert"
+        )
 
 
 class TestOurOwnDecisions:
@@ -254,36 +318,83 @@ class TestOurOwnDecisions:
 class TestTranscriptionGradesAreStructural:
     """The manifest, not the README, is what a consumer loads.
 
-    A sibling session's review caught that the OCR warning existed only in
-    README prose. These tests move the warning into the structure and keep it
-    there.
+    A sibling session's review caught that a transcription warning existed
+    only in README prose. These tests move provenance into the structure and
+    keep it there. The warning's *content* was later corrected -- it had been
+    written from a lossy OCR derivative rather than the legible source -- but
+    moving it into the manifest was right either way, and is what made the
+    correction a one-line regrade instead of an archaeology exercise.
     """
 
     def test_every_declared_file_carries_a_grade(self, corpus):
         for filename in corpus.manifest["files"].values():
             assert corpus.grade_of(filename) in RELIABILITY_GRADES, filename
 
-    def test_guarantees_is_marked_unreliable(self, corpus):
-        assert corpus.grade_of("guarantees.csv") == UNRELIABLE_OCR
-        assert corpus.unreliable_files == ("guarantees.csv",)
+    def test_guarantees_is_reconciled_not_unreliable(self, corpus):
+        """Regression against a caveat added from a degraded derivative.
+
+        An earlier revision graded this file UNRELIABLE_OCR and named the
+        screenshots as the reason. The screenshots are clean monospace text;
+        the corrupt strings that motivated the grade came from machine-OCR
+        .txt dumps of them. The file satisfies the RECONCILED definition
+        verbatim -- transcribed, then checked by an equation that breaks if a
+        digit is wrong, demonstrated by mutation control.
+        """
+        assert corpus.grade_of("guarantees.csv") == RECONCILED
+
+    def test_no_file_in_this_corpus_is_unchecked(self, corpus):
+        assert corpus.unreliable_files == ()
+
+    def test_unreliable_ocr_is_defined_but_unused(self, corpus):
+        """The grade is kept for a real referent; applying it must be conscious.
+
+        The lossy .txt OCR dumps beside the screenshots are exactly what this
+        grade is for. No file *here* is one. If someone grades a file with it,
+        this test fails and they must justify the change rather than inherit
+        it from a previous mistake.
+        """
+        assert UNRELIABLE_OCR in RELIABILITY_GRADES
+        applied = [
+            name
+            for name, entry in corpus.reliability.items()
+            if entry.get("grade") == UNRELIABLE_OCR
+        ]
+        assert applied == []
+
+    def test_the_grade_vocabulary_distinguishes_checked_from_merely_read(self):
+        """TRANSCRIBED and RECONCILED must both exist and differ.
+
+        Collapsing them is what produced the original error: a file was graded
+        on how it was *read* rather than on whether anything *checked* it.
+        """
+        assert TRANSCRIBED in RELIABILITY_GRADES
+        assert RECONCILED in RELIABILITY_GRADES
+        assert TRANSCRIBED != RECONCILED
 
     def test_the_reconciled_files_are_marked_reconciled(self, corpus):
-        assert corpus.grade_of("round_values.csv") == "RECONCILED"
-        assert corpus.grade_of("opponent_decisions.csv") == "RECONCILED"
+        assert corpus.grade_of("round_values.csv") == RECONCILED
+        assert corpus.grade_of("opponent_decisions.csv") == RECONCILED
 
     def test_the_supplied_files_are_marked_as_supplied(self, corpus):
         assert corpus.grade_of("as_supplied/wtc2026_usa_pairing_cells.csv") == (
-            "AS_SUPPLIED"
+            AS_SUPPLIED
         )
 
-    def test_the_confusion_classes_are_named_not_merely_alluded_to(self, corpus):
-        entry = corpus.reliability["guarantees.csv"]
-        classes = " ".join(entry["confusion_classes"])
-        for pair in ("S / 5", "1 / I", "0 / O"):
-            assert pair in classes
-        assert entry["reason"]
+    def test_the_provenance_names_the_primary_artefact_and_the_loser(self, corpus):
+        """The fork itself must be recorded, not just its outcome.
 
-    def test_the_unreliable_entry_names_the_checks_that_do_hold(self, corpus):
+        Whoever extends this corpus will find both the screenshots and the
+        .txt dumps. The manifest has to say which one wins, because that is
+        the decision that went wrong here.
+        """
+        provenance = corpus.manifest["provenance"]
+        assert "WTC_2026_USA_PEAR_MASTER" in provenance["primary_artefact"]
+        do_not_use = provenance["do_not_use"]
+        assert ".txt" in do_not_use
+        assert "lossy" in do_not_use.lower()
+        assert provenance["residual_risk"]
+
+    def test_the_reconciled_entry_names_the_checks_that_do_hold(self, corpus):
         entry = corpus.reliability["guarantees.csv"]
         assert "test_guarantee_vectors_always_total_five" in entry["checked_by"]
 

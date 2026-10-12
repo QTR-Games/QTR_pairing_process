@@ -15,6 +15,9 @@ from pathlib import Path
 __all__ = [
     "CORPORA_ROOT",
     "RELIABILITY_GRADES",
+    "AS_SUPPLIED",
+    "TRANSCRIBED",
+    "RECONCILED",
     "UNRELIABLE_OCR",
     "PairingCell",
     "OpponentDecision",
@@ -33,10 +36,22 @@ CORPORA_ROOT = Path(__file__).resolve().parent / "corpora"
 #: These live in ``manifest.json`` rather than only in a README because the
 #: manifest is what a consumer actually loads. A caveat sitting in prose beside
 #: the data is a caveat nobody sees at the point of use.
+#:
+#: ``UNRELIABLE_OCR`` is defined but carried by no file here, and that is
+#: deliberate. An earlier revision graded ``guarantees.csv`` with it on the
+#: strength of corrupt strings that turned out to come from a machine-OCR
+#: ``.txt`` derivative of the screenshots, not from the screenshots -- which
+#: are clean monospace text and were read directly. The grade described the
+#: wrong artefact and would have retired 40 rows carrying 80 passing integrity
+#: checks. The grade is kept because the referent is real: those ``.txt``
+#: dumps are exactly the thing it should be applied to. It is simply not this
+#: file. ``test_unreliable_ocr_is_defined_but_unused`` pins that, so applying
+#: it to anything is a conscious act.
 AS_SUPPLIED = "AS_SUPPLIED"
+TRANSCRIBED = "TRANSCRIBED"
 RECONCILED = "RECONCILED"
 UNRELIABLE_OCR = "UNRELIABLE_OCR"
-RELIABILITY_GRADES = (AS_SUPPLIED, RECONCILED, UNRELIABLE_OCR)
+RELIABILITY_GRADES = (AS_SUPPLIED, TRANSCRIBED, RECONCILED, UNRELIABLE_OCR)
 
 
 class UngradedCorpusFile(ValueError):
@@ -178,12 +193,22 @@ class Corpus:
 
     @property
     def unreliable_files(self) -> tuple[str, ...]:
-        """Files whose individual fields must not be fitted to."""
+        """Files whose individual fields must not be fitted to.
+
+        A file qualifies when nothing has independently checked it: either it
+        was read by eye and not yet reconciled (``TRANSCRIBED``), or it is raw
+        machine-OCR (``UNRELIABLE_OCR``). ``RECONCILED`` files carry an
+        equation that breaks if a field is wrong, and ``AS_SUPPLIED`` files
+        were not transcribed by us at all.
+
+        Currently empty for the WTC 2026 corpus, which is the honest answer --
+        see the note on :data:`UNRELIABLE_OCR`.
+        """
         return tuple(
             sorted(
                 name
                 for name, entry in self.reliability.items()
-                if entry.get("grade") == UNRELIABLE_OCR
+                if entry.get("grade") in (TRANSCRIBED, UNRELIABLE_OCR)
             )
         )
 
