@@ -19,12 +19,42 @@ Primary artefact: five screenshots of the Pear Master session log,
 repository** and are not committed; they are personal captures.
 
 Everything in `opponent_decisions.csv`, `round_values.csv` and
-`guarantees.csv` was transcribed from those images by eye. Treat them as
-OCR-grade: the reconciliation tests in `test_opponent_corpus.py` exist
-precisely because a hand transcription needs an independent check. They verify
-that each round's final guarantee vector equals its final outcome, and that the
-outcome's value under `GOOD=+1 / EVEN=0 / SOFT=-10` equals the value the tool
-*printed*. All five rounds reconcile at zero residual.
+`guarantees.csv` was transcribed from those images by eye.
+
+**Per-file transcription grades live in `manifest.json` under `reliability`,
+not here.** The manifest is what a consumer actually loads; a warning sitting
+in prose beside the data is a warning nobody sees at the point of use.
+`load_corpus()` refuses to load a corpus whose declared files are not all
+graded, with a reason, so a future corpus cannot quietly skip this.
+
+| File | Grade | Why |
+|---|---|---|
+| `round_values.csv` | `RECONCILED` | Counts must reproduce the value the tool **printed**. All five rounds at zero residual; rounds 1 and 5 out-of-sample. |
+| `opponent_decisions.csv` | `RECONCILED` | Slip counts cross-check against `round_values.opponent_slips`, transcribed from a different part of each log. |
+| `guarantees.csv` | `UNRELIABLE_OCR` | See below. |
+| `as_supplied/*.csv` | `AS_SUPPLIED` | Arrived as data files; not transcribed by us. |
+
+### Why `guarantees.csv` is graded unreliable
+
+The label letters sit immediately beside the counts in low-contrast screenshot
+text, which produces a specific confusion set: `S`/`5` (the SOFT glyph against
+a digit in the count position), `1`/`I`, and `0`/`O`. Raw examples:
+
+```
+"OG SN 0S OH"   ->  0G 5N 0S 0H
+"IG 3N IS OH"   ->  1G 3N 1S 0H
+```
+
+Three aggregate checks hold — every vector totals exactly 5, each step chains
+to the next, and each round ends at its final outcome — and any single misread
+digit breaks at least one of them. But they **cannot** catch a compensating
+pair of errors inside one vector. So this file is for reverse-direction
+consistency checking only. Nothing is fitted to it.
+
+One caution learned the hard way: the earlier form of the total check was
+`sum(after) >= sum(before)`, which is **vacuous** here because every vector
+totals 5 on both sides. It compared `5 >= 5` and guarded nothing. The equality
+form is the one that actually trips.
 
 `as_supplied/` holds the two CSVs exactly as they arrived from the sibling
 session, unmodified, for audit.
@@ -63,4 +93,22 @@ corpus, so that the loss is visible instead of baked in.
 ## Adding another event
 
 Drop a sibling directory next to this one containing a `manifest.json` that
-names its files, counts and caveats. No code changes.
+names its files, counts, per-file `reliability` grades and caveats. No code
+changes. The loader will refuse it until every declared file carries a grade
+and a reason.
+
+## What a second event of this format would and would not fix
+
+Worth stating plainly for whoever collects the next one, because it is a
+corpus-design constraint rather than a sample-size problem:
+
+- More events **would** sharpen the adversarial-line rate, currently 9/20.
+- More events **would not** make either opponent model scoreable. The mirrors
+  need a rating matrix, which these logs never contain; the rival utility
+  needs a label on the branch *not* taken, and the tool labels only *locked*
+  pairings. Both gaps are structural. A hundred events of this format leave
+  the model backtest at n=0.
+
+To race the models you need a log format that records either the numbers
+behind a recommendation or the labels on every candidate, not just the chosen
+one.

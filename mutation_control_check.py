@@ -108,6 +108,34 @@ MUTATIONS = [
         "        return self.alpha * min_child + 0.20 * mean_child",
         "test_opponent_model_identity.py",
     ),
+    (
+        "transcription grades no longer enforced at load",
+        "qtr_pairing_process/opponent_comparison/corpus.py",
+        "    _require_grades(corpus_id, manifest)",
+        "    pass",
+        "test_opponent_corpus.py",
+    ),
+    (
+        "guarantees.csv downgraded from UNRELIABLE_OCR to RECONCILED",
+        "qtr_pairing_process/opponent_comparison/corpora/wtc2026_usa/manifest.json",
+        '"grade": "UNRELIABLE_OCR"',
+        '"grade": "RECONCILED"',
+        "test_opponent_corpus.py",
+    ),
+    (
+        "one guarantee vector digit corrupted (the OCR tripwire)",
+        "qtr_pairing_process/opponent_comparison/corpora/wtc2026_usa/guarantees.csv",
+        "1,2,them,1,2,2,0,1,3,1,0",
+        "1,2,them,1,2,2,0,1,3,5,0",
+        "test_opponent_corpus.py",
+    ),
+    (
+        "a round's slip count desynced from the decision rows",
+        "qtr_pairing_process/opponent_comparison/corpora/wtc2026_usa/round_values.csv",
+        "1,Finland Sarvikellopollo,B,2,2,1,0,-8,4,4,2",
+        "1,Finland Sarvikellopollo,B,2,2,1,0,-8,4,4,3",
+        "test_opponent_corpus.py",
+    ),
 ]
 
 

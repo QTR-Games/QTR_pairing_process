@@ -186,6 +186,18 @@ def format_backtest(report: BacktestReport) -> str:
         lines.append("with its n attached is the correct outcome here, not a")
         lines.append("fallback from a failed experiment.")
 
+    lines.append("")
+    lines.append("What more data of this format would and would not fix:")
+    lines.append("  The POSTURE rate above is measured at n = "
+                 f"{report.adversarial_line.evaluable} and is limited by sample")
+    lines.append("  size. More events sharpen it.")
+    lines.append("  The MODELS are at n = 0 and are NOT limited by sample size.")
+    lines.append("  They are blocked by what this log format records -- no rating")
+    lines.append("  matrix, and labels only on the branch actually taken. More")
+    lines.append("  events of this format leave them at zero forever. Racing the")
+    lines.append("  models needs a format that logs the numbers behind a")
+    lines.append("  recommendation, or labels on every candidate.")
+
     if report.caveats:
         lines.append("")
         lines.append("Caveats:")

@@ -14,16 +14,38 @@ from pathlib import Path
 
 __all__ = [
     "CORPORA_ROOT",
+    "RELIABILITY_GRADES",
+    "UNRELIABLE_OCR",
     "PairingCell",
     "OpponentDecision",
     "RoundValue",
     "GuaranteeStep",
     "Corpus",
+    "UngradedCorpusFile",
     "load_corpus",
     "available_corpora",
 ]
 
 CORPORA_ROOT = Path(__file__).resolve().parent / "corpora"
+
+#: Transcription grade for one corpus file.
+#:
+#: These live in ``manifest.json`` rather than only in a README because the
+#: manifest is what a consumer actually loads. A caveat sitting in prose beside
+#: the data is a caveat nobody sees at the point of use.
+AS_SUPPLIED = "AS_SUPPLIED"
+RECONCILED = "RECONCILED"
+UNRELIABLE_OCR = "UNRELIABLE_OCR"
+RELIABILITY_GRADES = (AS_SUPPLIED, RECONCILED, UNRELIABLE_OCR)
+
+
+class UngradedCorpusFile(ValueError):
+    """Raised when a corpus ships a data file with no transcription grade.
+
+    Deliberately fatal rather than defaulting to "probably fine". A new corpus
+    is exactly the moment someone knows how its files were produced, and the
+    only moment they will remember.
+    """
 
 
 @dataclass(frozen=True)
@@ -138,6 +160,33 @@ class Corpus:
     def caveats(self) -> tuple[str, ...]:
         return tuple(self.manifest.get("caveats", ()))
 
+    @property
+    def reliability(self) -> dict:
+        """Per-file transcription grades, keyed by the manifest's file value."""
+        return {
+            key: value
+            for key, value in self.manifest.get("reliability", {}).items()
+            if not key.startswith("_")
+        }
+
+    def grade_of(self, filename: str) -> str:
+        """Transcription grade for one corpus file."""
+        try:
+            return self.reliability[filename]["grade"]
+        except KeyError:
+            raise UngradedCorpusFile(f"{filename!r} has no reliability entry") from None
+
+    @property
+    def unreliable_files(self) -> tuple[str, ...]:
+        """Files whose individual fields must not be fitted to."""
+        return tuple(
+            sorted(
+                name
+                for name, entry in self.reliability.items()
+                if entry.get("grade") == UNRELIABLE_OCR
+            )
+        )
+
 
 def _read(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as handle:
@@ -150,6 +199,38 @@ def _split_choice_set(raw: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in raw.split("+") if part.strip())
 
 
+def _require_grades(corpus_id: str, manifest: dict) -> None:
+    """Every declared data file must carry a transcription grade.
+
+    This is the rule "caveats die at the point of use, structure survives"
+    applied to the corpus itself. A README saying a file is OCR-grade protects
+    nobody who loads the manifest and starts fitting; refusing to load does.
+    """
+    reliability = {
+        key: value
+        for key, value in manifest.get("reliability", {}).items()
+        if not key.startswith("_")
+    }
+    missing = sorted(set(manifest["files"].values()) - set(reliability))
+    if missing:
+        raise UngradedCorpusFile(
+            f"corpus {corpus_id!r} declares files with no reliability grade: "
+            f"{missing}. Add one of {list(RELIABILITY_GRADES)} to "
+            "manifest.json['reliability'], with a reason."
+        )
+    for name, entry in reliability.items():
+        grade = entry.get("grade")
+        if grade not in RELIABILITY_GRADES:
+            raise UngradedCorpusFile(
+                f"corpus {corpus_id!r} file {name!r} has grade {grade!r}; "
+                f"expected one of {list(RELIABILITY_GRADES)}"
+            )
+        if not entry.get("reason"):
+            raise UngradedCorpusFile(
+                f"corpus {corpus_id!r} file {name!r} is graded {grade} with no reason"
+            )
+
+
 def load_corpus(corpus_id: str, root: Path | None = None) -> Corpus:
     """Load a corpus directory by id."""
     base = (root or CORPORA_ROOT) / corpus_id
@@ -158,6 +239,7 @@ def load_corpus(corpus_id: str, root: Path | None = None) -> Corpus:
         raise FileNotFoundError(f"no manifest.json in {base}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     files = manifest["files"]
+    _require_grades(corpus_id, manifest)
 
     cells = tuple(
         PairingCell(

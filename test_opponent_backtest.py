@@ -181,6 +181,18 @@ class TestReportOutput:
         assert "not evaluable" in text
         assert "no rating matrix" in text
 
+    def test_the_report_separates_sample_size_from_corpus_design(self, report):
+        """The gate's reason must travel with its number.
+
+        Without this, a reader records '45%, inconclusive, collect more data'
+        and plans the wrong collection. The posture is sample-size limited;
+        the models are not limited by sample size at all.
+        """
+        text = format_backtest(report)
+        assert "would and would not fix" in text
+        assert "NOT limited by sample size" in text
+        assert "leave them at zero forever" in text
+
 
 class TestDisagreementNotConfidence:
     """Section 3 of the brief, made executable."""

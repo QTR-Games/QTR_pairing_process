@@ -6,9 +6,18 @@ these are it: the arithmetic below is over-determined, so a slip of the eye in
 any single cell shows up as a non-zero residual somewhere.
 """
 
+import json
+import shutil
+
 import pytest
 
 from qtr_pairing_process.opponent_comparison import available_corpora, load_corpus
+from qtr_pairing_process.opponent_comparison.corpus import (
+    CORPORA_ROOT,
+    RELIABILITY_GRADES,
+    UNRELIABLE_OCR,
+    UngradedCorpusFile,
+)
 from qtr_pairing_process.opponent_models import (
     EVEN,
     GOOD,
@@ -170,15 +179,29 @@ class TestGuaranteeConsistency:
                 rv.hard_dodge,
             ), f"round {round_no}"
 
-    def test_guarantees_never_decrease_in_total(self, corpus):
-        """Locked cells stay locked, so the vector total is non-decreasing."""
-        for round_no in range(1, 6):
-            steps = sorted(
-                (g for g in corpus.guarantees if g.round == round_no),
-                key=lambda g: g.step,
-            )
-            for step in steps:
-                assert sum(step.after) >= sum(step.before), f"r{round_no} s{step.step}"
+    def test_guarantee_vectors_always_total_five(self, corpus):
+        """Every vector must total exactly 5, the number of cells in a round.
+
+        This replaces an earlier `sum(after) >= sum(before)` assertion that was
+        **vacuous**: every vector totals 5 on both sides, so it compared 5 >= 5
+        and guarded nothing. A sibling session's question about a step-1 vector
+        of (1,2,2,0) is what exposed it.
+
+        The equality form is a genuine OCR tripwire. guarantees.csv is graded
+        UNRELIABLE_OCR precisely because 'S' is ambiguous with '5' in the count
+        position; any single digit misread changes a total and fails here.
+        """
+        for step in corpus.guarantees:
+            assert sum(step.before) == 5, f"r{step.round} s{step.step} before"
+            assert sum(step.after) == 5, f"r{step.round} s{step.step} after"
+
+    def test_the_total_is_not_trivially_constant_across_fields(self, corpus):
+        """Guards the test above against being satisfied by a frozen file.
+
+        If no vector ever changed, the sum check would pass on a file of
+        identical rows and still prove nothing.
+        """
+        assert any(step.changed for step in corpus.guarantees)
 
     def test_each_step_chains_to_the_next(self, corpus):
         for round_no in range(1, 6):
@@ -194,6 +217,7 @@ class TestGuaranteeConsistency:
 
 
 class TestOurOwnDecisions:
+
     def test_nineteen_of_twenty_usa_decisions_were_engine_optimal(self, corpus):
         optimal = sum(rv.our_decisions_optimal for rv in corpus.round_values)
         total = sum(rv.our_decisions_total for rv in corpus.round_values)
@@ -206,3 +230,94 @@ class TestOurOwnDecisions:
             if rv.our_decisions_optimal != rv.our_decisions_total
         ]
         assert off == [5]
+
+    def test_slip_counts_agree_with_the_round_value_rows(self, corpus):
+        """Two independent transcriptions of the same fact must agree.
+
+        round_values.opponent_slips was read off each log's summary line;
+        opponent_decisions.csv was read off the step-by-step body. They were
+        transcribed separately, so agreement is a check rather than a
+        restatement.
+        """
+        for rv in corpus.round_values:
+            counted = sum(
+                1
+                for d in corpus.free_opponent_decisions
+                if d.round == rv.round and not d.took_adversarial_line
+            )
+            assert counted == rv.opponent_slips, f"round {rv.round}"
+
+    def test_total_slips_are_eleven(self, corpus):
+        assert sum(rv.opponent_slips for rv in corpus.round_values) == 11
+
+
+class TestTranscriptionGradesAreStructural:
+    """The manifest, not the README, is what a consumer loads.
+
+    A sibling session's review caught that the OCR warning existed only in
+    README prose. These tests move the warning into the structure and keep it
+    there.
+    """
+
+    def test_every_declared_file_carries_a_grade(self, corpus):
+        for filename in corpus.manifest["files"].values():
+            assert corpus.grade_of(filename) in RELIABILITY_GRADES, filename
+
+    def test_guarantees_is_marked_unreliable(self, corpus):
+        assert corpus.grade_of("guarantees.csv") == UNRELIABLE_OCR
+        assert corpus.unreliable_files == ("guarantees.csv",)
+
+    def test_the_reconciled_files_are_marked_reconciled(self, corpus):
+        assert corpus.grade_of("round_values.csv") == "RECONCILED"
+        assert corpus.grade_of("opponent_decisions.csv") == "RECONCILED"
+
+    def test_the_supplied_files_are_marked_as_supplied(self, corpus):
+        assert corpus.grade_of("as_supplied/wtc2026_usa_pairing_cells.csv") == (
+            "AS_SUPPLIED"
+        )
+
+    def test_the_confusion_classes_are_named_not_merely_alluded_to(self, corpus):
+        entry = corpus.reliability["guarantees.csv"]
+        classes = " ".join(entry["confusion_classes"])
+        for pair in ("S / 5", "1 / I", "0 / O"):
+            assert pair in classes
+        assert entry["reason"]
+
+    def test_the_unreliable_entry_names_the_checks_that_do_hold(self, corpus):
+        entry = corpus.reliability["guarantees.csv"]
+        assert "test_guarantee_vectors_always_total_five" in entry["checked_by"]
+
+    def test_an_ungraded_file_is_refused_at_load(self, tmp_path):
+        """The grade is enforced, not merely documented."""
+        source = CORPORA_ROOT / "wtc2026_usa"
+        target = tmp_path / "wtc2026_usa"
+        shutil.copytree(source, target)
+        manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+        del manifest["reliability"]["guarantees.csv"]
+        (target / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+        with pytest.raises(UngradedCorpusFile) as excinfo:
+            load_corpus("wtc2026_usa", root=tmp_path)
+        assert "guarantees.csv" in str(excinfo.value)
+
+    def test_an_unknown_grade_is_refused_at_load(self, tmp_path):
+        source = CORPORA_ROOT / "wtc2026_usa"
+        target = tmp_path / "wtc2026_usa"
+        shutil.copytree(source, target)
+        manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+        manifest["reliability"]["guarantees.csv"]["grade"] = "PROBABLY_FINE"
+        (target / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+        with pytest.raises(UngradedCorpusFile):
+            load_corpus("wtc2026_usa", root=tmp_path)
+
+    def test_a_grade_without_a_reason_is_refused(self, tmp_path):
+        source = CORPORA_ROOT / "wtc2026_usa"
+        target = tmp_path / "wtc2026_usa"
+        shutil.copytree(source, target)
+        manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+        manifest["reliability"]["round_values.csv"]["reason"] = ""
+        (target / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+        with pytest.raises(UngradedCorpusFile):
+            load_corpus("wtc2026_usa", root=tmp_path)
